@@ -6,8 +6,9 @@ from typing import Literal
 
 from pydantic import Field
 
+from research_swarm.domain.controls import CancellationDirective
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.types import ID, Digest, Revision, Timestamp, VersionedRecord
+from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord
 from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.database import JsonObject, Transaction
 
@@ -26,12 +27,7 @@ class WorkerPresence(VersionedRecord):
     received_at: Timestamp | None = None
 
 
-class AttemptCancellation(VersionedRecord):
-    binding: WorkerBinding
-    attempt_id: ID
-    dispatch_digest: Digest
-    control_sequence: int = Field(default=1, strict=True, ge=1, le=1)
-    action: Literal["cancel"] = "cancel"
+class AttemptCancellation(CancellationDirective):
     reason: str = Field(min_length=1, max_length=2048)
     actor_id: ID
     requested_at: Timestamp

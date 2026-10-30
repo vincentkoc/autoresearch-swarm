@@ -15,17 +15,12 @@ from research_swarm.control.worker_state import (
 )
 from research_swarm.control.workers import AttemptData, WorkerData, authority, worker_authority
 from research_swarm.domain.canonical import record_digest
+from research_swarm.domain.controls import ControlAcknowledgment
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import ID, Digest, VersionedRecord, utc_now
+from research_swarm.domain.types import ID, VersionedRecord, utc_now
 from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.database import Database, JsonObject, Transaction
-
-
-class ControlAcknowledgment(VersionedRecord):
-    attempt_id: ID
-    control_sequence: int = Field(strict=True, ge=1)
-    dispatch_digest: Digest
 
 
 class WorkerHeartbeat(VersionedRecord):

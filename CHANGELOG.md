@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Persist worker cancellation receipts atomically with assignment journaling, including cancellation delivered before its assignment.
+- Keep cancellation effective after acknowledgment and restart, preserve terminal publication bytes, and separate local repair cancellation from remote sequencing.
+- Verify cancellation during preparation and native release, calibrated origin authorization, and owned descendant shutdown with real subprocess tests.
+
 - Add independent worker presence and admission records, sequenced heartbeats, and transactional drain control without changing existing grants.
 - Persist attempt-scoped cancellation with bounded worker control delivery; distinguish request, journal acknowledgment, and accepted native closure.
 - Preserve successful completion racing cancellation, keep UNKNOWN reservations unresolved, and expose the controls through the shared API/SDK/CLI/MCP catalog.

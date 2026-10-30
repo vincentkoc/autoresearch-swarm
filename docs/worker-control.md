@@ -105,6 +105,37 @@ uncertain heartbeat delivery before advancing their sequence. Native journal
 and supervisor gates remain the authority for preventing launch and stopping
 owned process scopes.
 
-This slice implements and tests the controller API and publication resolution.
-Automatic polling and application in the remote driver is the next slice; this
-API alone does not establish that an existing worker has applied a request.
+## Durable worker receipt
+
+`WorkerJournal.apply_control(binding, directive)` accepts the installation-pinned
+binding and a `CancellationDirective`. The directive contains only immutable
+binding, attempt, dispatch digest, action, and sequence fields. Controller audit
+metadata and changing acknowledgment/completion timestamps are excluded from
+its identity.
+
+The inbox and attempt journal share a SQLite write transaction. If the assignment
+is already present, its complete binding and digest must match before cancellation
+becomes sticky. If it has not arrived, the inbox keeps the directive and `receive()`
+merges it before returning the new entry. A mismatched later assignment is refused.
+Cancellation does not change the immutable worker-input digest.
+
+`pending_control_acks()` reads at most 100 exact acknowledgments. After an accepted
+heartbeat response, `acknowledge_controls()` validates the complete batch and marks
+its delivery. It retains the cancellation record: an acknowledged cancellation
+must still prevent a later assignment from launching. Duplicate receipt and
+acknowledgment are idempotent across restart.
+
+For CLOSED and NOT_STARTED attempts, late controls remain in the separate inbox.
+They do not modify journal payload, revision, events, outcome, or artifacts that
+may already have been published. UNKNOWN remains unresolved. Local preparation
+and clock errors use `request_local_cancel()` without consuming remote sequence
+numbers; legacy journal sequence values cannot suppress a new remote receipt.
+
+Existing native claim/release gates and supervision read the sticky cancellation
+flag. Tests cover cancellation before assignment, during materialization, before
+and after release authorization, and while a parent and descendants run. Capacity
+and budget settlement still require accepted closure or proven absence.
+
+Controller records and worker receipt/application are implemented and tested.
+Automatic polling in the remote driver is the next slice; the controller API alone
+does not establish that an existing worker has received a request.

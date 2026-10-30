@@ -436,7 +436,7 @@ class LocalWorker:
                     entry = self.journal.get(attempt_id)
                     if entry.state != JournalState.RECEIVED:
                         raise
-                    self.journal.request_cancel(attempt_id, entry.last_controller_sequence + 1)
+                    self.journal.request_local_cancel(attempt_id)
                     entry = self.journal.settle_unstarted(attempt_id)
                     entry = self.journal.note_reconciliation(
                         attempt_id, "Preparation failed: " + type(error).__name__
@@ -459,7 +459,7 @@ class LocalWorker:
                         supervised = start_timed_supervisor(self.journal, attempt_id, origin)
                     except (OSError, ValueError, RuntimeError, ResearchError) as error:
                         entry = self.journal.get(attempt_id)
-                        self.journal.request_cancel(attempt_id, entry.last_controller_sequence + 1)
+                        self.journal.request_local_cancel(attempt_id)
                         entry = self.journal.settle_unstarted(attempt_id)
                         entry = self.journal.note_reconciliation(
                             attempt_id, "Clock admission unavailable: " + type(error).__name__
@@ -494,9 +494,7 @@ class LocalWorker:
                     entry = reconcile_outcome(self.journal, attempt_id)
                     if entry.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}:
                         if entry.supervisor_id is None:
-                            self.journal.request_cancel(
-                                attempt_id, entry.last_controller_sequence + 1
-                            )
+                            self.journal.request_local_cancel(attempt_id)
                             entry = self.journal.settle_unstarted(attempt_id)
                         else:
                             entry = self.journal.unknown(

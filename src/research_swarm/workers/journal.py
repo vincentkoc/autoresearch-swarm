@@ -13,10 +13,13 @@ from pydantic import Field, model_validator
 from research_swarm.domain.assignments import SignedAssignment
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockMode, SignedAssignmentTime, timed_assignment_digest
+from research_swarm.domain.controls import CancellationDirective, ControlAcknowledgment
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
 from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord, utc_now
+from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.identity import initialize_identity
+from research_swarm.workers import control_inbox
 from research_swarm.workers.authority import VerifiedDispatch
 from research_swarm.workers.clock_signatures import VerifiedAssignmentTime
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, NativeOutcome
@@ -149,6 +152,7 @@ class WorkerJournal:
                 raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported worker journal")
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(_SCHEMA)
+            connection.executescript(control_inbox.SCHEMA)
             self.identity = initialize_identity(connection)
 
     @contextmanager
@@ -254,7 +258,14 @@ class WorkerJournal:
             if prior is not None:
                 if prior["input_digest"] != digest:
                     raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Worker dispatch changed")
-                return JournalEntry.model_validate_json(prior["payload"])
+                before = JournalEntry.model_validate_json(prior["payload"])
+                return self._write_change(
+                    connection,
+                    before,
+                    control_inbox.merge_control(connection, before),
+                    "control.applied",
+                )
+            entry = control_inbox.merge_control(connection, entry)
             connection.execute(
                 "INSERT INTO attempts(id,dispatch_id,input_digest,state,revision,payload) "
                 "VALUES (?,?,?,?,?,?)",
@@ -278,16 +289,75 @@ class WorkerJournal:
     ) -> JournalEntry:
         with self._transaction() as connection:
             before = self._get(connection, attempt_id)
-            after = JournalEntry.model_validate(change(before))
-            if after == before:
-                return before
-            after = after.model_copy(update={"revision": before.revision + 1})
-            connection.execute(
-                "UPDATE attempts SET payload=?,state=?,revision=? WHERE id=? AND revision=?",
-                (after.model_dump_json(), after.state, after.revision, attempt_id, before.revision),
-            )
-            self._event(connection, after, event_type)
-            return after
+            return self._write_change(connection, before, change(before), event_type)
+
+    @classmethod
+    def _write_change(
+        cls,
+        connection: sqlite3.Connection,
+        before: JournalEntry,
+        after: JournalEntry,
+        event_type: str,
+    ) -> JournalEntry:
+        after = JournalEntry.model_validate(after)
+        if after == before:
+            return before
+        after = after.model_copy(update={"revision": before.revision + 1})
+        connection.execute(
+            "UPDATE attempts SET payload=?,state=?,revision=? WHERE id=? AND revision=?",
+            (
+                after.model_dump_json(),
+                after.state,
+                after.revision,
+                before.dispatch.attempt_id,
+                before.revision,
+            ),
+        )
+        cls._event(connection, after, event_type)
+        return after
+
+    def apply_control(
+        self, binding: WorkerBinding, directive: CancellationDirective
+    ) -> ControlAcknowledgment:
+        """The caller validates transport authority; persistence precedes acknowledgment."""
+        directive = CancellationDirective.model_validate(directive)
+        with self._transaction() as connection:
+            control_inbox.store_control(connection, binding, directive)
+            try:
+                before = self._get(connection, directive.attempt_id)
+            except ResearchError as error:
+                if error.code != ErrorCode.NOT_FOUND:
+                    raise
+            else:
+                self._write_change(
+                    connection,
+                    before,
+                    control_inbox.merge_control(connection, before),
+                    "control.applied",
+                )
+            return directive.acknowledgment()
+
+    def pending_control_acks(
+        self, binding: WorkerBinding, *, limit: int = 100
+    ) -> tuple[ControlAcknowledgment, ...]:
+        with self._connect() as connection:
+            return control_inbox.pending_acknowledgments(connection, binding, limit)
+
+    def acknowledge_controls(
+        self, binding: WorkerBinding, acknowledgments: tuple[ControlAcknowledgment, ...]
+    ) -> None:
+        with self._transaction() as connection:
+            control_inbox.acknowledge_controls(connection, binding, acknowledgments)
+
+    def request_local_cancel(self, attempt_id: str) -> JournalEntry:
+        """Local preparation failure cannot advance the remote controller sequence."""
+
+        def cancel(entry: JournalEntry) -> JournalEntry:
+            if entry.state in {JournalState.CLOSED, JournalState.NOT_STARTED}:
+                return entry
+            return entry.model_copy(update={"cancel_requested": True})
+
+        return self._change(attempt_id, "local.cancellation_requested", cancel)
 
     def claim_launch(self, attempt_id: str, supervisor_id: str) -> JournalEntry:
         def claim(entry: JournalEntry) -> JournalEntry:
