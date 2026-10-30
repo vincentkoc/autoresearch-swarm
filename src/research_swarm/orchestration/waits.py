@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from functools import partial
 from time import monotonic
 
 from research_swarm.client import ResearchClient
@@ -12,6 +13,7 @@ from research_swarm.control.wait_models import AcknowledgeWakeup, OrchestrationW
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration_waits import WakeupDelivery, wakeup_destination_id
+from research_swarm.orchestration.custody import run_owned_step
 from research_swarm.state.database import JsonObject
 
 
@@ -47,7 +49,7 @@ class DurableWaitDriver:
         deadline = monotonic() + timeout_seconds
         while True:
             try:
-                return await asyncio.to_thread(self.reconcile, wait_id)
+                return await run_owned_step(partial(self.reconcile, wait_id))
             except ResearchError as error:
                 if error.code != ErrorCode.RESOURCE_UNAVAILABLE:
                     raise
@@ -64,15 +66,17 @@ class DurableWaitDriver:
     ) -> tuple[str, ...]:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("Delivery batch must contain 1 to 100 wakeups")
-        page = await asyncio.to_thread(
-            self.client.list,
-            RecordQuery(
-                kind="wakeup_delivery",
-                campaign_id=self.campaign_id,
-                parent_id=wakeup_destination_id(self.campaign_id, self.epoch, self.actor_id),
-                state="pending",
-                limit=limit,
-            ),
+        page = await run_owned_step(
+            partial(
+                self.client.list,
+                RecordQuery(
+                    kind="wakeup_delivery",
+                    campaign_id=self.campaign_id,
+                    parent_id=wakeup_destination_id(self.campaign_id, self.epoch, self.actor_id),
+                    state="pending",
+                    limit=limit,
+                ),
+            )
         )
         delivered = []
         for row in page["items"]:
@@ -80,16 +84,18 @@ class DurableWaitDriver:
             if (wakeup.epoch, wakeup.actor_id) != (self.epoch, self.actor_id):
                 continue
             await notify(wakeup)
-            await asyncio.to_thread(
-                self.client.command,
-                "orchestration.acknowledge_wakeup",
-                AcknowledgeWakeup(
-                    delivery_id=row["id"], campaign_id=self.campaign_id, epoch=self.epoch
-                ),
-                idempotency_key=record_digest(
-                    "research.wakeup-delivery-v1", {"delivery_id": row["id"]}
-                ),
-                expected_revision=row["revision"],
+            await run_owned_step(
+                partial(
+                    self.client.command,
+                    "orchestration.acknowledge_wakeup",
+                    AcknowledgeWakeup(
+                        delivery_id=row["id"], campaign_id=self.campaign_id, epoch=self.epoch
+                    ),
+                    idempotency_key=record_digest(
+                        "research.wakeup-delivery-v1", {"delivery_id": row["id"]}
+                    ),
+                    expected_revision=row["revision"],
+                )
             )
             delivered.append(row["id"])
         return tuple(delivered)

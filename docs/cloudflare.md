@@ -7,8 +7,8 @@ evaluation rules and promotion decisions used by local and Temporal delivery.
 
 Current implementation includes the native delivery gateway, a hybrid Workflow
 driver with a durable transport registry, and locally qualified Cloudflare
-storage/signing primitives. R2 storage, the native notification bridge and the
-agent facade remain separate work. Hosted deployment is not part of the local
+storage/signing primitives. A native bridge delivers the durable wakeup outbox.
+R2 storage and the agent facade remain separate work. Hosted deployment is not part of the local
 qualification.
 
 ## Authority clock boundary
@@ -143,6 +143,53 @@ inaccessible observed history is never recreated. Lookup failures remain
 retryable without interpreting them as permanent deletion. An unobserved creation
 can retry the exact ID/input; Workflow startup records observation before its
 first native call. Native domain records remain the permanent research ledger.
+
+## Native bridge and wakeup ownership
+
+`CloudflareBridge` is an async client for the private adapter administration API.
+It needs no Cloudflare SDK or account credential. Register the adapter origin and
+its control credential in trusted native startup configuration, separately from
+the gateway and research route credentials. Reuse the exact `DriverConnection`
+binding and route clients established above.
+
+```python
+from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
+from research_swarm.orchestration.waits import DurableWaitDriver
+
+async with CloudflareBridge(adapter_origin, adapter_control_token) as bridge:
+    identifier = await bridge.start(connection.binding, WorkflowOptions())
+    status = await bridge.status(connection.binding)
+    for route, client in connection.clients.items():
+        waits = DurableWaitDriver(
+            client,
+            connection.binding.campaign_id,
+            epoch=connection.binding.epoch,
+            actor_id=connection.binding.actors[route],
+        )
+        delivered_ids = await bridge.deliver(connection.binding, waits)
+```
+
+Call `deliver` periodically for each registered route. It is one bounded batch,
+not a background task or an implicit controller. A failure leaves that route's
+notifications pending; an application may continue servicing other routes.
+Explicit startup remains separate from notification delivery. `notify` never
+starts, resets or resumes a Workflow.
+
+The bridge verifies the complete native binding before reading its
+`wakeup_delivery` records. For an earlier epoch it follows verified immutable
+transfer checkpoints, bounded to 128 hops; an unavailable or longer chain retains
+the notifications. It does not use the generic event outbox. It acknowledges only after the adapter returns exactly
+`{"accepted": true}`. A timeout, malformed/oversized reply, redirect or provider
+refusal retains the pending notification. Retrying can send a duplicate hint,
+which is safe because readiness and execution remain native decisions. The
+acknowledgment does not consume the research wait. Cancellation drains admitted
+native read/acknowledgment calls before returning custody to the caller.
+
+Start and status responses are checked against the same normalized binding and
+provider ID used by the Worker. Status reports the generation's immutable
+`initial_pending` reference, not a live view of its current instruction. Errors
+are sanitized, responses are bounded to 16 KiB, redirects are disabled, and
+non-loopback adapter connections require HTTPS with certificate verification.
 
 ## Local recovery qualification
 

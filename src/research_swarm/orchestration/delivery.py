@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Callable, Mapping
-from contextlib import suppress
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TypeVar
 
 from research_swarm.client import ResearchClient
 from research_swarm.control.orchestration_models import DriveTurnTarget
@@ -14,6 +11,7 @@ from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import DriverRoute, DriveTurn, OrchestrationBinding
 from research_swarm.domain.orchestration_waits import OrchestrationWait
+from research_swarm.orchestration.custody import run_owned_step as run_owned_step
 from research_swarm.orchestration.delivery_models import (
     BindingReference,
     PendingWork,
@@ -25,22 +23,6 @@ from research_swarm.orchestration.delivery_models import (
 from research_swarm.orchestration.startup import recover_driver_start
 from research_swarm.orchestration.waits import DurableWaitDriver
 from research_swarm.state.database import JsonObject
-
-T = TypeVar("T")
-
-
-async def run_owned_step(function: Callable[[], T]) -> T:
-    """Drain an admitted synchronous API call before its async owner relinquishes custody."""
-    task = asyncio.create_task(asyncio.to_thread(function))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        while not task.done():
-            with suppress(asyncio.CancelledError, Exception):
-                await asyncio.shield(task)
-        with suppress(asyncio.CancelledError, Exception):
-            task.result()
-        raise
 
 
 @dataclass(frozen=True)

@@ -49,7 +49,7 @@ class Drivers:
     token: str
 
 
-def bind(pipeline: Pipeline) -> Drivers:
+def bind(pipeline: Pipeline, *, adapter: str = "local") -> Drivers:
     actor, control, token = role(pipeline, "*")
     evaluator_actor, evaluator, _ = role(pipeline, "*")
     campaign = pipeline.client.get("campaign", pipeline.campaign["id"])
@@ -57,6 +57,7 @@ def bind(pipeline: Pipeline) -> Drivers:
         "orchestration.bind",
         BindOrchestration(
             campaign_id=campaign["id"],
+            adapter=adapter,
             configuration_digest=CONFIG,
             routes={"control": actor.id, "evaluator": evaluator_actor.id},
         ),

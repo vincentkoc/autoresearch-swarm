@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a native async Cloudflare bridge with exact binding/instance checks, bounded private HTTP control and destination-specific durable wakeup delivery.
+- Keep wakeups pending after uncertain or malformed provider replies; never forward credentials through redirects or start a Workflow from notification delivery.
+- Drain admitted native outbox calls on cancellation and qualify the bridge against real local Workflows, including concurrent starts and persisted acknowledgment.
+
 - Add a Cloudflare hybrid Workflow driver over the native delivery gateway, with immutable Durable Object generation records, exact pending-work handoff and provider-safe instance IDs.
 - Recover duplicate starts and lost replies without resetting research work; preserve observed-history markers, recheck generation on each callback, and explicitly nudge saved local history after a runtime restart.
 - Qualify actual local Workflow delivery around CPU training/evaluation, native fencing, redirect refusal and unsupported hosted-authority rejection; add pinned TypeScript/formatting checks and provider-boundary CI tests.

@@ -24,8 +24,8 @@ from tests.test_orchestration_turns import CONFIG, bind, fence
 from tests.test_orchestration_waits import record, report
 
 
-def setup(pipeline, *, scopes=frozenset({GATEWAY_SCOPE})):
-    drivers = bind(pipeline)
+def setup(pipeline, *, scopes=frozenset({GATEWAY_SCOPE}), adapter="local"):
+    drivers = bind(pipeline, adapter=adapter)
     connected = connection(pipeline, drivers)
     runtime = pipeline.runtime
     actor = Principal(id=new_id(), workspace_id=connected.binding.workspace_id, scopes=scopes)

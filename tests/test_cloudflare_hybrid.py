@@ -1,14 +1,15 @@
 """Real local Workflows and native research authority; no hosted deployment."""
 
+import asyncio
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
 from research_swarm.domain.types import new_id
+from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
 from research_swarm.orchestration.delivery import DeliveryKernel
 from tests.test_cloudflare_native import ROOT, build_current_sources, server
 from tests.test_cloudflare_native import pytestmark as pytestmark
@@ -16,6 +17,7 @@ from tests.test_delivery_gateway import prepare, setup
 from tests.test_http_delivery import serving
 from tests.test_local_pipeline import pipeline as pipeline
 from tests.test_orchestration_turns import fence
+from tests.test_orchestration_waits import driver as wait_driver
 from tests.test_orchestration_waits import record
 from tests.test_search_observations import evaluate
 
@@ -45,7 +47,7 @@ def test_local_workflow_retries_rotates_and_recovers_around_real_native_evaluati
     for command in (["npm", "run", "check:hybrid"], ["npm", "run", "test:hybrid"]):
         completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=60)
         assert completed.returncode == 0, (completed.stdout + completed.stderr)[-3000:]
-    app, drivers, connected, issued, binding = setup(pipeline)
+    app, drivers, connected, issued, binding = setup(pipeline, adapter="cloudflare")
     prepared = prepare(pipeline, drivers)
     original = DeliveryKernel.execute
     original_wait = DeliveryKernel.wait
@@ -87,8 +89,20 @@ def test_local_workflow_retries_rotates_and_recovers_around_real_native_evaluati
                 timeout=30,
             ) as client,
         ):
-            with ThreadPoolExecutor(max_workers=6) as pool:
-                starts = list(pool.map(lambda _: post(client, "/adapter/start", start), range(6)))
+
+            async def native_start():
+                async with CloudflareBridge(url, CONTROL) as bridge:
+                    identifiers = await asyncio.gather(
+                        *(
+                            bridge.start(connected.binding, WorkflowOptions(**start["options"]))
+                            for _ in range(6)
+                        )
+                    )
+                    status = await bridge.status(connected.binding)
+                    assert status.generation >= 0
+                    return [{"id": identifier} for identifier in identifiers]
+
+            starts = asyncio.run(native_start())
             assert all(item == starts[0] for item in starts)
             conflict = {**start, "options": {**start["options"], "poll_seconds": 2}}
             assert client.post("/adapter/start", json=conflict).status_code == 409
@@ -159,6 +173,18 @@ def test_local_workflow_retries_rotates_and_recovers_around_real_native_evaluati
                 lambda: pipeline.client.get("orchestration_wait", waited["id"])["state"] == "ready"
             )
             until(lambda: (waited["id"], "settled") in delivered_waits)
+
+            async def deliver_hint():
+                async with CloudflareBridge(url, CONTROL) as bridge:
+                    delivered = await bridge.deliver(
+                        connected.binding, wait_driver(pipeline, drivers)
+                    )
+                    assert len(delivered) == 1
+                    assert (
+                        pipeline.client.get("wakeup_delivery", delivered[0])["state"] == "delivered"
+                    )
+
+            asyncio.run(deliver_hint())
             fence(pipeline)
             final = until(
                 lambda: (
