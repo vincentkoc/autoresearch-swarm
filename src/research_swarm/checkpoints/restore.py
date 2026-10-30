@@ -317,8 +317,11 @@ def _verify_completed(
     with private_reader(destination, "research.sqlite"):
         pass
     database = Database(destination / "research.sqlite")
-    _verify_restored(database, receipt)
-    verify_preservation(backup, database, intent.restore_id)
+    from research_swarm.checkpoints.admission import verify_admitted
+
+    if not verify_admitted(database, receipt):
+        _verify_restored(database, receipt)
+        verify_preservation(backup, database, intent.restore_id)
     if not (destination / "artifacts").is_dir():
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Restored artifact store is absent")
     store = FilesystemBlobStore(destination / "artifacts")

@@ -36,6 +36,23 @@ from research_swarm.state.drive_guard import require_driver_started
 from research_swarm.state.sql import SqlSession
 from research_swarm.state.waits import consume_ready_wait, fence_wait
 
+
+def fence_binding(transaction: Transaction, row: JsonObject, *, reason: str) -> JsonObject:
+    binding = OrchestrationBinding.model_validate(row["data"])
+    if row["state"] != "active":
+        raise ResearchError(ErrorCode.STALE_FENCE, "Orchestration ownership changed")
+    updated = transaction.update(
+        "orchestration_binding",
+        row["id"],
+        expected_revision=row["revision"],
+        state="fenced",
+        data=row["data"],
+    )
+    transaction.event("orchestration.fenced", updated, {"reason": reason, "epoch": binding.epoch})
+    fence_wait(transaction, binding)
+    return updated
+
+
 CONTROL_OPERATIONS = frozenset(
     {
         "search.request_proposal",
@@ -438,18 +455,7 @@ class OrchestrationControl:
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Orchestration binding changed")
             if binding.epoch != intent.epoch or row["state"] != "active":
                 raise ResearchError(ErrorCode.STALE_FENCE, "Orchestration ownership changed")
-            updated = transaction.update(
-                "orchestration_binding",
-                row["id"],
-                expected_revision=row["revision"],
-                state="fenced",
-                data=row["data"],
-            )
-            transaction.event(
-                "orchestration.fenced", updated, {"reason": intent.reason, "epoch": binding.epoch}
-            )
-            fence_wait(transaction, binding)
-            return updated
+            return fence_binding(transaction, row, reason=intent.reason)
 
         return self.database.execute(
             context,

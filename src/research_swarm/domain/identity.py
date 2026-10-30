@@ -32,6 +32,22 @@ class CommandContext(Record):
     command_id: ID = Field(default_factory=new_id)
     expected_revision: Revision | None = None
     _drive_guard: DriveGuard | None = PrivateAttr(default=None)
+    _recovery_guard: RecoveryGuard | None = PrivateAttr(default=None)
+
+
+@dataclass(frozen=True)
+class RecoveryGuard:
+    """Native verification capability; never serialized or accepted from a caller."""
+
+    authority: tuple[str, str]
+    request_digest: str
+    restore_id: str
+    restoration_digest: str
+    custody_pin_digest: str
+    target_public_key: str
+    gate_revision: int
+    control_epoch: int
+    watermark: int
 
 
 @dataclass(frozen=True)

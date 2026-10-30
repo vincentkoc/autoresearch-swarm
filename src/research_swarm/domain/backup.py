@@ -103,6 +103,10 @@ class RestoreReceipt(VersionedRecord):
     unresolved_attempt_ids: tuple[ID, ...] = Field(max_length=10_000)
     worker_ids: tuple[ID, ...] = Field(max_length=10_000)
 
+    @property
+    def digest(self) -> str:
+        return record_digest("research.restore-receipt.v1", self.model_dump(mode="json"))
+
 
 class RestoreClaimRequest(VersionedRecord):
     backup_id: ID
@@ -139,3 +143,20 @@ class RestoreClaim(VersionedRecord):
 class SignedRestoreClaim(VersionedRecord):
     claim: RestoreClaim
     signature: str = Field(pattern=r"^[0-9a-f]{128}$")
+
+
+class RecoveryAdmission(VersionedRecord):
+    signed_claim: SignedRestoreClaim
+    restoration_digest: Digest
+    orchestration_campaign_ids: tuple[ID, ...] = Field(max_length=10_000)
+    paused_campaign_ids: tuple[ID, ...] = Field(max_length=10_000)
+    operator_id: ID
+    admitted_at: Timestamp
+    target_signature: str = Field(pattern=r"^[0-9a-f]{128}$")
+
+    @property
+    def proof_digest(self) -> str:
+        return record_digest(
+            "research.recovery-admission.v1",
+            self.model_dump(mode="json", exclude={"target_signature"}),
+        )

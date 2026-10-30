@@ -402,11 +402,19 @@ class Database:
             previous = _stored_response(connection, context, request_digest)
             if previous is not None:
                 return previous
-            from research_swarm.state.workspace_gate import require_workspace_mutation
+            from research_swarm.state.workspace_gate import (
+                require_recovery_admission,
+                require_workspace_mutation,
+            )
 
             # Fencing precedes rejection hooks: an inactive authority cannot settle or
             # quarantine new observations through a failed command's side effects.
-            require_workspace_mutation(connection, workspace_id, operation)
+            if operation == "workspace.begin_recovery":
+                require_recovery_admission(
+                    connection, context, self.authority_identity, request_digest
+                )
+            else:
+                require_workspace_mutation(connection, workspace_id, operation)
             from research_swarm.state.drive_guard import require_reserved_command_key
 
             require_reserved_command_key(Transaction(connection, context), request_digest)

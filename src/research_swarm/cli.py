@@ -61,6 +61,9 @@ def parser() -> argparse.ArgumentParser:
     claim = backups.add_parser("claim", help="Irreversibly elect one target at the original source")
     claim.add_argument("path", type=Path)
     claim.add_argument("--request-file", type=Path, required=True)
+    admit = backups.add_parser("admit", help="Admit the elected inactive target into recovery")
+    admit.add_argument("path", type=Path)
+    admit.add_argument("--claim-file", type=Path, required=True)
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -466,6 +469,28 @@ def main(argv: list[str] | None = None) -> int:
             from research_swarm.checkpoints.backup import export_backup, verify_backup
             from research_swarm.domain.identity import CommandContext
 
+            if args.backup_action == "admit":
+                if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
+                    raise ResearchError(
+                        ErrorCode.PROJECT_CONTRACT_INVALID,
+                        "Recovery admission requires the explicit restored target state",
+                    )
+                from research_swarm.checkpoints.admission import admit_recovery
+                from research_swarm.domain.backup import SignedRestoreClaim
+
+                elected = SignedRestoreClaim.model_validate(_request(args.claim_file))
+                runtime = LocalRuntime.open(args.state_dir)
+                admitted = admit_recovery(
+                    runtime,
+                    CommandContext(
+                        principal=runtime.principal(args.token_file),
+                        idempotency_key="native-recovery:" + elected.claim.request.restore_id,
+                    ),
+                    args.path,
+                    elected,
+                )
+                print(canonical_bytes(admitted).decode("utf-8"))
+                return 0
             if args.backup_action == "request-claim":
                 if args.state_dir or args.token_file:
                     raise ValueError("Restore claim requests use their explicit destination")

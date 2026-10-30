@@ -202,6 +202,49 @@ and propagates failure without a weaker fallback. These are native OS durability
 operations; process-interruption tests do not establish physical power-loss
 behavior on every filesystem or storage device.
 
+## Admit recovery on the elected target
+
+```sh
+research --state-dir restored-state backup admit backup-directory --claim-file claim.json
+```
+
+The Python entry point is `checkpoints.admission.admit_recovery`. Like import and
+claim issuance, this operation requires the native files and full operator
+authority. The general HTTP/MCP command catalog cannot invoke it. Normal agent
+research commands continue to use the shared API.
+
+Admission verifies the complete inactive import, its original ledger, source
+claim and possession of the selected target key. An internal, non-wire proof
+binds that verification to the exact database authority, request digest, source
+custody pin, restoration receipt, gate revision, target epoch and watermark.
+The transaction rechecks the proof before changing any state. An operation name
+alone does not grant admission. The original restore lock spans native
+verification and the transaction.
+
+One transaction records the signed `recovery_admission`, changes the gate from
+`restoring` to `recovering`, fences active orchestration bindings and requests a
+drain pause for running campaigns. Already-fenced bindings, dedicated actor
+ownership and saved pending turns remain recorded. Waiting/ready workflows are
+fenced through the existing wait lifecycle. Recovery events do not wake unrelated
+research waits. A running or UNKNOWN trial keeps its campaign `pausing` and its
+original reservations intact. Ready, awaiting-input, paused and terminal
+campaigns retain their states. Admission does not increment the control epoch.
+
+The exact command key replays its committed reply even after the backup bundle
+becomes unavailable. A completed import can also be inspected again after
+admission: its signed lifecycle receipt replaces the pristine-ledger comparison,
+while original artifact and private-file checks remain in place. A fresh command
+key cannot restart admission or elect another target.
+Rejected native admission rolls back the whole transition, including any proposed
+rejection acknowledgment, so the original pristine import remains retryable with
+corrected authority.
+
+The `recovering` gate currently still refuses worker delivery and all ordinary
+mutations. Recovery-only routing of original journals, operational closure of
+issued attempts, saved-turn reconciliation and final activation remain separate
+required steps. Neither a source claim nor an admission receipt proves native
+process closure.
+
 ## Qualification boundary
 
 Native tests cover a real SQLite snapshot, artifact and key corruption, missing
@@ -216,3 +259,7 @@ publication replies, actual process exit after publication, missing/substituted
 custody and forged target proofs. Windows CI checks protected-file replacement;
 platform-independent unit tests verify the required Windows flags and refusal
 path without treating them as native qualification.
+Admission tests cover actual process exit within the transaction and after
+commit, concurrent replay, rollback of fences and pauses, native-proof mismatch,
+target/source-key rejection, preserved UNKNOWN custody, pending driver turns and
+both waiting and ready workflow fences.

@@ -35,6 +35,19 @@ def settle_pause(transaction: Transaction, campaign_id: str) -> JsonObject:
     return updated
 
 
+def request_drain_pause(transaction: Transaction, row: JsonObject) -> JsonObject:
+    campaign_transition(CampaignState(row["state"]), CampaignState.PAUSING)
+    changed = transaction.update(
+        "campaign",
+        row["id"],
+        expected_revision=row["revision"],
+        state="pausing",
+        data=row["data"],
+    )
+    transaction.event("campaign.pause_requested", changed, {"mode": "drain"})
+    return settle_pause(transaction, row["id"])
+
+
 def target_met(transaction: Transaction, campaign_id: str, campaign: CampaignData) -> bool:
     target = campaign.contract.stopping.target_metric
     if (
@@ -73,16 +86,7 @@ class CampaignControl:
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE, "This pause mode is not qualified"
                 )
-            campaign_transition(CampaignState(row["state"]), CampaignState.PAUSING)
-            changed = transaction.update(
-                "campaign",
-                row["id"],
-                expected_revision=row["revision"],
-                state="pausing",
-                data=row["data"],
-            )
-            transaction.event("campaign.pause_requested", changed, {"mode": "drain"})
-            return settle_pause(transaction, row["id"])
+            return request_drain_pause(transaction, row)
 
         return self.database.execute(
             context, "campaign.pause", intent.model_dump(mode="json"), "campaign.manage", pause

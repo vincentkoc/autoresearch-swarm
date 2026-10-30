@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Admit the source-elected native restore into a signed recovery phase after full checkpoint verification. Bind admission to the exact database, receipt, request, source pin, epoch and watermark through an internal non-wire capability.
+- Atomically fence orchestration and drain running campaigns while preserving dedicated actors, pending turns, unresolved attempts and reservations. Keep the epoch unchanged, replay committed admission without its bundle, and leave ordinary mutation and activation unavailable.
+
 - Pin source custody per control epoch and irreversibly elect one inactive restore target through signed native requests and claims. Persist the claim with its source key, preserve exact replay and refuse missing or substituted custody.
 - Expose native claim request/issuance commands, keep elected targets inactive and document the source-custody rollback trust boundary. Use Windows write-through private-file replacement with explicit failure propagation.
 
