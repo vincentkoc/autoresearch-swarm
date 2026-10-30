@@ -4,6 +4,29 @@ The core includes a native supervisor and worker journal. Controller scheduling,
 resource admission, and the remote worker service are separate integration work.
 These primitives do not authorize enrollment or execution on another machine.
 
+## Machine resource admission
+
+`MachineResources` stores native scheduling reservations in one operator-controlled
+SQLite database per host. All participating workers and controllers must use that
+registry. Each resource pool has one controller/workspace owner and a declared
+capacity. Repeating the same enrollment is safe. A conflicting owner or capacity
+requires an explicit transfer or reconfiguration, which this primitive does not infer.
+
+A claim reserves all requested pools in one transaction. Concurrent independent
+processes cannot oversubscribe the enrolled capacity. Claims bind the original
+dispatch, attempt, worker session, and fence. A duplicate claim returns the same
+reservation. It cannot change its resources or reopen a closed execution.
+
+Lease expiry, process loss, and quarantine do not free capacity. Release requires
+the trusted local journal's native closure or proof that the attempt never started.
+A repeated closure has one effect. A receipt from another dispatch cannot release
+the claim.
+
+These pools implement scheduling admission. They do not enforce kernel CPU or memory
+quotas, discover unrelated device owners, or police workers outside the registry.
+Physical device qualification and operator allowances remain necessary. The worker
+service must connect this admission step to dispatch before launching research code.
+
 ## Authority and durable launch
 
 `DispatchVerifier` authenticates a dispatch with an enrolled worker key. The v1
