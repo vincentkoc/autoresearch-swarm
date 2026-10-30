@@ -192,7 +192,7 @@ class FilesystemBlobStore:
                 _sync_directory(staged.parent)
                 return blob
             try:
-                with _file(staged, "rb") as stream:
+                with _file(staged, "r+b") as stream:
                     _check(stream, reference)
                     os.fsync(stream.fileno())
                 os.replace(staged, target)

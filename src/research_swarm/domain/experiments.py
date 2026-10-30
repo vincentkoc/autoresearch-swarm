@@ -80,6 +80,23 @@ class StageSpec(VersionedRecord):
         return self
 
 
+def validate_stage_graph(stages: tuple[StageSpec, ...]) -> None:
+    indexed = {stage.id: stage for stage in stages}
+    if len(indexed) != len(stages):
+        raise ValueError("Duplicate stage ID")
+    missing = {dependency for stage in stages for dependency in stage.dependencies} - indexed.keys()
+    if missing:
+        raise ValueError(f"Unknown stage dependency: {sorted(missing)[0]}")
+    remaining = set(indexed)
+    complete: set[str] = set()
+    while remaining:
+        ready = {name for name in remaining if set(indexed[name].dependencies) <= complete}
+        if not ready:
+            raise ValueError("Stage graph contains a cycle")
+        complete.update(ready)
+        remaining.difference_update(ready)
+
+
 class ExperimentSpec(VersionedRecord):
     workspace_id: ID
     project_id: ID
@@ -120,29 +137,9 @@ class ExperimentSpec(VersionedRecord):
         self.sealed()
 
     def validate_graph(self) -> None:
-        stages = {stage.id: stage for stage in self.stages}
-        if len(stages) != len(self.stages):
-            raise ValueError("Duplicate stage ID")
+        validate_stage_graph(self.stages)
         if len({metric.name for metric in self.metrics}) != len(self.metrics):
             raise ValueError("Duplicate metric name")
-        visiting: set[str] = set()
-        complete: set[str] = set()
-
-        def visit(name: str) -> None:
-            if name in visiting:
-                raise ValueError("Stage graph contains a cycle")
-            if name in complete:
-                return
-            if name not in stages:
-                raise ValueError(f"Unknown stage dependency: {name}")
-            visiting.add(name)
-            for predecessor in stages[name].dependencies:
-                visit(predecessor)
-            visiting.remove(name)
-            complete.add(name)
-
-        for stage_id in stages:
-            visit(stage_id)
 
 
 class DispatchEnvelope(VersionedRecord):

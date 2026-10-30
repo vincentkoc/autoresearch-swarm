@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Resolve repository manifests from immutable bundles with separate protocol and source identities.
+- Share stage-graph validation between project manifests and sealed experiments.
+- Flush staged artifacts through writable descriptors for native Windows publication.
 - Publish resumable, verified artifacts with workspace access boundaries and fenced storage generations.
 - Preserve required evidence and reconcile crashed readers without treating a timeout as process closure.
 - Account for staged, retained, and deleting artifact content until verified cleanup completes.
