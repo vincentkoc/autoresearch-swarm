@@ -43,7 +43,8 @@ not implicitly supported.
 | Worker fencing and session replacement | Explicit CAS commands, immutable receipts, new principal/session, fresh draining projections | Original binding and epoch checks, independent-connection contention, old/new credential isolation, native/controller custody, replay and stale fences | Local CPU and HTTP recovery proof; physical-host qualification pending |
 | Remote replacement provisioning | Persisted identities and exact command, fixed private export, separate installation with original registry pins | Credential/command/export/native-init interruptions, registry removal race, original custody preservation, registered environment without probe, real CLI | Local HTTP/native CPU proof; physical-host qualification pending |
 | External proposal evidence | Assigned requests, immutable responses, explicit cancellation, request budgets, search revisions, bounded context | Real CPU incumbent, concurrent requests, late responses, restart, scope and artifact checks, CLI/MCP/HTTP replay | Local evidence layer and explicit atomic admission; automatic policy execution pending |
-| Atomic proposal admission | Shared candidate validation, source deduplication, composed scopes, transactional trial graph and policy state | Real CPU execution/evaluation, competing controllers, rollback, protected mutation, retained stale output, replay after source cleanup failure | Local explicit admission; observations and repeating policy driver pending |
+| Atomic proposal admission | Shared candidate validation, source deduplication, composed scopes, transactional trial graph and policy state | Real CPU execution/evaluation, competing controllers, rollback, protected mutation, retained stale output, replay after source cleanup failure | Local explicit admission and observation resolution; repeating policy driver pending |
+| Durable research observations | Typed trial evidence, immutable comparison context, independent selection, atomic consumption and policy progress | Real CPU wins/losses, exit failure, cancellation, no-start, UNKNOWN, correction, restart, consumption race, complete paired panel | Local policy resolution; repeating driver and physical/provider qualification pending |
 | Search policies and atomic promotion | Observed/paired assessment, atomic selection, correction, explicit baseline recovery; search pending | Real CPU evidence, incumbent CAS, rejected control, profile mismatch, invalidation before/after commit | Equal-budget research-policy comparison pending |
 | Statistical gates and exposure | Fixed paired sign gate, sealed plans, exposure accounting, complete-panel assessment | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release, actual paired CPU control | Independent workload variance and held-out generalization pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
@@ -80,12 +81,12 @@ transport, process, or provider behavior.
 - **C12** — Artifact upload succeeds but result commit fails. Local CPU pipeline recovers publication without re-execution or duplicate settlement; remote-provider proof pending.
 - **C13** — Required artifact is corrupt or absent. Pending end-to-end evidence.
 - **C14** — Candidate changes a protected evaluator dependency. Pending end-to-end evidence.
-- **C15** — Crashed run has no metric. Pending end-to-end evidence.
+- **C15** — A real CPU workload exits with code 7; its research observation has no score and resolves without a scientific rejection or promotion.
 - **C16** — Candidate and comparator use different forbidden protocols. Pending end-to-end evidence.
 - **C17** — Two promotions reference the same incumbent revision. Local concurrent commands select one incumbent and preserve the conflicting assessment.
 - **C18** — Child campaigns reserve concurrently. Pending end-to-end evidence.
 - **C19** — Child finishes and releases unused budget. Pending end-to-end evidence.
-- **C20** — Policy receives a duplicate observation. Pending end-to-end evidence.
+- **C20** — Equivalent trial evidence/context returns the same observation identity. Exact resolution replay and independent-connection CAS races consume one observation and advance policy once.
 - **C21** — A recorded external proposal response survives controller reopening before candidate publication; exact replay preserves one response and its reported usage. Automatic policy consumption remains pending.
 - **C22** — Seed changes between declared replicates. Pending end-to-end evidence.
 - **C23** — Evaluation returns an incomplete panel. Local pipeline records incomplete evidence and does not make it rankable.

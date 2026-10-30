@@ -19,6 +19,8 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 RecordKind = Literal[
     "search_state",
     "policy_transition",
+    "search_observation",
+    "observation_consumption",
     "proposal_request",
     "proposal_response",
     "proposal_cancellation",
@@ -79,6 +81,26 @@ def summarize(row: JsonObject) -> JsonObject:
         for name in ("pending_request_ids", "active_trial_ids"):
             result["data"][name] = data[name][:32]
             result["data"][name + "_count"] = len(data[name])
+    elif row["kind"] == "search_observation":
+        result["data"] = {
+            key: data[key]
+            for key in (
+                "facts_digest",
+                "incumbent_revision",
+                "comparator_id",
+                "observed_at",
+                "watermark",
+            )
+        }
+        result["data"]["facts"] = {
+            **data["facts"],
+            "evidence": data["facts"]["evidence"][:32],
+            "evidence_count": len(data["facts"]["evidence"]),
+            "attempt_outcomes": dict(list(data["facts"]["attempt_outcomes"].items())[:32]),
+            "attempt_count": len(data["facts"]["attempt_outcomes"]),
+        }
+    elif row["kind"] == "observation_consumption":
+        result["data"] = data
     elif row["kind"] == "policy_transition":
         result["data"] = {**data, "finding": data.get("finding", "")[:1024]}
     elif row["kind"] == "proposal_request":
@@ -374,7 +396,8 @@ class ResearchQueries:
             ).fetchall()
             recent = connection.execute(
                 "SELECT kind,id FROM records WHERE workspace_id=? AND campaign_id=? "
-                "AND kind IN ('candidate','trial','evaluation_receipt','promotion') "
+                "AND kind IN ('candidate','trial','evaluation_receipt','promotion',"
+                "'search_observation','policy_transition') "
                 "ORDER BY rowid DESC LIMIT ?",
                 (context.principal.workspace_id, campaign_id, limit),
             ).fetchall()

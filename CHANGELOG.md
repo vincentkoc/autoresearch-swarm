@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Record immutable typed research observations from accepted trial/evaluator evidence, preserving comparison context and separating cancellation, failure, incomplete evidence, and execution uncertainty from scores.
+- Resolve policy trials atomically after an independent promotion, rejection, complete paired-panel assessment, or closed non-scientific outcome; preserve observation consumption and exact search-state revisions.
+- Recheck corrected evidence before resolution, retain UNKNOWN policy slots, and recover the gap between promotion and policy progress without repeating selection.
+
 - Admit recorded agent responses atomically with candidate validation, trial graphs, policy-state changes, and immutable transition receipts.
 - Preserve proposer attribution, reject stale parent/epoch contexts, retain invalid mutations, and deduplicate same-campaign source trees without implicit replication.
 - Share manual and policy candidate operations while keeping campaign and search revision checks distinct; recover accepted admissions despite later source preflight or cleanup failures.

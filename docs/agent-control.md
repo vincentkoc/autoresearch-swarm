@@ -231,3 +231,71 @@ An admitted trial still needs independent execution and authenticated evaluation
 Admission does not change the incumbent or label the candidate a win. Its search
 slot remains occupied until policy observation and selection resolve that trial;
 scientific completion alone does not silently advance policy state.
+
+## Observe results and resolve a policy trial
+
+Agents do not write their own scientific observations. `search.observe_trial`
+reads an accepted trial and its evidence in one database snapshot. Send its
+campaign/trial IDs with the current **trial revision** and `search.observe`
+authority. The returned immutable record contains the source revision, spec,
+attempt outcomes, evidence references, comparison context, and event watermark.
+Identical evidence and comparison context return the same observation identity,
+even with another delivery key. Observing does not advance search state.
+
+| Observation | Meaning |
+|---|---|
+| `measurement` | An authenticated evaluator receipt and all execution dependencies are currently eligible; includes the primary metric and comparison digest |
+| `execution_failed` | An accepted attempted stage failed; no scientific score |
+| `cancelled` | Accepted attempted-stage evidence establishes cancellation; failed dependents do not turn it into model failure |
+| `not_started` | Attempted stages never reached accepted execution; no invented exit or score |
+| `execution_unknown` | Native/controller evidence remains unresolved; the policy slot stays occupied |
+| `closed_unaccepted` | Operational closure was accepted while research results were explicitly withheld |
+| `evaluation_invalid` / `evaluation_incomplete` | Evaluation did not produce a complete eligible panel |
+| `evidence_invalidated` | A correction invalidates evidence that was previously recorded |
+| `unrankable` | Evidence exists but current eligibility, artifact, or comparison requirements prevent ranking |
+
+An unfinished trial or completed execution awaiting evaluator authority does not
+become a score. The command returns an explicit pending/incomplete error. Closed
+failures, cancellation, and unavailable evidence are retained as separate
+categories, never assigned a zero loss. Attempt outcomes remain available for
+mixed-stage diagnosis; the summary is not a causal claim about a failed model.
+
+For a measurement, assess through the existing promotion API. Keep the original
+observation ID and comparison context. Commit a positive assessment separately;
+a rejected assessment needs no promotion. For a paired campaign, execute and
+assess its sealed confirmation panel. Its fixed exposure and one-panel rules
+remain in force. A single exploratory measurement cannot substitute for that
+panel, and an inconclusive assessment cannot become a win.
+
+Then call `search.resolve_trial` with the observation ID, optional decision ID,
+current controller ID/epoch, and **search revision**. It requires `search.manage`.
+The resolver rechecks the observed trial facts and current evidence dependencies.
+Scientific resolution must match the observed candidate and original comparator
+context. A positive decision must already be committed. A rejected decision
+must be an intact assessment. Paired decisions must match the complete sealed
+plan; observed-mode decisions must reference the exact exploratory receipt.
+
+One transaction records the resolution transition, consumes its ordered
+observation input, removes the active trial, advances the search revision, and
+increments `generation`. In this first policy implementation, generation counts
+resolved policy trials; it is not a count of validated improvements. Resolution
+does not change an incumbent, accept native execution, or settle resource costs.
+Unknown execution cannot resolve or free the policy slot.
+
+The transition's outcomes are `promoted`, `rejected`, `inconclusive`, and
+`non_scientific`. A closed failure requires no decision ID and records the last
+category. Cancellation of a policy request is still separate from resolution of
+an already admitted trial.
+
+Exact command replay recovers the original resolution. Another key cannot consume
+the same observation again, and concurrent search revisions cannot both advance.
+If evidence changes after observation, preserve the old record and observe the
+new revision. Affected assessments cannot resolve as valid wins. Existing
+incumbent suspension continues to prevent new proposals.
+
+The corresponding tools are `research_search_observe_trial` and
+`research_search_resolve_trial`; the CLI uses the ordinary `command` route.
+`search_observation`, `observation_consumption`, and `policy_transition` support
+the existing bounded record queries. Campaign context includes recent observation
+and transition summaries. A repeating deterministic search driver is the next
+layer over these commands; external agents can already run this explicit loop.

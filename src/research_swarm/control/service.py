@@ -40,6 +40,7 @@ from research_swarm.control.models import (
     ProjectRevisionData,
     TrialData,
 )
+from research_swarm.control.observation_models import ObserveTrial, ResolveTrialObservation
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
     AssessPromotion,
@@ -58,6 +59,7 @@ from research_swarm.control.search_models import (
     RequestProposal,
     RespondToProposal,
 )
+from research_swarm.control.search_observations import ObservationControl
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -147,6 +149,7 @@ class ResearchService:
         )
         self.worker_turnover = WorkerTurnover(database, assignment_key)
         self.proposals = ProposalControl(database)
+        self.search_observations = ObservationControl(database)
         self.search_admission = SearchAdmission(database, artifacts, self._submit_trial)
         self.results = ResultControl(database, artifacts)
         self.reconciliation = ReconciliationControl(database, self.results)
@@ -169,6 +172,14 @@ class ResearchService:
         self, context: CommandContext, request: ReconcileAttempt
     ) -> JsonObject:
         return self.closures.reconcile(context, request)
+
+    def observe_search_trial(self, context: CommandContext, request: ObserveTrial) -> JsonObject:
+        return self.search_observations.observe(context, request)
+
+    def resolve_search_trial(
+        self, context: CommandContext, request: ResolveTrialObservation
+    ) -> JsonObject:
+        return self.search_observations.resolve(context, request)
 
     def admit_proposal_response(
         self, context: CommandContext, request: AdmitProposalResponse

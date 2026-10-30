@@ -19,6 +19,7 @@ from research_swarm.control.commands import (
 )
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
+from research_swarm.control.observation_models import ObserveTrial, ResolveTrialObservation
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
@@ -59,6 +60,20 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "search.observe_trial": CommandDefinition(
+        ObserveTrial,
+        "observe_search_trial",
+        "search.observe",
+        True,
+        "Record typed current evidence using the trial revision, without advancing search.",
+    ),
+    "search.resolve_trial": CommandDefinition(
+        ResolveTrialObservation,
+        "resolve_search_trial",
+        "search.manage",
+        True,
+        "Consume evidence under search-state CAS after selection or closed failure.",
+    ),
     "search.admit_response": CommandDefinition(
         AdmitProposalResponse,
         "admit_proposal_response",
