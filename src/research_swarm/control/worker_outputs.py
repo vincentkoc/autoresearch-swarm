@@ -385,6 +385,66 @@ class WorkerOutputs:
                 context, "worker.cleanup_upload", payload, "worker.outputs", acknowledge
             )
 
+    def abort(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
+        context.principal.require("worker.outputs")
+        request = WorkerUploadTarget.model_validate(request)
+        self._check_owner(context, request)
+
+        def authorize(transaction: Transaction, row: JsonObject) -> UploadSpec:
+            receipt, data, current, upload, _ = owned_upload(transaction, request)
+            if (
+                current != row
+                or data.artifact is not None
+                or data.retention_id is not None
+                or receipt["state"] not in {"pending", "aborted"}
+                or current["state"] not in {"pending", "aborting", "aborted"}
+            ):
+                raise ResearchError(
+                    ErrorCode.INVALID_TRANSITION, "Published worker output cannot be aborted"
+                )
+            return upload
+
+        def finished(transaction: Transaction) -> None:
+            receipt, _, _, _, _ = owned_upload(transaction, request)
+            if receipt["state"] == "aborted":
+                return
+            updated = transaction.update(
+                "worker_upload",
+                request.upload_id,
+                expected_revision=receipt["revision"],
+                state="aborted",
+                data=receipt["data"],
+            )
+            transaction.event("worker.upload_aborted", updated, {"upload_id": request.upload_id})
+
+        with self.artifacts.store.upload_guard(context.principal.workspace_id, request.upload_id):
+            previous = self.database.replay(
+                context, "worker.abort_upload", request.model_dump(mode="json"), "worker.outputs"
+            )
+            if previous is not None:
+
+                def completed(connection: SqlSession) -> bool:
+                    transaction = Transaction(connection, context)
+                    return bool(
+                        transaction.get("upload", request.upload_id)["state"] == "aborted"
+                        and transaction.get("worker_upload", request.upload_id)["state"]
+                        == "aborted"
+                    )
+
+                if self.database.store.read(completed):
+                    return previous
+            return self.artifacts.abort_authorized(
+                context,
+                request.upload_id,
+                scope="worker.outputs",
+                operation="worker.abort_upload",
+                payload=request.model_dump(mode="json"),
+                authorize=authorize,
+                completion_operation="worker.finish_upload_abort",
+                completion_key="worker-upload-aborted:" + request.upload_id,
+                on_finish=finished,
+            )
+
     def _cleanup(
         self,
         context: CommandContext,

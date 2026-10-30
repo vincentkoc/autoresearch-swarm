@@ -21,7 +21,7 @@ from research_swarm.control.worker_outputs import (
     WorkerUploadTarget,
 )
 from research_swarm.control.workers import WorkerData
-from research_swarm.domain.artifacts import UploadSpec
+from research_swarm.domain.artifacts import StoredBlob, UploadSpec
 from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
@@ -272,9 +272,11 @@ def test_failed_duplicate_cleanup_is_explicitly_resumable(
     assert client.command("worker.finalize_upload", upload, idempotency_key="finalize") == accepted
 
 
+@pytest.mark.parametrize("scoped", [False, True])
 def test_abort_waits_for_admitted_append_and_cannot_leave_unaccounted_bytes(
     pipeline: Pipeline,
     monkeypatch: pytest.MonkeyPatch,
+    scoped: bool,
 ) -> None:
     client, _, _, target = output_client(pipeline)
     upload = begin(client, target, b"data")
@@ -301,7 +303,11 @@ def test_abort_waits_for_admitted_append_and_cannot_leave_unaccounted_bytes(
         append = pool.submit(client.transport.worker_append, upload, 0, b"data")
         try:
             assert reached.wait(5)
-            abort = pool.submit(artifacts.abort_upload, context, upload.upload_id)
+            abort = (
+                pool.submit(client.command, "worker.abort_upload", upload, idempotency_key="abort")
+                if scoped
+                else pool.submit(artifacts.abort_upload, context, upload.upload_id)
+            )
             assert abort_entered.wait(5)
             assert not abort.done()
         finally:
@@ -313,6 +319,172 @@ def test_abort_waits_for_admitted_append_and_cannot_leave_unaccounted_bytes(
     assert artifacts.store.progress(UploadSpec.model_validate(state["data"])).received_bytes == 0
     with pytest.raises(ResearchError):
         client.transport.worker_append(upload, 0, b"data")
+
+
+def test_scoped_worker_aborts_partial_upload_without_generic_artifact_authority(
+    pipeline: Pipeline,
+) -> None:
+    client, _, credential, target = output_client(pipeline)
+    assert "artifact.upload" not in credential.principal.scopes
+    upload = begin(client, target, b"partial journal")
+    client.transport.worker_append(upload, 0, b"partial")
+    before = pipeline.client.budget(pipeline.campaign["id"])
+    with (
+        serving(create_app(pipeline.runtime.service, pipeline.runtime.credentials)) as url,
+        ResearchClient.connect(url, credential.token) as remote,
+    ):
+        result = remote.command("worker.abort_upload", upload, idempotency_key="abort-own")
+        assert remote.command("worker.abort_upload", upload, idempotency_key="abort-own") == result
+        assert remote.worker_output(upload)["state"] == "aborted"
+    context = CommandContext(principal=pipeline.runtime.principal(), idempotency_key="inspect")
+    assert (
+        pipeline.runtime.database.read_record(context, "worker_upload", upload.upload_id)["state"]
+        == "aborted"
+    )
+    assert pipeline.runtime.artifacts.occupancy(context)["staging_reserved_bytes"] == 0
+    assert pipeline.client.budget(pipeline.campaign["id"]) == before
+    with pytest.raises(ResearchError):
+        client.transport.worker_append(upload, 0, b"partial")
+
+
+def test_worker_abort_failure_keeps_quota_and_exact_retry_finishes_cleanup(
+    pipeline: Pipeline,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _, _, target = output_client(pipeline)
+    upload = begin(client, target, b"incomplete")
+    client.transport.worker_append(upload, 0, b"inc")
+    artifacts = pipeline.runtime.artifacts
+    context = CommandContext(principal=pipeline.runtime.principal(), idempotency_key="inspect")
+    before = pipeline.client.budget(pipeline.campaign["id"])
+    delete = artifacts.store.delete
+    calls = []
+
+    def unavailable(*args: Any) -> None:
+        calls.append(args)
+        raise OSError("Fixture byte cleanup interruption")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(artifacts.store, "delete", unavailable)
+        with pytest.raises(OSError, match="interruption"):
+            client.command("worker.abort_upload", upload, idempotency_key="abort")
+    assert upload_state(client, upload)["state"] == "aborting"
+    assert artifacts.occupancy(context)["staging_reserved_bytes"] == len(b"incomplete")
+    assert pipeline.client.budget(pipeline.campaign["id"]) == before
+
+    def finish(*args: Any) -> None:
+        calls.append(args)
+        delete(*args)
+
+    monkeypatch.setattr(artifacts.store, "delete", finish)
+    result = client.command("worker.abort_upload", upload, idempotency_key="abort")
+    assert client.command("worker.abort_upload", upload, idempotency_key="abort") == result
+    assert len(calls) == 2
+    assert upload_state(client, upload)["state"] == "aborted"
+    assert artifacts.occupancy(context)["staging_reserved_bytes"] == 0
+    assert (
+        pipeline.runtime.database.read_record(context, "worker_upload", upload.upload_id)["state"]
+        == "aborted"
+    )
+
+
+def test_materialized_but_unpublished_worker_generation_remains_abortable(
+    pipeline: Pipeline,
+) -> None:
+    client, _, _, target = output_client(pipeline)
+    upload = begin(client, target, b"invalid journal")
+    client.transport.worker_append(upload, 0, b"invalid journal")
+    state = upload_state(client, upload)
+    spec = UploadSpec.model_validate(state["data"])
+    store = pipeline.runtime.artifacts.store
+    with store.upload_guard(spec.workspace_id, spec.id):
+        blob = store.finalize(spec)
+    with store.reader(spec.workspace_id, blob) as stream:
+        assert stream.read() == b"invalid journal"
+    client.command("worker.abort_upload", upload, idempotency_key="abort-unpublished")
+    with pytest.raises((ResearchError, OSError)):
+        store.verify(spec.workspace_id, StoredBlob(reference=spec.reference(), generation=spec.id))
+    assert upload_state(client, upload)["state"] == "aborted"
+
+
+@pytest.mark.parametrize("other", ["owner", "attempt", "session"])
+def test_worker_abort_refuses_other_provenance_before_mutation(
+    pipeline: Pipeline,
+    other: str,
+) -> None:
+    client, _, _, target = output_client(pipeline)
+    upload = begin(client, target, b"owned")
+    context = CommandContext(principal=pipeline.runtime.principal(), idempotency_key="inspect")
+    before = pipeline.runtime.database.snapshot(context)
+    caller = pipeline.client if other == "owner" else client
+    request = upload if other == "owner" else upload.model_copy(update={other + "_id": new_id()})
+    with pytest.raises(ResearchError):
+        caller.command("worker.abort_upload", request, idempotency_key="wrong-owner")
+    assert pipeline.runtime.database.snapshot(context) == before
+
+
+@pytest.mark.parametrize("deduplicated", [False, True])
+def test_worker_cannot_abort_published_or_deduplicated_output(
+    pipeline: Pipeline,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    deduplicated: bool,
+) -> None:
+    client, _, _, target = output_client(pipeline)
+    path = tmp_path / "published"
+    path.write_bytes(b"retained evidence")
+    if deduplicated:
+        pipeline.client.upload_file(path, idempotency_key="canonical")
+    upload = begin(client, target, path.read_bytes())
+    client.transport.worker_append(upload, 0, path.read_bytes())
+
+    def interrupted(*args: Any, **kwargs: Any) -> None:
+        raise OSError("Fixture leaves duplicate cleanup pending")
+
+    with monkeypatch.context() as patch:
+        if deduplicated:
+            patch.setattr(pipeline.runtime.service.worker_outputs, "_cleanup", interrupted)
+        result = client.command("worker.finalize_upload", upload, idempotency_key="publish")
+    with pytest.raises(ResearchError, match="Published worker output"):
+        client.command("worker.abort_upload", upload, idempotency_key="abort-published")
+    reference = ArtifactRef.model_validate(result["result"]["artifact"])
+    context = CommandContext(principal=pipeline.runtime.principal(), idempotency_key="inspect")
+    with pipeline.runtime.artifacts.reader(context, reference) as stream:
+        assert stream.read() == path.read_bytes()
+    if deduplicated:
+        client.command("worker.cleanup_upload", upload, idempotency_key="valid-cleanup")
+
+
+def test_worker_can_abort_its_unpublished_upload_after_attempt_settles(
+    pipeline: Pipeline,
+    tmp_path: Path,
+) -> None:
+    client, worker_data, _, target = output_client(pipeline)
+    upload = begin(client, target, b"unused observation")
+    worker = LocalWorker(
+        client,
+        worker_data,
+        root=tmp_path / "scoped-worker",
+        machine_registry=tmp_path / "scoped-machine" / "resources.sqlite",
+    )
+    assert worker.execute(target.attempt_id)["state"] == "succeeded"
+    before = pipeline.client.budget(pipeline.campaign["id"])
+    resources = worker.resources.availability()
+    client.command("worker.abort_upload", upload, idempotency_key="after-settlement")
+    assert upload_state(client, upload)["state"] == "aborted"
+    assert pipeline.client.budget(pipeline.campaign["id"]) == before
+    assert worker.resources.availability() == resources
+
+
+def test_completed_worker_abort_replays_after_enrollment_revocation(pipeline: Pipeline) -> None:
+    client, worker, _, target = output_client(pipeline)
+    upload = begin(client, target, b"unused")
+    accepted = client.command("worker.abort_upload", upload, idempotency_key="abort")
+    revoke_worker(pipeline, worker)
+    assert client.command("worker.abort_upload", upload, idempotency_key="abort") == accepted
+    with pytest.raises(ResearchError) as denied:
+        client.command("worker.abort_upload", upload, idempotency_key="new-abort")
+    assert denied.value.code == ErrorCode.STALE_FENCE
 
 
 def test_publication_rejects_unproven_or_wrong_role_artifact_before_reading(

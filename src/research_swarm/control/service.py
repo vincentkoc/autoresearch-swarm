@@ -518,6 +518,11 @@ class ResearchService:
     ) -> JsonObject:
         return self.worker_outputs.cleanup(context, request)
 
+    def abort_worker_upload(
+        self, context: CommandContext, request: WorkerUploadTarget
+    ) -> JsonObject:
+        return self.worker_outputs.abort(context, request)
+
     def authorize_evaluation(
         self, context: CommandContext, request: AuthorizeEvaluation
     ) -> JsonObject:

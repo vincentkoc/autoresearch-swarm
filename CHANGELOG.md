@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add attempt-bound `worker.abort_upload` through SDK command dispatch, HTTP and agent tools without granting generic artifact authority. Abort unpublished staging or materialized generations, retain quota through failed byte cleanup, and atomically close the upload and worker receipt.
+- Preserve the original abort acknowledgment while retrying unfinished cleanup; allow cleanup after attempt settlement and refuse published or deduplicated evidence. Share the authorized lifecycle with ordinary artifact aborts.
+
 - Admit the source-elected native restore into a signed recovery phase after full checkpoint verification. Bind admission to the exact database, receipt, request, source pin, epoch and watermark through an internal non-wire capability.
 - Atomically fence orchestration and drain running campaigns while preserving dedicated actors, pending turns, unresolved attempts and reservations. Keep the epoch unchanged, replay committed admission without its bundle, and leave ordinary mutation and activation unavailable.
 

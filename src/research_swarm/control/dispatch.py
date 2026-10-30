@@ -390,6 +390,13 @@ COMMANDS = {
         False,
         "Resume duplicate-generation cleanup without changing publication acknowledgment.",
     ),
+    "worker.abort_upload": CommandDefinition(
+        WorkerUploadTarget,
+        "abort_worker_upload",
+        "worker.outputs",
+        False,
+        "Abort one unpublished owned upload, retaining storage charges until cleanup completes.",
+    ),
     "campaign.pause": CommandDefinition(
         PauseCampaign,
         "pause_campaign",

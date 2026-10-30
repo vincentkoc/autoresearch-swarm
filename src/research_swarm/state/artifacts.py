@@ -419,9 +419,36 @@ class ArtifactService:
             return self._abort_upload(context, upload_id)
 
     def _abort_upload(self, context: CommandContext, upload_id: str) -> JsonObject:
+        return self.abort_authorized(
+            context,
+            upload_id,
+            scope="artifact.upload",
+            operation="artifact.abort_upload",
+            payload={"upload_id": upload_id},
+            authorize=lambda transaction, row: self._upload_owner(context, row),
+            completion_operation="artifact.finish_upload",
+            completion_key="upload-aborted:" + upload_id,
+        )
+
+    def abort_authorized(
+        self,
+        context: CommandContext,
+        upload_id: str,
+        *,
+        scope: str,
+        operation: str,
+        payload: JsonObject,
+        authorize: Callable[[Transaction, JsonObject], UploadSpec],
+        completion_operation: str,
+        completion_key: str,
+        on_finish: Callable[[Transaction], None] | None = None,
+    ) -> JsonObject:
+        """Internal hook: caller holds the upload guard; authorization spans both commits."""
+        context.principal.require(scope)
+
         def abort(transaction: Transaction) -> JsonObject:
             row = transaction.get("upload", upload_id)
-            self._upload_owner(context, row)
+            authorize(transaction, row)
             if row["state"] not in {"pending", "cleanup", "aborting", "aborted"}:
                 raise ResearchError(
                     ErrorCode.INVALID_TRANSITION, "Published upload cannot be aborted"
@@ -439,19 +466,51 @@ class ArtifactService:
 
         response = self.database.execute(
             context,
-            "artifact.abort_upload",
-            {"upload_id": upload_id},
-            "artifact.upload",
+            operation,
+            payload,
+            scope,
             abort,
         )
-        row = self.database.read_record(context, "upload", upload_id)
+
+        def current(connection: SqlSession) -> tuple[JsonObject, UploadSpec]:
+            transaction = Transaction(connection, context)
+            row = transaction.get("upload", upload_id)
+            return row, authorize(transaction, row)
+
+        row, upload = self.database.store.read(current)
         if row["state"] == "aborting":
-            upload = self._upload_owner(context, row)
             self.store.discard_upload(upload)
             self.store.delete(
                 upload.workspace_id, StoredBlob(reference=upload.reference(), generation=upload.id)
             )
-            self._finish_upload(context, upload_id, "aborting", "aborted")
+        if row["state"] == "aborting" or row["state"] == "aborted" and on_finish is not None:
+
+            def finish(transaction: Transaction) -> JsonObject:
+                current = transaction.get("upload", upload_id)
+                authorize(transaction, current)
+                if current["state"] == "aborting":
+                    current = transaction.update(
+                        "upload",
+                        upload_id,
+                        expected_revision=current["revision"],
+                        data=current["data"],
+                        state="aborted",
+                    )
+                    transaction.event("artifact.upload_aborted", current, {})
+                elif current["state"] != "aborted":
+                    raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload lifecycle changed")
+                if on_finish is not None:
+                    on_finish(transaction)
+                return current
+
+            finished = {"upload_id": upload_id, "state": "aborted"}
+            self.database.execute(
+                self._internal(context, completion_key, completion_operation, finished),
+                completion_operation,
+                finished,
+                scope,
+                finish,
+            )
         return response
 
     def get(self, context: CommandContext, artifact_id: str) -> ArtifactRecord:

@@ -116,7 +116,7 @@ SDK transport. It shares the resumable file transfer algorithm with ordinary
 artifact uploads. `worker_output(WorkerUploadTarget)` returns transfer progress,
 the canonical artifact reference when finalized, and the current cleanup state.
 HTTP exposes bounded byte-range parts; MCP exposes metadata and the typed begin,
-finalize, and cleanup commands. Binary content stays on the HTTP/SDK path.
+finalize, cleanup and abort commands. Binary content stays on the HTTP/SDK path.
 
 Finalization stores an immutable receipt binding the full enrollment, attempt,
 role, optional output name, and canonical artifact reference. Content deduplication
@@ -142,6 +142,23 @@ ownership is checked before creating a guard, so rejected IDs create no files.
 An abort cannot
 release quota and then have a delayed append recreate staging. Finalization keeps
 the guard through verified catalog publication.
+
+Use `worker.abort_upload` with a `WorkerUploadTarget` and stable command key to
+discard one unpublished upload owned by that exact worker/session/attempt. This
+requires `worker.outputs`, without granting general `artifact.upload` authority.
+It can remove partial staging or a materialized generation whose publication
+never committed. It also works after the attempt settles; cleanup changes no
+execution budget or native capacity.
+
+Abort records `aborting` before deleting bytes and keeps the declared storage
+charged until cleanup succeeds. Completion marks the upload and its worker
+receipt `aborted` in one transaction. Retry the original abort command after
+interruption: replay still finishes pending cleanup. The command returns its
+original acknowledgment, so inspect `worker_output` for the current state.
+Once both records are aborted, exact replay does not require current enrollment;
+unfinished cleanup still requires its original authorized ownership.
+Published receipts, including deduplicated outputs awaiting cleanup, cannot use
+worker abort. Their existing canonical evidence remains retained.
 
 The accepted finalize acknowledgment survives a duplicate-generation cleanup
 failure. The duplicate remains charged in `cleanup` state and can be retried with
