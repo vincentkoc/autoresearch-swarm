@@ -1,0 +1,11 @@
+{
+  "name": "research-swarm-r2-local-test",
+  "main": "r2_fixture.ts",
+  "workers_dev": false,
+  "compatibility_date": "2026-10-30",
+  "vars": { "QUALIFICATION": "disabled" },
+  "r2_buckets": [
+    { "binding": "ARTIFACTS", "bucket_name": "research-swarm-local-test" },
+  ],
+  "dev": { "ip": "127.0.0.1" },
+}

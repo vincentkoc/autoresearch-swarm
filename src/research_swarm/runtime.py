@@ -9,7 +9,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from filelock import FileLock
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from research_swarm.control.auth import CredentialStore
 from research_swarm.control.authority_clock import NativeAuthorityTimeProvider
@@ -38,7 +38,12 @@ from research_swarm.state.private_files import (
 from research_swarm.state.private_files import (
     write_private as write_private,
 )
+from research_swarm.storage.base import BlobStore
+from research_swarm.storage.config import FilesystemConfig, StorageConfig, storage_configuration
 from research_swarm.storage.filesystem import FilesystemBlobStore
+from research_swarm.storage.r2 import R2BlobStore, R2StagingBinding
+from research_swarm.storage.r2_config import R2Config
+from research_swarm.storage.r2_transport import S3R2Transport
 
 
 class RuntimeIdentity(VersionedRecord):
@@ -48,6 +53,14 @@ class RuntimeIdentity(VersionedRecord):
     storage_limit_bytes: ByteCount = Field(default=10 * 1024**3, gt=0)
     initialized_at: Timestamp | None = None
     assignment_key_id: Digest | None = None
+    storage: StorageConfig = Field(default_factory=FilesystemConfig)
+    staging_id: ID | None = None
+
+    @model_validator(mode="after")
+    def storage_identity(self) -> RuntimeIdentity:
+        if (self.storage.kind == "r2") != (self.staging_id is not None):
+            raise ValueError("R2 storage requires its pinned staging identity")
+        return self
 
 
 def default_state_directory() -> Path:
@@ -64,14 +77,26 @@ class LocalRuntime:
     credentials: CredentialStore
 
     @classmethod
-    def open(cls, root: Path | None = None) -> LocalRuntime:
+    def open(
+        cls, root: Path | None = None, *, storage_config: StorageConfig | None = None
+    ) -> LocalRuntime:
+        if storage_config is not None:
+            storage_config = storage_configuration.validate_python(storage_config)
+        # Required SDK and named credentials are checked before new runtime state exists.
+        transport = S3R2Transport(storage_config) if isinstance(storage_config, R2Config) else None
         root = (root or default_state_directory()).expanduser().absolute()
         with private_state_directory(root), FileLock(root / "initialize.lock"):
             identity_path = root / "identity.json"
-            if identity_path.exists():
+            initialize = not (identity_path.exists() or identity_path.is_symlink())
+            if not initialize:
                 identity = RuntimeIdentity.model_validate(
                     strict_json_loads(read_private(root, "identity.json", limit=16_384))
                 )
+                if storage_config is not None and storage_config != identity.storage:
+                    raise ResearchError(
+                        ErrorCode.IDEMPOTENCY_CONFLICT,
+                        "Runtime storage configuration is immutable",
+                    )
             else:
                 existing = {
                     "research.sqlite",
@@ -81,16 +106,35 @@ class LocalRuntime:
                     "dispatch.key",
                     "assignment.key",
                     "artifacts",
+                    "r2-staging",
                 }
-                if any((root / name).exists() for name in existing):
+                if any((root / name).exists() or (root / name).is_symlink() for name in existing):
                     raise ResearchError(
                         ErrorCode.AUTHORIZATION_DENIED,
                         "Runtime identity is missing from existing state. "
                         "Explicit recovery is required",
                     )
                 identity = RuntimeIdentity(
-                    workspace_id=new_id(), controller_id=new_id(), operator_id=new_id()
+                    workspace_id=new_id(),
+                    controller_id=new_id(),
+                    operator_id=new_id(),
+                    storage=storage_config or FilesystemConfig(),
+                    staging_id=new_id() if isinstance(storage_config, R2Config) else None,
                 )
+            store: BlobStore | None = None
+            if isinstance(identity.storage, R2Config):
+                assert identity.staging_id is not None
+                binding = R2StagingBinding(
+                    workspace_id=identity.workspace_id,
+                    controller_id=identity.controller_id,
+                    staging_id=identity.staging_id,
+                    configuration_digest=identity.storage.digest,
+                )
+                transport = transport or S3R2Transport(identity.storage)
+                factory = R2BlobStore.initialize if initialize else R2BlobStore
+                store = factory(root / "r2-staging", binding, identity.storage, transport)
+            if initialize:
+                # An existing identity only permits reopening staging, never recreating it.
                 write_private(identity_path, canonical_bytes(identity.model_dump(mode="json")))
             if identity.initialized_at is not None and any(
                 not (root / name).is_file()
@@ -182,8 +226,13 @@ class LocalRuntime:
                 raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid local dispatch key")
             artifacts = ArtifactService(
                 database,
-                FilesystemBlobStore(root / "artifacts"),
+                store or FilesystemBlobStore(root / "artifacts"),
                 storage_limit_bytes=identity.storage_limit_bytes,
+                max_object_bytes=(
+                    identity.storage.max_object_bytes
+                    if isinstance(identity.storage, R2Config)
+                    else None
+                ),
             )
             if identity.initialized_at is None:
                 identity = identity.model_copy(update={"initialized_at": utc_now()})

@@ -22,8 +22,12 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
       - run: uv sync --locked --extra s3 --group dev --python 3.12
-      - run: uv run --no-sync pytest -q tests/test_r2_storage.py tests/test_r2_transport.py
+      - run: uv run --no-sync pytest -q tests/test_r2_storage.py tests/test_r2_transport.py tests/test_r2_runtime.py
+      - run: RESEARCH_CLOUDFLARE_TESTS=1 uv run --no-sync pytest -q tests/test_cloudflare_r2.py
 
   cloudflare-contracts:
     runs-on: ubuntu-latest

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "python3 build.py && esbuild crypto.js --bundle --format=esm --platform=browser --outfile=.generated/crypto.mjs && esbuild hybrid_contracts.ts hybrid_creation.ts agent_facade.ts --bundle --format=esm --platform=browser --outdir=.generated --out-extension:.js=.mjs",
     "test:crypto": "node --test crypto.test.mjs",
-    "check:hybrid": "tsc --noEmit && prettier --check \"hybrid*.ts\" \"hybrid*.mjs\" \"agent_facade.*\" tsconfig.json \"wrangler.*.jsonc\"",
+    "check:hybrid": "tsc --noEmit && prettier --check \"hybrid*.ts\" \"hybrid*.mjs\" \"agent_facade.*\" r2_fixture.ts tsconfig.json \"wrangler.*.jsonc\"",
     "test:hybrid": "node --test hybrid_contracts.test.mjs agent_facade.test.mjs"
   },
   "dependencies": {

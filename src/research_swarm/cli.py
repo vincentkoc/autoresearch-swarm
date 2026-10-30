@@ -25,7 +25,8 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--controller", help="Use an HTTP research controller")
     root.add_argument("--token-file", type=Path, help="Private credential file, never a raw token")
     commands = root.add_subparsers(dest="action", required=True)
-    commands.add_parser("init", help="Initialize private local state")
+    initialize = commands.add_parser("init", help="Initialize private local state")
+    initialize.add_argument("--storage-config", type=Path, help="Immutable storage JSON selection")
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
@@ -542,7 +543,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.action in {"init", "serve"}:
             if args.controller:
                 raise ValueError("Local service commands cannot use a remote controller")
-            runtime = LocalRuntime.open(args.state_dir)
+            from research_swarm.storage.config import storage_configuration
+
+            storage = (
+                storage_configuration.validate_python(_request(args.storage_config))
+                if args.action == "init" and args.storage_config is not None
+                else None
+            )
+            runtime = LocalRuntime.open(args.state_dir, storage_config=storage)
             runtime.principal(args.token_file).require("service.manage")
             if args.action == "init":
                 print(canonical_bytes(runtime.identity.model_dump(mode="json")).decode("utf-8"))

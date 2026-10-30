@@ -20,7 +20,7 @@ own identity. The local implementation starts with Python, SQLite, and subproces
 An optional [Temporal adapter](docs/temporal.md) delivers saved actions and waits
 against the same domain authority. The [Cloudflare direction](docs/cloudflare.md)
 has locally qualified hybrid Workflow delivery and SQL/signing primitives;
-The native notification bridge and agent API facade are implemented. The [R2 byte adapter](docs/r2.md) is implemented; runtime selection and provider qualification remain in progress.
+The native notification bridge and agent API facade are implemented. The [R2 storage adapter](docs/r2.md) supports persistent runtime selection and passes local R2-binding qualification; hosted qualification remains separate.
 
 Implemented foundations include the transactional ledger, exact budget arithmetic,
 evaluation receipt validation, verified artifact lifecycle, and immutable source

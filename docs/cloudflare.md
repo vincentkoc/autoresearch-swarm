@@ -9,8 +9,8 @@ Current implementation includes the native delivery gateway, a hybrid Workflow
 driver with a durable transport registry, and locally qualified Cloudflare
 storage/signing primitives. A native bridge delivers the durable wakeup outbox.
 A separate agent API facade forwards caller identities to the same native API.
-The [native R2 byte adapter](r2.md) is implemented; persistent runtime selection
-and R2 emulator qualification remain separate work. Hosted deployment is not part of the local
+The [native R2 adapter](r2.md) supports persistent runtime selection and is qualified
+against the local R2 binding. Hosted deployment is not part of the local
 qualification.
 
 ## Authority clock boundary

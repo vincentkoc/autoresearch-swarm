@@ -16,7 +16,12 @@ from research_swarm.domain.artifacts import StoredBlob, UploadProgress, UploadSp
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, VersionedRecord
-from research_swarm.state.private_files import private_state_directory, read_private, write_private
+from research_swarm.state.private_files import (
+    private_state_directory,
+    read_private,
+    sync_directory,
+    write_private,
+)
 from research_swarm.storage.filesystem import CHUNK_BYTES, FilesystemBlobStore
 from research_swarm.storage.r2_config import R2Config
 from research_swarm.storage.r2_transport import ObjectAbsent, R2Transport, unavailable
@@ -85,6 +90,7 @@ class R2BlobStore:
             for name in ("bytes", "generations", "locks", "readers"):
                 (root / name).mkdir(mode=0o700)
             write_private(root / "binding.json", canonical_bytes(binding.model_dump(mode="json")))
+        sync_directory(root.parent)
         return cls(root, binding, config, transport)
 
     def _workspace(self, value: str) -> None:

@@ -2,9 +2,13 @@
 
 ## Unreleased
 
+- Persist filesystem/R2 selection in runtime identity; initialize through `research init --storage-config` and reopen it through existing SDK, HTTP and agent tools. Preserve legacy filesystem identities and refuse backend changes or missing staging.
+- Check optional dependencies before new state, keep partial initialization fail-closed, and reject oversized worker uploads before quota admission.
+- Qualify native R2 publication, restart, reader pins, delayed-write fences, deletion accounting and corruption checks against a real local R2 binding; hosted S3 deployment remains separate.
+
 - Add a native R2 byte adapter with pinned destination/staging identities, resumable local parts, immutable upload-generation keys and conditional single-PUT publication.
 - Verify complete remote content before publication or reader access; retire generations with permanent same-key markers so delayed writes cannot resurrect bytes after quota release.
-- Enforce per-object limits before upload admission, preserve cleanup accounting and private-file compatibility, and add optional S3 SDK contract CI. Runtime/CLI selection and R2 emulator qualification remain separate follow-up work.
+- Enforce per-object limits before upload admission, preserve cleanup accounting and private-file compatibility, and add optional S3 SDK contract CI.
 
 - Add a separate Cloudflare research API facade with no privileged credentials, preserving caller authentication, exact command bytes, idempotency and revision semantics across the native API.
 - Generate its command allowlist from the shared catalog; bound request bodies before dispatch, distinguish query recovery from command replay, refuse redirects and preserve artifact lengths through fixed-length streams.

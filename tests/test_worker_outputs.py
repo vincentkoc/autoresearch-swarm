@@ -79,6 +79,25 @@ def upload_state(client: ResearchClient, target: WorkerUploadTarget) -> dict[str
     return client.transport.query("worker.output", target.model_dump(mode="json"))
 
 
+def test_worker_object_limit_rejects_without_upload_or_quota_mutation(pipeline: Pipeline) -> None:
+    client, _, _, target = output_client(pipeline)
+    pipeline.runtime.artifacts.max_object_bytes = 2
+    with pipeline.runtime.database.connect() as connection:
+        before = connection.execute(
+            "SELECT kind,id,payload FROM records ORDER BY kind,id"
+        ).fetchall()
+    with pytest.raises(ResearchError) as rejected:
+        begin(client, target, b"oversized")
+    assert rejected.value.code == ErrorCode.RESOURCE_UNAVAILABLE
+    with pipeline.runtime.database.connect() as connection:
+        after = connection.execute(
+            "SELECT kind,id,payload FROM records ORDER BY kind,id"
+        ).fetchall()
+    assert after == before
+    accepted = begin(client, target, b"ok")
+    assert upload_state(client, accepted)["state"] == "pending"
+
+
 def test_restricted_http_worker_executes_and_retains_attempt_evidence(
     pipeline: Pipeline,
     tmp_path: Path,

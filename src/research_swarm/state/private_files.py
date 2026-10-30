@@ -30,6 +30,15 @@ def read_private(root: Path, name: str, *, limit: int) -> bytes:
     return content
 
 
+def sync_directory(path: Path) -> None:
+    if sys.platform != "win32":
+        directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+
 def write_private(path: Path, content: bytes) -> None:
     staged = path.with_name(path.name + "." + new_id() + ".pending")
     if sys.platform == "win32":
@@ -44,12 +53,7 @@ def write_private(path: Path, content: bytes) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(staged, path)
-        if sys.platform != "win32":
-            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+        sync_directory(path.parent)
     finally:
         staged.unlink(missing_ok=True)
 
