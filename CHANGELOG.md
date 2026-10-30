@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a separate Cloudflare research API facade with no privileged credentials, preserving caller authentication, exact command bytes, idempotency and revision semantics across the native API.
+- Generate its command allowlist from the shared catalog; bound request bodies before dispatch, distinguish query recovery from command replay, refuse redirects and preserve artifact lengths through fixed-length streams.
+- Retain stream cleanup, enforce bounded idle reads, and document the local proxy disconnect limitation without claiming immediate hosted cancellation.
+- Reuse existing SDK, CLI and stdio MCP tools through the facade, with local workerd qualification for command replay, scoped identities, binary transfer, revocation and event streaming.
+
 - Add a native async Cloudflare bridge with exact binding/instance checks, bounded private HTTP control and destination-specific durable wakeup delivery.
 - Keep wakeups pending after uncertain or malformed provider replies; never forward credentials through redirects or start a Workflow from notification delivery.
 - Drain admitted native outbox calls on cancellation and qualify the bridge against real local Workflows, including concurrent starts and persisted acknowledgment.

@@ -66,7 +66,13 @@ def port():
 
 
 @contextmanager
-def server(tmp_path: Path, *, sequence: int, variables: dict[str, str] | None = None):
+def server(
+    tmp_path: Path,
+    *,
+    sequence: int,
+    variables: dict[str, str] | None = None,
+    config: str = "wrangler.hybrid.jsonc",
+):
     if variables is None:
         executable = ROOT / ".venv/bin/uv"
         assert executable.is_file(), "Prepare the isolated Cloudflare tool environment first"
@@ -77,7 +83,7 @@ def server(tmp_path: Path, *, sequence: int, variables: dict[str, str] | None = 
             str(ROOT / "node_modules/.bin/wrangler"),
             "dev",
             "--config",
-            "wrangler.hybrid.jsonc",
+            config,
         ]
         for name, value in variables.items():
             command.extend(["--var", f"{name}:{value}"])

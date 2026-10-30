@@ -112,3 +112,16 @@ The opt-in native test exercises the shared kernel, storage boundary, full owned
 process restart and eight contending HTTP deliveries. CPU tests cover callback
 failure propagation and native counter exhaustion. These are infrastructure
 observations, not provider throughput or research-performance measurements.
+
+## Agent API facade
+
+`wrangler.facade.jsonc` selects the separate credential-free research API facade.
+It forwards the caller's token to one configured native API origin and uses the
+command names generated from the shared Python catalog. It has no delivery
+gateway or adapter control credentials. See [configuration and client use](../../docs/cloudflare.md#agent-api-facade).
+
+Run its local native transport qualification from the repository root:
+
+```sh
+RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_facade.py
+```

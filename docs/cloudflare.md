@@ -8,7 +8,8 @@ evaluation rules and promotion decisions used by local and Temporal delivery.
 Current implementation includes the native delivery gateway, a hybrid Workflow
 driver with a durable transport registry, and locally qualified Cloudflare
 storage/signing primitives. A native bridge delivers the durable wakeup outbox.
-R2 storage and the agent facade remain separate work. Hosted deployment is not part of the local
+A separate agent API facade forwards caller identities to the same native API.
+R2 storage remains separate work. Hosted deployment is not part of the local
 qualification.
 
 ## Authority clock boundary
@@ -190,6 +191,75 @@ provider ID used by the Worker. Status reports the generation's immutable
 `initial_pending` reference, not a live view of its current instruction. Errors
 are sanitized, responses are bounded to 16 KiB, redirects are disabled, and
 non-loopback adapter connections require HTTPS with certificate verification.
+
+## Agent API facade
+
+`adapters/cloudflare/wrangler.facade.jsonc` is a separate Worker entrypoint. It
+has no gateway credential, adapter control token, Durable Object or Workflow
+binding. Set `NATIVE_API_ORIGIN` to the native research API's HTTPS origin.
+`ALLOW_LOCAL_API=true` permits loopback HTTP only for explicit local qualification.
+Deploy the facade and native service from the same release: the build extracts
+its permitted command names directly from the shared Python command catalog.
+
+The facade forwards all existing public research command operations with the
+caller's own bearer token, original request bytes, idempotency key and expected
+revision. It also forwards discovery, records, bounded queries, snapshots,
+worker inputs/outputs, artifact transfers and the event stream. Native scopes,
+revocation, command acknowledgments, budgets and evaluator rules remain decisive.
+Private delivery routes, adapter controls and unlisted commands are not exposed.
+There is no additional proxy acknowledgment database or automatic mutation retry.
+
+Use the same SDK against the facade URL:
+
+```python
+from research_swarm import ResearchClient
+
+with ResearchClient.connect(facade_url, caller_token) as client:
+    capabilities = client.capabilities()
+    context = client.context(campaign_id)
+```
+
+CLI and agent access use the existing executable and a private token file:
+
+```sh
+research --controller https://research.example.invalid --token-file ./caller.token mcp
+```
+
+This starts the existing typed MCP server over stdio and uses the facade as its
+HTTP transport. It does not create a hosted MCP endpoint or give the remote
+Worker access to local source files. An agent uses the same schemas and command
+keys as a direct native connection. Closing an agent connection does not cancel
+research execution or prove that an admitted native command rolled back.
+
+JSON request bodies are counted and bounded to 1 MiB, and upload parts to 4 MiB,
+before any upstream request starts. Request bytes are not reserialized. Ordinary
+responses retain the SDK's 32 MiB bound. Artifact streams use declared byte counts
+and backpressure; the SDK still verifies the full digest and removes incomplete
+downloads. SSE frames, IDs, heartbeats and gap events pass through unchanged.
+Resume SSE with `?after=<sequence>`; native HTTP does not consume `Last-Event-ID`.
+
+The 30-second header deadline does not truncate a valid long-lived SSE stream.
+Each upstream body read also has an idle deadline: `STREAM_IDLE_TIMEOUT_SECONDS`
+accepts 1–120 seconds and defaults to 30. Normal SSE heartbeats keep it active.
+A stalled read aborts the upstream fetch and errors the downstream stream. Stream
+completion/failure/cancellation retains asynchronous cleanup through `waitUntil`.
+Declared-length responses use `FixedLengthStream`; identity encoding and
+`no-transform` preserve those bytes and lengths. Responses are not cached.
+[Cloudflare response contract](https://developers.cloudflare.com/workers/runtime-apis/response/#set-the-content-length-header)
+
+The pinned local HTTP proxy continues draining responses after a downstream
+socket closes, so it cannot qualify immediate disconnect propagation. Boundary
+tests verify direct stream cancellation, while the native fixture verifies that
+a stalled upstream closes within the configured idle deadline after a downstream
+disconnect. Hosted disconnect behavior remains a separate deployment check.
+Only required headers are forwarded; cookies and client-supplied forwarding/host
+headers are excluded. Redirects are refused without exposing their destinations
+or forwarding the caller's credential.
+
+A lost mutation response remains uncertain: replay the exact command key/body
+and revision, or inspect the upload and repeat the exact part range. The facade
+never invents a command ID or claims that provider delivery completed research.
+Native refusal statuses and response bodies pass through unchanged.
 
 ## Local recovery qualification
 

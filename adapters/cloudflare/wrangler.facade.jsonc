@@ -1,0 +1,12 @@
+{
+  "name": "research-swarm-api",
+  "main": "agent_facade.ts",
+  "workers_dev": false,
+  "compatibility_date": "2026-10-30",
+  "vars": {
+    "NATIVE_API_ORIGIN": "https://controller.example.invalid",
+    "ALLOW_LOCAL_API": "false",
+    "STREAM_IDLE_TIMEOUT_SECONDS": "30",
+  },
+  "dev": { "ip": "127.0.0.1" },
+}

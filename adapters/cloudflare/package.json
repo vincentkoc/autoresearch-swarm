@@ -4,10 +4,10 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "build": "python3 build.py && esbuild crypto.js --bundle --format=esm --platform=browser --outfile=.generated/crypto.mjs && esbuild hybrid_contracts.ts hybrid_creation.ts --bundle --format=esm --platform=browser --outdir=.generated --out-extension:.js=.mjs",
+    "build": "python3 build.py && esbuild crypto.js --bundle --format=esm --platform=browser --outfile=.generated/crypto.mjs && esbuild hybrid_contracts.ts hybrid_creation.ts agent_facade.ts --bundle --format=esm --platform=browser --outdir=.generated --out-extension:.js=.mjs",
     "test:crypto": "node --test crypto.test.mjs",
-    "check:hybrid": "tsc --noEmit && prettier --check \"hybrid*.ts\" \"hybrid*.mjs\" tsconfig.json wrangler.hybrid.jsonc",
-    "test:hybrid": "node --test hybrid_contracts.test.mjs"
+    "check:hybrid": "tsc --noEmit && prettier --check \"hybrid*.ts\" \"hybrid*.mjs\" \"agent_facade.*\" tsconfig.json \"wrangler.*.jsonc\"",
+    "test:hybrid": "node --test hybrid_contracts.test.mjs agent_facade.test.mjs"
   },
   "dependencies": {
     "@noble/curves": "2.4.0"
