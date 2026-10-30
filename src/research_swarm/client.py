@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import ipaddress
 import ssl
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal, Protocol
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 import httpx
 from pydantic import TypeAdapter
@@ -35,6 +34,7 @@ from research_swarm.domain.acknowledgments import (
 from research_swarm.domain.artifacts import ArtifactRecord
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
+from research_swarm.domain.endpoints import controller_url as controller_url
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.domain.evidence import ArtifactRef
@@ -212,30 +212,6 @@ class LocalTransport:
 
     def close(self) -> None:
         pass
-
-
-def controller_url(url: str) -> str:
-    """Validate a controller destination without opening a client or doing network I/O."""
-    parsed = urlsplit(url)
-    if (
-        parsed.scheme not in {"http", "https"}
-        or parsed.username
-        or parsed.password
-        or parsed.query
-        or parsed.fragment
-        or not parsed.hostname
-        or (parsed.port is not None and not 1 <= parsed.port <= 65535)
-        or any(character.isspace() for character in url)
-    ):
-        raise ValueError("Controller URL must be HTTP(S), without credentials, query, or fragment")
-    if parsed.scheme == "http":
-        try:
-            loopback = ipaddress.ip_address(parsed.hostname).is_loopback
-        except ValueError:
-            loopback = parsed.hostname == "localhost"
-        if not loopback or "%" in parsed.hostname:
-            raise ValueError("Non-loopback controller connections require HTTPS")
-    return url.rstrip("/")
 
 
 class HTTPTransport:

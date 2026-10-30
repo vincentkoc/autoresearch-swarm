@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add native target-signed recovery routes with an independently trusted source-custody pin. Bind each destination to the original attempt, session and credential ID, then install it under the worker's existing enrollment, driver and attempt locks.
+- Deliver through an explicitly selected route without rewriting enrollment or resolving original-controller uncertainty. Preserve separate frozen journals and command keys, verify original native stores before connection, and expose route issuance, installation and selection through the CLI.
+
 - Admit original attempt journals through the existing scoped worker API on an elected recovery target. Bind internal evidence capabilities to the signed admission, target epoch, exact request, original session and frozen unresolved-attempt inventory; fence raw byte routes and derived artifact effects.
 - Quarantine unfinished journals without expiring original acceptance leases. Reconcile proven native closure once without scientific acceptance, preserve exact replies and deduplicated upload provenance, and keep malformed or interrupted transfers abortable after settlement. Automatic worker redirection and final activation remain unavailable.
 

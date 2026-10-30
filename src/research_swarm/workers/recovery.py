@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 from filelock import FileLock, Timeout
@@ -202,7 +204,10 @@ def _deliver(
     return intent
 
 
-def _recover_locked(root: Path, attempt_id: str) -> RecoveryReport:
+def original_stores(
+    root: Path,
+) -> tuple[RemoteWorkerBundle, WorkerJournal, MachineResources, dict[str, Any]]:
+    """Open pinned custody without recreating stores or contacting a controller."""
     state = _installation(root)
     if not state.initialized or state.bundle is None:
         raise ResearchError(
@@ -227,6 +232,28 @@ def _recover_locked(root: Path, attempt_id: str) -> RecoveryReport:
             raise ResearchError(ErrorCode.STALE_FENCE, "Original scoped driver authority differs")
     elif (driver / "commands").exists():
         raise ResearchError(ErrorCode.STALE_FENCE, "Original scoped driver identity is missing")
+    return bundle, journal, resources, identity
+
+
+def _recover_locked(root: Path, attempt_id: str, route_id: str | None = None) -> RecoveryReport:
+    bundle, journal, resources, identity = original_stores(root)
+    destination = bundle.controller_url
+    delivery_identity = record_digest("research.recovery", identity)
+    recovery = root / "execution/recovery" / attempt_id
+    if route_id is not None:
+        from research_swarm.workers.recovery_routes import load_recovery_route
+
+        installed = load_recovery_route(root, route_id, attempt_id, bundle, journal, resources)
+        destination = installed.signed.route.destination_url
+        recovery = recovery / "routes" / installed.signed.digest.split(":", 1)[-1]
+        delivery_identity = record_digest(
+            "research.routed-recovery.v1",
+            {
+                "original_identity": delivery_identity,
+                "installed_route": installed.digest,
+                "destination": destination,
+            },
+        )
     entry = journal.get(attempt_id)
     _authenticate(entry, bundle)
     entry = reconcile_outcome(journal, attempt_id)
@@ -243,21 +270,20 @@ def _recover_locked(root: Path, attempt_id: str) -> RecoveryReport:
                 or entry.outcome is not None
             ):
                 raise
-    recovery = root / "execution/recovery" / attempt_id
     with private_state_directory(recovery):
-        intent = _intent(recovery, entry, bundle, record_digest("research.recovery", identity))
+        intent = _intent(recovery, entry, bundle, delivery_identity)
         error = None
         terminal = None
         rejected_command_id = None
         try:
-            with ResearchClient.connect(bundle.controller_url, bundle.token) as client:
+            with ResearchClient.connect(destination, bundle.token) as client:
                 intent = _deliver(recovery, intent, bundle, client)
         except ResearchError as failure:
             error = failure.code
             rejected_command_id = failure.command_id
             if error == ErrorCode.INVALID_TRANSITION:
                 try:
-                    with ResearchClient.connect(bundle.controller_url, bundle.token) as client:
+                    with ResearchClient.connect(destination, bundle.token) as client:
                         status = _historical(client, bundle, intent.journal).publication_status
                     if status in {"accepted", "closed_unaccepted"}:
                         terminal, error, rejected_command_id = status, None, None
@@ -305,8 +331,9 @@ def _recover_locked(root: Path, attempt_id: str) -> RecoveryReport:
         )
 
 
-def recover_worker_attempt(root: Path, attempt_id: str) -> RecoveryReport:
-    """Observe one original attempt; never enroll, claim, cancel, spawn, or accept results."""
+@contextmanager
+def original_recovery_lock(root: Path, attempt_id: str) -> Iterator[Path]:
+    """Share the original enrollment, driver and attempt lock order with route installation."""
     attempt_id = TypeAdapter(ID).validate_python(attempt_id)
     root = root.expanduser().absolute()
     # Check the original installation before creating any lock or recovery directory.
@@ -321,8 +348,19 @@ def recover_worker_attempt(root: Path, attempt_id: str) -> RecoveryReport:
                 FileLock(driver / "driver.lock", timeout=0),
                 FileLock(locks / (attempt_id + ".lock"), timeout=0),
             ):
-                return _recover_locked(root, attempt_id)
+                yield root
     except Timeout:
         raise ResearchError(
             ErrorCode.RESOURCE_UNAVAILABLE, "Original worker is owned by another driver"
         ) from None
+
+
+def recover_worker_attempt(
+    root: Path, attempt_id: str, *, route_id: str | None = None
+) -> RecoveryReport:
+    """Observe one original attempt; never enroll, claim, cancel, spawn, or accept results."""
+    attempt_id = TypeAdapter(ID).validate_python(attempt_id)
+    if route_id is not None:
+        route_id = TypeAdapter(ID).validate_python(route_id)
+    with original_recovery_lock(root, attempt_id) as original:
+        return _recover_locked(original, attempt_id, route_id)

@@ -115,6 +115,10 @@ An admitted restore has a narrower [recovery evidence contract](backup.md#delive
 the original session can transfer bounded journals for its frozen unresolved
 attempts and submit them to quarantine. The target remains inactive for research.
 Operational closure requires a separate, explicit reconciliation command.
+To select an elected destination from the original worker installation, install
+and explicitly select a [signed recovery route](backup.md#route-an-original-worker).
+Its target delivery history remains separate from uncertain original-controller
+requests; enrollment and native execution authority stay unchanged.
 
 Use `worker_upload_file(WorkerOutputIntent, path, idempotency_key=...)` on either
 SDK transport. It shares the resumable file transfer algorithm with ordinary

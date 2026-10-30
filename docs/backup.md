@@ -272,13 +272,55 @@ the original worker receipt; internal pin, unpin and cleanup capabilities bind t
 the exact artifact or upload. No generic artifact mutation is granted. Cleanup
 of an existing unpublished transfer remains possible after native settlement.
 
-The original worker installation is not automatically redirected. A separate
-explicit recovery route must bind its original private installation to the
-elected destination before the recovery driver can deliver there. That route,
-crashed recovery-reader reconciliation, saved-turn reconciliation and final
-activation remain required work. The target stays `recovering`; ordinary
+An explicit recovery route binds the original private worker installation to the
+elected destination before the recovery driver can deliver there. Crashed
+recovery-reader reconciliation, saved-turn reconciliation and final activation
+remain required work. The target stays `recovering`; ordinary
 research mutation, new dispatch and scientific acceptance remain unavailable.
 Neither a source claim nor an admission receipt proves native process closure.
+
+## Route an original worker
+
+Create a public request containing a stable `route_id`, `attempt_id`, the original
+worker's `credential_id`, its `source_controller_url`, and the target
+`destination_url`. Issue the route from the admitted target, then install it at
+the original worker:
+
+```sh
+research --state-dir restored-state backup route --file route-request.json > route.json
+research worker install-recovery-route --worker-dir original-worker \
+  --file route.json --source-pin source-pin.json
+research worker recover --worker-dir original-worker --attempt ATTEMPT_UUID \
+  --route-id ROUTE_UUID
+```
+
+`source-pin.json` must contain the `data` object from the independently trusted
+source's `backup_custody` record. The original worker enrollment does not pin the
+backup key, so the key embedded in a route cannot establish its own trust. Route
+installation verifies that source pin, the source election, target admission and
+the target's signature over the exact destination and original worker authority.
+Public routes contain IDs and proofs, with no credential or private key.
+Installation authorizes sending the original worker credential to the signed
+destination. HTTPS is required except for loopback HTTP; redirects and ambient
+proxy settings remain disabled by the normal client transport.
+
+The Python entry points are `checkpoints.routes.issue_recovery_route`,
+`workers.recovery_routes.install_recovery_route`, and
+`workers.recovery.recover_worker_attempt(..., route_id=...)`. Issuance is a native
+operator action with the existing target custody key. The route ID is immutable;
+an identical request replays its deterministic signed file, while changed content
+requires another route ID. Installation checks the full original worker digest,
+credential ID, selected journal, and existing journal/registry identities under
+the original enrollment, driver and attempt locks. Reopening a route repeats
+those checks before any connection. Missing native stores are not recreated.
+
+The original enrollment URL, token, driver identity and pending recovery intent
+remain unchanged. Each route gets a separate delivery directory, identity digest,
+upload key and submission key. A target acknowledgment resolves only that target's
+delivery; an uncertain request to the old controller retains its original bytes
+and keys. Each route also freezes its own journal until acknowledgment, then can
+submit a later observation. Without `--route-id`, recovery uses its original
+destination as before. Recovery never launches or enrolls a worker.
 
 ## Qualification boundary
 
@@ -303,4 +345,9 @@ target reopen. They cover duplicate-generation cleanup, once-only operational
 settlement without scientific acceptance, unfinished/UNKNOWN quarantine, partial
 transfer restart, malformed or altered journals, cleanup interruption, authority
 changes between preflight and commit, foreign artifacts and generic-I/O refusal.
-They do not qualify automatic worker redirection or final target activation.
+Route tests additionally exercise a real running native scope across checkpoint
+import and target admission. They verify retained capacity and refused closure
+while running, then delivery and settlement after the same native scope exits,
+without changing the original pending intent. They also cover signature/source-pin
+substitution, missing stores, immutable route IDs, driver-lock contention, CLI
+routing and lost target acknowledgments. Final target activation remains unqualified.

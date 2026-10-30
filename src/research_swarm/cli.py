@@ -64,6 +64,10 @@ def parser() -> argparse.ArgumentParser:
     admit = backups.add_parser("admit", help="Admit the elected inactive target into recovery")
     admit.add_argument("path", type=Path)
     admit.add_argument("--claim-file", type=Path, required=True)
+    route = backups.add_parser("route", help="Sign one original worker's recovery destination")
+    route.add_argument(
+        "--file", type=Path, required=True, help="Public recovery route request JSON"
+    )
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -157,6 +161,23 @@ def parser() -> argparse.ArgumentParser:
     recover = worker_actions.add_parser("recover", help="Quarantine one original native journal")
     recover.add_argument("--worker-dir", type=Path, required=True)
     recover.add_argument("--attempt", required=True)
+    recover.add_argument(
+        "--route-id",
+        help="Explicit installed recovery route; otherwise use the original controller",
+    )
+    install_route = worker_actions.add_parser(
+        "install-recovery-route", help="Bind an elected target to original worker custody"
+    )
+    install_route.add_argument("--worker-dir", type=Path, required=True)
+    install_route.add_argument(
+        "--file", type=Path, required=True, help="Target-signed public route JSON"
+    )
+    install_route.add_argument(
+        "--source-pin",
+        type=Path,
+        required=True,
+        help="Independently trusted source custody pin JSON",
+    )
     command = commands.add_parser("command", help="Send a typed domain command")
     command.add_argument("operation")
     command.add_argument("--file", type=Path, help="JSON request file, otherwise read stdin")
@@ -245,13 +266,13 @@ def _client(args: argparse.Namespace) -> ResearchClient:
     return ResearchClient.local(args.state_dir, token_path=args.token_file)
 
 
-def _request(path: Path | None) -> dict[str, Any]:
+def _request(path: Path | None, *, limit: int = 1024 * 1024) -> dict[str, Any]:
     if path is None:
-        content = sys.stdin.buffer.read(1024 * 1024 + 1)
+        content = sys.stdin.buffer.read(limit + 1)
     else:
         with path.open("rb") as stream:
-            content = stream.read(1024 * 1024 + 1)
-    if len(content) > 1024 * 1024:
+            content = stream.read(limit + 1)
+    if len(content) > limit:
         raise ValueError("Command body exceeds its limit")
     value = strict_json_loads(content)
     if not isinstance(value, dict):
@@ -469,6 +490,27 @@ def main(argv: list[str] | None = None) -> int:
             from research_swarm.checkpoints.backup import export_backup, verify_backup
             from research_swarm.domain.identity import CommandContext
 
+            if args.backup_action == "route":
+                if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
+                    raise ResearchError(
+                        ErrorCode.PROJECT_CONTRACT_INVALID,
+                        "Recovery route requires the explicit restored target state",
+                    )
+                from research_swarm.checkpoints.routes import issue_recovery_route
+                from research_swarm.domain.recovery_routes import RecoveryRouteRequest
+
+                request = RecoveryRouteRequest.model_validate(_request(args.file))
+                runtime = LocalRuntime.open(args.state_dir)
+                route = issue_recovery_route(
+                    runtime,
+                    CommandContext(
+                        principal=runtime.principal(args.token_file),
+                        idempotency_key="recovery-route:" + request.route_id,
+                    ),
+                    request,
+                )
+                print(canonical_bytes(route.model_dump(mode="json")).decode("utf-8"))
+                return 0
             if args.backup_action == "admit":
                 if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
                     raise ResearchError(
@@ -616,6 +658,7 @@ def main(argv: list[str] | None = None) -> int:
             "start",
             "recover",
             "install-replacement",
+            "install-recovery-route",
         }:
             from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
 
@@ -634,9 +677,36 @@ def main(argv: list[str] | None = None) -> int:
             if args.worker_action == "recover":
                 from research_swarm.workers.recovery import recover_worker_attempt
 
-                report = recover_worker_attempt(args.worker_dir, args.attempt)
+                report = recover_worker_attempt(
+                    args.worker_dir, args.attempt, route_id=args.route_id
+                )
                 print(canonical_bytes(report.model_dump(mode="json")).decode("utf-8"))
                 return 0 if report.delivery_state in {"quarantined", "controller_terminal"} else 3
+            if args.worker_action == "install-recovery-route":
+                from research_swarm.domain.backup import BackupCustodyPin
+                from research_swarm.domain.recovery_routes import SignedWorkerRecoveryRoute
+                from research_swarm.workers.recovery_routes import (
+                    MAX_ROUTE_BYTES,
+                    install_recovery_route,
+                )
+
+                installed = install_recovery_route(
+                    args.worker_dir,
+                    SignedWorkerRecoveryRoute.model_validate(
+                        _request(args.file, limit=MAX_ROUTE_BYTES)
+                    ),
+                    BackupCustodyPin.model_validate(_request(args.source_pin)),
+                )
+                print(
+                    canonical_bytes(
+                        {
+                            "state": "installed",
+                            "route_id": installed.signed.route.route_id,
+                            "route_digest": installed.signed.digest,
+                        }
+                    ).decode("utf-8")
+                )
+                return 0
             if args.worker_action == "describe":
                 from research_swarm.engines.registration import read_registration
 
