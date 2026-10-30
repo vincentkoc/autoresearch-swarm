@@ -44,7 +44,9 @@ from tests.test_recovery_turns import saved as saved
 
 def intent(runtime):
     receipt = RestoreReceipt.model_validate_json((runtime.root / "restore.json").read_bytes())
-    context = CommandContext(principal=runtime.principal(), idempotency_key="activate")
+    context = CommandContext(
+        principal=runtime.principal(), idempotency_key="activate:" + receipt.restore_id
+    )
     gate = runtime.database.read_record(context, "workspace_gate", receipt.workspace_id)
     context = context.model_copy(update={"expected_revision": gate["revision"]})
     return context, ActivateRecovery(

@@ -22,6 +22,7 @@ from research_swarm.state.sql import SqlSession
 RecordKind = Literal[
     "artifact_read_session",
     "workspace_gate",
+    "workspace_seal",
     "backup_custody",
     "recovery_admission",
     "recovery_activation",

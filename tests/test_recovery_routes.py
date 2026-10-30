@@ -355,10 +355,15 @@ def test_live_original_scope_survives_target_recovery_until_native_closure(
 ):
     import time
 
+    from research_swarm.checkpoints.activation import activate_recovery
+    from research_swarm.checkpoints.claims import claim_restore, request_restore_claim
+    from research_swarm.checkpoints.restore import restore_inactive
     from research_swarm.control.models import TrialData
     from research_swarm.control.workers import AttemptData
     from research_swarm.workers.journal import JournalState
     from research_swarm.workers.timed_supervision import start_timed_supervisor
+    from tests.test_recovery_activation import intent as activation_intent
+    from tests.test_recovery_reseal import reseal
     from tests.test_scoped_driver import enrollment
 
     root = tmp_path / "live-worker"
@@ -394,6 +399,14 @@ def test_live_original_scope_survives_target_recovery_until_native_closure(
             )
             target, context, backup, claim = copy_pipeline(pipeline, tmp_path)
             admit_recovery(target, context, backup, claim)
+            competing_target = tmp_path / "competing-target"
+            competing = restore_inactive(backup, competing_target, restore_id=new_id())
+            competing_request = request_restore_claim(
+                backup, competing_target, restore_id=competing.restore_id
+            )
+            with pytest.raises(ResearchError):
+                claim_restore(pipeline.runtime, context, backup, competing_request)
+            activation_context, activation = activation_intent(target)
             pin = BackupCustodyPin.model_validate(
                 pipeline.runtime.database.read_record(
                     CommandContext(
@@ -437,6 +450,8 @@ def test_live_original_scope_survives_target_recovery_until_native_closure(
                         expected_revision=row["revision"],
                     )
                 assert operator.budget(pipeline.campaign["id"]) == budget
+                with pytest.raises(ResearchError, match="execution must close"):
+                    activate_recovery(target, activation_context, activation)
                 (output_root / "payload-release").touch()
                 supervised.process.wait(timeout=15)
                 closed = native.journal.get(row["id"])
@@ -462,6 +477,14 @@ def test_live_original_scope_survives_target_recovery_until_native_closure(
                     == original
                 )
                 assert (output_root / "payload-finished").read_text() == "1"
+                activated = activate_recovery(target, activation_context, activation)
+                assert activate_recovery(target, activation_context, activation) == activated
+                assert operator.get("campaign", pipeline.campaign["id"])["state"] == "paused"
+                assert operator.get("worker", native.worker.binding.worker_id)["state"] == "fenced"
+                following = reseal(target, tmp_path / "following-bundle")
+                assert following.manifest.seal.control_epoch == activation.expected_control_epoch
+                assert not following.manifest.seal.unresolved_attempt_ids
+                assert following.manifest.source_public_key != pin.public_key
         finally:
             (output_root / "payload-release").touch()
             supervised.close()

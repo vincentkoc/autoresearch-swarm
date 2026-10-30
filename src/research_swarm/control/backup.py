@@ -9,7 +9,23 @@ from research_swarm.domain.backup import (
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
+from research_swarm.state.byte_operations import require_closed_byte_operations
 from research_swarm.state.database import Database, JsonObject, Transaction
+
+
+def _retain_seal(transaction: Transaction, seal: WorkspaceSeal) -> None:
+    existing = transaction.connection.execute(
+        "SELECT id FROM records WHERE workspace_id=? AND kind='workspace_seal' AND id=?",
+        (transaction.workspace_id, seal.backup_id),
+    ).fetchone()
+    if existing is not None:
+        row = transaction.get("workspace_seal", seal.backup_id)
+        if row["state"] != "immutable" or WorkspaceSeal.model_validate(row["data"]) != seal:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Immutable seal history differs")
+        return
+    transaction.insert(
+        "workspace_seal", seal.backup_id, seal.model_dump(mode="json"), state="immutable"
+    )
 
 
 class BackupControl:
@@ -91,32 +107,34 @@ class BackupControl:
                     raise ResearchError(
                         ErrorCode.REVISION_CONFLICT, "Workspace seal revision differs"
                     )
-                if previous.backup_id != request.backup_id or previous.reason != request.reason:
+                if row["state"] == "sealed":
+                    if previous.backup_id != request.backup_id or previous.reason != request.reason:
+                        raise ResearchError(
+                            ErrorCode.IDEMPOTENCY_CONFLICT, "Workspace is already sealed"
+                        )
+                    return row
+                if row["state"] != "active":
+                    raise ResearchError(ErrorCode.STALE_FENCE, "Workspace cannot be sealed")
+                if request.backup_id == previous.backup_id:
                     raise ResearchError(
-                        ErrorCode.IDEMPOTENCY_CONFLICT, "Workspace is already sealed"
+                        ErrorCode.IDEMPOTENCY_CONFLICT, "A new seal requires a new backup ID"
                     )
-                return row
-            if context.expected_revision != 0:
+                _retain_seal(transaction, previous)
+            elif context.expected_revision != 0:
                 raise ResearchError(
                     ErrorCode.REVISION_CONFLICT, "An active workspace has revision zero"
                 )
-            # Every admitted byte mutation has a pending upload/deletion record. Readers
-            # retain a pin before touching bytes. Refusing these states closes that race.
-            transient = transaction.connection.execute(
-                "SELECT kind,id,state FROM records WHERE workspace_id=? AND ("
-                "(kind='upload' AND state NOT IN ('finalized','aborted')) OR "
-                "(kind='artifact' AND state='deleting') OR "
-                "(kind='artifact_reference' AND state='retained' "
-                "AND (json_extract(payload,'$.retention.owner_kind')='artifact_read' "
-                "OR json_extract(payload,'$.reader_session_id') IS NOT NULL))) LIMIT 1",
-                (transaction.workspace_id,),
-            ).fetchone()
-            if transient is not None:
+            if (
+                transaction.connection.execute(
+                    "SELECT 1 FROM records WHERE workspace_id=? AND kind='workspace_seal' AND id=?",
+                    (transaction.workspace_id, request.backup_id),
+                ).fetchone()
+                is not None
+            ):
                 raise ResearchError(
-                    ErrorCode.RESOURCE_UNAVAILABLE,
-                    "Artifact operations must close before sealing",
-                    details={"kind": transient["kind"], "id": transient["id"]},
+                    ErrorCode.IDEMPOTENCY_CONFLICT, "Backup ID already identifies an earlier seal"
                 )
+            require_closed_byte_operations(transaction)
             unresolved = transaction.connection.execute(
                 "SELECT id FROM records WHERE workspace_id=? AND kind='attempt' "
                 "AND COALESCE(json_extract(payload,'$.publication_status'),'pending') "
@@ -144,12 +162,22 @@ class BackupControl:
                 unresolved_attempt_ids=tuple(item["id"] for item in unresolved),
                 worker_ids=tuple(item["id"] for item in workers),
             )
-            row = transaction.insert(
-                "workspace_gate",
-                transaction.workspace_id,
-                data.model_dump(mode="json"),
-                state="sealed",
-            )
+            _retain_seal(transaction, data)
+            if existing is None:
+                row = transaction.insert(
+                    "workspace_gate",
+                    transaction.workspace_id,
+                    data.model_dump(mode="json"),
+                    state="sealed",
+                )
+            else:
+                row = transaction.update(
+                    "workspace_gate",
+                    transaction.workspace_id,
+                    expected_revision=row["revision"],
+                    data=data.model_dump(mode="json"),
+                    state="sealed",
+                )
             transaction.event("workspace.sealed", row, {"backup_id": request.backup_id})
             return row
 

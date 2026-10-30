@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reseal activated targets at their current epoch with compare-and-swap gate revisions, fresh backup IDs and immutable seal history. Share the upload/deletion/reader barrier with activation and preserve old election and activation records.
+- Qualify a live native worker across single-target recovery through activation and a fresh export, a second successor election, and explicit queued evaluation on a newly enrolled worker while original sessions remain fenced.
+
 - Activate an elected native recovery target only after original execution, reservations, confirmation exposure, saved turns, reader pins and byte operations close consistently. Verify current artifact bytes and recheck the complete bounded state cut atomically.
 - Preserve queued stages, confirmation reservations, child funding and consumed costs; finish proven drain pauses without completing trials. Record signed activation history, keep the restored epoch and old worker/driver fences, and recover one commit after native process exit or lost replies.
 

@@ -426,6 +426,27 @@ workers and control decisions. Re-inspecting the original import verifies its
 signed lifecycle history instead of comparing a legitimately changed workspace
 with pristine backup bytes. The original source remains sealed.
 
+## Seal an activated target again
+
+An active target can use `workspace.seal` with a fresh backup ID, its current
+controller epoch, and the current gate revision. Revision zero applies only to
+a workspace that has never had a gate. A competing seal must win the same
+revision check; two callers cannot publish different cuts for the active gate.
+
+Sealing retains immutable `workspace_seal` records for both the previous cut and
+the new cut. Older imported seals without that history record are archived as
+part of this transaction. Reusing any historical backup ID refuses. Pending
+uploads, inconsistent worker upload receipts, deletion and retained reader pins
+block sealing through the same byte-operation barrier used by activation.
+
+Export then creates and pins a new source-custody key at the target's current
+epoch. Neither the ancestor's election key nor the target's restore-identity key
+becomes this new election key. The target can elect one successor, whose inactive
+import advances the epoch once. The earlier admissions, activations, settlements,
+seal history and worker fences remain in the ledger. Each ancestor stays sealed.
+Use restore-specific activation keys and backup-specific seal keys: the command
+ledger deliberately retains old idempotency keys across generations.
+
 ## Qualification boundary
 
 Native tests cover a real SQLite snapshot, artifact and key corruption, missing
@@ -461,8 +482,16 @@ Activation tests cover original closed and not-started execution, exact settleme
 and ledger consistency, queued evaluation stages, reserved and consumed confirmation
 exposures, open child funding, reader pins, saved turns, byte-verification races,
 explicit CLI targeting and real process exit inside and after the activation
-transaction. Later sealing/export and a composed live-worker-to-activation recovery
-demonstration remain separate qualification work.
+transaction. A composed native fixture keeps one real CPU process alive across
+seal, export, import, single-target election and routed recovery. Activation refuses
+while the original scope runs; after that same scope exits, closure settles once,
+activation succeeds, and the target seals and exports under a new custody key.
+The original uncertain-delivery intent remains unchanged throughout.
+Successor tests cover a second import/election/activation, competing seal CAS,
+transaction rollback and explicit campaign resumption. A newly enrolled worker
+finishes a queued evaluation and an independent evaluator accepts its receipt;
+the original worker remains fenced. These are local native proofs, not a claim
+of cross-host disaster recovery, hosted-provider deployment or accelerator parity.
 Saved-turn tests cover absent, accepted and rejected target replies, unchanged
 execution accounting, preserved actor fences, target-acknowledgment races,
 interrupted transaction rollback and exact acknowledgment replay through a
