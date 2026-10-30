@@ -1,0 +1,52 @@
+schema_version = "1.0"
+
+[project]
+name = "CPU bigram language model"
+slug = "cpu-bigram"
+description = "Original standard-library training example with a separate evaluator."
+
+[source]
+mode = "directory"
+paths = ["*.py", "*.json", "research.toml"]
+
+[mutation]
+allow = ["train.py"]
+
+[environment]
+profile = "python-cpu"
+lock_path = "environment.json"
+network_policy = "inherit"
+
+[data]
+manifest_path = "dataset.json"
+
+[evaluation]
+protected_paths = ["common.py", "evaluate.py"]
+comparison_class = "cpu-bigram-synthetic-v1"
+measurement_trust = "authenticated"
+
+[[evaluation.metrics]]
+name = "val_bpb"
+unit = "bits_per_predicted_byte"
+direction = "minimize"
+aggregation = "mean_over_validation_transitions"
+
+[timing]
+budget_ms = 300
+scope = "active_training"
+timer_authority = "project_reported"
+
+[[stages]]
+id = "train"
+kind = "train"
+argv = ["python", "train.py"]
+timeout_ms = 10000
+output_names = ["model"]
+
+[[stages]]
+id = "evaluate"
+kind = "evaluate"
+argv = ["python", "evaluate.py"]
+dependencies = ["train"]
+required_artifacts = ["model"]
+timeout_ms = 10000

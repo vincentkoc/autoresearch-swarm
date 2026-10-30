@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a language-neutral workload context/report protocol with bounded artifact verification.
+- Train and evaluate an original standard-library CPU language model from immutable project source.
+- Reject FIFO inputs before reading project reports, outputs, or source files.
 - Arbitrate host resource pools across worker processes and retain uncertain capacity until verified closure.
 - Preserve independently observed native closure when a competing deadline signal fails.
 - Persist authenticated worker dispatches, launch barriers, cancellation intent, and recoverable observations.

@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "dataset": "original-synthetic-grammar-v1",
+  "training_seed": 1741,
+  "validation_seed": 2963,
+  "training_sentences": 500,
+  "validation_sentences": 200,
+  "panel": "synthetic-validation-v1",
+  "metric_denominator": "ASCII bytes after the first context byte"
+}

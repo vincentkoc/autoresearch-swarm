@@ -10,9 +10,10 @@ not implicitly supported.
 | Exact budget arithmetic | Implemented foundation | Exact arithmetic, uncertainty, settlement, overshoot tests pass | Hierarchical accounting pending |
 | Evaluator receipts | Validator implemented | Identity, seed, provenance, and panel tests pass | Authenticated transport pending |
 | Artifact lifecycle | Local verified catalog, generations, retention, quotas, recovery | Corruption, interrupted commit, duplicate upload, retain/delete race, native reader crash tests | Artifact tests pass on Linux/macOS/Windows with patched FileLock; hosted stores pending |
-| Local worker and supervision | Authenticated dispatch, durable journal, native barrier, independent supervisor, bounded output implemented | Real cancellation, launch race, deadline, transport loss, publication recovery tests | Linux CI and macOS local proof; macOS/Windows CI repairs and full worker integration pending |
+| Local worker and supervision | Authenticated dispatch, durable journal, native barrier, independent supervisor, bounded output implemented | Real cancellation, launch race, deadline, transport loss, publication recovery tests | Linux/macOS/Windows CI passes; full worker service integration pending |
 | Machine resource admission | Shared native registry, atomic reservations, quarantine, closure-bound release | Independent-process contention, cross-controller rejection, restart, stale closure, duplicate release tests | Synthetic pool proof; physical device qualification pending |
 | Project manifests and source isolation | Source bundles, mutation boundary, TOML manifest and immutable resolution implemented | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation, protected dependency/protocol tests | Linux/macOS/Windows CI passed; original-workload qualification pending |
+| Workload protocol and original CPU project | Sealed file context, bounded report/output verification, real training and separate evaluator | Immutable source execution, two injected seeds, checkpoint identity, improvement against uniform model | macOS local proof; cross-platform workload CI pending |
 | API, SDK, CLI, MCP | Pending | Pending | Real transport pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Pending | Pending | Equal-budget research pending |
@@ -29,7 +30,7 @@ not implicitly supported.
 
 The foundation suite has 53 tests. Artifact, source, and manifest tests extend it to
 116, qualified on Linux/macOS/Windows and Python 3.11–3.13. Native supervision,
-journal, and resource tests extend the local suite to 144 passing tests, including
+journal, resource, and workload tests extend the local suite to 152 passing tests, including
 real process, deadline, race, and recovery coverage. This does not
 establish complete worker admission, API, provider, or scientific behavior.
 

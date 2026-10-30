@@ -109,7 +109,9 @@ class SourceReader:
                     )
                     os.close(parent)
                     parent = child
-                descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+                descriptor = os.open(
+                    parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
+                )
             finally:
                 os.close(parent)
         elif self.handle is not None and sys.platform == "win32":
