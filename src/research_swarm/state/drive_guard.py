@@ -45,7 +45,8 @@ def require_reserved_command_key(transaction: Transaction, request_digest: str) 
     if row is None:
         return
     turn_id = str(strict_json_loads(row["payload"])["turn_id"])
-    turn = DriveTurn.model_validate(transaction.get("drive_turn", turn_id)["data"])
+    turn_row = transaction.get("drive_turn", turn_id)
+    turn = DriveTurn.model_validate(turn_row["data"])
     if request_digest != turn.action.request_digest:
         raise ResearchError(
             ErrorCode.IDEMPOTENCY_CONFLICT, "Key is reserved for another saved action"
@@ -53,6 +54,10 @@ def require_reserved_command_key(transaction: Transaction, request_digest: str) 
     if context._drive_guard != DriveGuard(turn_id, request_digest):
         raise ResearchError(
             ErrorCode.AUTHORIZATION_DENIED, "Reserved action requires its execution route"
+        )
+    if turn_row["state"] == "closed_unacknowledged":
+        raise ResearchError(
+            ErrorCode.STALE_FENCE, "Saved action closed without a target acknowledgment"
         )
 
 

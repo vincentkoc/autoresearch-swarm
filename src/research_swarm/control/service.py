@@ -55,6 +55,7 @@ from research_swarm.control.observation_models import (
 from research_swarm.control.orchestration import OrchestrationControl
 from research_swarm.control.orchestration_models import (
     BindOrchestration,
+    CloseDriveTurn,
     DriveTurnTarget,
     FenceOrchestration,
     PrepareDriveTurn,
@@ -216,6 +217,9 @@ class ResearchService:
 
     def advance_event_floor(self, context: CommandContext, intent: AdvanceEventFloor) -> JsonObject:
         return self.event_recovery.advance_floor(context, intent)
+
+    def close_drive_turn(self, context: CommandContext, intent: CloseDriveTurn) -> JsonObject:
+        return self.orchestration.close(context, intent)
 
     def collect_expired_snapshots(
         self, context: CommandContext, intent: CollectExpiredSnapshots

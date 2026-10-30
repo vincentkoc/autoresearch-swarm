@@ -32,6 +32,7 @@ from research_swarm.control.observation_models import (
 )
 from research_swarm.control.orchestration_models import (
     BindOrchestration,
+    CloseDriveTurn,
     DriveTurnTarget,
     FenceOrchestration,
     PrepareDriveTurn,
@@ -87,6 +88,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "orchestration.close_turn": CommandDefinition(
+        CloseDriveTurn,
+        "close_drive_turn",
+        "orchestration.manage",
+        True,
+        "Close a fenced action with no target acknowledgment while preserving evidence.",
+        additional_scopes=("read",),
+    ),
     "stream.collect_expired": CommandDefinition(
         CollectExpiredSnapshots,
         "collect_expired_snapshots",

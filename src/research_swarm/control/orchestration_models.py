@@ -34,6 +34,11 @@ class DriveTurnTarget(VersionedRecord):
     turn_id: ID
 
 
+class CloseDriveTurn(DriveTurnTarget):
+    epoch: int = Field(strict=True, ge=1)
+    finding: str = Field(min_length=1, max_length=2048)
+
+
 class FenceOrchestration(VersionedRecord):
     campaign_id: ID
     epoch: int = Field(strict=True, ge=1)

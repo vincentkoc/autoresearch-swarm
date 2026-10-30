@@ -86,6 +86,34 @@ it returns an unresolved error without caching that error as a final result.
 An operator with management, drive, and read permission can reconcile an already
 acknowledged turn after its original route becomes unavailable.
 
+## Close a fenced action with no acknowledgment
+
+When the original binding is fenced and its pending action never committed a
+target acknowledgment, an operator can use `orchestration.close_turn`. Supply
+the original epoch, turn ID, turn revision, and an explanatory finding. The
+transaction checks the authoritative target command ledger before closing it.
+An accepted or rejected acknowledgment requires normal reconciliation instead.
+
+The resulting immutable `drive_closure` has reason
+`fenced_without_target_ack`; the turn becomes `closed_unacknowledged`. It contains
+no fabricated target command ID, score, or rejection. Closure clears the pending
+pointer while keeping the binding fenced and preserving its permanent reserved
+action key. It changes no native worker custody, budget, proposal, or evaluation.
+The finding proves absence of a committed target acknowledgment. It does not
+prove that preflight reads, pins, staged bytes, or provider calls never happened.
+
+Late original dispatch cannot commit after this closure or write a substitute
+rejected acknowledgment under its reserved target key. Execute and reconcile
+return the same closure with `response: null` and `receipt: null`; the outer
+command acknowledgment confirms only that this terminal record was recovered.
+`DurableTurnDriver` recovers a closed ordinal without invoking its planner.
+Callers must distinguish this outcome from a settled accepted/rejected action.
+
+Exact closure retries and identical intent under new command keys preserve the
+original receipt. Changed epoch, revision, or finding conflicts. Dedicated
+drivers cannot close themselves, even with wildcard scopes. This operation is
+part of retiring ownership; it does not transfer ownership or resume a campaign.
+
 ## Use the API-only runner
 
 `DurableTurnDriver` works with a local or HTTP `ResearchClient`. Supply a pure
@@ -233,3 +261,6 @@ controller process exiting immediately after commit, reopening the runtime,
 receiver acknowledgment loss, persisted timer recovery, parent-child wakeups,
 and rollback when notification storage fails. Temporal replay, Cloudflare
 execution, and ownership transfer require their own qualification.
+Closure tests also cover a delayed original dispatch, competing operators,
+controller reopen, real HTTP recovery, accepted/rejected acknowledgment gaps,
+and atomic rollback if storing the closure event fails.

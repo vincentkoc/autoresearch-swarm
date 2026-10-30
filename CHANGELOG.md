@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Close fenced pending actions without a committed target acknowledgment using a distinct immutable closure, preserving the difference from accepted or rejected research commands.
+- Reject delayed original dispatch before it can create a replacement acknowledgment; recover closed ordinals over the same API without replanning, releasing budgets, or changing native custody.
+
 - Add explicit event-history gaps, consistent event watermarks, and frozen paginated recovery snapshots through HTTP, Python, CLI, and MCP.
 - Pin catch-up intervals during recovery, verify bounded snapshot chunks, and preserve permanent event and wait evidence independently of logical stream retention.
 - Bound snapshot storage, reclaim expired content with terminal tombstones, prevent clock rollback from reviving expired recovery, and migrate SQLite schema transactionally under concurrent openers.

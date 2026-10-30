@@ -9,11 +9,12 @@ from pydantic import ValidationError
 
 from research_swarm.control.orchestration_models import (
     BindOrchestration,
+    CloseDriveTurn,
     DriveTurnTarget,
     FenceOrchestration,
     PrepareDriveTurn,
 )
-from research_swarm.domain.canonical import record_digest, strict_json_loads
+from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, DriveGuard, guarded_context
 from research_swarm.domain.orchestration import (
@@ -26,6 +27,11 @@ from research_swarm.domain.orchestration import (
 )
 from research_swarm.domain.types import utc_now
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.drive_closures import (
+    close_unacknowledged,
+    closure_outcome,
+    target_acknowledgment,
+)
 from research_swarm.state.waits import consume_ready_wait, fence_wait
 
 CONTROL_OPERATIONS = frozenset(
@@ -302,26 +308,16 @@ class OrchestrationControl:
 
     @staticmethod
     def _acknowledgment(transaction: Transaction, turn: DriveTurn) -> JsonObject | None:
-        saved = transaction.connection.execute(
-            "SELECT request_digest,response FROM commands "
-            "WHERE workspace_id=? AND actor_id=? AND idempotency_key=?",
-            (transaction.workspace_id, turn.actor_id, turn.action.idempotency_key),
-        ).fetchone()
-        if saved is None:
-            return None
-        if saved["request_digest"] != turn.action.request_digest:
-            raise ResearchError(
-                ErrorCode.IDEMPOTENCY_CONFLICT, "Target command key has another request"
-            )
-        return dict(strict_json_loads(saved["response"]))
+        return target_acknowledgment(transaction, turn)
 
     def _read(
         self, context: CommandContext, identifier: str, *, execute: bool
-    ) -> tuple[DriveTurn, JsonObject | None]:
+    ) -> tuple[DriveTurn, JsonObject | None, bool]:
         with self.database.connect() as connection:
             connection.execute("BEGIN")
             transaction = Transaction(connection, context)
-            turn = DriveTurn.model_validate(transaction.get("drive_turn", identifier)["data"])
+            row = transaction.get("drive_turn", identifier)
+            turn = DriveTurn.model_validate(row["data"])
             if context.principal.id != turn.actor_id:
                 if execute:
                     raise ResearchError(
@@ -334,7 +330,7 @@ class OrchestrationControl:
                 require_action_scopes(context, turn.action.operation)
             response = self._acknowledgment(transaction, turn)
             connection.commit()
-        return turn, response
+        return turn, response, row["state"] == "closed_unacknowledged"
 
     def _finish(
         self, context: CommandContext, operation: str, intent: DriveTurnTarget
@@ -344,6 +340,8 @@ class OrchestrationControl:
             turn = DriveTurn.model_validate(row["data"])
             if context.principal.id != turn.actor_id:
                 context.principal.require("orchestration.manage")
+            if row["state"] == "closed_unacknowledged":
+                return closure_outcome(transaction, row)
             response = self._acknowledgment(transaction, turn)
             if response is None:
                 raise ResearchError(
@@ -400,7 +398,7 @@ class OrchestrationControl:
     def execute(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
         operation = "orchestration.execute_turn"
         context.principal.require("orchestration.drive")
-        turn, response = self._read(context, intent.turn_id, execute=True)
+        turn, response, closed = self._read(context, intent.turn_id, execute=True)
         previous = self.database.replay(
             context, operation, intent.model_dump(mode="json"), "orchestration.drive"
         )
@@ -410,7 +408,7 @@ class OrchestrationControl:
             raise ResearchError(
                 ErrorCode.IDEMPOTENCY_CONFLICT, "Target and delivery keys must differ"
             )
-        if response is None:
+        if response is None and not closed:
             target = guarded_context(
                 CommandContext(
                     principal=context.principal,
@@ -423,15 +421,15 @@ class OrchestrationControl:
                 self.dispatch(target, turn.action.operation, turn.action.payload)
             except Exception:
                 # Preflight refusal is not a durable rejection. Recover only an actual target ack.
-                _, response = self._read(context, intent.turn_id, execute=True)
-                if response is None:
+                _, response, closed = self._read(context, intent.turn_id, execute=True)
+                if response is None and not closed:
                     raise
         return self._finish(context, operation, intent)
 
     def reconcile(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
         operation = "orchestration.reconcile_turn"
         context.principal.require("orchestration.drive")
-        turn, response = self._read(context, intent.turn_id, execute=False)
+        turn, response, closed = self._read(context, intent.turn_id, execute=False)
         previous = self.database.replay(
             context, operation, intent.model_dump(mode="json"), "orchestration.drive"
         )
@@ -444,11 +442,34 @@ class OrchestrationControl:
             raise ResearchError(
                 ErrorCode.IDEMPOTENCY_CONFLICT, "Target and delivery keys must differ"
             )
-        if response is None:
+        if response is None and not closed:
             raise ResearchError(
                 ErrorCode.RESOURCE_UNAVAILABLE, "Original action remains unresolved", retryable=True
             )
         return self._finish(context, operation, intent)
+
+    def close(self, context: CommandContext, intent: CloseDriveTurn) -> JsonObject:
+        context.principal.require("read")
+        request_digest = record_digest(
+            "research.drive-closure-request-v1",
+            {
+                "payload": intent.model_dump(mode="json"),
+                "expected_revision": context.expected_revision,
+            },
+        )
+        return self.database.execute(
+            context,
+            "orchestration.close_turn",
+            intent.model_dump(mode="json"),
+            "orchestration.manage",
+            lambda transaction: close_unacknowledged(
+                transaction,
+                transaction.get("drive_turn", intent.turn_id),
+                epoch=intent.epoch,
+                finding=intent.finding,
+                request_digest=request_digest,
+            ),
+        )
 
     def fence(self, context: CommandContext, intent: FenceOrchestration) -> JsonObject:
         def fence(transaction: Transaction) -> JsonObject:

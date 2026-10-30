@@ -97,7 +97,7 @@ transport, process, or provider behavior.
 - **C22** — Seed changes between declared replicates. Pending end-to-end evidence.
 - **C23** — Evaluation returns an incomplete panel. Local pipeline records incomplete evidence and does not make it rankable.
 - **C24** — Protected evaluation times out after access. Pending end-to-end evidence.
-- **C25** — Dedicated driver principals are fenced inside domain write transactions; already accepted/rejected actions still reconcile, and no client-supplied fence can be omitted to gain direct write access. Initial binding/fencing is locally verified; reconciled checkpoint transfer to another adapter remains pending.
+- **C25** — Dedicated driver principals are fenced inside domain write transactions; already accepted/rejected actions still reconcile. A fenced action with no target acknowledgment closes distinctly, and delayed dispatch cannot manufacture another acknowledgment or regain write access. Initial binding/fencing/closure is locally verified; reconciled checkpoint transfer to another adapter remains pending.
 - **C26** — Expired cursors return an explicit typed gap over HTTP and SSE. A reader creates an authorized frozen snapshot, verifies bounded pages/chunks, and resumes after its exact watermark. Retention preserves permanent event/outbox/wait evidence. Local API/CLI/MCP proof.
 - **C27** — Worker lacks a required isolation feature. Pending end-to-end evidence.
 - **C28** — Process spawns a child and cancellation occurs. Pending end-to-end evidence.

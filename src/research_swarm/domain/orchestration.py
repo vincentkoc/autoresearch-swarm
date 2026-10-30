@@ -86,6 +86,17 @@ class DriveReceipt(VersionedRecord):
     reconciled_at: Timestamp
 
 
+class DriveClosure(VersionedRecord):
+    turn_id: ID
+    epoch: int = Field(strict=True, ge=1)
+    reason: Literal["fenced_without_target_ack"] = "fenced_without_target_ack"
+    finding: str = Field(min_length=1, max_length=2048)
+    target_request_digest: Digest
+    closure_request_digest: Digest
+    closed_by: ID
+    closed_at: Timestamp
+
+
 def drive_turn_id(workspace_id: str, campaign_id: str, epoch: int, ordinal: int) -> str:
     identity = record_digest(
         "research.drive-turn-v1",

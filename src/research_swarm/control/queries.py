@@ -25,6 +25,7 @@ RecordKind = Literal[
     "orchestration_binding",
     "drive_turn",
     "drive_receipt",
+    "drive_closure",
     "campaign_funding",
     "funding_projection",
     "funding_change",
@@ -108,7 +109,7 @@ def summarize(row: JsonObject) -> JsonObject:
             )
         }
         result["data"]["operation"] = data["action"]["operation"]
-    elif row["kind"] == "drive_receipt":
+    elif row["kind"] in {"drive_receipt", "drive_closure"}:
         result["data"] = data
     elif row["kind"] == "campaign_funding":
         result["data"] = {
