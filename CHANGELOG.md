@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Qualify a complete external MCP research cycle across agent-process restart, with independent native execution/evaluation, exact admission replay, observed improvement, and an immutable terminal report.
+- Verify that the scoped research agent cannot publish evaluator receipts and that same-principal CLI replay preserves the original completion without extra execution or cost.
+
 - Add a frozen cross-language canonical corpus covering Unicode, numbers, decimal strings, ordering, optional fields, and domain separation.
 - Independently verify Python hashes and synthetic Ed25519 assignment signatures in Node, reject tampering, and require this conformance check in the supported-platform CI matrix.
 

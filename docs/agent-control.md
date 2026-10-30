@@ -83,6 +83,33 @@ Real subprocess tests exercise stdio discovery and tool calls, CLI JSON input,
 cross-transport replay, populated context/query output, conflict responses, scoped
 capture refusal, and credential revocation during a live MCP connection.
 
+## Complete agent-controlled research cycle
+
+`tests/test_agent_research_cycle.py` qualifies the full local path through an
+external stdio MCP process. The research principal can capture source, propose,
+admit, observe, select, and complete research. It has neither `worker.publish`
+nor `evaluation.publish`; a separate enrolled worker and evaluator produce the
+measurements and authenticated receipts.
+
+The test establishes an evaluated CPU baseline, requests one optimizer hypothesis,
+captures the changed training file through MCP, and admits its frozen trial. The
+MCP process then exits. Native training and independent evaluation complete while
+the research agent is disconnected. A new MCP process uses the same scoped
+credential and replays the original admission intent. It receives the same command
+ID and trial without another execution.
+
+The returning agent reads the original evidence, pins its observation, assesses
+and commits selection, consumes the observation, and creates the terminal report.
+CLI replay under the same principal returns the same final report. Exactly two
+trials and four native attempts are recorded, with settled reservations. A direct
+attempt by the research agent to complete the evaluator receipt is denied.
+
+This is a real CPU and transport integration test using a deterministic proposal.
+It demonstrates that an external agent can drive the complete API workflow; it
+does not measure LLM proposal quality. The measured improvement is reported as
+`observed`, under the synthetic project's frozen comparison contract. No GUI or
+provider-specific agent runtime is required.
+
 ## Durable external proposals
 
 A proposal request assigns research work to one principal. It freezes an eligible
