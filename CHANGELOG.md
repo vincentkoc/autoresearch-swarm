@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add API-driven evaluation control with separate controller/evaluator clients and an `evaluation advance` CLI command for independently running workers.
+- Recover authorization and receipt acknowledgment loss through bounded resumable scans, preserving unprocessed page tails and exact evaluator ownership.
+- Keep failed scoring, UNKNOWN execution, drain pause, confirmation exposure, and credential failures distinct; complete a real HTTP greedy improvement cycle with a scoped CPU worker and separate evaluator credentials.
+
 - Add a pure greedy planner and bounded local/HTTP search driver, with read-only planning, restart-safe advancement, independent worker/evaluator execution, and CLI bootstrap selection.
 - Pin observations before selection, preserve original comparison context across promotion, and recover lost acknowledgments and competing principals without duplicate trial admission or policy progress.
 - Respect pause, declared metric targets, budgets, UNKNOWN custody, and fixed confirmation-panel limits; record settled panel failures instead of waiting indefinitely.

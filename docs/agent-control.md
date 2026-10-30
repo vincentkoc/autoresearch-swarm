@@ -334,11 +334,15 @@ The Python interface works with both local and HTTP clients:
 from research_swarm.orchestration.search import SearchDriver
 from research_swarm.search.greedy import GreedyConfiguration
 
-driver = SearchDriver(client, campaign_id, GreedyConfiguration(
-    proposer_id=agent_id,
-    baseline_trial_id=baseline_trial_id,
-    first_seed=100,
-))
+driver = SearchDriver(
+    client,
+    campaign_id,
+    GreedyConfiguration(
+        proposer_id=agent_id,
+        baseline_trial_id=baseline_trial_id,
+        first_seed=100,
+    ),
+)
 next_action = driver.plan()
 progress = driver.advance(max_steps=32)
 # Async callers can await driver.advance_async(max_steps=32).
@@ -379,3 +383,63 @@ the candidate's measurement valid; that measurement stays recorded. Abandonment
 appends its evidence and reason, consumes the observation, and releases only
 the policy slot. It does not promote, rebase, move the incumbent, or settle
 physical resource/budget custody.
+
+
+## Evaluate work from independent workers
+
+`research evaluation advance` supplies the controller/evaluator part of the
+loop for workers that run separately. It never claims a job or launches a
+process. Use the normal controller credentials, plus the credential of the
+principal named by `--evaluator`:
+
+~~~sh
+research evaluation advance CAMPAIGN_ID --evaluator EVALUATOR_ID \
+  --evaluator-token-file PRIVATE_EVALUATOR_TOKEN_FILE
+~~~
+
+The controller requires `read`, `evaluation.request`, and `artifact.upload`.
+The evaluator requires `read` and `evaluation.publish`. If the evaluator token
+file is omitted, the explicitly selected controller principal also serves as
+the evaluator and must match the supplied evaluator ID. A failed evaluator
+credential never falls back to another principal. Remote calls use the same
+`--controller` and `--token-file` options as other CLI operations.
+
+The driver first completes authorized scoring jobs whose original accepted
+attempts succeeded. It then authorizes ready scoring jobs. Completed receipts
+may be recovered while the campaign is paused; new scoring authority follows
+running/draining admission rules. UNKNOWN or explicitly unaccepted trial
+execution is not authorized. A sealed confirmation plan keeps its original
+evaluator and exposure binding.
+
+Use the same interface from Python with separate clients:
+
+~~~python
+from research_swarm.orchestration.evaluation import EvaluationDriver
+
+evaluations = EvaluationDriver(controller_client, evaluator_client, campaign_id, evaluator_id)
+result = evaluations.advance(max_pages=4, page_size=50)
+while result.continuation is not None:
+    if result.error_code is not None:
+        break  # Inspect the reported transport or credential failure first.
+    result = evaluations.advance(continuation=result.continuation)
+# Call again without a continuation to scan newly eligible work.
+~~~
+
+Each call reads at most eight pages of fifty records. The returned continuation
+pins the campaign, evaluator, phase, and bounded query cursor. Follow it to
+avoid starving later work behind earlier unfinished requests. The CLI accepts
+that continuation object through `--continuation-file`; it does not store
+credentials or mutate the input file. `advance_async` exposes the same behavior
+for an asyncio coordinator.
+
+A lost reply retains the input cursor for its page. On resume, the driver adopts
+already linked authorizations/receipts and processes the remaining rows. Failed
+scoring and foreign evaluator ownership produce per-row findings while other
+rows can continue. Credential/transport failures stop the affected control call.
+A receipt with invalid or incomplete evidence is still an outcome; the driver
+does not allocate retries, invent a metric, or promote a candidate. `idle` means
+the scanned records needed no action, not that the campaign or workers finished.
+
+Compose `SearchDriver`, `EvaluationDriver`, external proposal agents, and
+independent worker processes to run the complete loop through the API. Their
+execution, evaluation, proposal, and promotion authorities remain separate.
