@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Enroll explicit worker sessions and atomically reserve ready jobs, attempt budgets, and dispatch intents.
+- Enforce worker authority, engine requirements, dependency completion, and campaign/worker concurrency at admission.
 - Bind sealed workload contexts, declared interpreters, and live machine claims to native supervisor release.
 - Settle cancelled or expired unstarted grants even when their prepared context is missing.
 - Add a JSON CLI and typed stdio MCP tools over the shared command and query service.

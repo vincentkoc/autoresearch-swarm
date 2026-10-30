@@ -102,6 +102,22 @@ def summarize(row: JsonObject) -> JsonObject:
             "changed_paths": data["changed_paths"][:50],
             "changed_path_count": len(data["changed_paths"]),
         }
+    elif row["kind"] == "worker":
+        result["data"] = {
+            "name": data["name"],
+            "binding": data["binding"],
+            "profiles": [profile["name"] for profile in data["profiles"]],
+            "max_concurrency": data["max_concurrency"],
+        }
+    elif row["kind"] == "attempt":
+        result["data"] = {
+            "job_id": data["dispatch"]["job_id"],
+            "worker_id": data["dispatch"]["worker_id"],
+            "stage_id": data["dispatch"]["stage_id"],
+            "publication_status": data["publication_status"],
+            "finding": data["finding"],
+            "execution_fingerprint": data["profile"]["execution_fingerprint"],
+        }
     else:
         result["data"] = {"detail_available": True}
     return result

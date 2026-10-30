@@ -25,6 +25,7 @@ from research_swarm.control.models import (
     TrialData,
 )
 from research_swarm.control.preflight import verified_source
+from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
@@ -91,11 +92,28 @@ def input_sources(
 
 
 class ResearchService:
-    def __init__(self, database: Database, artifacts: ArtifactService) -> None:
+    def __init__(
+        self, database: Database, artifacts: ArtifactService, *, dispatch_key: bytes | None = None
+    ) -> None:
         if database.path.resolve() != artifacts.database.path.resolve():
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
         self.artifacts = artifacts
+        self.workers = WorkerControl(database, dispatch_key) if dispatch_key is not None else None
+
+    def enroll_worker(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
+        if self.workers is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Worker authority is not configured"
+            )
+        return self.workers.enroll(context, request)
+
+    def claim_job(self, context: CommandContext, request: ClaimJob) -> JsonObject:
+        if self.workers is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Worker authority is not configured"
+            )
+        return self.workers.claim(context, request)
 
     def _execute(
         self,

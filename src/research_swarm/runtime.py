@@ -189,7 +189,9 @@ class LocalRuntime:
                 identity,
                 database,
                 artifacts,
-                ResearchService(database, artifacts),
+                ResearchService(
+                    database, artifacts, dispatch_key=read_private(root, "dispatch.key", limit=32)
+                ),
                 credentials,
             )
 

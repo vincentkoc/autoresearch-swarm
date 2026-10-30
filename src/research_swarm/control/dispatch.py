@@ -16,6 +16,7 @@ from research_swarm.control.commands import (
     ValidateCandidate,
 )
 from research_swarm.control.service import ResearchService
+from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import VersionedRecord
@@ -32,6 +33,20 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "worker.enroll": CommandDefinition(
+        EnrollWorker,
+        "enroll_worker",
+        "worker.manage",
+        False,
+        "Enroll one worker session with explicit profiles and publication authority.",
+    ),
+    "worker.claim_job": CommandDefinition(
+        ClaimJob,
+        "claim_job",
+        "worker.claim",
+        True,
+        "Reserve a ready job and its attempt budget using the current job revision.",
+    ),
     "project.register": CommandDefinition(
         RegisterProject,
         "register_project",

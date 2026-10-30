@@ -4,6 +4,28 @@ The Python `ResearchService` owns project registration, campaign activation,
 candidate admission, and trial graph creation. Transports call these handlers.
 They do not write records or interpret success independently.
 
+## Worker admission
+
+`worker.enroll` binds an operator-approved worker session and principal to explicit
+engine capabilities. The controller does not infer hardware from a name.
+`worker.claim_job` requires the current job revision and the enrolled principal.
+It checks campaign admission, dependency success, input availability, engine and
+isolation requirements, worker concurrency, and campaign trial concurrency.
+
+One transaction creates the Attempt, reserves its attempt-count and execution-time
+budgets, updates the Job and Trial, and records a dispatch event. Retries with the
+same key return the original grant. Competing workers cannot claim one job.
+The native machine registry independently reserves physical scheduling capacity
+before launch. Controller admission alone does not prove that a process started.
+
+Native cleanup allowance is part of the execution reservation. Budget ownership
+belongs to the Attempt, not the Trial. A later execution retry needs a new attempt;
+a delivery retry preserves its original attempt and reservation.
+
+Enrollment replacement requires explicit fencing. The current implementation
+resumes an existing session and rejects implicit replacement. Protected evaluator
+admission remains unavailable until its isolation profile is qualified.
+
 ## Immutable project revisions
 
 Register a verified source artifact with `RegisterProject`. The controller checks
