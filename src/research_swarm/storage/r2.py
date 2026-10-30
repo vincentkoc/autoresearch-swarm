@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryFile
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from filelock import FileLock
 
@@ -253,7 +253,9 @@ class R2BlobStore:
     @contextmanager
     def reader(self, workspace_id: str, blob: StoredBlob) -> Iterator[BinaryIO]:
         self._path("readers", "unused")
-        with TemporaryFile(dir=self.root / "readers") as stream:
+        with TemporaryFile(dir=self.root / "readers") as temporary:
+            # Windows returns a delegating wrapper with the same binary file interface.
+            stream = cast(BinaryIO, temporary)
             with self._operation(workspace_id, blob):
                 self._active(self._record(blob))
                 try:

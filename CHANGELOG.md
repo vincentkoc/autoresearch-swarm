@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve the R2 verified-reader binary-file contract across POSIX and Windows temporary-file implementations; fresh Windows type checks now accept the delegating wrapper.
+
 - Add a reproducible local controller/CPU benchmark with independent connection loads, budget races, exact command replay and paired one/two-lane native throughput. Retain failed/censored cells, evaluator receipts and exact comparison identities.
 - Preserve original attempts on interrupted benchmark resume and report incomplete timing explicitly. Keep full measurements opt-in and CI focused on correctness.
 - Remove an unnecessary R2 type-ignore comment exposed by fresh CI type checking.
