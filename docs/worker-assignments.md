@@ -317,3 +317,45 @@ failure. Missing or altered timing authority cannot downgrade to local mode.
 
 This durable layer is implemented. The private live-origin channel and calibrated
 native launch gates remain required before timed execution is enabled.
+
+## Private origin transport
+
+`OriginServer` and `SupervisorChannel` provide a bounded, authenticated local
+transport for the upcoming native admission gates. They do not themselves commit
+journal transitions or authorize a workload. A successful transport exchange must
+still be paired with a live sampler and an atomic journal decision.
+
+The server binds an ephemeral `127.0.0.1` socket with no address reuse. A random
+256-bit capability and channel ID reach the intended supervisor through a private
+stdin pipe. The launcher preloads at most 512 bytes and closes the writer before
+spawn. The capability is absent from argv, environment, journals, and object repr.
+The [subprocess stdin contract](https://docs.python.org/3.11/library/subprocess.html#popen-constructor)
+supplies the bootstrap without a separate credential file. All channel descriptors
+are marked non-inheritable.
+
+Each frame has a bounded length and a direction-specific HMAC over its protocol
+domain, channel ID, and canonical payload. Requests bind worker/session, attempt,
+assignment, timing record, journal, origin, supervisor, phase, sequence, and fresh
+nonce. There are exactly two phases: claim and release. A repeated or changed
+phase cannot restart the sequence. Replies echo the exact request and cannot
+extend the original caps or a stricter cap returned by the first exchange.
+
+Partial reads and writes use [socket timeouts](https://docs.python.org/3.11/library/socket.html#socket.socket.settimeout)
+of at most 50 milliseconds, checking one absolute suspend-inclusive deadline after
+each operation. A fragment, stalled peer, reconnect, or callback delay cannot reset
+that deadline. Up to eight unauthenticated peers receive at most 500 milliseconds
+each, within the same total budget. Oversized frames and excessive JSON nesting
+are rejected before authorization. Closing the server is synchronized with
+accepted-connection registration.
+
+An exchange proves that the channel owner responded at that point. It does not
+prove uninterrupted liveness afterward. A native consumer must immediately
+recheck its frozen launch cap before release and retain the separate hard-deadline
+watchdog. Lost replies remain ambiguous: channel failure does not prove process
+closure or make a reservation refundable.
+
+Tests include a separate Python supervisor process, private bootstrap, partial
+frames, malformed/unauthenticated peers, close/accept races, reused nonces, changed
+reply bindings, cap extension, simulated suspend, and origin loss after claim.
+This transport is implemented; journal integration, actual parent-death/native
+release tests, and native Windows qualification remain separate.

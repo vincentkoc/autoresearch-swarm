@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a private authenticated supervisor channel with one-use pipe bootstrap, fixed absolute deadlines, bounded frames, and claim/release sequencing.
+- Reject stale, mismatched, malformed, or extended permits and close accepted connections atomically with transport shutdown.
 - Persist signed timing sidecars and conservative deadline evidence in worker journals without changing legacy admission hashes.
 - Encode native counter values as canonical decimal strings, reject precision loss and overflow, and prevent cap refresh from extending authority or changing origins.
 - Preserve timed not-started publication after clock failure while refusing any fallback through unqualified local launch gates.
