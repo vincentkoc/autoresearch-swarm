@@ -389,6 +389,18 @@ The CLI derives a stable command key from the restore ID. An exact committed
 request replays before reading mutable private files; a temporary blocker does
 not consume the command key.
 
+Settlement verification uses the shared `control.settlements` boundary. Each
+reservation must map to exactly one settlement with matching ownership, dimensions,
+request digest and terminal actual consumption. Actual values retain the ledger's
+nonnegative Decimal consumption range, including legitimate overshoot; they are
+not rounded or clamped to a reservation limit. The verifier exposes a separate
+`research.budget-settlement-response.v1` digest for evidence consumers. It does not
+rewrite historical settlement bytes or their original request digests.
+
+Generated settlement IDs can be resolved through the exact reservation. Indexed
+lookup guards malformed JSON: corrupt evidence refuses verification without making
+unrelated database initialization depend on parsing that response.
+
 Before activation, the controller requires:
 
 - Every originally unresolved attempt has an immutable operational closure

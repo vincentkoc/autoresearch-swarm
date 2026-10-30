@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Share exact settlement verification between recovery accounting and research evidence consumers. Verify reservation ownership, terminal actuals, request digests and one settlement per reservation; resolve generated settlement IDs without guessing an attempt ID.
+- Preserve the ledger's wider Decimal consumption range in settlement proofs and learning trajectories. Guard indexed lookup against malformed historical JSON so unrelated database startup remains available while invalid evidence refuses qualification.
+
 - Freeze complete learning episode plans against live pending proposals, retained action sources and eligible same-seed comparators; preserve immutable policy, reward, split and context bindings.
 - Let assigned agents commit one controller-sampled decision through SDK, HTTP, CLI and MCP. Require that source for candidate responses, preserve failures, and prevent response races, resampling and retrospective episode reassignment.
 

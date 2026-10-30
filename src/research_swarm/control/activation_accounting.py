@@ -8,10 +8,10 @@ from research_swarm.control.closure import AttemptClosure
 from research_swarm.control.confirmation_models import ExposureData
 from research_swarm.control.confirmation_runtime import bound_confirmation
 from research_swarm.control.models import JobData, TrialData
+from research_swarm.control.settlements import verify_settlement as _settlement
 from research_swarm.control.worker_records import AttemptData
 from research_swarm.domain.backup import RestoreReceipt
 from research_swarm.domain.budgets import BudgetAccount, BudgetEntry, BudgetKind, Reservation
-from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import amount_sum
 from research_swarm.domain.workers import WorkerBinding
@@ -22,45 +22,6 @@ TERMINAL = frozenset({"succeeded", "failed", "cancelled", "not_started", "closed
 
 def _refuse(message: str) -> None:
     raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, message)
-
-
-def _settlement(
-    transaction: Transaction,
-    reservation_id: str,
-    settlement_id: str,
-    owner_id: str,
-    campaign_id: str,
-    actual: dict[str, Decimal] | None,
-) -> None:
-    row = transaction.connection.execute(
-        "SELECT * FROM budget_reservations WHERE workspace_id=? AND id=?",
-        (transaction.workspace_id, reservation_id),
-    ).fetchone()
-    settled = transaction.connection.execute(
-        "SELECT request_digest,response FROM budget_settlements "
-        "WHERE workspace_id=? AND settlement_id=?",
-        (transaction.workspace_id, settlement_id),
-    ).fetchone()
-    if row is None or settled is None:
-        _refuse("Issued execution lacks its reservation or settlement")
-    assert row is not None and settled is not None
-    reservation = Reservation.model_validate_json(row["payload"])
-    response = strict_json_loads(settled["response"])
-    values = {key: Decimal(value) for key, value in response["actual"].items()}
-    payload = {"reservation_id": reservation_id, "actual": response["actual"]}
-    if (
-        row["state"] != "settled"
-        or (row["owner_id"], row["campaign_id"]) != (owner_id, campaign_id)
-        or (reservation.id, reservation.owner_id, reservation.campaign_id)
-        != (reservation_id, owner_id, campaign_id)
-        or response["settlement_id"] != settlement_id
-        or response["reservation_id"] != reservation_id
-        or set(values) != set(reservation.amounts)
-        or any(not value.is_finite() or value < 0 for value in values.values())
-        or (actual is not None and values != actual)
-        or settled["request_digest"] != record_digest("research.budget-settlement", payload)
-    ):
-        _refuse("Issued execution settlement differs from its evidence")
 
 
 def _attempt(transaction: Transaction, identifier: str, *, original: bool) -> bool:

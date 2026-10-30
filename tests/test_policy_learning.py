@@ -226,6 +226,17 @@ def test_cost_direction_and_clipping_are_declared(rollout):
         reward(spec, row.model_copy(update={"consumed": {}}))
 
 
+def test_trajectory_preserves_large_exact_consumption(rollout):
+    _, dataset = rollout
+    row = dataset.trajectories[0].model_dump(mode="json")
+    row["consumed"]["execution_ms"] = "10000000000000000000.000000001"
+    parsed = Trajectory.model_validate(row)
+    assert (
+        parsed.model_dump(mode="json")["consumed"]["execution_ms"]
+        == row["consumed"]["execution_ms"]
+    )
+
+
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), True])
 def test_policy_parameters_refuse_nonfinite_or_boolean_values(value, rollout):
     policy, _ = rollout

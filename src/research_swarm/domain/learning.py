@@ -11,7 +11,7 @@ from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.experiments import Direction
 from research_swarm.domain.types import (
     ID,
-    Amount,
+    BalanceAmount,
     Digest,
     Dimension,
     Name,
@@ -136,7 +136,7 @@ class Trajectory(VersionedRecord):
     comparison_digest: Digest | None = None
     comparator_evaluation_id: ID | None = None
     candidate_evaluation_id: ID | None = None
-    consumed: dict[Dimension, Amount] = Field(max_length=16)
+    consumed: dict[Dimension, BalanceAmount] = Field(max_length=16)
     evidence: tuple[TrajectoryEvidence, ...] = Field(min_length=1, max_length=128)
     reward: FiniteNumber | None
 

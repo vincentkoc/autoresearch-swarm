@@ -129,6 +129,9 @@ CREATE TABLE IF NOT EXISTS budget_settlements (
     response TEXT NOT NULL,
     PRIMARY KEY (workspace_id, settlement_id)
 );
+CREATE INDEX IF NOT EXISTS budget_settlements_reservation
+ON budget_settlements(workspace_id,
+    CASE WHEN json_valid(response) THEN json_extract(response,'$.reservation_id') END);
 CREATE TABLE IF NOT EXISTS budget_entries (
     workspace_id TEXT NOT NULL,
     id TEXT NOT NULL,
