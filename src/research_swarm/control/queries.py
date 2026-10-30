@@ -20,6 +20,9 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
+    "learning_plan",
+    "learning_episode",
+    "learning_decision",
     "artifact_read_session",
     "workspace_gate",
     "workspace_seal",
@@ -108,7 +111,15 @@ def summarize(row: JsonObject) -> JsonObject:
         key: row[key] for key in ("id", "kind", "revision", "state", "campaign_id", "parent_id")
     }
     data = row["data"]
-    if row["kind"] in {
+    if row["kind"] == "learning_plan":
+        result["data"] = {
+            "policy_digest": record_digest(
+                "research.categorical-policy.v1", data["request"]["policy"]
+            ),
+            "episode_count": len(data["episodes"]),
+            "evidence_through": data["evidence_through"],
+        }
+    elif row["kind"] in {"learning_episode", "learning_decision"} or row["kind"] in {
         "acceptance_lease",
         "campaign_obligations",
         "scientific_completion",

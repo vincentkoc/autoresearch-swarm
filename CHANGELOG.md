@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Freeze complete learning episode plans against live pending proposals, retained action sources and eligible same-seed comparators; preserve immutable policy, reward, split and context bindings.
+- Let assigned agents commit one controller-sampled decision through SDK, HTTP, CLI and MCP. Require that source for candidate responses, preserve failures, and prevent response races, resampling and retrospective episode reassignment.
+
 - Add bounded policy, reward, decision, trajectory, dataset and training-receipt contracts, with a one-step categorical REINFORCE adapter that rejects mixed behavior policies, missing episodes, held-out data and invalid rewards.
 - Run policy-parameter training as an ordinary CPU project with protected independent update checking and normal job/evaluator accounting. Numerical qualification is separate from controller-authenticated research trajectories and held-out policy adoption.
 

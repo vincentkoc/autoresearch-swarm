@@ -7,9 +7,10 @@ model or automatically adopt the learned policy.
 
 This is the numerical training layer. The current example accepts structured
 input artifacts; parsing those artifacts does not establish that their claimed
-research evidence is authentic. Controller-side decision precommitment, complete
-episode/split ownership, dataset qualification and held-out policy evaluation are
-separate requirements before a research-learning claim.
+research evidence is authentic. [Controller-side decision precommitment and
+episode/split ownership](../../docs/agent-control.md#freeze-learning-episodes-before-proposal-responses)
+are available through the regular API. Dataset qualification and held-out policy
+evaluation remain separate requirements before a research-learning claim.
 
 ## Contract
 

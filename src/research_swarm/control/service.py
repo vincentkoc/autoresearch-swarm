@@ -48,6 +48,8 @@ from research_swarm.control.evaluations import (
 )
 from research_swarm.control.import_models import ImportHistoricalEvidence
 from research_swarm.control.imports import HistoricalImportControl
+from research_swarm.control.learning import LearningControl
+from research_swarm.control.learning_models import CommitPolicyDecision, FreezeLearningPlan
 from research_swarm.control.models import (
     CampaignContract,
     CampaignData,
@@ -220,6 +222,7 @@ class ResearchService:
             database, assignment_key, crypto_provider=self.crypto_provider
         )
         self.proposals = ProposalControl(database)
+        self.learning = LearningControl(database)
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
         self.search_admission = SearchAdmission(
@@ -412,6 +415,16 @@ class ResearchService:
 
     def request_proposal(self, context: CommandContext, request: RequestProposal) -> JsonObject:
         return self.proposals.request(context, request)
+
+    def freeze_learning_plan(
+        self, context: CommandContext, request: FreezeLearningPlan
+    ) -> JsonObject:
+        return self.learning.freeze(context, request)
+
+    def commit_policy_decision(
+        self, context: CommandContext, request: CommitPolicyDecision
+    ) -> JsonObject:
+        return self.learning.commit_decision(context, request)
 
     def respond_proposal(self, context: CommandContext, request: RespondToProposal) -> JsonObject:
         return self.proposals.respond(context, request)

@@ -33,6 +33,7 @@ from research_swarm.control.completion_models import (
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.import_models import ImportHistoricalEvidence
+from research_swarm.control.learning_models import CommitPolicyDecision, FreezeLearningPlan
 from research_swarm.control.observation_models import (
     AbandonObservationSelection,
     ObserveTrial,
@@ -101,6 +102,20 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.freeze_plan": CommandDefinition(
+        FreezeLearningPlan,
+        "freeze_learning_plan",
+        "learning.manage",
+        False,
+        "Freeze all pending episodes, action sources, reward, splits and same-seed comparators.",
+    ),
+    "learning.commit_decision": CommandDefinition(
+        CommitPolicyDecision,
+        "commit_policy_decision",
+        "proposal.respond",
+        False,
+        "Sample one owned frozen episode once, before accepting its candidate response.",
+    ),
     "artifact.reconcile_reader_session": CommandDefinition(
         ReaderSessionTarget,
         "reconcile_reader_session",

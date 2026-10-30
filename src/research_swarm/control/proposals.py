@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from research_swarm.control.comparisons import eligible_evaluation
+from research_swarm.control.learning_guard import require_learning_response
 from research_swarm.control.models import CampaignData, CandidateData
 from research_swarm.control.portfolio import portfolio_contract, validate_portfolio_request
 from research_swarm.control.queries import summarize
@@ -281,6 +282,7 @@ class ProposalControl:
                         ErrorCode.IDEMPOTENCY_CONFLICT, "Original proposal response differs"
                     )
                 return existing
+            require_learning_response(transaction, response)
             for reference, purpose in (
                 (response.source_artifact, "response_source"),
                 (response.response_artifact, "response_trace"),

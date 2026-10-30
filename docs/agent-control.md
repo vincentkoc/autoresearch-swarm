@@ -660,3 +660,108 @@ already include descendants: do not add child totals a second time.
 This supports bounded recursive research execution. Policy-training artifacts,
 held-out policy comparison, and a demonstrated RL improvement remain separate
 capabilities; nested campaigns alone are not evidence of self-improvement.
+
+## Freeze learning episodes before proposal responses
+
+The first learning profile makes one proposal request one episode. Its episode ID
+is the proposal request ID. The controller freezes the complete ordered batch
+before any member has a response. It records the policy, reward specification,
+development/held-out split, source artifacts, seed, context, controller epoch,
+incumbent revision and comparator evaluation. Every comparator must still be
+eligible and use the same experiment seed as its proposal.
+
+Action `source_digest` means the digest of the uploaded source artifact bytes.
+It is distinct from the verified source-tree digest. Ordinary candidate validation
+still checks the source tree and allowed mutation surface during admission.
+Freezing a plan retains the declared artifacts; it does not validate or run them.
+
+An operator with `learning.manage` creates the plan. These source references and
+pending requests come from the existing source-upload and proposal APIs:
+
+```python
+from research_swarm.control.learning_models import FreezeLearningPlan, PlanEpisode
+from research_swarm.domain.experiments import Direction
+from research_swarm.domain.learning import CategoricalPolicy, PolicyAction, RewardSpec
+from research_swarm.domain.types import new_id
+
+sources = {"fast": fast_source, "slow": slow_source}
+intent = FreezeLearningPlan(
+    plan_id=new_id(),
+    policy=CategoricalPolicy(
+        actions=tuple(
+            PolicyAction(id=name, source_digest=source.digest) for name, source in sources.items()
+        ),
+        logits=(0.0, 0.0),
+    ),
+    reward_spec=RewardSpec(
+        metric_name="val_bpb",
+        direction=Direction.MINIMIZE,
+        scale=5.0,
+    ),
+    action_artifacts=sources,
+    episodes=tuple(
+        PlanEpisode(request_id=request_id, split="development")
+        for request_id in pending_request_ids
+    ),
+)
+plan = operator.command("learning.freeze_plan", intent, idempotency_key="freeze-learning-batch")[
+    "result"
+]
+```
+
+The command admits 1–256 distinct pending requests and 2–32 actions. All episode
+bindings, artifact retentions and events commit together. A request cannot enter a
+second plan or change its split. A changed policy, reward or episode list requires
+a new plan over fresh requests. The original plan remains part of the evidence.
+
+The assigned proposer needs only its existing `proposal.respond` scope to obtain
+one controller-computed decision:
+
+```python
+from research_swarm.control.learning_models import CommitPolicyDecision
+from research_swarm.control.search_models import RespondToProposal
+from research_swarm.domain.evidence import ArtifactRef
+
+committed = agent.command(
+    "learning.commit_decision",
+    CommitPolicyDecision(request_id=request_id),
+    idempotency_key="sample-learning-episode",
+)["result"]["data"]
+agent.command(
+    "search.respond",
+    RespondToProposal(
+        request_id=request_id,
+        outcome="candidate",
+        source_artifact=ArtifactRef.model_validate(committed["source_artifact"]),
+        hypothesis="Evaluate the frozen policy's selected source",
+    ),
+    idempotency_key="respond-learning-episode",
+)
+```
+
+The agent does not submit probabilities, a random draw or an action choice.
+The controller derives and records them from the frozen policy and context.
+Retries, including retries under a different command key, return the original
+decision. Another proposer cannot sample it, and stale or corrected comparator
+evidence blocks a new decision. A historical decision remains readable/replayable
+after later changes; that replay grants no fresh execution or scientific authority.
+
+Candidate responses for learning-bound proposals require the committed source.
+Failures remain recordable, including failure before a decision or after
+cancellation. Such episodes retain their bindings and cannot be sampled
+retroactively or dropped into a smaller successful batch. Ordinary proposals
+continue to use their existing response behavior.
+
+Both commands use the standard SDK, HTTP and CLI command catalog. MCP exposes
+`research_learning_freeze_plan` and `research_learning_commit_decision`.
+Operators can inspect `learning_plan`, `learning_episode` and
+`learning_decision` through regular evidence queries. Plan lists return bounded
+summaries; a detail query returns the complete frozen contract.
+
+This is decision provenance, not dataset qualification. It neither reserves trial
+capacity nor admits candidates or promotes policies. Normal response admission,
+job accounting and independent evaluation still apply. The numerical trainer in
+[the CPU policy example](../examples/cpu_policy_learning/README.md) remains separate.
+A controller-qualified trajectory dataset must still verify actual admission,
+comparison eligibility, corrections and settled costs for every planned episode.
+Held-out policy comparison and policy adoption remain pending.
