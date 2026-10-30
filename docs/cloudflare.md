@@ -9,7 +9,8 @@ Current implementation includes the native delivery gateway, a hybrid Workflow
 driver with a durable transport registry, and locally qualified Cloudflare
 storage/signing primitives. A native bridge delivers the durable wakeup outbox.
 A separate agent API facade forwards caller identities to the same native API.
-R2 storage remains separate work. Hosted deployment is not part of the local
+The [native R2 byte adapter](r2.md) is implemented; persistent runtime selection
+and R2 emulator qualification remain separate work. Hosted deployment is not part of the local
 qualification.
 
 ## Authority clock boundary
@@ -247,8 +248,8 @@ Declared-length responses use `FixedLengthStream`; identity encoding and
 `no-transform` preserve those bytes and lengths. Responses are not cached.
 [Cloudflare response contract](https://developers.cloudflare.com/workers/runtime-apis/response/#set-the-content-length-header)
 
-The pinned local HTTP proxy continues draining responses after a downstream
-socket closes, so it cannot qualify immediate disconnect propagation. Boundary
+The pinned Wrangler/workerd fixture did not propagate downstream socket closure
+promptly; immediate disconnect propagation remains unqualified. Boundary
 tests verify direct stream cancellation, while the native fixture verifies that
 a stalled upstream closes within the configured idle deadline after a downstream
 disconnect. Hosted disconnect behavior remains a separate deployment check.

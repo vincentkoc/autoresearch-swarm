@@ -149,13 +149,19 @@ class ArtifactService:
         store: BlobStore,
         *,
         storage_limit_bytes: int = 1024**4,
+        max_object_bytes: int | None = None,
         reader_ownership: ReaderOwnership | None = None,
     ) -> None:
         if type(storage_limit_bytes) is not int or storage_limit_bytes < 0:
             raise ValueError("Storage limit must be a nonnegative integer")
+        if max_object_bytes is not None and (
+            type(max_object_bytes) is not int or max_object_bytes < 0
+        ):
+            raise ValueError("Object limit must be a nonnegative integer")
         self.database = database
         self.store = store
         self.storage_limit_bytes = storage_limit_bytes
+        self.max_object_bytes = max_object_bytes
         self.reader_session_id = new_id()
         self.reader_ownership = (
             reader_ownership if reader_ownership is not None else NativeReaderOwnership()
@@ -194,6 +200,12 @@ class ArtifactService:
 
     def create_upload_in(self, transaction: Transaction, request: BeginUpload) -> JsonObject:
         """Create quota-accounted upload state inside the caller's authorized transaction."""
+        if self.max_object_bytes is not None and request.size_bytes > self.max_object_bytes:
+            raise ResearchError(
+                ErrorCode.RESOURCE_UNAVAILABLE,
+                "Artifact exceeds the storage adapter's object limit",
+                details={"max_object_bytes": self.max_object_bytes},
+            )
         rows = transaction.connection.execute(
             "SELECT kind,id FROM records WHERE workspace_id=? AND "
             "((kind='upload' AND state IN ('pending','cleanup','aborting')) OR "
