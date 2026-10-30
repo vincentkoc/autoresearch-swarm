@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Define complete Ed25519-signed worker assignments with public-only verification, enrollment fencing, and canonical interoperability fixtures.
 - Add `research run` to freeze a project, create an external-agent campaign, and execute its baseline through the local driver.
 - Persist source and bootstrap identity across interrupted uploads and commands, without recapturing changed or missing checkouts.
 - Return bounded evidence context and explicit awaiting-proposals, awaiting-completion, or review outcomes without claiming research completion.

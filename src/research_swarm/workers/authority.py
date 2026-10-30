@@ -6,18 +6,13 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 
+from pydantic import TypeAdapter
+
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
-from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord, utc_now
-
-
-class WorkerBinding(VersionedRecord):
-    workspace_id: ID
-    controller_id: ID
-    worker_id: ID
-    worker_session_id: ID
-    control_epoch: Revision
+from research_swarm.domain.types import Timestamp, utc_now
+from research_swarm.domain.workers import WorkerBinding as WorkerBinding
 
 
 @dataclass(frozen=True)
@@ -66,28 +61,39 @@ class DispatchVerifier:
         spec.verify()
         if not hmac.compare_digest(_permit(envelope, self._key), envelope.launch_permit_digest):
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Dispatch authentication failed")
-        for field in WorkerBinding.model_fields:
-            if field != "schema_version" and getattr(envelope, field) != getattr(
-                self.binding, field
-            ):
-                raise ResearchError(
-                    ErrorCode.STALE_FENCE, "Dispatch does not match enrolled authority"
-                )
-        if (
-            envelope.workspace_id != spec.workspace_id
-            or envelope.campaign_id != spec.campaign_id
-            or envelope.trial_id != spec.trial_id
-            or envelope.spec_digest != spec.spec_digest
-            or envelope.stage_id not in {stage.id for stage in spec.stages}
-            or not envelope.reservation_ids
-        ):
-            raise ResearchError(
-                ErrorCode.PROJECT_CONTRACT_INVALID, "Dispatch and experiment differ"
-            )
-        now = authority_now or utc_now()
-        if (
-            not allow_expired_observation
-            and min(envelope.expires_at, envelope.hard_deadline_at) <= now
-        ):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Dispatch launch authority has expired")
-        return VerifiedDispatch(envelope, spec)
+        return verify_dispatch_contract(
+            self.binding,
+            envelope,
+            spec,
+            authority_now=authority_now or utc_now(),
+            allow_expired_observation=allow_expired_observation,
+        )
+
+
+def verify_dispatch_contract(
+    binding: WorkerBinding,
+    envelope: DispatchEnvelope,
+    spec: ExperimentSpec,
+    *,
+    authority_now: Timestamp,
+    allow_expired_observation: bool = False,
+) -> VerifiedDispatch:
+    envelope = DispatchEnvelope.model_validate(envelope)
+    spec = ExperimentSpec.model_validate(spec)
+    spec.verify()
+    for field in WorkerBinding.model_fields:
+        if field != "schema_version" and getattr(envelope, field) != getattr(binding, field):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Dispatch does not match enrolled authority")
+    if (
+        envelope.workspace_id != spec.workspace_id
+        or envelope.campaign_id != spec.campaign_id
+        or envelope.trial_id != spec.trial_id
+        or envelope.spec_digest != spec.spec_digest
+        or envelope.stage_id not in {stage.id for stage in spec.stages}
+        or not envelope.reservation_ids
+    ):
+        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Dispatch and experiment differ")
+    now = TypeAdapter(Timestamp).validate_python(authority_now)
+    if not allow_expired_observation and min(envelope.expires_at, envelope.hard_deadline_at) <= now:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Dispatch launch authority has expired")
+    return VerifiedDispatch(envelope, spec)
