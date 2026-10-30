@@ -23,7 +23,8 @@ Implemented foundations include the transactional ledger, exact budget arithmeti
 evaluation receipt validation, verified artifact lifecycle, and immutable source
 bundles. The authenticated HTTP API, Python SDK, JSON CLI, and stdio MCP tools
 share one command service. The local runner executes a frozen baseline and exposes
-the campaign to external agents. Automated proposal policies remain in progress.
+the campaign to external agents. Greedy and asynchronous portfolio policies
+coordinate their responses; learned proposal policies remain in progress.
 
 Start with `uv sync --group dev`, then `uv run research init` and
 `uv run research capabilities`. Run `uv run research mcp` to expose agent tools.
@@ -33,6 +34,8 @@ See [evaluation authority](docs/evaluation.md) for the boundary between measurem
 See [campaign control](docs/campaigns.md) for pause, completion, and evidence reports.
 See [durable orchestration](docs/orchestration.md) for saved action retries and
 dedicated driver ownership without changing worker custody.
+See [event recovery](docs/api.md#recover-an-expired-event-cursor) for frozen
+snapshots and bounded catch-up when a client reconnects after stream expiry.
 
 Run the original CPU example with `uv run research run examples/cpu_bigram`.
 See [local runs](docs/local-runs.md) for resume, budgets, and agent control.

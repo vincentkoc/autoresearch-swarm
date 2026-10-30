@@ -54,6 +54,7 @@ not implicitly supported.
 | Hierarchical allocation ledger | Immutable grants, bounded lineage, live ancestor accounting, deficit admission guard, projection receipts and terminal settlement | Independent SQLite races, uncertainty, committed overshoot, sibling blocking, recursive release, replay/reopen, rollback and exact decimals | Public child lifecycle and real CPU child execution locally verified |
 | Nested campaigns and policy benchmark | Funded child API, inherited contracts, bounded depth and admission counters, final settlement reports | HTTP creation, CLI cancellation, real CPU descendants, counter/pending-promise conflicts, confirmation rollback, UNKNOWN closure and completion rollback | Local funded recursion verified; policy benchmark and held-out comparison pending |
 | Temporal | Pending | Pending | Real server pending |
+| Event recovery | Explicit logical floor, frozen authorized views, bounded content chunks, retained catch-up pins, terminal cleanup and schema migration | Concurrent writers/openers, rollback, real HTTP/SSE gaps, CLI/MCP replay, revocation, expiry/clock rollback and integrity failures | Local SQLite and transport proof; provider storage qualification remains separate |
 | Durable orchestration turns and waits | Initial bindings, dedicated routes, exact actions, transaction fences, durable event/timer conditions and destination-specific deliveries | Independent runner races, HTTP/runtime recovery, bound evaluation/admission, key collisions, staging guards, actual controller exit, duplicate notification, timer recovery and parent-child wakeups | Local turn/wait conformance; ownership transfer and provider execution pending |
 | Cloudflare | Pending | Pending | Hosted deployment pending |
 | Actual reward-driven policy learning | Pending | Pending | Training/evaluation pending |
@@ -97,7 +98,7 @@ transport, process, or provider behavior.
 - **C23** — Evaluation returns an incomplete panel. Local pipeline records incomplete evidence and does not make it rankable.
 - **C24** — Protected evaluation times out after access. Pending end-to-end evidence.
 - **C25** — Dedicated driver principals are fenced inside domain write transactions; already accepted/rejected actions still reconcile, and no client-supplied fence can be omitted to gain direct write access. Initial binding/fencing is locally verified; reconciled checkpoint transfer to another adapter remains pending.
-- **C26** — Event cursor falls outside retained stream history. Pending end-to-end evidence.
+- **C26** — Expired cursors return an explicit typed gap over HTTP and SSE. A reader creates an authorized frozen snapshot, verifies bounded pages/chunks, and resumes after its exact watermark. Retention preserves permanent event/outbox/wait evidence. Local API/CLI/MCP proof.
 - **C27** — Worker lacks a required isolation feature. Pending end-to-end evidence.
 - **C28** — Process spawns a child and cancellation occurs. Pending end-to-end evidence.
 - **C29** — Native clocks differ. Pending end-to-end evidence.
@@ -110,7 +111,7 @@ transport, process, or provider behavior.
 - **C36** — Two controllers enroll the same exclusive device. Pending end-to-end evidence.
 - **C37** — Cross-principal search CAS admits one trial and consumes one observation; losing responses and equivalent assessments remain evidence. Greedy resolves accepted selections after restart without duplicating incumbent movement. Portfolio qualification also proves that a third native workload starts while an original sibling remains alive, after another sibling promotes; two registered HTTP workers share one capacity ledger and a separate evaluator. This is process-overlap proof, not throughput scaling.
 - **C38** — Corrections preserve evidence and suspend affected selection. Explicit abandonment of a selected trial records fresh closed evidence or verified pinned-comparator corrections, preserves original pins/metrics, and releases only the policy slot.
-- **C39** — Events arrive while a client recovers from a cursor gap. Pending end-to-end evidence.
+- **C39** — Independent writers commit during snapshot capture and between pages. Frozen records and budgets remain at the original watermark; subsequent events appear strictly after it. A retention pin prevents pruning the catch-up interval until explicit release or terminal expiry. Local SQLite and transport proof.
 - **C40** — Retained artifacts outlive a completed job. Pending end-to-end evidence.
 - **C41** — Exact completion replay and repeated explicit settlement with new delivery keys through a reopened runtime return one immutable receipt without changing ancestor consumption or release again. Local CPU and independent-connection proof; provider delivery remains separate.
 - **C42** — Python and another implementation hash edge-case fixtures. Pending end-to-end evidence.

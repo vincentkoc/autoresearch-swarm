@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add explicit event-history gaps, consistent event watermarks, and frozen paginated recovery snapshots through HTTP, Python, CLI, and MCP.
+- Pin catch-up intervals during recovery, verify bounded snapshot chunks, and preserve permanent event and wait evidence independently of logical stream retention.
+- Bound snapshot storage, reclaim expired content with terminal tombstones, prevent clock rollback from reviving expired recovery, and migrate SQLite schema transactionally under concurrent openers.
+
 - Persist event/timer waits with exact planning watermarks and destination-bound wakeups in the domain transaction; recover commit-to-notification crashes without losing conditions.
 - Add API-only async wait polling and at-least-once delivery, preserve acknowledgments separately from evidence consumption, and wake parent campaigns when child allocations change or close.
 - Prevent stale rejected preparations from poisoning a later valid turn, and preserve old wait destinations when orchestration ownership is fenced.

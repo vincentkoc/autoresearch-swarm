@@ -22,6 +22,7 @@ from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, Wo
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import new_id
@@ -154,6 +155,8 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
             ErrorCode.PROJECT_CONTRACT_INVALID: 422,
             ErrorCode.SCHEMA_UNSUPPORTED: 422,
             ErrorCode.CAPABILITY_UNAVAILABLE: 501,
+            ErrorCode.EVENT_CURSOR_EXPIRED: 410,
+            ErrorCode.SNAPSHOT_EXPIRED: 410,
         }.get(error.code, 409)
         return JSONResponse(error.as_dict(), status_code=status)
 
@@ -357,11 +360,23 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         after: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     ) -> JsonObject:
-        result = await asyncio.to_thread(service.database.events, context, after=after, limit=limit)
-        return {
-            "events": [event.model_dump(mode="json") for event in result],
-            "cursor": result[-1].sequence if result else after,
-        }
+        return await asyncio.to_thread(
+            service.database.event_page, context, after=after, limit=limit
+        )
+
+    @app.post("/v1/snapshot/page")
+    async def snapshot_page(
+        request: Request, context: Annotated[CommandContext, Depends(read_context)]
+    ) -> JsonObject:
+        parsed = RecoveryPage.model_validate(await read_json(request))
+        return await asyncio.to_thread(service.event_recovery.page, context, parsed)
+
+    @app.post("/v1/snapshot/item")
+    async def snapshot_item(
+        request: Request, context: Annotated[CommandContext, Depends(read_context)]
+    ) -> JsonObject:
+        parsed = RecoveryItem.model_validate(await read_json(request))
+        return await asyncio.to_thread(service.event_recovery.item, context, parsed)
 
     @app.get("/v1/events/stream")
     async def event_stream(
@@ -369,6 +384,8 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         context: Annotated[CommandContext, Depends(read_context)],
         after: Annotated[int, Query(ge=0)] = 0,
     ) -> StreamingResponse:
+        await asyncio.to_thread(service.database.event_page, context, after=after, limit=1)
+
         async def stream() -> AsyncIterator[bytes]:
             cursor = after
             while not await request.is_disconnected():
@@ -377,9 +394,15 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
                     await principal(request.headers.get("authorization"))
                 except ResearchError:
                     return
-                batch = await asyncio.to_thread(
-                    service.database.events, context, after=cursor, limit=100
-                )
+                try:
+                    batch = await asyncio.to_thread(
+                        service.database.events, context, after=cursor, limit=100
+                    )
+                except ResearchError as error:
+                    if error.code != ErrorCode.EVENT_CURSOR_EXPIRED:
+                        raise
+                    yield b"event: gap\ndata: " + canonical_bytes(error.as_dict()) + b"\n\n"
+                    return
                 for event in batch:
                     yield (
                         b"id: "

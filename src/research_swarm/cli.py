@@ -15,6 +15,7 @@ from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.runtime import LocalRuntime, read_private
 
 
@@ -177,6 +178,17 @@ def parser() -> argparse.ArgumentParser:
     events = commands.add_parser("events")
     events.add_argument("--after", type=int, default=0)
     events.add_argument("--limit", type=int, default=100)
+    snapshot = commands.add_parser("snapshot")
+    snapshot_actions = snapshot.add_subparsers(dest="snapshot_action", required=True)
+    snapshot_page = snapshot_actions.add_parser("page")
+    snapshot_page.add_argument("snapshot_id")
+    snapshot_page.add_argument("--limit", type=int, default=50)
+    snapshot_page.add_argument("--cursor")
+    snapshot_item = snapshot_actions.add_parser("item")
+    snapshot_item.add_argument("snapshot_id")
+    snapshot_item.add_argument("ordinal", type=int)
+    snapshot_item.add_argument("--offset", type=int, default=0)
+    snapshot_item.add_argument("--limit", type=int, default=64 * 1024)
     artifact = commands.add_parser("artifact")
     artifact_actions = artifact.add_subparsers(dest="artifact_action", required=True)
     upload = artifact_actions.add_parser("upload")
@@ -390,6 +402,23 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
         return client.budget(args.campaign_id)
     if args.action == "events":
         return client.events(after=args.after, limit=args.limit)
+    if args.action == "snapshot":
+        if args.snapshot_action == "page":
+            return client.snapshot_page(
+                RecoveryPage(
+                    snapshot_id=args.snapshot_id,
+                    limit=args.limit,
+                    cursor=args.cursor,
+                )
+            )
+        return client.snapshot_item(
+            RecoveryItem(
+                snapshot_id=args.snapshot_id,
+                ordinal=args.ordinal,
+                offset=args.offset,
+                limit=args.limit,
+            )
+        )
     if args.action == "artifact":
         if args.artifact_action == "upload":
             return client.upload_file(args.path, idempotency_key=args.key).model_dump(mode="json")

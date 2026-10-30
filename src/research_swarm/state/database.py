@@ -13,6 +13,8 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import Event
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
+from research_swarm.state.events import event_page
+from research_swarm.state.migrations import SCHEMA_VERSION, enable_wal, initialize
 
 JsonObject = dict[str, Any]
 
@@ -129,7 +131,6 @@ CREATE TABLE IF NOT EXISTS budget_entries (
     PRIMARY KEY (workspace_id, id),
     UNIQUE (workspace_id, settlement_id, campaign_id, dimension)
 );
-PRAGMA user_version = 1;
 """
 
 
@@ -314,11 +315,11 @@ class Database:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, SCHEMA_VERSION):
                 raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported database schema")
-            connection.execute("PRAGMA journal_mode=WAL")
+            enable_wal(connection, timeout_ms=busy_timeout_ms)
             connection.execute("PRAGMA synchronous=FULL")
-            connection.executescript(SCHEMA)
+            initialize(connection, SCHEMA)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -493,16 +494,22 @@ class Database:
             return Transaction(connection, context).get(kind, identifier)
 
     def events(self, context: CommandContext, *, after: int = 0, limit: int = 100) -> list[Event]:
+        return [
+            Event.model_validate(item)
+            for item in self.event_page(context, after=after, limit=limit)["events"]
+        ]
+
+    def event_page(
+        self, context: CommandContext, *, after: int = 0, limit: int = 100
+    ) -> JsonObject:
         context.principal.require("read")
-        if not after >= 0 or not 1 <= limit <= 1000:
-            raise ValueError("Invalid event cursor or page size")
         with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT payload FROM events WHERE workspace_id=? AND sequence>? "
-                "ORDER BY sequence LIMIT ?",
-                (context.principal.workspace_id, after, limit),
-            ).fetchall()
-        return [Event.model_validate_json(row["payload"]) for row in rows]
+            connection.execute("BEGIN")
+            result = event_page(
+                connection, context.principal.workspace_id, after=after, limit=limit
+            )
+            connection.commit()
+        return result
 
     def pending_notifications(self, *, limit: int = 100) -> list[Event]:
         with self.connect() as connection:

@@ -36,6 +36,7 @@ from research_swarm.domain.artifacts import ArtifactRecord
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import ID, VersionedRecord, new_id
@@ -165,13 +166,17 @@ class LocalTransport:
             )
         if operation == "events":
             after = payload.get("after", 0)
-            events = self.runtime.database.events(
+            return self.runtime.database.event_page(
                 context, after=after, limit=payload.get("limit", 100)
             )
-            return {
-                "events": [event.model_dump(mode="json") for event in events],
-                "cursor": events[-1].sequence if events else after,
-            }
+        if operation == "snapshot.page":
+            return self.runtime.service.event_recovery.page(
+                context, RecoveryPage.model_validate(payload)
+            )
+        if operation == "snapshot.item":
+            return self.runtime.service.event_recovery.item(
+                context, RecoveryItem.model_validate(payload)
+            )
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Unknown research query")
 
     def begin_upload(self, request: BeginUpload, key: str) -> JsonObject:
@@ -354,6 +359,8 @@ class HTTPTransport:
             return self._request("GET", f"/v1/campaigns/{identifier}/{operation}", params=params)
         if operation == "events":
             return self._request("GET", "/v1/events", params=payload)
+        if operation in {"snapshot.page", "snapshot.item"}:
+            return self._request("POST", "/v1/" + operation.replace(".", "/"), json=payload)
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Unknown research query")
 
     def begin_upload(self, request: BeginUpload, key: str) -> JsonObject:
@@ -567,6 +574,12 @@ class ResearchClient:
     def events(self, *, after: int = 0, limit: int = 100) -> JsonObject:
         return self.transport.query("events", {"after": after, "limit": limit})
 
+    def snapshot_page(self, request: RecoveryPage) -> JsonObject:
+        return self.transport.query("snapshot.page", request.model_dump(mode="json"))
+
+    def snapshot_item(self, request: RecoveryItem) -> JsonObject:
+        return self.transport.query("snapshot.item", request.model_dump(mode="json"))
+
     def upload_file(
         self, path: Path, *, idempotency_key: str, media_type: str = "application/octet-stream"
     ) -> ArtifactRef:
@@ -704,6 +717,12 @@ class AsyncResearchClient:
 
     async def events(self, *, after: int = 0, limit: int = 100) -> JsonObject:
         return await asyncio.to_thread(self.client.events, after=after, limit=limit)
+
+    async def snapshot_page(self, request: RecoveryPage) -> JsonObject:
+        return await asyncio.to_thread(self.client.snapshot_page, request)
+
+    async def snapshot_item(self, request: RecoveryItem) -> JsonObject:
+        return await asyncio.to_thread(self.client.snapshot_item, request)
 
     async def upload_file(
         self, path: Path, *, idempotency_key: str, media_type: str = "application/octet-stream"

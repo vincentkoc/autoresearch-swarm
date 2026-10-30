@@ -52,6 +52,8 @@ bodies are rejected. The command body limit is 1 MiB.
 | `GET /v1/campaigns/{id}/budget` | Exact decimal account values and availability |
 | `GET /v1/events?after=N` | Up to 1,000 events after a workspace sequence |
 | `GET /v1/events/stream?after=N` | Resumable server-sent events with sequence IDs |
+| `POST /v1/snapshot/page` | Up to 100 immutable recovery item descriptors |
+| `POST /v1/snapshot/item` | Up to 64 KiB of one frozen canonical JSON item, as base64 |
 
 List cursors bind their workspace and filters. They freeze the insertion range,
 so later insertions do not extend an in-progress page sequence. Record state is
@@ -77,8 +79,112 @@ Authorization binds the exact active assignment and is rechecked when retaining
 the storage generation. Generic artifact endpoints still require workspace read
 authority. See [attempt-bound inputs](worker-assignments.md#attempt-bound-inputs).
 
-Event streams recheck credentials between polling batches. Events remain durable
-when a client disconnects. The current store retains the complete event stream.
+Event streams recheck credentials between polling batches. Disconnecting does
+not delete events or acknowledge notifications. Logical stream retention and the
+permanent event ledger have separate lifecycles.
+
+## Recover an expired event cursor
+
+Event pages return `events`, `cursor`, `event_floor`, and `watermark` from one read
+transaction. `cursor` advances only through returned events. `watermark` is the
+latest committed event position, not proof the reader consumed those events.
+`after == event_floor - 1` is valid; older cursors return
+`EVENT_CURSOR_EXPIRED` with HTTP 410 and the recovery command name. Future
+cursors are invalid. An initially stale SSE request returns 410 before stream
+headers. If retention overtakes an established SSE connection, it emits one
+`event: gap` frame with the structured error and closes, without a synthetic ID.
+
+Create a frozen recovery view through `stream.create_snapshot`, using a new
+`snapshot_id` and a stable command key. It requires workspace `read` authority.
+The result binds the reader, workspace, projection version, controller identity,
+control epoch, content counts, expiry, and exact event watermark `W`. Snapshot
+creation freezes public record kinds and budget account/reservation/entry
+projections in one transaction. Internal command receipts, credentials, private
+ownership records, artifact bytes, and native worker state are excluded. This
+is a client read-model checkpoint, not a workspace backup or ownership transfer.
+
+`RecoveryPage` binds its opaque cursor to that snapshot and scope. Each manifest
+entry supplies an ordinal, content digest, and byte size. `RecoveryItem` returns
+bounded chunks of the corresponding frozen canonical JSON, not a later live
+record. Read and verify every chunk before using an item. The synchronous SDK
+provides `SnapshotReader`; async clients expose the same page/item methods.
+
+~~~python
+from research_swarm.domain.event_recovery import (
+    CreateRecoverySnapshot,
+    RecoverySnapshot,
+    RecoverySnapshotTarget,
+)
+from research_swarm.recovery import SnapshotReader
+
+snapshot = RecoverySnapshot.model_validate(
+    client.command(
+        "stream.create_snapshot",
+        CreateRecoverySnapshot(snapshot_id=snapshot_id),
+        idempotency_key=recovery_command_key,
+    )["result"]
+)
+reader = SnapshotReader(client, snapshot)
+staged_items = list(reader.items())  # Use a staging store for large workspaces.
+assert reader.completed
+install_read_model_atomically(staged_items, watermark=snapshot.watermark)
+
+cursor = snapshot.watermark
+while True:
+    page = client.events(after=cursor)
+    apply_or_refresh_from_events(page["events"])  # Deduplicate by event ID.
+    cursor = page["cursor"]
+    if cursor == page["watermark"]:
+        break
+
+client.command(
+    "stream.release_snapshot",
+    RecoverySnapshotTarget(snapshot_id=snapshot.id),
+    idempotency_key=release_command_key,
+)
+~~~
+
+Install a complete snapshot atomically in the consuming application. Do not apply
+partially fetched pages to its active view. Events can act as invalidations that
+trigger named record reads; their payloads do not necessarily contain a complete
+replacement record. Persist each consumed cursor with the corresponding local
+view update. A report revision is not an event cursor.
+
+An active snapshot pins the interval strictly after `W`. Retention cannot advance
+beyond `W + 1` until release or expiry. Fetching the final page does not release
+the pin; its response may be lost. Release after installing the snapshot and
+catching up. If recovery expires or another gap occurs, obtain a new snapshot.
+After release, later disconnects can require another recovery normally.
+
+Defaults are a five-minute pin, at most 100,000 items, and 256 MiB of frozen
+content. Callers may narrow these bounds; pin lifetime ranges from 30 seconds to
+one hour. Admission caps unreclaimed snapshots at eight per reader, 64 per
+workspace, and 1 GiB of workspace content. Exceeding a bound rolls back the
+entire snapshot. `SnapshotReader` additionally limits each decoded item to
+32 MiB by default, configurable up to 256 MiB. It never releases a pin itself.
+
+`stream.advance_floor` requires `stream.manage`, an exact `previous_floor`, and
+the new first-available event sequence. It advances logical retention only.
+Permanent events, undelivered outbox messages, and durable wait evidence remain
+available to their own protocols. `stream.collect_expired` reclaims a bounded
+batch of expired contents and retains terminal metadata. Creation also reclaims
+up to eight expired snapshots belonging to that reader. Expired, unreclaimed
+content still counts against admission limits. Revoked readers' abandoned views
+can be collected by the operator. Release and collection are idempotent commands.
+
+Expiration uses controller UTC. Collection/floor advancement records terminal
+expiry; a backward clock adjustment cannot revive that snapshot. Reads also
+reject a snapshot if the current floor has crossed its catch-up interval. Each
+page or chunk reauthorizes the original reader. A new reader starts its own
+snapshot instead of adopting another principal's cursor.
+
+CLI equivalents are `research command stream.create_snapshot`,
+`research snapshot page ID`, and `research snapshot item ID ORDINAL`.
+MCP exposes the four stream commands plus `research_snapshot_page` and
+`research_snapshot_item`. The SQLite store upgrades schema 1 to 2 in one
+transaction, retaining original command acknowledgments and event sequences.
+Concurrent openers recheck the schema under the migration lock; a failed
+migration rolls back, and newer unsupported schemas are rejected.
 
 ## Artifact transfer
 

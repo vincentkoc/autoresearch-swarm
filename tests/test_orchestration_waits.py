@@ -17,6 +17,7 @@ from research_swarm.control.wait_models import (
 )
 from research_swarm.domain.budgets import BudgetLimit
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.event_recovery import AdvanceEventFloor
 from research_swarm.domain.orchestration import DriveAction
 from research_swarm.domain.orchestration_waits import WaitCondition, WakeupDelivery
 from research_swarm.domain.types import new_id
@@ -96,6 +97,24 @@ def test_registration_catches_event_between_snapshot_and_wait_without_advancing_
     assert waited["readiness"]["data"]["event_id"] == causal["id"]
     assert waited["readiness"]["data"]["watermark"] == causal["sequence"]
     assert waited["delivery"]["state"] == "pending"
+
+
+def test_logical_stream_retention_does_not_delete_wait_catchup_evidence(pipeline: Pipeline) -> None:
+    drivers = bind(pipeline)
+    observed = pipeline.client.context(pipeline.campaign["id"])["watermark"]
+    report(pipeline)
+    watermark = pipeline.client.context(pipeline.campaign["id"])["watermark"]
+    pipeline.client.command(
+        "stream.advance_floor",
+        AdvanceEventFloor(event_floor=watermark + 1, previous_floor=1),
+        idempotency_key="expire-stream-not-evidence",
+    )
+    with pytest.raises(ResearchError) as gap:
+        pipeline.client.events(after=observed)
+    assert gap.value.code == ErrorCode.EVENT_CURSOR_EXPIRED
+    waited = record(pipeline, drivers, observed=observed)
+    assert waited["wait"]["state"] == "ready"
+    assert waited["readiness"]["data"]["cause"] == "event"
 
 
 @pytest.mark.asyncio

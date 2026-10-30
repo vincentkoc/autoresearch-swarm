@@ -65,6 +65,12 @@ from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSes
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.event_recovery import (
+    AdvanceEventFloor,
+    CollectExpiredSnapshots,
+    CreateRecoverySnapshot,
+    RecoverySnapshotTarget,
+)
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import VersionedRecord
 from research_swarm.state.database import JsonObject
@@ -81,6 +87,34 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "stream.collect_expired": CommandDefinition(
+        CollectExpiredSnapshots,
+        "collect_expired_snapshots",
+        "stream.manage",
+        False,
+        "Collect a bounded batch of expired frozen contents while retaining terminal metadata.",
+    ),
+    "stream.create_snapshot": CommandDefinition(
+        CreateRecoverySnapshot,
+        "create_recovery_snapshot",
+        "read",
+        False,
+        "Freeze an authorized read model and pin its event catch-up interval.",
+    ),
+    "stream.release_snapshot": CommandDefinition(
+        RecoverySnapshotTarget,
+        "release_recovery_snapshot",
+        "read",
+        False,
+        "Release this reader's recovery pin and disposable frozen page contents.",
+    ),
+    "stream.advance_floor": CommandDefinition(
+        AdvanceEventFloor,
+        "advance_event_floor",
+        "stream.manage",
+        False,
+        "Advance logical stream retention without deleting evidence or crossing recovery pins.",
+    ),
     "orchestration.record_wait": CommandDefinition(
         RecordOrchestrationWait,
         "record_orchestration_wait",
@@ -487,7 +521,7 @@ def capabilities() -> JsonObject:
             }
             for operation, definition in COMMANDS.items()
         },
-        "queries": ["get", "list", "context", "budget", "events"],
+        "queries": ["get", "list", "context", "budget", "events", "snapshot.page", "snapshot.item"],
         "proposal_queries": {
             "scope": "proposal.respond",
             "operations": {"proposal.get": ProposalRead.model_json_schema()},

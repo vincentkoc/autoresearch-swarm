@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import ValidationError
 
@@ -68,6 +68,7 @@ from research_swarm.control.promotions import (
     PromotionControl,
 )
 from research_swarm.control.proposals import ProposalControl
+from research_swarm.control.queries import RecordKind
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
@@ -102,6 +103,12 @@ from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.event_recovery import (
+    AdvanceEventFloor,
+    CollectExpiredSnapshots,
+    CreateRecoverySnapshot,
+    RecoverySnapshotTarget,
+)
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.experiments import ExperimentSpec, SourceRef
 from research_swarm.domain.identity import CommandContext
@@ -111,6 +118,7 @@ from research_swarm.evaluation.statistics import FixedPairedPolicy
 from research_swarm.projects.manifest import ResolvedProject, resolve_project
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.event_recovery import EventRecovery
 from research_swarm.state.ledger import BudgetLedger
 
 
@@ -163,6 +171,7 @@ class ResearchService:
         if database.path.resolve() != artifacts.database.path.resolve():
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
+        self.event_recovery = EventRecovery(database, get_args(RecordKind))
         self.artifacts = artifacts
         self.worker_outputs = WorkerOutputs(database, artifacts)
         if assignment_key is not None and dispatch_key is None:
@@ -194,6 +203,24 @@ class ResearchService:
         self.orchestration = OrchestrationControl(database, self._dispatch_drive)
         self.orchestration_waits = OrchestrationWaitControl(database)
         self.worker_lifecycle = WorkerLifecycle(database)
+
+    def create_recovery_snapshot(
+        self, context: CommandContext, intent: CreateRecoverySnapshot
+    ) -> JsonObject:
+        return self.event_recovery.create(context, intent)
+
+    def release_recovery_snapshot(
+        self, context: CommandContext, intent: RecoverySnapshotTarget
+    ) -> JsonObject:
+        return self.event_recovery.release(context, intent)
+
+    def advance_event_floor(self, context: CommandContext, intent: AdvanceEventFloor) -> JsonObject:
+        return self.event_recovery.advance_floor(context, intent)
+
+    def collect_expired_snapshots(
+        self, context: CommandContext, intent: CollectExpiredSnapshots
+    ) -> JsonObject:
+        return self.event_recovery.collect(context, intent)
 
     def _dispatch_drive(
         self, context: CommandContext, operation: str, payload: JsonObject
