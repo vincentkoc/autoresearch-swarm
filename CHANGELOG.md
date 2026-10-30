@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Share one provider-neutral delivery kernel between the default local asyncio driver and Temporal Activities, preserving the existing Temporal import surface.
+- Persist local startup generations and exact pending references before API delivery, recover lost acknowledgments after reopening, and reject competing steps or checkpoint ownership changes.
+- Keep local delivery independent of the Temporal SDK and preserve ready-wait evidence and native custody when its loop stops.
+- Drain an admitted API step before propagating async cancellation, so local and Temporal owners cannot close clients or relinquish a checkpoint while that call is still running.
+
 - Add an optional Temporal delivery adapter with one Workflow per campaign epoch, frozen turn/wait Activity inputs, signal-assisted polling, and bounded history continuation.
 - Keep agent planning and native execution outside provider retries; recover transferred startup from stable snapshot intents and preserve running CPU work when a Workflow is canceled.
 - Sanitize recorded failures, reject foreign Workflow references and conflicting duplicate startup, and qualify real server/worker restart, timeout retries, and history replay in an opt-in suite and dedicated CI job.

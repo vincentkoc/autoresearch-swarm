@@ -35,11 +35,11 @@ binding and clients already exist:
 from temporalio.client import Client
 
 from research_swarm.domain.orchestration import OrchestrationBinding
-from research_swarm.orchestration.temporal.activities import (
+from research_swarm.orchestration.delivery import (
     DriverConnection,
-    TemporalActivities,
     binding_reference,
 )
+from research_swarm.orchestration.temporal.activities import TemporalActivities
 from research_swarm.orchestration.temporal.bridge import TemporalBridge
 from research_swarm.orchestration.temporal.models import WorkflowInput, workflow_id
 from research_swarm.orchestration.temporal.runtime import DATA_CONVERTER, create_worker

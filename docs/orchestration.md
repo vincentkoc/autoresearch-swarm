@@ -12,6 +12,52 @@ principals through a verified same-workspace checkpoint. The optional
 [Temporal adapter](temporal.md) delivers these saved intents using real Workflows
 and Activities. An adapter label alone is descriptive metadata, not qualification.
 
+## Local delivery by default
+
+`LocalDeliveryDriver` runs the same API delivery kernel used by the Temporal
+Activities. It needs asyncio, the ordinary research clients, and one small private
+checkpoint directory. Importing or running it does not load the Temporal SDK.
+
+```python
+import asyncio
+from pathlib import Path
+
+from research_swarm.domain.orchestration import OrchestrationBinding
+from research_swarm.orchestration.delivery import DriverConnection, binding_reference
+from research_swarm.orchestration.local_delivery import LocalDeliveryDriver
+
+binding = OrchestrationBinding.model_validate(
+    control_client.get("orchestration_binding", campaign_id)["data"]
+)
+connection = DriverConnection(
+    binding_reference(binding),
+    {"control": control_client, "evaluator": evaluator_client},
+)
+delivery = LocalDeliveryDriver(Path(".research-delivery"), connection)
+stop = asyncio.Event()
+await delivery.run(stop)
+```
+
+Use only the clients declared in the binding. An external agent prepares turns
+and registers waits through the normal API. `step()` or `step_async()` performs
+one bounded delivery step; `run()` polls until stopped or the binding retires.
+The kernel supplies identity validation, checkpoint startup, exact turn execution,
+and wait reconciliation. Each adapter supplies its own retry and wait mechanism.
+
+The local checkpoint stores the binding, startup recovery generation, and pending
+work reference before calling the API. If an accepted reply is lost, reopening
+the same directory retries that exact reference. Snapshot creation uncertainty
+also reuses the same identity. A proven expired snapshot advances a recorded
+recovery generation. The checkpoint contains no credentials or research payloads.
+
+A native lock prevents simultaneous steps against one checkpoint. Another
+binding cannot adopt its directory. Transport or domain errors propagate while
+the pending reference remains available for explicit retry. Stopping the asyncio
+loop does not cancel native work, consume a ready wait, release budgets, or
+change the campaign's state. Async cancellation drains its already-admitted API
+step before releasing the checkpoint or allowing the caller to close clients.
+Domain records remain the authoritative evidence.
+
 ## Bind dedicated principals
 
 An operator uses `orchestration.bind` with `orchestration.manage`, the current

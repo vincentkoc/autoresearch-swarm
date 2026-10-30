@@ -1,45 +1,25 @@
 """Small history-safe DTOs. No credentials, source, logs, or research payloads."""
 
 from dataclasses import dataclass, field
-from typing import Literal
 
-
-@dataclass(frozen=True)
-class BindingReference:
-    workspace_id: str
-    campaign_id: str
-    epoch: int
-    configuration_digest: str
-    actors: dict[str, str]
-
-
-@dataclass(frozen=True)
-class StartupRequest:
-    binding: BindingReference
-    recovery_id: str
-
-
-@dataclass(frozen=True)
-class WorkReference:
-    binding: BindingReference
-    kind: Literal["turn", "wait"]
-    record_id: str
-    actor_id: str
-
-
-@dataclass(frozen=True)
-class PendingWork:
-    state: Literal["idle", "work", "retired", "terminal"]
-    work: WorkReference | None = None
-
-
-@dataclass(frozen=True)
-class WorkOutcome:
-    state: Literal["settled", "pending"]
-    record_id: str
-    disposition: str = ""
-    evidence_id: str = ""
-    watermark: int = 0
+from research_swarm.orchestration.delivery_models import (
+    BindingReference as BindingReference,
+)
+from research_swarm.orchestration.delivery_models import (
+    PendingWork as PendingWork,
+)
+from research_swarm.orchestration.delivery_models import (
+    StartupRequest as StartupRequest,
+)
+from research_swarm.orchestration.delivery_models import (
+    WorkOutcome as WorkOutcome,
+)
+from research_swarm.orchestration.delivery_models import (
+    WorkReference as WorkReference,
+)
+from research_swarm.orchestration.delivery_models import (
+    delivery_id,
+)
 
 
 @dataclass(frozen=True)
@@ -71,4 +51,4 @@ class WorkflowInput:
 
 
 def workflow_id(reference: BindingReference) -> str:
-    return f"research/{reference.workspace_id}/{reference.campaign_id}/{reference.epoch}"
+    return delivery_id(reference)
