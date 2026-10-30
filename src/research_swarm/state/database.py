@@ -140,8 +140,9 @@ def _deliver(response: JsonObject) -> JsonObject:
             failure["message"],
             retryable=failure["retryable"],
             details=failure["details"],
+            command_id=response["command_id"],
         )
-    return response
+    return {**response, "disposition": "accepted"}
 
 
 class Transaction:
@@ -344,11 +345,19 @@ class Database:
                     connection.execute("SAVEPOINT domain_operation")
                     try:
                         result = handler(Transaction(connection, context))
-                        response = {"command_id": context.command_id, "result": result}
+                        response = {
+                            "command_id": context.command_id,
+                            "disposition": "accepted",
+                            "result": result,
+                        }
                         encode(response)
                     except ResearchError as error:
                         connection.execute("ROLLBACK TO domain_operation")
-                        response = {"command_id": context.command_id, **error.as_dict()}
+                        response = {
+                            "command_id": context.command_id,
+                            "disposition": "rejected",
+                            "error": error.as_dict()["error"],
+                        }
                     connection.execute("RELEASE domain_operation")
                     connection.execute(
                         """INSERT INTO commands

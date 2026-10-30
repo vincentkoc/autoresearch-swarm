@@ -50,6 +50,20 @@ def test_duplicate_command_returns_original_ids(
     assert len(database.pending_notifications()) == 1
 
 
+def test_legacy_acknowledgment_replay_preserves_command_identity(
+    database: Database, context: ContextFactory
+) -> None:
+    first = create_campaign(database, context("legacy"))
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE commands SET response=json_remove(response,'$.disposition') "
+            "WHERE idempotency_key='legacy'"
+        )
+    assert create_campaign(database, context("legacy")) == first
+    assert first["disposition"] == "accepted"
+    assert len(database.events(context())) == 1
+
+
 def test_replay_precedes_transient_preflight_without_recording_a_probe(
     database: Database, context: ContextFactory, tmp_path: Path
 ) -> None:

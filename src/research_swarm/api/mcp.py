@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp_types import CallToolResult, TextContent, ToolAnnotations
@@ -25,6 +25,7 @@ LocalPath = Annotated[str, Field(min_length=1, max_length=4096)]
 
 class ToolReply(VersionedRecord):
     command_id: ID | None = None
+    disposition: Literal["accepted"] | None = None
     result: JsonValue
 
 

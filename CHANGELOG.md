@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Preserve durable accepted/rejected command acknowledgments across local and HTTP replay, including rejection command IDs.
+- Distinguish uncertain mutation delivery from domain rejection and query transport failure; require exact replay after lost acknowledgments.
+- Require HTTPS outside explicit loopback, verify custom-CA hostnames, and reject malformed command replies before treating them as success.
 - Persist a separate controller signing key and pin its identity; reject lost or replaced authority during restart.
 - Sign admitted assignments transactionally, execute new local enrollments with public-only verification, and preserve the full signed grant through native journals and result publication.
 - Define complete Ed25519-signed worker assignments with public-only verification, enrollment fencing, and canonical interoperability fixtures.

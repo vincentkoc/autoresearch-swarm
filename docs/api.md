@@ -19,6 +19,23 @@ Mutation commands use `POST /v1/commands/{operation}` with JSON and an
 `X-Expected-Revision`. An accepted duplicate returns the original command result.
 Reusing the key for another payload or revision returns `IDEMPOTENCY_CONFLICT`.
 
+Successful command acknowledgments contain `command_id`, `disposition: accepted`,
+and `result`. A durable rejection contains that same command identity,
+`disposition: rejected`, and `error`. Replaying a stored rejection preserves its
+original command ID. Authentication, schema, and preflight refusals can happen
+before a command outcome is stored; these have no command ID or disposition.
+
+An unavailable acknowledgment does not prove rejection. Timeout, disconnect,
+malformed response, unexpected status, or missing command identity produces SDK
+error `DELIVERY_UNCERTAIN`. Retry with the same actor, operation, payload, expected
+revision, and idempotency key. A later authentication refusal does not settle an
+earlier uncertain command. Only authorized replay can recover its acknowledgment.
+
+Query transport failure produces `TRANSPORT_UNAVAILABLE`, including the read-only
+`POST /v1/query`. Neither transport error is a resource or scientific observation.
+Upload-part uncertainty requires inspecting upload progress and replaying the
+same offset and bytes. It does not grant authority to start a second upload.
+
 `GET /v1/capabilities` lists the current commands and their schemas.
 `GET /v1/openapi.json` describes the HTTP surface. Both require read authority.
 Unknown fields, duplicate JSON keys, non-finite values, and oversized command
@@ -66,4 +83,8 @@ download. A disconnect releases the reader even when no body chunk was sent.
 Tests use a real loopback HTTP server. They cover command replay across HTTP and
 Python, credential revocation, cross-workspace rejection, schema references,
 strict input limits, range retries, invalid metadata, and failed artifact reads.
+They also hold a reply after its database commit, force a client timeout, and
+recover the original acknowledgment without a second command or creation event.
+Local TLS tests verify trusted success, untrusted certificate rejection, and
+hostname mismatch rejection.
 The worker, SDK, CLI, and MCP surfaces have separate qualification steps.

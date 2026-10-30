@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
+import ssl
 from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -16,6 +18,12 @@ from pydantic import TypeAdapter
 from research_swarm.control.commands import RegisterProject
 from research_swarm.control.dispatch import capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
+from research_swarm.domain.acknowledgments import (
+    CommandAccepted,
+    CommandRejected,
+    RequestRejected,
+    UploadPartAccepted,
+)
 from research_swarm.domain.artifacts import ArtifactRecord
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -30,6 +38,7 @@ from research_swarm.state.database import JsonObject
 
 PART_BYTES = 4 * 1024 * 1024
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
+RequestMode = Literal["query", "command", "upload_part"]
 
 
 class ClientTransport(Protocol):
@@ -125,7 +134,9 @@ class LocalTransport:
 
 
 class HTTPTransport:
-    def __init__(self, url: str, token: str, *, timeout: float = 30) -> None:
+    def __init__(
+        self, url: str, token: str, *, timeout: float = 30, tls: ssl.SSLContext | None = None
+    ) -> None:
         parsed = urlsplit(url)
         if (
             parsed.scheme not in {"http", "https"}
@@ -133,53 +144,93 @@ class HTTPTransport:
             or parsed.password
             or parsed.query
             or parsed.fragment
+            or not parsed.hostname
+            or (parsed.port is not None and not 1 <= parsed.port <= 65535)
+            or any(character.isspace() for character in url)
         ):
             raise ValueError(
                 "Controller URL must be HTTP(S), without credentials, query, or fragment"
             )
+        if parsed.scheme == "http":
+            try:
+                loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+            except ValueError:
+                loopback = parsed.hostname == "localhost"
+            if not loopback or "%" in parsed.hostname:
+                raise ValueError("Non-loopback controller connections require HTTPS")
+        if tls is not None and (
+            not isinstance(tls, ssl.SSLContext)
+            or tls.verify_mode != ssl.CERT_REQUIRED
+            or not tls.check_hostname
+        ):
+            raise ValueError("TLS context must verify certificates and hostnames")
         self.http = httpx.Client(
             base_url=url.rstrip("/"),
             headers={"Authorization": "Bearer " + token},
             timeout=timeout,
             follow_redirects=False,
             trust_env=False,
+            verify=tls if tls is not None else True,
         )
 
     @staticmethod
     def _error(status: int, payload: JsonObject) -> None:
-        if 200 <= status < 300:
-            return
-        error = payload.get("error", {})
-        try:
-            code = ErrorCode(error.get("code", "RESOURCE_UNAVAILABLE"))
-        except ValueError:
-            code = ErrorCode.RESOURCE_UNAVAILABLE
+        if not 400 <= status < 600:
+            raise ValueError("Unexpected HTTP status")
+        rejected = (
+            CommandRejected.model_validate(payload)
+            if "command_id" in payload
+            else RequestRejected.model_validate(payload)
+        )
+        error = rejected.error
         raise ResearchError(
-            code,
-            error.get("message", "Controller request failed"),
-            retryable=error.get("retryable", False),
-            details=error.get("details", {"http_status": status}),
+            error.code,
+            error.message,
+            retryable=error.retryable,
+            details=error.details,
+            command_id=rejected.command_id if isinstance(rejected, CommandRejected) else None,
         )
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> JsonObject:
-        with self.http.stream(method, path, **kwargs) as response:
-            content = bytearray()
-            for block in response.iter_bytes(64 * 1024):
-                if len(content) + len(block) > MAX_RESPONSE_BYTES:
-                    raise ResearchError(
-                        ErrorCode.CAPABILITY_UNAVAILABLE, "Controller response exceeds its bound"
-                    )
-                content.extend(block)
-            try:
+    def _request(
+        self, method: str, path: str, *, mode: RequestMode = "query", **kwargs: Any
+    ) -> JsonObject:
+        try:
+            with self.http.stream(method, path, **kwargs) as response:
+                content = bytearray()
+                for block in response.iter_bytes(64 * 1024):
+                    if len(content) + len(block) > MAX_RESPONSE_BYTES:
+                        raise ValueError("Controller response exceeds its bound")
+                    content.extend(block)
                 payload = strict_json_loads(bytes(content))
                 if not isinstance(payload, dict):
                     raise ValueError("Expected object response")
-            except ValueError as error:
-                raise ResearchError(
-                    ErrorCode.RESOURCE_UNAVAILABLE, "Controller returned an invalid response"
-                ) from error
-            self._error(response.status_code, payload)
-            return dict(payload)
+                if not 200 <= response.status_code < 300:
+                    self._error(response.status_code, payload)
+                if mode == "command":
+                    return dict(CommandAccepted.model_validate(payload).model_dump(mode="json"))
+                if mode == "upload_part":
+                    return dict(UploadPartAccepted.model_validate(payload).model_dump(mode="json"))
+                if "error" in payload:
+                    raise ValueError("Error response has a success status")
+                return dict(payload)
+        except (httpx.RequestError, ValueError) as error:
+            mutating = mode != "query"
+            raise ResearchError(
+                ErrorCode.DELIVERY_UNCERTAIN if mutating else ErrorCode.TRANSPORT_UNAVAILABLE,
+                "Controller acknowledgment is unavailable"
+                if mutating
+                else "Controller query failed",
+                retryable=True,
+                details={
+                    "recovery": (
+                        "replay_exact_command"
+                        if mode == "command"
+                        else "inspect_upload_then_replay_exact_range"
+                        if mode == "upload_part"
+                        else "retry_query"
+                    ),
+                },
+            ) from error
 
     @staticmethod
     def _headers(key: str, revision: int | None = None) -> dict[str, str]:
@@ -194,6 +245,7 @@ class HTTPTransport:
         return self._request(
             "POST",
             "/v1/commands/" + quote(operation, safe=""),
+            mode="command",
             json=payload,
             headers=self._headers(key, revision),
         )
@@ -220,6 +272,7 @@ class HTTPTransport:
             self._request(
                 "POST",
                 "/v1/artifact-uploads",
+                mode="command",
                 json=request.model_dump(mode="json"),
                 headers=self._headers(key),
             )["result"]
@@ -234,6 +287,7 @@ class HTTPTransport:
         self._request(
             "PUT",
             f"/v1/artifact-uploads/{TypeAdapter(ID).validate_python(identifier)}/parts",
+            mode="upload_part",
             params={"offset": offset},
             content=content,
         )
@@ -242,6 +296,7 @@ class HTTPTransport:
         row = self._request(
             "POST",
             f"/v1/artifact-uploads/{TypeAdapter(ID).validate_python(identifier)}/finalize",
+            mode="command",
             headers=self._headers(key),
         )["result"]
         return ArtifactRecord.model_validate(row["data"]).reference
@@ -295,8 +350,10 @@ class ResearchClient:
         return cls(LocalTransport(runtime, lambda: runtime.principal(token_path)))
 
     @classmethod
-    def connect(cls, url: str, token: str) -> ResearchClient:
-        return cls(HTTPTransport(url, token))
+    def connect(
+        cls, url: str, token: str, *, timeout: float = 30, tls: ssl.SSLContext | None = None
+    ) -> ResearchClient:
+        return cls(HTTPTransport(url, token, timeout=timeout, tls=tls))
 
     def command(
         self,

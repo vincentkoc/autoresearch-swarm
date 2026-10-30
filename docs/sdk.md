@@ -44,8 +44,13 @@ Starting opens trial admission. It does not mean training has completed.
 
 Use `ResearchClient.connect(controller_url, token)` with a credential supplied by
 the caller's secret store. The client does not discover credentials, follow
-redirects, or inherit ambient HTTP proxy configuration. HTTPS certificate
-verification uses the normal HTTPX defaults.
+redirects, or inherit ambient HTTP proxy configuration. Non-loopback URLs require
+HTTPS. Plain HTTP is restricted to literal loopback IPs or exactly `localhost`;
+DNS resolution cannot grant a hostname permission to use plaintext.
+
+Certificate and hostname verification remain enabled. An optional
+`tls=ssl.SSLContext` supports a private trusted CA, provided that both checks stay
+enabled. `timeout=` controls request waiting, not native execution authority.
 
 The client methods include `command`, `capabilities`, `get`, `list`, `context`,
 `budget`, `events`, `upload_file`, `capture_project`, `register_project`, and
@@ -55,6 +60,13 @@ Every command requires an explicit idempotency key. Keep it with the request whe
 retrying after an uncertain response. Async cancellation or closing a client does
 not cancel an accepted campaign or prove that native execution stopped.
 
+`ResearchError.code == DELIVERY_UNCERTAIN` means a mutating request lacks a valid
+acknowledgment. Its `details.recovery` distinguishes exact command replay from
+byte-range upload recovery. Query transport failures use `TRANSPORT_UNAVAILABLE`.
+A durable domain rejection has `ResearchError.command_id`; a pre-admission
+refusal does not. Do not replace an uncertain command's idempotency key after a
+later authentication refusal. See the [acknowledgment contract](api.md).
+
 ## Local state and file transfer
 
 The default directory is `~/.local/state/autoresearch-swarm`. An explicit directory
@@ -62,7 +74,8 @@ keeps a project or test independent. Initialization uses a native file lock and
 preserves the same workspace and controller across restarts.
 
 The directory contains the research database, artifact store, identity metadata,
-private operator credential, and dispatch key. POSIX state directories and private
+private operator credential, local dispatch key, and separate assignment signing
+key with a pinned public identity. POSIX state directories and private
 files require owner-only permission bits. Windows creates protected native DACLs
 for the executing user and SYSTEM, with propagating inheritance on directories.
 Initialization rejects broad existing access rather than silently changing it.

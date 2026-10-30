@@ -69,6 +69,7 @@ async def test_cli_mcp_and_sdk_share_durable_commands(
         assert not replay.is_error
         assert replay.structured_content is not None
         assert replay.structured_content["command_id"] == created["command_id"]
+        assert replay.structured_content["disposition"] == created["disposition"] == "accepted"
         campaign = created["result"]
         for operation in ("seal", "start"):
             result = await agent.call_tool(
@@ -81,6 +82,7 @@ async def test_cli_mcp_and_sdk_share_durable_commands(
             )
             assert not result.is_error
             assert result.structured_content is not None
+            assert result.structured_content["disposition"] == "accepted"
             campaign = result.structured_content["result"]
         conflict = await agent.call_tool(
             "research_campaign_create",
@@ -96,6 +98,7 @@ async def test_cli_mcp_and_sdk_share_durable_commands(
         queried = await agent.call_tool("research_query_records", {"request": {"kind": "campaign"}})
         assert not queried.is_error
         assert queried.structured_content is not None
+        assert len(queried.structured_content["result"]["items"]) == 1
         assert queried.structured_content["result"]["items"][0]["id"] == campaign["id"]
     with ResearchClient.local(state) as client:
         assert (
