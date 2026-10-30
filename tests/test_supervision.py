@@ -281,3 +281,32 @@ def test_failed_deadline_signal_does_not_erase_independent_closure(
     assert any(
         "Deadline termination request failed" in finding for finding in outcome.closure.findings
     )
+
+
+def test_primary_exit_allows_bounded_native_accounting_settlement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from research_swarm.workers import supervision
+
+    prepare = supervision._prepare
+
+    def wrapped(command: NativeCommand, environment: dict[str, str]):
+        child = prepare(command, environment)
+        closure = child.closure
+        observations = 0
+
+        def delayed_accounting():
+            nonlocal observations
+            observed = closure()
+            if observed.scope_closed and observations < 2:
+                observations += 1
+                return observed.model_copy(update={"scope_closed": False})
+            return observed
+
+        child.closure = delayed_accounting
+        return child
+
+    monkeypatch.setattr(supervision, "_prepare", wrapped)
+    outcome = run_native(command(tmp_path, "print('complete')"), tmp_path / "out")
+    assert outcome.reason == "exited" and outcome.closure.scope_closed
+    assert outcome.exit_code == 0

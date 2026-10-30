@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Allow bounded native job-accounting settlement after primary process exit.
 - Add a language-neutral workload context/report protocol with bounded artifact verification.
 - Train and evaluate an original standard-library CPU language model from immutable project source.
 - Reject FIFO inputs before reading project reports, outputs, or source files.

@@ -221,6 +221,19 @@ def run_native(
                     reason = "deadline"
             closure = child.closure()
             if reason == "exited" and not closure.scope_closed:
+                # Native job accounting can lag a signaled primary process. Allow
+                # bounded closure/drain progress before classifying surviving work.
+                settle_until = min(deadline, time.monotonic() + command.grace_ms / 1000)
+                while not closure.scope_closed and time.monotonic() < settle_until:
+                    if cancelled():
+                        reason = "cancelled"
+                        break
+                    drain()
+                    time.sleep(0.01)
+                    closure = child.closure()
+                if deadline_hit.is_set() or time.monotonic() >= deadline:
+                    reason = "deadline"
+            if reason == "exited" and not closure.scope_closed:
                 reason = "descendants_remaining"
         except BaseException as error:
             reason = "supervisor_error"
