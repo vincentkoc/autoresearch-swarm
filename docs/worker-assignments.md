@@ -402,3 +402,22 @@ origin-process termination before claim, while held, and after release. After
 release, the original deadline still terminates the owned workload. These tests
 qualify the tested native host and protocol; cross-host clock-rate assumptions,
 physical suspend, hosted services, and accelerator behavior need separate proof.
+
+## Signing providers
+
+Assignment and clock codecs own canonical bytes, key identifiers, domain
+separation, authority binding and validity checks. `Ed25519Provider` supplies
+only public-key derivation, signing and verification. Pass `crypto_provider=` to
+`ResearchService` or individual codecs; the service forwards the same instance
+through enrollment, turnover, timed observations and closure reconciliation.
+There is no global provider registry. A service without dispatch/signing keys
+can still verify evidence through its configured provider.
+
+The default lazily loads native `cryptography`. The Cloudflare adapter uses a
+preloaded local Noble module. Providers must finish synchronously, return exact
+32-byte public keys and 64-byte signatures, and return an actual boolean for
+verification. A false verification result rejects authentication. Provider
+exceptions, invalid output types and awaitables raise `CryptoProviderError`;
+they cannot become a successful verification or a saved domain rejection.
+Load provider modules before entering a state transaction. Network signing and
+asynchronous key services do not satisfy this port.

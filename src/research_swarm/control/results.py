@@ -26,6 +26,7 @@ from research_swarm.control.worker_outputs import (
 from research_swarm.control.worker_records import WorkerData
 from research_swarm.control.worker_state import settle_cancellation
 from research_swarm.control.workers import AttemptData, worker_authority
+from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.artifacts import ArtifactRecord, ArtifactRetention, StoredBlob
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -47,9 +48,12 @@ class ResultControl:
         database: Database,
         artifacts: ArtifactService,
         acceptance: AcceptanceControl | None = None,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
     ) -> None:
         self.database, self.artifacts = database, artifacts
         self.acceptance = acceptance or AcceptanceControl(database)
+        self.crypto_provider = resolve_crypto(crypto_provider)
 
     @staticmethod
     def _settle_uploads(transaction: Transaction, attempt: AttemptData, worker: WorkerData) -> None:
@@ -226,7 +230,9 @@ class ResultControl:
             if attempt.result_digest != digest:
                 raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Accepted observation changed")
             return row
-        observation = validate_observation(transaction, request, journal, report, worker)
+        observation = validate_observation(
+            transaction, request, journal, report, worker, crypto_provider=self.crypto_provider
+        )
         job_row, trial_row = observation.job_row, observation.trial_row
         job, trial = observation.job, observation.trial
         not_started, unknown = observation.not_started, observation.unknown

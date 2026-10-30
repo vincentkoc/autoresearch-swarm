@@ -24,7 +24,7 @@ import builtins
 import pydantic
 import sys
 original = builtins.__import__
-blocked = {"sqlite3", "psutil", "ctypes", "filelock"}
+blocked = {"sqlite3", "psutil", "ctypes", "filelock", "cryptography"}
 def guarded(name, *args, **kwargs):
     if name.split(".")[0] in blocked:
         raise AssertionError("Native import reached portable controller: " + name)

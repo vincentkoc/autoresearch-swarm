@@ -1,4 +1,4 @@
-"""Build an isolated local-provider bundle from the actual shared domain package."""
+"""Build an isolated local-provider bundle from the actual shared package."""
 
 import shutil
 from pathlib import Path
@@ -16,9 +16,8 @@ shutil.copyfile(ROOT / "entry.py", output / "entry.py")
 shutil.copyfile(ROOT / "atomic.py", output / "atomic.py")
 shutil.copyfile(ROOT / "durable_sql.py", output / "durable_sql.py")
 shutil.copyfile(ROOT / "storage_qualification.py", output / "storage_qualification.py")
+shutil.copyfile(ROOT / "signing_qualification.py", output / "signing_qualification.py")
+shutil.copyfile(ROOT / "ed25519.py", output / "ed25519.py")
 package = output / "research_swarm"
-package.mkdir()
 source = ROOT.parents[1] / "src/research_swarm"
-shutil.copyfile(source / "__init__.py", package / "__init__.py")
-shutil.copytree(source / "domain", package / "domain", ignore=shutil.ignore_patterns("__pycache__"))
-shutil.copytree(source / "state", package / "state", ignore=shutil.ignore_patterns("__pycache__"))
+shutil.copytree(source, package, ignore=shutil.ignore_patterns("__pycache__"))

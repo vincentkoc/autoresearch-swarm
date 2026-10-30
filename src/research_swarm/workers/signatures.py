@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from pydantic import TypeAdapter
 
+from research_swarm.crypto import Ed25519Provider, public_key, resolve_crypto, sign, verify
 from research_swarm.domain.assignments import (
     AssignmentAuthority,
     AssignmentPayload,
@@ -44,9 +43,16 @@ def require_binding(payload: AssignmentPayload, binding: WorkerBinding) -> None:
 class AssignmentSigner:
     """Only the controller owns this object and its private signing key."""
 
-    def __init__(self, binding: WorkerBinding, private_key: bytes) -> None:
-        self._private = Ed25519PrivateKey.from_private_bytes(private_key)
-        public = self._private.public_key().public_bytes_raw().hex()
+    def __init__(
+        self,
+        binding: WorkerBinding,
+        private_key: bytes,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> None:
+        self.crypto_provider = resolve_crypto(crypto_provider)
+        self._private = private_key
+        public = public_key(self.crypto_provider, private_key).hex()
         self.authority = AssignmentAuthority(
             binding=binding, public_key=public, key_id=signing_key_id(public)
         )
@@ -57,7 +63,9 @@ class AssignmentSigner:
         return SignedAssignment(
             key_id=self.authority.key_id,
             payload=payload,
-            signature=self._private.sign(signing_bytes(payload, self.authority.key_id)).hex(),
+            signature=sign(
+                self.crypto_provider, self._private, signing_bytes(payload, self.authority.key_id)
+            ).hex(),
         )
 
 
@@ -70,9 +78,12 @@ class VerifiedAssignment:
 
 
 class AssignmentVerifier:
-    def __init__(self, authority: AssignmentAuthority) -> None:
+    def __init__(
+        self, authority: AssignmentAuthority, *, crypto_provider: Ed25519Provider | None = None
+    ) -> None:
+        self.crypto_provider = resolve_crypto(crypto_provider)
         self.authority = AssignmentAuthority.model_validate(authority)
-        self._public = Ed25519PublicKey.from_public_bytes(bytes.fromhex(self.authority.public_key))
+        self._public = bytes.fromhex(self.authority.public_key)
 
     def verify(
         self,
@@ -86,11 +97,13 @@ class AssignmentVerifier:
             assignment = SignedAssignment.model_validate(assignment)
             if assignment.key_id != self.authority.key_id:
                 raise ValueError("Assignment signing key differs")
-            self._public.verify(
-                bytes.fromhex(assignment.signature),
+            verify(
+                self.crypto_provider,
+                self._public,
                 signing_bytes(assignment.payload, assignment.key_id),
+                bytes.fromhex(assignment.signature),
             )
-        except (InvalidSignature, ValueError) as error:
+        except ValueError as error:
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED, "Assignment authentication failed"
             ) from error

@@ -23,6 +23,7 @@ from research_swarm.control.worker_records import (
 )
 from research_swarm.control.worker_sessions import archive_session
 from research_swarm.control.worker_state import admission_open
+from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.assignments import (
     AssignmentPayload,
 )
@@ -124,10 +125,12 @@ class WorkerControl:
         assignment_key: bytes | None = None,
         *,
         authority_time_provider: AuthorityTimeProvider | None = None,
+        crypto_provider: Ed25519Provider | None = None,
     ) -> None:
         if len(dispatch_key) < 32:
             raise ValueError("Worker control requires at least 256 bits of dispatch authority")
         self.database = database
+        self.crypto_provider = resolve_crypto(crypto_provider)
         self.dispatch_key = dispatch_key
         if assignment_key is not None and len(assignment_key) != 32:
             raise ValueError("Assignment signing requires a 32-byte Ed25519 key")
@@ -145,7 +148,9 @@ class WorkerControl:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Clock signing authority is absent"
             )
-        signer = ClockSigner(worker.binding, self._assignment_key)
+        signer = ClockSigner(
+            worker.binding, self._assignment_key, crypto_provider=self.crypto_provider
+        )
         if signer.authority != worker.assignment_authority:
             raise ResearchError(ErrorCode.STALE_FENCE, "Clock signing authority changed")
         return signer
@@ -201,7 +206,9 @@ class WorkerControl:
         if attempt.assignment_time is None or attempt.signed_assignment is None:
             raise ResearchError(ErrorCode.STALE_FENCE, "Assignment time binding is absent")
         signer = self._clock_signer(worker)
-        ClockVerifier(signer.authority).binding(attempt.assignment_time, attempt.signed_assignment)
+        ClockVerifier(signer.authority, crypto_provider=self.crypto_provider).binding(
+            attempt.assignment_time, attempt.signed_assignment
+        )
         observed = self._time(worker)
         grant = attempt.assignment_time.payload
         if grant.clock_epoch != observed.epoch or grant.policy_digest != observed.policy.digest:
@@ -256,7 +263,9 @@ class WorkerControl:
                     clock_mode=request.clock_mode,
                     environment_contracts=request.environment_contracts,
                     assignment_authority=(
-                        AssignmentSigner(binding, self._assignment_key).authority
+                        AssignmentSigner(
+                            binding, self._assignment_key, crypto_provider=self.crypto_provider
+                        ).authority
                         if self._assignment_key is not None
                         else None
                     ),
@@ -426,7 +435,9 @@ class WorkerControl:
                     raise ResearchError(
                         ErrorCode.CAPABILITY_UNAVAILABLE, "Assignment signing authority is absent"
                     )
-                signer = AssignmentSigner(worker.binding, self._assignment_key)
+                signer = AssignmentSigner(
+                    worker.binding, self._assignment_key, crypto_provider=self.crypto_provider
+                )
                 if signer.authority != worker.assignment_authority:
                     raise ResearchError(
                         ErrorCode.STALE_FENCE, "Assignment signing authority changed"

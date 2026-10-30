@@ -52,15 +52,22 @@ names, but that fixture guard is not production authentication. Do not deploy it
 
 ## Boundaries and cryptography
 
-`build.py` copies the shared domain and state packages unchanged into an owned
-generated directory. The native fixture asserts that the SQLite adapter and
-`sqlite3` are never imported. It does not maintain a second implementation of those Python rules.
+`build.py` copies the shared Python package unchanged into an owned generated
+directory. The native fixture asserts that the SQLite and cryptography adapters
+are never imported. It does not maintain a second implementation of those rules.
 The JavaScript bundle uses MIT-licensed `@noble/curves` 2.4.0, with strict Ed25519
 verification (`zip215: false`). Node checks an RFC 8032 vector. The Worker repeats
 that vector inside its transaction; the host's existing cryptography library
 independently verifies a signature over the shared canonical payload.
 
-Only public RFC test keys are present. The fixture deliberately has no production
+`NobleEd25519` implements the shared synchronous `Ed25519Provider` port. The same
+assignment, clock-reply and assignment-time codecs verify native signatures in
+workerd and produce byte-identical envelopes for native verification. Historical
+timing arithmetic also runs unchanged. Binding, signature and domain tampering
+must fail through the shared authority checks. This qualifies the codecs, not a
+Cloudflare clock source or hosted research controller.
+
+Only public synthetic test keys are present. The fixture deliberately has no production
 key store. Loading the JavaScript module may suspend through JSPI, so loading
 finishes before the transaction starts. The subsequent signing call must return a
 plain string synchronously. No RPC, Web Crypto Promise or network request belongs

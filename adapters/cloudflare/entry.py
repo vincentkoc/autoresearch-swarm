@@ -8,6 +8,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from durable_sql import DurableObjectStore
 from pydantic import Field
+from signing_qualification import exercise as exercise_signing
 from storage_qualification import exercise as exercise_storage
 from workers import DurableObject, Response, WorkerEntrypoint, import_from_javascript
 
@@ -32,6 +33,14 @@ class Probe(VersionedRecord):
 
 
 class Qualification(DurableObject):
+    async def signing_contract(self, body):
+        module = import_from_javascript("./crypto.mjs")
+        try:
+            result = exercise_signing(self.ctx.storage, str(self.ctx.id), body, module)
+        except ResearchError as error:
+            result = {"error": error.code.value}
+        return json.dumps(result)
+
     async def storage_contract(self, case):
         return json.dumps(exercise_storage(self.ctx.storage, str(self.ctx.id), case))
 
@@ -132,6 +141,14 @@ class Default(WorkerEntrypoint):
             return Response("Local qualification only", status=403)
         if request.method != "POST":
             return Response("Not found", status=404)
+        if url.path == "/signing":
+            text = await request.text()
+            if len(text.encode()) > 65536:
+                return Response("Request too large", status=413)
+            stub = self.env.QUALIFICATION.getByName("signing-contract")
+            return Response(
+                await stub.signing_contract(text), headers={"content-type": "application/json"}
+            )
         if url.path.startswith("/storage/"):
             case = url.path.removeprefix("/storage/")
             if case not in {"roundtrip", "unknown-version", "foreign-state", "migration-rollback"}:

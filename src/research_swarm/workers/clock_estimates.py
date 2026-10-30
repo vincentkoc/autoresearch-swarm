@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from pydantic import TypeAdapter
 
+from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.assignments import AssignmentAuthority
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -181,8 +182,14 @@ class ClockEstimate:
 class ClockSampler:
     """One live origin binds each fresh challenge to its actual counter readings."""
 
-    def __init__(self, authority: AssignmentAuthority, clock: NativeClock | None = None) -> None:
-        self.verifier = ClockVerifier(authority)
+    def __init__(
+        self,
+        authority: AssignmentAuthority,
+        clock: NativeClock | None = None,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> None:
+        self.verifier = ClockVerifier(authority, crypto_provider=crypto_provider)
         self._clock = clock or native_clock()
         self.origin_session_id = new_id()
         self.origin_profile = self._clock.profile

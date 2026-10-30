@@ -10,6 +10,7 @@ from pydantic import Field
 from research_swarm.control.models import JobData, TrialData
 from research_swarm.control.worker_outputs import OutputRole, WorkerOutputIntent
 from research_swarm.control.worker_records import AttemptData, WorkerData
+from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.types import ID, Name, VersionedRecord
@@ -84,6 +85,8 @@ def validate_native_observation(
     request: PublishAttempt,
     journal: JournalEntry,
     worker: WorkerData,
+    *,
+    crypto_provider: Ed25519Provider | None = None,
 ) -> NativeObservation:
     attempt = AttemptData.model_validate(transaction.get("attempt", request.attempt_id)["data"])
     job_row = transaction.get("job", attempt.dispatch.job_id)
@@ -109,6 +112,7 @@ def validate_native_observation(
             worker.assignment_authority,
             journal.assignment_time,
             journal.signed_assignment,
+            crypto_provider=crypto_provider,
         )
     if journal.state not in {
         JournalState.CLOSED,
@@ -152,8 +156,12 @@ def validate_observation(
     journal: JournalEntry,
     report: WorkloadReport | None,
     worker: WorkerData,
+    *,
+    crypto_provider: Ed25519Provider | None = None,
 ) -> ValidatedObservation:
-    native = validate_native_observation(transaction, request, journal, worker)
+    native = validate_native_observation(
+        transaction, request, journal, worker, crypto_provider=crypto_provider
+    )
     job_row, trial_row, job, trial = native.job_row, native.trial_row, native.job, native.trial
     not_started, closed, unknown = native.not_started, native.closed, native.unknown
     attempt = AttemptData.model_validate(transaction.get("attempt", request.attempt_id)["data"])

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-
+from research_swarm.crypto import Ed25519Provider, public_key, resolve_crypto, sign, verify
 from research_swarm.domain.assignments import AssignmentAuthority, SignedAssignment, signing_key_id
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.clocks import (
@@ -35,9 +33,16 @@ def clock_signing_bytes(domain: str, key_id: str, payload: VersionedRecord) -> b
 
 
 class ClockSigner:
-    def __init__(self, binding: WorkerBinding, private_key: bytes) -> None:
-        self._private = Ed25519PrivateKey.from_private_bytes(private_key)
-        public = self._private.public_key().public_bytes_raw().hex()
+    def __init__(
+        self,
+        binding: WorkerBinding,
+        private_key: bytes,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> None:
+        self.crypto_provider = resolve_crypto(crypto_provider)
+        self._private = private_key
+        public = public_key(self.crypto_provider, private_key).hex()
         self.authority = AssignmentAuthority(
             binding=binding, public_key=public, key_id=signing_key_id(public)
         )
@@ -49,8 +54,10 @@ class ClockSigner:
         return SignedClockReply(
             key_id=self.authority.key_id,
             payload=payload,
-            signature=self._private.sign(
-                clock_signing_bytes("research.worker-clock", self.authority.key_id, payload)
+            signature=sign(
+                self.crypto_provider,
+                self._private,
+                clock_signing_bytes("research.worker-clock", self.authority.key_id, payload),
             ).hex(),
         )
 
@@ -61,8 +68,10 @@ class ClockSigner:
         return SignedAssignmentTime(
             key_id=self.authority.key_id,
             payload=payload,
-            signature=self._private.sign(
-                clock_signing_bytes("research.assignment-clock", self.authority.key_id, payload)
+            signature=sign(
+                self.crypto_provider,
+                self._private,
+                clock_signing_bytes("research.assignment-clock", self.authority.key_id, payload),
             ).hex(),
         )
 
@@ -83,19 +92,24 @@ class VerifiedAssignmentTime:
 
 
 class ClockVerifier:
-    def __init__(self, authority: AssignmentAuthority) -> None:
+    def __init__(
+        self, authority: AssignmentAuthority, *, crypto_provider: Ed25519Provider | None = None
+    ) -> None:
+        self.crypto_provider = resolve_crypto(crypto_provider)
         self.authority = AssignmentAuthority.model_validate(authority)
-        self._public = Ed25519PublicKey.from_public_bytes(bytes.fromhex(self.authority.public_key))
+        self._public = bytes.fromhex(self.authority.public_key)
 
     def _verify(self, domain: str, record: SignedClockReply | SignedAssignmentTime) -> None:
         try:
             if record.key_id != self.authority.key_id:
                 raise ValueError("Clock signing key differs")
-            self._public.verify(
-                bytes.fromhex(record.signature),
+            verify(
+                self.crypto_provider,
+                self._public,
                 clock_signing_bytes(domain, record.key_id, record.payload),
+                bytes.fromhex(record.signature),
             )
-        except (InvalidSignature, ValueError) as error:
+        except ValueError as error:
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED, "Clock authentication failed"
             ) from error
@@ -126,7 +140,7 @@ class ClockVerifier:
         self._verify("research.assignment-clock", grant)
         if grant.payload.assignment_digest != timed_assignment_digest(assignment):
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Timed assignment differs")
-        verified = AssignmentVerifier(self.authority).verify(
+        verified = AssignmentVerifier(self.authority, crypto_provider=self.crypto_provider).verify(
             assignment, authority_now=assignment.payload.issued_at, allow_expired_observation=True
         )
         return VerifiedAssignmentTime(grant, verified)

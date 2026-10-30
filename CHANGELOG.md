@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Inject synchronous Ed25519 primitives per service while preserving canonical assignment, clock and timing records; load native cryptography only for the default provider.
+- Qualify the same signed-envelope codecs through Cloudflare's local Noble adapter, with native verification in both directions, transaction-local signing and explicit rejection of provider failures, malformed outputs and async results.
+
 - Separate portable journal evidence from the native worker database and defer native capture, process-inspection and clock imports until their operations run.
 - Accept absolute POSIX and Windows worker paths independently of the controller OS while preserving sealed path strings; reject ambiguous relative paths and verify controller reconciliation with synthetic foreign path metadata.
 

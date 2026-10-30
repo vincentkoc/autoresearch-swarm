@@ -116,6 +116,7 @@ from research_swarm.control.worker_outputs import (
 )
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession, WorkerTurnover
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
+from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
@@ -186,10 +187,12 @@ class ResearchService:
         dispatch_key: bytes | None = None,
         assignment_key: bytes | None = None,
         authority_time_provider: AuthorityTimeProvider | None = None,
+        crypto_provider: Ed25519Provider | None = None,
     ) -> None:
         if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
+        self.crypto_provider = resolve_crypto(crypto_provider)
         self.event_recovery = EventRecovery(database, get_args(RecordKind))
         self.artifacts = artifacts
         self.worker_outputs = WorkerOutputs(database, artifacts)
@@ -203,11 +206,14 @@ class ResearchService:
                 dispatch_key,
                 assignment_key,
                 authority_time_provider=authority_time_provider,
+                crypto_provider=self.crypto_provider,
             )
             if dispatch_key is not None
             else None
         )
-        self.worker_turnover = WorkerTurnover(database, assignment_key)
+        self.worker_turnover = WorkerTurnover(
+            database, assignment_key, crypto_provider=self.crypto_provider
+        )
         self.proposals = ProposalControl(database)
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
@@ -221,7 +227,9 @@ class ResearchService:
         self.acceptance = (
             self.workers.acceptance if self.workers is not None else AcceptanceControl(database)
         )
-        self.results = ResultControl(database, artifacts, self.acceptance)
+        self.results = ResultControl(
+            database, artifacts, self.acceptance, crypto_provider=self.crypto_provider
+        )
         self.reconciliation = ReconciliationControl(database, self.results)
         self.closures = ClosureControl(database, self.reconciliation)
         self.evaluations = EvaluationControl(database, artifacts)

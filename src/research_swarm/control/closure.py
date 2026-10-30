@@ -104,7 +104,13 @@ class ClosureControl:
                 raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Closure evidence differs")
             return {"disposition": "closed_unaccepted", "attempt": row, "closure": recorded}
         request = submission.publication
-        verified = validate_native_observation(transaction, request, journal, worker)
+        verified = validate_native_observation(
+            transaction,
+            request,
+            journal,
+            worker,
+            crypto_provider=self.reconciliation.results.crypto_provider,
+        )
         if verified.unknown:
             raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Operational closure is not proven")
         if not verified.not_started and (

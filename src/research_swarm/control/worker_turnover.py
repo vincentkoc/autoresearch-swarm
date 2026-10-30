@@ -15,6 +15,7 @@ from research_swarm.control.worker_state import (
     write_worker_state,
 )
 from research_swarm.control.workers import authority
+from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord, utc_now
@@ -62,8 +63,15 @@ class WorkerReplacement(VersionedRecord):
 
 
 class WorkerTurnover:
-    def __init__(self, database: Database, assignment_key: bytes | None) -> None:
+    def __init__(
+        self,
+        database: Database,
+        assignment_key: bytes | None,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> None:
         self.database, self._assignment_key = database, assignment_key
+        self.crypto_provider = resolve_crypto(crypto_provider)
 
     @staticmethod
     def _current(transaction: Transaction, request: FenceWorker) -> tuple[JsonObject, WorkerData]:
@@ -180,7 +188,7 @@ class WorkerTurnover:
                         "principal_id": request.principal_id,
                         "enrolled_at": utc_now(),
                         "assignment_authority": AssignmentSigner(
-                            binding, self._assignment_key
+                            binding, self._assignment_key, crypto_provider=self.crypto_provider
                         ).authority
                         if self._assignment_key is not None
                         else None,

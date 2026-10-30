@@ -16,7 +16,13 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from research_swarm.domain.assignments import AssignmentAuthority, SignedAssignment
 from research_swarm.domain.canonical import canonical_bytes
+from research_swarm.domain.clocks import ClockChallenge, SignedAssignmentTime, SignedClockReply
+from research_swarm.workers.clock_signatures import ClockVerifier
+from research_swarm.workers.signatures import AssignmentVerifier
+from research_swarm.workers.timed_launch import TimingEvidence, verify_timing
+from tests.test_crypto_providers import signing_probe
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RESEARCH_CLOUDFLARE_TESTS") != "1" or os.name != "posix",
@@ -136,6 +142,7 @@ def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp
     build_current_sources()
     with server(tmp_path, sequence=1) as url:
         with httpx.Client(trust_env=False, timeout=30) as client:
+            qualify_shared_signing(client, url)
             for case in ("roundtrip", "unknown-version", "foreign-state", "migration-rollback"):
                 response = client.post(url + "/storage/" + case)
                 assert response.status_code == 200, response.text[-3000:]
@@ -176,3 +183,36 @@ def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp
                 content=json.dumps({"key": "external", "mode": "accept", "value": 1}),
             )
         assert denied.status_code == 403
+
+
+def qualify_shared_signing(client, url):
+    probe = signing_probe()
+    response = client.post(url + "/signing", json=probe)
+    assert response.status_code == 200, response.text[-3000:]
+    result = response.json()
+    assert "error" not in result, result
+    authority = AssignmentAuthority.model_validate(probe["authority"])
+    signed = SignedAssignment.model_validate(result["assignment"])
+    AssignmentVerifier(authority).verify(signed, authority_now=signed.payload.issued_at)
+    verifier = ClockVerifier(authority)
+    verifier.reply(
+        SignedClockReply.model_validate(result["reply"]),
+        ClockChallenge.model_validate(probe["challenge"]),
+    )
+    grant = SignedAssignmentTime.model_validate(result["grant"])
+    verifier.binding(grant, signed)
+    timing = verify_timing(TimingEvidence.model_validate(probe["timing"]), authority, grant, signed)
+    assert timing.evidence.digest == result["timing_digest"]
+    for field in ("assignment", "reply", "grant"):
+        assert result[field] == probe[field]
+    for changed in ("binding", "signature", "domain"):
+        altered = json.loads(json.dumps(probe))
+        if changed == "binding":
+            altered["assignment"]["payload"]["dispatch"]["control_epoch"] += 1
+        elif changed == "signature":
+            altered["reply"]["signature"] = "00" * 64
+        else:
+            altered["reply"]["signature"] = altered["grant"]["signature"]
+        rejected = client.post(url + "/signing", json=altered)
+        assert rejected.status_code == 200, rejected.text[-3000:]
+        assert rejected.json() == {"error": "AUTHORIZATION_DENIED"}

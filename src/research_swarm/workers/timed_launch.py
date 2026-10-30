@@ -7,6 +7,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, Field, model_validator
 
+from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.assignments import AssignmentAuthority, SignedAssignment
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockChallenge, SignedAssignmentTime, SignedClockReply
@@ -167,10 +168,12 @@ def verify_timing(
     authority: AssignmentAuthority,
     assignment_time: SignedAssignmentTime,
     assignment: SignedAssignment,
+    *,
+    crypto_provider: Ed25519Provider | None = None,
 ) -> VerifiedTiming:
     """Verify signature and conservative arithmetic, never current liveness or freshness."""
     evidence = TimingEvidence.model_validate(evidence)
-    verifier = ClockVerifier(authority)
+    verifier = ClockVerifier(authority, crypto_provider=crypto_provider)
     timed = verifier.binding(assignment_time, assignment)
     challenge = ClockChallenge(
         worker_id=authority.binding.worker_id,
