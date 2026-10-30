@@ -50,6 +50,10 @@ def run_attempt(journal: WorkerJournal, attempt_id: str) -> JournalEntry:
     received = journal.settle_unstarted(attempt_id)
     if received.state == JournalState.NOT_STARTED:
         return received
+    if received.clock_mode != "local-utc-v1":
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE, "Calibrated supervisor requires a live origin channel"
+        )
     received.spec.verify()
     environment = base_environment()
     resources = None

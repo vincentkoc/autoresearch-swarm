@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Persist signed timing sidecars and conservative deadline evidence in worker journals without changing legacy admission hashes.
+- Encode native counter values as canonical decimal strings, reject precision loss and overflow, and prevent cap refresh from extending authority or changing origins.
+- Preserve timed not-started publication after clock failure while refusing any fallback through unqualified local launch gates.
 - Share one process-owned clock between scoped time samples, timed assignment issuance, and input-expiry checks.
 - Preserve clock invalidation across runtime reopening and reject inherited or mismatched epochs without resetting accepted grants or evidence.
 - Expose signed time queries through HTTP, SDK, async SDK, and MCP; keep calibrated enrollment explicit while native admission remains pending.

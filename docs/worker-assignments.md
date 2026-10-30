@@ -285,3 +285,35 @@ Tests cover scoped HTTP/async queries, same-process runtime reopening, native fo
 rejection, independent-process epoch mismatch, immutable replay, input-pin races,
 and output recovery. Automatic remote execution remains unavailable until native
 journal/release integration and the live-origin handshake are qualified.
+
+## Durable worker timing
+
+Timed journal admission retains the exact assignment-time signature separately
+from the original signed assignment. Its admission digest includes the clock mode
+and sidecar. Legacy local entries retain their original HMAC or signed-assignment
+input digest; missing optional clock fields read as local mode.
+
+`TimingEvidence` records the authenticated reply, original send/receive samples,
+qualification sample, origin/profile, and conservative launch/hard caps. Native
+nanosecond counters use canonical unsigned 64-bit decimal strings. They must not
+use JSON numbers: nanosecond uptime exceeds the safe JCS integer range after
+about 104 days. Parsing rejects signs, leading zeroes, exponent notation, and
+overflow. Arithmetic remains integer-only.
+
+The journal binds this evidence after required preparation, before a supervisor
+claims the attempt. Exact attachment replay returns the existing entry. A refresh
+must retain the same grant, clock epoch, origin, and native profile and may only
+shorten caps. Another process cannot transplant its counters onto an attached
+attempt. Historical verification rechecks the signatures and interval arithmetic
+at the recorded qualification time; it does not prove that origin is alive now.
+
+The legacy journal launch/release methods and stock supervisor refuse timed
+entries. Raw UTC cannot expire a timed entry through the local settlement path;
+explicit cancellation can settle an entry that is still durably unreleased.
+Publication compares mode and timing sidecar with controller admission. When
+timing evidence is present, it rechecks that evidence without demanding a current
+clock sample. A timed not-started observation can therefore publish after clock
+failure. Missing or altered timing authority cannot downgrade to local mode.
+
+This durable layer is implemented. The private live-origin channel and calibrated
+native launch gates remain required before timed execution is enabled.

@@ -12,6 +12,7 @@ from research_swarm.domain.types import ID, Digest, Name, VersionedRecord
 from research_swarm.domain.workers import WorkerBinding
 
 ClockMilliseconds = Annotated[int, Field(strict=True, ge=0, le=2**53 - 1)]
+ClockMode = Literal["local-utc-v1", "bounded-continuous-v1"]
 
 
 class ClockPolicy(VersionedRecord):

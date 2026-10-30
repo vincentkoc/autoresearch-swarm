@@ -12,14 +12,17 @@ from pydantic import Field, model_validator
 
 from research_swarm.domain.assignments import SignedAssignment
 from research_swarm.domain.canonical import record_digest
+from research_swarm.domain.clocks import ClockMode, SignedAssignmentTime, timed_assignment_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
 from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord, utc_now
 from research_swarm.state.identity import initialize_identity
 from research_swarm.workers.authority import VerifiedDispatch
+from research_swarm.workers.clock_signatures import VerifiedAssignmentTime
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, NativeOutcome
 from research_swarm.workers.prepared import PreparedExecution
 from research_swarm.workers.signatures import VerifiedAssignment
+from research_swarm.workers.timed_launch import TimingEvidence, VerifiedTiming
 
 
 class JournalState(StrEnum):
@@ -38,6 +41,9 @@ class JournalEntry(VersionedRecord):
     spec: ExperimentSpec
     command: NativeCommand
     signed_assignment: SignedAssignment | None = None
+    clock_mode: ClockMode = "local-utc-v1"
+    assignment_time: SignedAssignmentTime | None = None
+    timing: TimingEvidence | None = None
     prepared: PreparedExecution | None = None
     preparation_required: bool = False
     revision: Revision = 1
@@ -53,6 +59,37 @@ class JournalEntry(VersionedRecord):
 
     @model_validator(mode="after")
     def assignment_matches(self) -> JournalEntry:
+        if self.clock_mode == "local-utc-v1":
+            if self.assignment_time is not None or self.timing is not None:
+                raise ValueError("Local journal cannot carry calibrated clock authority")
+        else:
+            if self.signed_assignment is None or self.assignment_time is None:
+                raise ValueError("Calibrated journal requires signed time authority")
+            claimed = self.state in {
+                JournalState.LAUNCHING,
+                JournalState.HELD,
+                JournalState.RELEASING,
+                JournalState.RUNNING,
+                JournalState.CLOSED,
+            }
+            native_evidence = self.native is not None or self.outcome is not None
+            if (claimed or native_evidence) and self.supervisor_id is None:
+                raise ValueError("Calibrated native evidence requires a supervisor identity")
+            if (
+                claimed or native_evidence or self.supervisor_id is not None
+            ) and self.timing is None:
+                raise ValueError("Calibrated supervisor requires frozen clock evidence")
+            grant = self.assignment_time.payload
+            if grant.assignment_digest != timed_assignment_digest(self.signed_assignment):
+                raise ValueError("Journal time binding differs from its signed assignment")
+            if self.timing is not None and (
+                self.timing.caps.assignment_digest != grant.assignment_digest
+                or self.timing.caps.clock_epoch != grant.clock_epoch
+                or self.timing.reply.payload.clock_epoch != grant.clock_epoch
+                or self.timing.reply.payload.binding != grant.binding
+                or self.timing.reply.payload.policy.digest != grant.policy_digest
+            ):
+                raise ValueError("Journal timing differs from its admitted clock authority")
         if self.signed_assignment is None:
             return self
         payload = self.signed_assignment.payload
@@ -152,12 +189,14 @@ class WorkerJournal:
 
     def receive(
         self,
-        verified: VerifiedDispatch | VerifiedAssignment,
+        verified: VerifiedDispatch | VerifiedAssignment | VerifiedAssignmentTime,
         command: NativeCommand,
         *,
         prepared: PreparedExecution | None = None,
         require_preparation: bool = False,
     ) -> JournalEntry:
+        assignment_time = verified.grant if isinstance(verified, VerifiedAssignmentTime) else None
+        verified = verified.assignment if isinstance(verified, VerifiedAssignmentTime) else verified
         signed = verified.assignment if isinstance(verified, VerifiedAssignment) else None
         verified = verified.dispatch if isinstance(verified, VerifiedAssignment) else verified
         verified.spec.verify()
@@ -179,6 +218,8 @@ class WorkerJournal:
             prepared=prepared,
             preparation_required=require_preparation,
             signed_assignment=signed,
+            clock_mode="bounded-continuous-v1" if assignment_time is not None else "local-utc-v1",
+            assignment_time=assignment_time,
         )
         digest = record_digest(
             "research.worker-input",
@@ -189,6 +230,14 @@ class WorkerJournal:
                 **({"prepared": prepared.model_dump(mode="json")} if prepared is not None else {}),
                 **({"preparation_required": True} if require_preparation else {}),
                 **({"signed_assignment": signed.model_dump(mode="json")} if signed else {}),
+                **(
+                    {
+                        "clock_mode": entry.clock_mode,
+                        "assignment_time": assignment_time.model_dump(mode="json"),
+                    }
+                    if assignment_time is not None
+                    else {}
+                ),
             },
         )
         with self._transaction() as connection:
@@ -238,6 +287,10 @@ class WorkerJournal:
         def claim(entry: JournalEntry) -> JournalEntry:
             if entry.state != JournalState.RECEIVED:
                 raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Attempt cannot be launched again")
+            if entry.clock_mode != "local-utc-v1":
+                raise ResearchError(
+                    ErrorCode.CAPABILITY_UNAVAILABLE, "Calibrated launch requires a live origin"
+                )
             if (
                 entry.cancel_requested
                 or min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
@@ -257,6 +310,38 @@ class WorkerJournal:
             )
 
         return self._change(attempt_id, "launch.claimed", claim)
+
+    def bind_timing(self, attempt_id: str, verified: VerifiedTiming) -> JournalEntry:
+        """Persist conservative evidence; this does not authorize a native launch."""
+
+        def bind(entry: JournalEntry) -> JournalEntry:
+            if (
+                entry.clock_mode != "bounded-continuous-v1"
+                or entry.assignment_time != verified.timed.grant
+                or entry.signed_assignment != verified.timed.assignment.assignment
+            ):
+                raise ResearchError(
+                    ErrorCode.STALE_FENCE, "Clock evidence belongs to another grant"
+                )
+            if entry.timing == verified.evidence:
+                return entry
+            if entry.state != JournalState.RECEIVED or entry.cancel_requested:
+                raise ResearchError(
+                    ErrorCode.INVALID_TRANSITION, "Attempt cannot accept clock evidence"
+                )
+            if entry.preparation_required and entry.prepared is None:
+                raise ResearchError(
+                    ErrorCode.INVALID_TRANSITION, "Workload preparation is incomplete"
+                )
+            if entry.timing is not None:
+                old, new = entry.timing.caps.caps(), verified.evidence.caps.caps()
+                if old.intersect(new) != new:
+                    raise ResearchError(
+                        ErrorCode.STALE_FENCE, "Clock refresh cannot extend allowance"
+                    )
+            return entry.model_copy(update={"timing": verified.evidence})
+
+        return self._change(attempt_id, "clock.bound", bind)
 
     def bind_prepared(self, attempt_id: str, prepared: PreparedExecution) -> JournalEntry:
         prepared = PreparedExecution.model_validate(prepared)
@@ -284,7 +369,10 @@ class WorkerJournal:
         def settle(entry: JournalEntry) -> JournalEntry:
             if entry.state == JournalState.RECEIVED and (
                 entry.cancel_requested
-                or min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
+                or (
+                    entry.clock_mode == "local-utc-v1"
+                    and min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
+                )
             ):
                 return entry.model_copy(
                     update={
@@ -317,6 +405,10 @@ class WorkerJournal:
             self._owner(entry, supervisor_id)
             if entry.state != JournalState.HELD:
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Process is not held")
+            if entry.clock_mode != "local-utc-v1":
+                raise ResearchError(
+                    ErrorCode.CAPABILITY_UNAVAILABLE, "Calibrated release requires a live origin"
+                )
             if (
                 entry.cancel_requested
                 or min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()

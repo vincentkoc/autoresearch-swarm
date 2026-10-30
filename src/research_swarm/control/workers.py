@@ -19,6 +19,7 @@ from research_swarm.domain.assignments import (
 from research_swarm.domain.clocks import (
     AssignmentTimePayload,
     ClockChallenge,
+    ClockMode,
     ClockReplyPayload,
     SignedAssignmentTime,
     SignedClockReply,
@@ -46,7 +47,6 @@ from research_swarm.workers.clock_signatures import ClockSigner, ClockVerifier
 from research_swarm.workers.signatures import AssignmentSigner
 
 NATIVE_CLEANUP_MS = 5000
-ClockMode = Literal["local-utc-v1", "bounded-continuous-v1"]
 
 
 class EnrollWorker(VersionedRecord):
