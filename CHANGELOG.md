@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an optional native delivery gateway for remote orchestration adapters, with exact campaign registration, separate scoped credentials and bounded versioned references around the existing delivery kernel.
+- Preserve committed-action replay, cancellation custody and transport uncertainty across HTTP; sanitize malformed inputs and provider failures, including deep JSON nesting.
+- Document the deployed Cloudflare clock constraint and the hybrid delivery direction without claiming authoritative hosted execution qualification.
+
 - Separate artifact reader ownership from native process inspection with an explicit synchronous provider and immutable owner records; preserve legacy local reader recovery.
 - Permit portable controller construction with conservative opaque ownership, retain abandoned pins when closure is unqualified, and recheck session ownership/revision before admitting reads or releasing references.
 

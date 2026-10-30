@@ -68,7 +68,8 @@ not implicitly supported.
 | Durable orchestration turns and waits | Bindings, dedicated routes, exact actions, transaction fences, durable conditions, destination-specific deliveries and verified ownership transfer | Runner/transfer races, HTTP recovery, bound evaluation/admission, actual controller exit, duplicate notification, timer recovery, parent-child wakeups, retained-artifact checks and successor startup | Local turn/wait/transfer conformance; provider execution pending |
 | Portable signing | Per-service synchronous Ed25519 provider; unchanged assignment and clock codecs | Golden bytes, provider isolation/failure, historical timing and native-default import refusal | Local workerd exchanges actual envelopes with native cryptography; hosted key storage and clock qualification pending |
 | Portable reader custody | Injected immutable owner profile, native closure proof and conservative opaque incarnation | Native-free construction, pin lifecycle, owner-change races, abandoned pins and legacy/tagged crashed native readers | Opaque orphan recovery deliberately unavailable; no hosted closure claim |
-| Cloudflare | Pending | Pending | Hosted deployment pending |
+| Native delivery gateway | Optional scoped HTTP facade around the shared delivery kernel, registered per exact binding | Real HTTP lost reply and concurrent replay, waits, fencing, auth, bounded parsing and cancellation drain | Enables hybrid delivery; Cloudflare Workflow and hosted qualification pending |
+| Cloudflare | SQL/signing primitives and native delivery gateway; full hosted authority unqualified | Primitive qualification only | Deployed clock semantics do not satisfy the existing authority-time contract; see cloudflare.md |
 | Actual reward-driven policy learning | Pending | Pending | Training/evaluation pending |
 | Optional UI | Pending | Pending | Browser workflow pending |
 | Rust interoperability | Pending | Pending | Component gate remains explicit |

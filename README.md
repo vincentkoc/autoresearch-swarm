@@ -18,7 +18,9 @@ The core contract separates immutable experiments from mutable dispatch authorit
 Every attempt, evaluator receipt, budget settlement, and promotion retains its
 own identity. The local implementation starts with Python, SQLite, and subprocesses.
 An optional [Temporal adapter](docs/temporal.md) delivers saved actions and waits
-against the same domain authority. Cloudflare remains planned.
+against the same domain authority. The [Cloudflare direction](docs/cloudflare.md)
+has a native delivery gateway and locally qualified SQL/signing primitives;
+Workflow delivery and R2 storage remain in progress.
 
 Implemented foundations include the transactional ledger, exact budget arithmetic,
 evaluation receipt validation, verified artifact lifecycle, and immutable source

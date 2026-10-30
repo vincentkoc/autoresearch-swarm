@@ -1484,6 +1484,14 @@ Use bounded histories and deliberate workflow versioning. Replay representative 
 
 ### 16.5 Cloudflare driver
 
+Implementation qualification update (2026-10-30): deployed Workers freeze their
+clock during computation, unlike local development. The proposed authoritative
+Durable Object profile does not currently satisfy the qualified controller-time
+contract. The implementation direction therefore starts with Cloudflare delivery
+around the native authority. The original hosted-authority exit criteria remain
+unmet; this is not an implicit UTC fallback or a claim of equivalent qualification.
+See [the implemented boundary and gateway](cloudflare.md).
+
 The recommended lean hosted shape is:
 
 - Workers for API and MCP access.
