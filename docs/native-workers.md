@@ -4,6 +4,33 @@ The core includes a native supervisor, worker journal, and explicit `LocalWorker
 The async campaign driver and remote worker enrollment remain integration work.
 These primitives do not authorize enrollment or execution on another machine.
 
+## Local enrollment
+
+`ensure_local_enrollment(runtime)` prepares the Python CPU worker and a separate
+authenticated evaluator. It persists both identities and private credentials before
+provisioning them. Repeated calls resume the same worker session. A crash between
+credential creation and enrollment does not create another identity.
+
+The worker can claim and publish native attempts. It cannot publish evaluator
+receipts. The evaluator can publish receipts but cannot claim jobs. Both clients
+resolve their credentials on each request, so revocation takes effect immediately.
+These roles separate authority; they do not create a protected evaluation sandbox.
+
+The default machine registry is shared across local controller directories at
+`~/.local/state/autoresearch-swarm-machine/resources.sqlite`. Its native pools
+have one controller owner. A second controller cannot silently claim the same
+capacity. An explicit registry path is useful for isolated tests and deployments
+whose operator manages separate native resource admission.
+
+Enrollment records a CPU execution fingerprint from the OS, architecture, CPU
+model, Python runtime, and admitted CPU slots. An unavailable model probe uses a
+worker-specific identity to prevent accidental cross-worker equivalence. This
+fingerprint does not prove thermal equivalence or kernel resource isolation.
+
+Changing the profile, registry, or controller epoch requires explicit recovery.
+Missing state and revoked credentials are not silently recreated. This helper
+does not install frameworks, rotate credentials, or enroll remote machines.
+
 ## Machine resource admission
 
 `MachineResources` stores native scheduling reservations in one operator-controlled

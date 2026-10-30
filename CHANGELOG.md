@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Persist separate local worker and evaluator credentials before enrollment and resume interrupted setup without changing their authority.
+- Refuse missing or revoked enrollment state, changed execution profiles, and conflicting machine ownership.
 - Drain active stage graphs before pausing and preserve queued work for explicit resume.
 - Complete only settled research under its stopping rule and atomically capture its final report.
 - Generate bounded JSON and Markdown from one evidence snapshot, freeze completed selection, and preserve later corrections.

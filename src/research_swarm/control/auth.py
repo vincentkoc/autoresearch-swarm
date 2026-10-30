@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 from dataclasses import dataclass, field
 
@@ -10,7 +11,7 @@ from pydantic import TypeAdapter
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
-from research_swarm.domain.types import Timestamp, new_id, utc_now
+from research_swarm.domain.types import ID, Timestamp, new_id, utc_now
 from research_swarm.state.database import Database, encode
 
 
@@ -34,12 +35,7 @@ class CredentialStore:
     def issue(
         self, issuer: Principal, principal: Principal, *, expires_at: str | None = None
     ) -> IssuedCredential:
-        issuer.require("auth.manage")
-        principal = Principal.model_validate(principal)
-        if issuer.workspace_id != principal.workspace_id:
-            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Credential workspace differs")
-        if "*" not in issuer.scopes and not principal.scopes <= issuer.scopes:
-            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Credential exceeds issuer scopes")
+        principal = self._authorize(issuer, principal)
         if expires_at is not None:
             expires_at = TypeAdapter(Timestamp).validate_python(expires_at)
             if expires_at <= utc_now():
@@ -62,6 +58,68 @@ class CredentialStore:
                     expires_at,
                 ),
             )
+        return IssuedCredential(identifier, token, principal)
+
+    @staticmethod
+    def _authorize(issuer: Principal, principal: Principal) -> Principal:
+        issuer.require("auth.manage")
+        principal = Principal.model_validate(principal)
+        if issuer.workspace_id != principal.workspace_id:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Credential workspace differs")
+        if "*" not in issuer.scopes and not principal.scopes <= issuer.scopes:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Credential exceeds issuer scopes")
+        return principal
+
+    def install(
+        self, issuer: Principal, principal: Principal, *, identifier: str, token: str
+    ) -> IssuedCredential:
+        """Resume local provisioning from a secret persisted before its first delivery.
+
+        This is not credential rotation. Conflicting, revoked, or expiring credentials
+        require an explicit operator action and are never replaced here.
+        """
+        principal = self._authorize(issuer, principal)
+        TypeAdapter(ID).validate_python(identifier)
+        if re.fullmatch(r"rsw_[A-Za-z0-9_-]{43}", token) is None:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid enrollment credential")
+        digest = self._digest(token)
+        with self.database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                rows = connection.execute(
+                    "SELECT * FROM credentials WHERE id=? OR token_digest=?", (identifier, digest)
+                ).fetchall()
+                if rows:
+                    row = rows[0]
+                    if (
+                        len(rows) != 1
+                        or row["id"] != identifier
+                        or row["token_digest"] != digest
+                        or row["workspace_id"] != principal.workspace_id
+                        or Principal.model_validate_json(row["principal"]) != principal
+                        or row["revoked"]
+                        or row["expires_at"] is not None
+                    ):
+                        raise ResearchError(
+                            ErrorCode.AUTHORIZATION_DENIED,
+                            "Enrollment credential differs or is no longer active",
+                        )
+                else:
+                    connection.execute(
+                        "INSERT INTO credentials"
+                        "(id,token_digest,workspace_id,principal,created_at) VALUES (?,?,?,?,?)",
+                        (
+                            identifier,
+                            digest,
+                            principal.workspace_id,
+                            encode(principal.model_dump(mode="json")),
+                            utc_now(),
+                        ),
+                    )
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
         return IssuedCredential(identifier, token, principal)
 
     @staticmethod
