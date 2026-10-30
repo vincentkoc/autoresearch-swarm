@@ -136,6 +136,42 @@ flag. Tests cover cancellation before assignment, during materialization, before
 and after release authorization, and while a parent and descendants run. Capacity
 and budget settlement still require accepted closure or proven absence.
 
-Controller records and worker receipt/application are implemented and tested.
-Automatic polling in the remote driver is the next slice; the controller API alone
-does not establish that an existing worker has received a request.
+## Remote driver synchronization
+
+`ScopedWorkerDriver` synchronizes controls before scheduling pending work and
+after a claim reply. An independent polling task continues while native work
+executes, including during orderly shutdown. Two reserved control threads keep
+long experiment execution from exhausting the executor used for control calls.
+The default control poll interval is 500 ms. Heartbeats target 15 seconds or send
+sooner when there are acknowledgments. These are polling targets, not delivery
+latency guarantees; network calls retain their configured timeout.
+
+One private `driver/heartbeat.json` stores the full binding, last accepted sequence,
+and at most one pending request with its original idempotency key. It is written
+before delivery. Accepted controller reply, local acknowledgment, and persisted
+sequence advance occur in that order. A crash between them replays the original
+request and repeats local acknowledgment safely. There is no file per heartbeat.
+
+On initialization, the driver reads current presence. Existing sequence and local
+state must agree after replay of a pending request. Missing local heartbeat state
+for an already observed enrollment blocks explicitly; it never silently resets a
+sequence or replaces an uncertain envelope. A new driver instance ID does not
+change this rule. Preserve the private driver directory when resuming.
+
+Each synchronization pass scans at most 128 control pages of 100 records and
+acknowledges progress during the scan. A bound or transport failure prevents fresh
+native launch until a complete synchronization succeeds. Existing owned supervisors
+continue with their original deadlines. A claim accepted during a control outage
+remains reserved for recovery. A drained worker remains observable and can finish
+previously admitted assignments; fresh offers resume after explicit reactivation.
+
+Cancelling an awaited synchronization does not release its writer lock while its
+thread is still persisting a heartbeat. Driver shutdown first drains owned native
+tasks, then stops the control pump, waits for outstanding control calls, and releases
+its ownership lock. Forced driver death leaves native supervision independent;
+on restart, queued cancellation is applied to the original process scope.
+
+Tests use HTTP, separate controller/driver/supervisor processes, real native
+cancellation, interrupted heartbeat acknowledgment, and bounded paging. Physical
+remote-host deployment remains a separate qualification. The controller API alone
+still does not prove receipt: inspect acknowledgment and accepted closure separately.

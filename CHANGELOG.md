@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Poll scoped worker controls independently of experiment execution, with dedicated control threads and durable sequenced heartbeat replay.
+- Apply offline cancellation before native receipt, gate fresh launch on completed synchronization, and keep controls flowing while owned work drains.
+- Preserve one bounded heartbeat state file across restart and acknowledge control receipts only after the controller accepts their exact heartbeat.
+
 - Persist worker cancellation receipts atomically with assignment journaling, including cancellation delivered before its assignment.
 - Keep cancellation effective after acknowledgment and restart, preserve terminal publication bytes, and separate local repair cancellation from remote sequencing.
 - Verify cancellation during preparation and native release, calibrated origin authorization, and owned descendant shutdown with real subprocess tests.

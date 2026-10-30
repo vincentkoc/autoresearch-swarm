@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from collections.abc import AsyncIterator, Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
+from functools import partial
 from typing import Any, Literal, TypeVar
 
 import httpx
@@ -19,6 +21,7 @@ from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord
 from research_swarm.orchestration.intents import CommandIntents
+from research_swarm.orchestration.worker_controls import WorkerControlSession
 from research_swarm.runtime import private_state_directory, read_private, write_private
 from research_swarm.state.database import JsonObject
 from research_swarm.workers.journal import JournalState
@@ -47,7 +50,12 @@ class ScopedDriverResult(VersionedRecord):
 
 class ScopedWorkerDriver:
     def __init__(
-        self, enrollment: RemoteEnrollment, *, poll_ms: int = 500, maximum_backoff_ms: int = 15_000
+        self,
+        enrollment: RemoteEnrollment,
+        *,
+        poll_ms: int = 500,
+        maximum_backoff_ms: int = 15_000,
+        heartbeat_ms: int = 15_000,
     ) -> None:
         worker, bundle = enrollment.worker, enrollment.bundle
         transport = worker.client.transport
@@ -66,20 +74,93 @@ class ScopedWorkerDriver:
             raise ValueError("Polling requires 50 <= poll_ms <= maximum_backoff_ms <= 60000")
         self.enrollment, self.worker = enrollment, worker
         self.poll_ms, self.maximum_backoff_ms = poll_ms, maximum_backoff_ms
+        if type(heartbeat_ms) is not int or not 50 <= heartbeat_ms <= 60_000:
+            raise ValueError("Heartbeat interval must be between 50 and 60000 ms")
+        self.heartbeat_ms = heartbeat_ms
         self.root = worker.root / "driver"
         with private_state_directory(self.root):
             pass
         self.stop = asyncio.Event()
-        self._control_tasks: set[asyncio.Task[Any]] = set()
+        self._control_tasks: set[asyncio.Future[Any]] = set()
+        self._control_executor: ThreadPoolExecutor | None = None
+        self._control_session: WorkerControlSession | None = None
+        self._sync_lock = asyncio.Lock()
+        self._pump_stop = asyncio.Event()
+        self._pump_task: asyncio.Task[None] | None = None
+        self._control_error: ResearchError | None = None
+        self._pump_failure: ResearchError | None = None
+        self._admission: Literal["active", "draining"] = "draining"
 
     async def _blocking(self, call: Callable[..., CallResult], *args: Any) -> CallResult:
-        task = asyncio.create_task(asyncio.to_thread(call, *args))
+        assert self._control_executor is not None
+        task = asyncio.get_running_loop().run_in_executor(
+            self._control_executor, partial(call, *args)
+        )
         self._control_tasks.add(task)
         try:
             return await asyncio.shield(task)
         finally:
             if task.done():
                 self._control_tasks.discard(task)
+
+    async def _sync_controls(self) -> None:
+        assert self._control_session is not None
+        async with self._sync_lock:
+            self._check_pump()
+            task = asyncio.create_task(self._blocking(self._control_session.synchronize))
+            try:
+                self._admission = await asyncio.shield(task)
+                self._check_pump()
+                self._control_error = None
+            except asyncio.CancelledError:
+                # A cancelled await cannot release the single heartbeat writer
+                # while its HTTP call and durable file update are still running.
+                drain = asyncio.gather(task, return_exceptions=True)
+                while not drain.done():
+                    try:
+                        await asyncio.shield(drain)
+                    except asyncio.CancelledError:
+                        continue
+                raise
+            except ResearchError as error:
+                self._control_error = error
+                raise
+
+    async def _control_loop(self) -> None:
+        delay = self.poll_ms
+        while not self._pump_stop.is_set():
+            try:
+                await self._sync_controls()
+            except ResearchError as error:
+                if error.code not in TRANSIENT_DELIVERY | {ErrorCode.RESOURCE_UNAVAILABLE}:
+                    self._pump_failure = error
+                    return
+                delay = min(self.maximum_backoff_ms, delay * 2)
+            else:
+                delay = self.poll_ms
+            with suppress(TimeoutError):
+                await asyncio.wait_for(self._pump_stop.wait(), timeout=delay / 1000)
+
+    def _fresh_admission(self) -> bool:
+        return (
+            self._admission == "active"
+            and self._control_error is None
+            and self._pump_failure is None
+        )
+
+    def _check_pump(self) -> None:
+        if self._pump_failure is not None:
+            raise self._pump_failure
+        if self._pump_task is not None and self._pump_task.done():
+            self._pump_task.result()
+
+    async def _drain(self, active: dict[str, asyncio.Task[JsonObject]]) -> None:
+        # Keep controls flowing until owned execution closes, including shutdown.
+        await asyncio.gather(*active.values(), return_exceptions=True)
+        self._pump_stop.set()
+        if self._pump_task is not None:
+            await asyncio.gather(self._pump_task, return_exceptions=True)
+        await asyncio.gather(*self._control_tasks, return_exceptions=True)
 
     def _identity(self) -> None:
         bundle = self.enrollment.bundle
@@ -179,6 +260,10 @@ class ScopedWorkerDriver:
     ) -> None:
         await self._blocking(self._current)
         await self._blocking(intents.recover)
+        self._check_pump()
+        await self._sync_controls()
+        if self._pump_task is None:
+            self._pump_task = asyncio.create_task(self._control_loop())
         pending = {row["id"]: row async for row in self._records("pending")}
         blocked = False
         for entry in self.worker.journal.unresolved():
@@ -236,12 +321,21 @@ class ScopedWorkerDriver:
                 # Reconcile existing native work before starting them.
                 blocked = True
             elif len(active) < self.worker.worker.max_concurrency and not self.stop.is_set():
+                await self._sync_controls()
+                self._check_pump()
+                if self.stop.is_set() or any(task.done() for task in active.values()):
+                    return
+                self._admission_blocked(active, recovery_fences)
+                if recovery_fences - {identifier} and (
+                    local is None or local.state == JournalState.RECEIVED
+                ):
+                    return
                 active[identifier] = asyncio.create_task(
                     asyncio.to_thread(self.worker.execute, identifier)
                 )
             else:
                 blocked = True
-        if blocked or recovery_fences or self.stop.is_set():
+        if blocked or recovery_fences or self.stop.is_set() or not self._fresh_admission():
             return
         assert self.worker.clock_sampler is not None
         self.worker.clock_sampler.read()
@@ -249,6 +343,7 @@ class ScopedWorkerDriver:
             if (
                 len(active) >= self.worker.worker.max_concurrency
                 or self.stop.is_set()
+                or not self._fresh_admission()
                 or self._admission_blocked(active, recovery_fences)
             ):
                 break
@@ -259,7 +354,9 @@ class ScopedWorkerDriver:
                     raise
                 findings.add(error.code.value + ":" + offer["id"])
                 continue
-            if self._admission_blocked(active, recovery_fences):
+            await self._sync_controls()
+            self._check_pump()
+            if self.stop.is_set() or self._admission_blocked(active, recovery_fences):
                 # The accepted command is durable; the next pending pass owns it.
                 return
             active[attempt["id"]] = asyncio.create_task(
@@ -302,6 +399,16 @@ class ScopedWorkerDriver:
         disconnected = False
         try:
             self._identity()
+            self._control_executor = ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="research-control"
+            )
+            self._control_session = WorkerControlSession(
+                self.worker.client,
+                self.worker.worker.binding,
+                self.worker.journal,
+                self.root,
+                heartbeat_ms=self.heartbeat_ms,
+            )
             intents = CommandIntents(
                 self.root / "commands",
                 {"worker": self.worker.client},
@@ -391,14 +498,18 @@ class ScopedWorkerDriver:
                 else:
                     await self._wait(active, backoff_ms if disconnected else self.poll_ms)
         finally:
-            if active or self._control_tasks:
-                drain = asyncio.gather(
-                    *active.values(), *self._control_tasks, return_exceptions=True
-                )
+            self.stop.set()
+            try:
+                drain = asyncio.create_task(self._drain(active))
                 while not drain.done():
                     try:
                         await asyncio.shield(drain)
                     except asyncio.CancelledError:
-                        self.stop.set()
-            self._control_tasks.clear()
-            lock.release()
+                        continue
+                await drain
+            finally:
+                self._control_tasks.clear()
+                if self._control_executor is not None:
+                    self._control_executor.shutdown(wait=True)
+                    self._control_executor = None
+                lock.release()

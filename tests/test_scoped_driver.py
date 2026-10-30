@@ -19,6 +19,7 @@ from research_swarm.control.commands import SubmitTrial
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.models import TrialData
 from research_swarm.control.queries import RecordQuery
+from research_swarm.control.worker_lifecycle import RequestAttemptCancellation
 from research_swarm.control.workers import AttemptData
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
@@ -545,9 +546,10 @@ def controller_process(pipeline: Pipeline) -> Iterator[str]:
             process.communicate(timeout=5)
 
 
-@pytest.mark.parametrize("pipeline", [{"source_finish_delay": 3}], indirect=True)
+@pytest.mark.parametrize("pipeline", [{"source_finish_delay": 5}], indirect=True)
+@pytest.mark.parametrize("cancel_offline", [False, True])
 def test_independent_worker_process_restart_recovers_the_original_running_native_scope(
-    pipeline: Pipeline, tmp_path: Path
+    pipeline: Pipeline, tmp_path: Path, cancel_offline: bool
 ) -> None:
     root = tmp_path / "remote"
     with controller_process(pipeline) as url, enrollment(pipeline, root, url) as connected:
@@ -580,12 +582,30 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             assert running.native is not None
             first.kill()  # Only the driver process created by this test.
             first.communicate(timeout=5)
+            if cancel_offline:
+                attempt = pipeline.client.get("attempt", running.dispatch.attempt_id)
+                requested = pipeline.client.command(
+                    "attempt.request_cancel",
+                    RequestAttemptCancellation(
+                        attempt_id=attempt["id"], reason="Offline cancellation fixture"
+                    ),
+                    idempotency_key="offline-cancel",
+                    expected_revision=attempt["revision"],
+                )["result"]
+                assert requested["disposition"] == "requested"
+                assert requested["control"]["data"]["acknowledged_at"] is None
             resumed = subprocess.run(argv, capture_output=True, text=True, timeout=20, check=True)
             result = json.loads(resumed.stdout)
             assert result["state"] == "idle" and result["observation_count"] == 1
             closed = journal.get(running.dispatch.attempt_id)
             assert closed.state == JournalState.CLOSED and closed.native == running.native
             assert closed.outcome is not None and closed.outcome.closure.scope_closed
+            if cancel_offline:
+                assert closed.outcome.reason == "cancelled"
+                assert (
+                    pipeline.client.get("attempt_control", closed.dispatch.attempt_id)["state"]
+                    == "completed"
+                )
             assert connected.worker.resources.availability() == {"cpu": 1}
             assert len(pipeline.client.list(RecordQuery(kind="attempt"))["items"]) == 1
             assert connected.bundle.token not in resumed.stdout + resumed.stderr

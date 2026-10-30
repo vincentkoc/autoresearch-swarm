@@ -156,6 +156,12 @@ can remain durably pending for the next resume. Forced driver termination leaves
 the independent supervisor's original deadline in force; restart observes the
 original process instead of launching its attempt again.
 
+The driver also [synchronizes worker controls](worker-control.md): heartbeats,
+admission drain, and attempt cancellation. Its independent control pump remains
+active through native draining. Durable heartbeat envelopes and journal receipts
+survive lost replies; control uncertainty blocks fresh launch without refunding
+accepted work. Keep the worker's private `driver` directory on resume.
+
 Python callers can use:
 
 ~~~python
@@ -182,6 +188,7 @@ slot refill, delayed HTTP replies, exact uncertain-command recovery, worker-lock
 ownership during cancellation, and uncertainty discovered during offer/claim RPCs.
 An independent HTTP controller, worker driver, and native supervisor test kills the
 driver while training runs and verifies recovery of the same native identity.
-Physical remote hosts, service installation, remote cancellation/heartbeats, and
-non-CPU engines remain separately qualified features. No cloud service is required
+Physical remote hosts, service installation, and non-CPU engine deployment remain
+separately qualified features. Remote heartbeats and cancellation are qualified
+locally through HTTP and independent process recovery. No cloud service is required
 for the local default.
