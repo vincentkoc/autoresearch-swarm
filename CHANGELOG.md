@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Qualify built-wheel installation in a fresh environment outside the checkout, with locked runtime dependencies and no optional accelerator or Temporal packages.
+- Exercise installed CLI/native training, independent evaluation, MCP selection/reporting, and source-free replay; add dedicated Linux, macOS, and Windows package jobs.
+
 - Qualify a complete external MCP research cycle across agent-process restart, with independent native execution/evaluation, exact admission replay, observed improvement, and an immutable terminal report.
 - Verify that the scoped research agent cannot publish evaluator receipts and that same-principal CLI replay preserves the original completion without extra execution or cost.
 

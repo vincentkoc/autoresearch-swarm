@@ -6,6 +6,7 @@ not implicitly supported.
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|
 | Domain schemas and JCS hashing | Implemented foundation | Frozen Python/JavaScript byte-and-hash corpus, invalid Unicode/float rejection, independent Ed25519 verification and tamper rejection | Local cross-language proof; CI requires Node 22 across the platform matrix; full second-runtime authority remains separate |
+| Built-wheel distribution | Hatch wheel, generated CLI, optional provider/engine extras | Fresh constrained installation outside the checkout, isolated import origin, absent optional frameworks, real CPU stages, installed MCP final report, source-free replay | Local macOS proof; dedicated Linux/macOS/Windows package matrix added |
 | SQLite transactions, events, outbox | Transaction substrate implemented | Restart, independent connections, rollback, watermark tests pass | Foundation CI passes on Linux, macOS, Windows, Python 3.11–3.13 |
 | Exact budget arithmetic | Implemented foundation and hierarchical accounting | Exact arithmetic, uncertainty, settlement, overshoot and recursive allocation tests pass | Real CPU child execution locally verified |
 | Evaluator receipts | Pre-execution authorization and authenticated completion implemented | Scoped credentials, exact attempts, replay, incomplete panels, invalid metrics | Local CPU pipeline passes; statistical promotion remains separate |
