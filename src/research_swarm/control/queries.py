@@ -31,6 +31,8 @@ RecordKind = Literal[
     "evaluation_receipt",
     "promotion",
     "evidence_correction",
+    "confirmation_plan",
+    "evaluation_exposure",
     "report",
 ]
 
@@ -148,6 +150,18 @@ def summarize(row: JsonObject) -> JsonObject:
             "panel_digest": receipt["panel_digest"],
             "execution_fingerprint": receipt["execution_fingerprint"],
         }
+    elif row["kind"] == "confirmation_plan":
+        plan = data["plan"]
+        result["data"] = {
+            "candidate_id": plan["candidate_id"],
+            "comparator_id": plan["comparator_id"],
+            "plan_digest": plan["plan_digest"],
+            "trial_count": len(plan["bindings"]),
+            "decision_id": data["decision_id"],
+            "policy": plan["policy"],
+        }
+    elif row["kind"] == "evaluation_exposure":
+        result["data"] = data
     elif row["kind"] == "promotion":
         result["data"] = {
             "decision": data["decision"],

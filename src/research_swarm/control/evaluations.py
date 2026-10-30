@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from research_swarm.control.confirmation_runtime import bound_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.validity import EvidenceReference, invalidated
 from research_swarm.control.workers import AttemptData
@@ -156,13 +157,19 @@ class EvaluationControl:
                     ErrorCode.CAPABILITY_UNAVAILABLE,
                     "This evaluator trust profile is not qualified",
                 )
-            if intent.exposure_class == "confirmation" and (
-                campaign.contract.promotion.mode != "paired_confirmation"
-                or trial.spec.seed not in campaign.contract.promotion.confirmation_seeds
-            ):
+            bound = bound_confirmation(transaction, trial)
+            if intent.exposure_class == "confirmation" and bound is None:
                 raise ResearchError(
                     ErrorCode.COMPARISON_INELIGIBLE,
-                    "Seed is outside the declared confirmation panel",
+                    "Confirmation requires a sealed plan",
+                )
+            if bound is not None and (
+                bound[0].evaluator_id != intent.evaluator_id
+                or bound[1].scoring_job_id != row["id"]
+                or current.evaluation_exposure_id != bound[1].exposure_id
+            ):
+                raise ResearchError(
+                    ErrorCode.AUTHORIZATION_DENIED, "Evaluation differs from confirmation plan"
                 )
             request = EvaluationRequest(
                 workspace_id=transaction.workspace_id,
@@ -183,7 +190,8 @@ class EvaluationControl:
                 metric_schema=trial.spec.metrics,
                 expected_seed=trial.spec.seed,
                 expected_members=evaluator.expected_members,
-                exposure_class=intent.exposure_class,
+                exposure_class="confirmation" if bound else intent.exposure_class,
+                exposure_authorization_id=bound[1].exposure_id if bound else None,
             )
             assert trial.spec.spec_digest is not None
             authorization = EvaluationAuthorization(

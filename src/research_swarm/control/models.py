@@ -132,6 +132,8 @@ class TrialData(VersionedRecord):
     execution_outcome: Literal["pending", "succeeded", "failed", "cancelled", "unknown"] = "pending"
     evaluation_status: Literal["pending", "valid", "invalid", "incomplete"] = "pending"
     resource_status: Literal["unallocated", "active", "closed", "unknown"] = "unallocated"
+    confirmation_plan_id: ID | None = None
+    confirmation_side: Literal["candidate", "comparator"] | None = None
 
 
 class JobData(VersionedRecord):
@@ -142,4 +144,5 @@ class JobData(VersionedRecord):
     inputs: dict[Name, ArtifactRef] = Field(default_factory=dict)
     current_attempt_id: ID | None = None
     evaluation_request_id: ID | None = None
+    evaluation_exposure_id: ID | None = None
     outputs: dict[Name, ArtifactRef] = Field(default_factory=dict)

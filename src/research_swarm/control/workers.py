@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from research_swarm.control.confirmation_runtime import claim_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
@@ -261,6 +262,7 @@ class WorkerControl:
                     ErrorCode.RESOURCE_UNAVAILABLE, "Campaign trial concurrency is occupied"
                 )
             attempt_id = new_id()
+            claim_confirmation(transaction, trial, job, profile.execution_fingerprint, attempt_id)
             reservation = BudgetLedger.reserve(
                 transaction,
                 row["campaign_id"],

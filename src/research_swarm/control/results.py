@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from pydantic import Field
 
+from research_swarm.control.confirmation_runtime import release_unused_exposure, settle_exposure
 from research_swarm.control.models import JobData, TrialData
 from research_swarm.control.workers import AttemptData, worker_authority
 from research_swarm.domain.artifacts import ArtifactRetention
@@ -267,6 +268,7 @@ class ResultControl:
         }
         for reservation_id in attempt.dispatch.reservation_ids:
             BudgetLedger.settle(transaction, reservation_id, row["id"], consumed)
+        settle_exposure(transaction, job, row["id"], not_started=not_started)
         result = None
         if outcome is not None and not not_started:
             assert outcome.exit_code is not None
@@ -361,6 +363,8 @@ class ResultControl:
                         data=job["data"],
                     )
                     transaction.event("job.dependency_resolved", jobs[identifier], {})
+                    if state == "failed":
+                        release_unused_exposure(transaction, data)
                     resolved.add(identifier)
             if not resolved:
                 break

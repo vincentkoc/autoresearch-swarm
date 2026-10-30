@@ -15,6 +15,7 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
+from research_swarm.control.confirmation import CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.results import PublishAttempt
@@ -37,6 +38,13 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "confirmation.create": CommandDefinition(
+        CreateConfirmationPlan,
+        "create_confirmation",
+        "confirmation.manage",
+        True,
+        "Seal paired trials, execution profiles, and exposure reservations before admission.",
+    ),
     "promotion.reinitialize": CommandDefinition(
         AssessPromotion,
         "reinitialize_baseline",

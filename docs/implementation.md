@@ -18,7 +18,7 @@ not implicitly supported.
 | Controller commands | Project revisions, campaign activation, candidate validation, atomic trial graphs, worker admission, result settlement, evaluation authority | Concurrent replay, frozen baseline, mutation boundary, atomic claims, stage progression, uncertainty, late closure | Local CPU execution and evaluation pass; promotion service pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Observed assessment, atomic selection, append-only correction implemented; search pending | Real CPU evidence, concurrent incumbent CAS, rejected control, training-profile mismatch, invalidation before/after commit | Paired plan integration and equal-budget research pending |
-| Statistical gates and exposure | Pure fixed paired sign gate implemented; exposure service pending | Exact null-sign enumeration, direction symmetry, incomplete panels, practical threshold, numeric extremes | Independence and workload variance pending |
+| Statistical gates and exposure | Fixed paired sign gate, sealed trial plans, separate exposure admission/settlement | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release | Paired assessment integration, independence, and workload variance pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
 | Nested campaigns and policy benchmark | Pending | Pending | Held-out comparison pending |
 | Temporal | Pending | Pending | Real server pending |

@@ -100,3 +100,31 @@ Use `promotion.reinitialize` to assess a replacement after suspension. This comm
 requires its own scope and a trial submitted after the correction. Then use
 `promotion.commit` with that assessment. Recovery binds the suspended incumbent
 revision and establishes an observed baseline without claiming improvement.
+
+## Confirmation admission
+
+Configure `promotion.mode = "paired_confirmation"`, version `paired-sign-v1`, and
+the fixed confirmation seeds when creating the campaign. Allocate an
+`evaluation_exposures` budget with kind `exposure` and unit `count`.
+
+After adopting an observed baseline, call `confirmation.create`. Supply the candidate,
+validation, evaluator identity, incumbent revision, and execution fingerprint for every stage.
+The command creates both sides of every seed pair in one transaction. It also
+reserves one evaluation exposure per scoring job. Insufficient trial capacity or
+exposure budget rolls back the entire panel.
+
+The first policy allows one confirmation plan per campaign. Ordinary trial submission
+cannot use reserved confirmation seeds. The plan cannot attach previously executed
+trials, extend its panel, or replace failed realizations with selected retries.
+
+Admission checks the planned execution fingerprint for every stage. Scoring also
+requires prior evaluator authorization. The controller derives confirmation exposure
+from the sealed trial binding. A caller cannot relabel ordinary evidence as confirmation.
+
+Scoring dispatch transfers its exposure reservation to uncertain access. Native closure
+consumes access even if scoring fails. Positive proof that scoring never started
+releases the reservation. A failed prerequisite releases an undispatched scoring grant.
+Timeout alone cannot release exposure. Execution and exposure use separate settlements.
+
+Plan execution currently produces authenticated receipts. The service that assesses
+the complete paired plan against the statistical gate remains in progress.

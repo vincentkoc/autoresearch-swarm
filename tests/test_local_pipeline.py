@@ -50,7 +50,9 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     runtime = LocalRuntime.open(tmp_path / "runtime")
     client = ResearchClient(LocalTransport(runtime))
     source = Path(__file__).resolve().parents[1] / "examples" / "cpu_bigram"
-    parallel_stage = getattr(request, "param", False)
+    options = getattr(request, "param", False)
+    parallel_stage = options is True
+    campaign_options = {"limits": LIMITS, **(options if isinstance(options, dict) else {})}
     if parallel_stage:
         copied = tmp_path / "parallel-source"
         shutil.copytree(source, copied)
@@ -68,7 +70,7 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
             project_id=registered["project"]["id"],
             name="Local pipeline",
             primary_metric="val_bpb",
-            limits=LIMITS,
+            **campaign_options,
         ),
         idempotency_key="campaign",
     )["result"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 
 from pydantic import ValidationError
 
@@ -14,6 +15,7 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
+from research_swarm.control.confirmation import ConfirmationControl, CreateConfirmationPlan
 from research_swarm.control.evaluations import (
     AuthorizeEvaluation,
     CompleteEvaluation,
@@ -47,6 +49,7 @@ from research_swarm.domain.experiments import ExperimentSpec, SourceRef
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.lifecycle import CampaignState, campaign_transition
 from research_swarm.domain.types import VersionedRecord, new_id, utc_now
+from research_swarm.evaluation.statistics import FixedPairedPolicy
 from research_swarm.projects.manifest import ResolvedProject, resolve_project
 from research_swarm.projects.source import validate_mutation
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
@@ -115,6 +118,12 @@ class ResearchService:
         self.results = ResultControl(database, artifacts)
         self.evaluations = EvaluationControl(database, artifacts)
         self.promotions = PromotionControl(database)
+        self.confirmations = ConfirmationControl(database, self._submit_trial)
+
+    def create_confirmation(
+        self, context: CommandContext, request: CreateConfirmationPlan
+    ) -> JsonObject:
+        return self.confirmations.create(context, request)
 
     def assess_promotion(self, context: CommandContext, request: AssessPromotion) -> JsonObject:
         return self.promotions.assess(context, request)
@@ -298,6 +307,28 @@ class ResearchService:
             ArtifactCatalog.available(transaction, reference)
         input_sources(revision.resolved, campaign.contract.input_artifacts)
         limits = {limit.dimension: limit for limit in campaign.contract.limits}
+        promotion = campaign.contract.promotion
+        if promotion.mode == "paired_confirmation":
+            if promotion.version != "paired-sign-v1":
+                raise ResearchError(
+                    ErrorCode.CAPABILITY_UNAVAILABLE, "Unknown paired promotion policy"
+                )
+            try:
+                FixedPairedPolicy(
+                    seeds=promotion.confirmation_seeds,
+                    minimum_effect=promotion.minimum_effect,
+                    confidence=promotion.confidence,
+                )
+            except ValidationError as error:
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID, "Confirmation panel is infeasible"
+                ) from error
+            exposure = limits.get("evaluation_exposures")
+            if exposure is None or exposure.kind != BudgetKind.EXPOSURE or exposure.unit != "count":
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID,
+                    "Confirmation requires an evaluation_exposures/count exposure budget",
+                )
         for dimension, unit in {"attempts": "count", "execution_ms": "ms"}.items():
             limit = limits.get(dimension)
             if limit is None or limit.kind != BudgetKind.CUMULATIVE or limit.unit != unit:
@@ -478,112 +509,139 @@ class ResearchService:
         return self._execute(context, "candidate.validate", request, "candidate.validate", validate)
 
     def submit_trial(self, context: CommandContext, request: SubmitTrial) -> JsonObject:
-        def submit(transaction: Transaction) -> JsonObject:
-            row = transaction.get("campaign", request.campaign_id)
-            check_revision(context, row)
-            campaign = CampaignData.model_validate(row["data"])
-            if row["state"] != CampaignState.RUNNING:
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Trial admission requires a running campaign"
-                )
-            candidate = CandidateData.model_validate(
-                transaction.get("candidate", request.candidate_id)["data"]
-            )
-            validation = CandidateValidation.model_validate(
-                transaction.get("candidate_validation", request.validation_id)["data"]
-            )
-            if (
-                candidate.campaign_id != request.campaign_id
-                or candidate.project_id != campaign.contract.project_id
-                or validation.candidate_id != request.candidate_id
-                or validation.source_tree_digest != candidate.source.tree_digest
-                or validation.campaign_contract_digest != campaign.contract_digest
-                or not validation.valid
-            ):
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID,
-                    "Trial lacks valid candidate evidence for this campaign",
-                )
-            count = transaction.connection.execute(
-                "SELECT COUNT(*) FROM records WHERE workspace_id=? "
-                "AND kind='trial' AND campaign_id=?",
-                (transaction.workspace_id, request.campaign_id),
-            ).fetchone()[0]
-            if count >= campaign.contract.stopping.max_trials:
-                raise ResearchError(ErrorCode.BUDGET_EXHAUSTED, "Campaign trial limit reached")
-            revision = ProjectRevisionData.model_validate(
-                transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
-            )
-            resolved = revision.resolved
-            ArtifactCatalog.available(transaction, candidate.source_artifact)
-            spec = ExperimentSpec(
-                workspace_id=transaction.workspace_id,
-                project_id=candidate.project_id,
-                campaign_id=request.campaign_id,
-                candidate_id=request.candidate_id,
-                source=SourceRef(
-                    artifact_id=candidate.source_artifact.id,
-                    tree_digest=candidate.source.tree_digest,
-                    base_revision=candidate.source.base_revision,
-                ),
-                protocol_digest=campaign.contract.protocol_digest,
-                comparison_class=campaign.contract.comparison_class,
-                environment_digest=resolved.environment_contract_digest,
-                evaluator_contract_digest=resolved.evaluator_contract_digest,
-                data_manifest_digest=resolved.data_manifest_digest,
-                metrics=resolved.manifest.evaluation.metrics,
-                stages=resolved.manifest.stages,
-                seed=request.seed,
-                policy_version=campaign.contract.search.version,
-                mutation_allow=resolved.manifest.mutation.allow,
-                mutation_deny=resolved.manifest.mutation.deny + resolved.protected_paths,
-                extensions={
-                    "timing": resolved.manifest.timing.model_dump(mode="json"),
-                    "campaign_contract_digest": campaign.contract_digest,
-                },
-            ).sealed()
-            job_ids = {stage.id: new_id() for stage in spec.stages}
-            bindings = input_sources(resolved, campaign.contract.input_artifacts)
-            trial = transaction.insert(
-                "trial",
-                spec.trial_id,
-                TrialData(
-                    candidate_id=request.candidate_id,
-                    validation_id=request.validation_id,
-                    spec=spec,
-                    job_ids=tuple(job_ids.values()),
-                ).model_dump(mode="json"),
-                state="queued",
-                campaign_id=request.campaign_id,
-                parent_id=request.candidate_id,
-            )
-            for stage in spec.stages:
-                job = transaction.insert(
-                    "job",
-                    job_ids[stage.id],
-                    JobData(
-                        trial_id=spec.trial_id,
-                        stage=stage,
-                        predecessor_ids=tuple(job_ids[name] for name in stage.dependencies),
-                        input_sources={
-                            name: job_ids[provider]
-                            for name, provider in bindings[stage.id].items()
-                            if provider is not None
-                        },
-                        inputs={
-                            name: campaign.contract.input_artifacts[name]
-                            for name, provider in bindings[stage.id].items()
-                            if provider is None
-                        },
-                    ).model_dump(mode="json"),
-                    state="blocked" if stage.dependencies else "ready",
-                    campaign_id=request.campaign_id,
-                    parent_id=spec.trial_id,
-                )
-                transaction.event(
-                    "job.created", job, {"trial_id": spec.trial_id, "stage_id": stage.id}
-                )
-            transaction.event("trial.submitted", trial, {"spec_digest": spec.spec_digest})
-            return trial
+        return self._execute(
+            context,
+            "trial.submit",
+            request,
+            "trial.submit",
+            lambda transaction: self._submit_trial(transaction, request),
+        )
 
-        return self._execute(context, "trial.submit", request, "trial.submit", submit)
+    @staticmethod
+    def _submit_trial(
+        transaction: Transaction,
+        request: SubmitTrial,
+        confirmation_plan_id: str | None = None,
+        confirmation_side: Literal["candidate", "comparator"] | None = None,
+    ) -> JsonObject:
+        row = transaction.get("campaign", request.campaign_id)
+        check_revision(transaction.context, row)
+        campaign = CampaignData.model_validate(row["data"])
+        if (
+            campaign.contract.promotion.mode == "paired_confirmation"
+            and request.seed in campaign.contract.promotion.confirmation_seeds
+            and confirmation_plan_id is None
+        ):
+            raise ResearchError(
+                ErrorCode.COMPARISON_INELIGIBLE, "Confirmation seeds require a sealed plan"
+            )
+        if row["state"] != CampaignState.RUNNING:
+            raise ResearchError(
+                ErrorCode.INVALID_TRANSITION, "Trial admission requires a running campaign"
+            )
+        candidate = CandidateData.model_validate(
+            transaction.get("candidate", request.candidate_id)["data"]
+        )
+        validation = CandidateValidation.model_validate(
+            transaction.get("candidate_validation", request.validation_id)["data"]
+        )
+        if (
+            candidate.campaign_id != request.campaign_id
+            or candidate.project_id != campaign.contract.project_id
+            or validation.candidate_id != request.candidate_id
+            or validation.source_tree_digest != candidate.source.tree_digest
+            or validation.campaign_contract_digest != campaign.contract_digest
+            or not validation.valid
+        ):
+            raise ResearchError(
+                ErrorCode.PROJECT_CONTRACT_INVALID,
+                "Trial lacks valid candidate evidence for this campaign",
+            )
+        count = transaction.connection.execute(
+            "SELECT COUNT(*) FROM records WHERE workspace_id=? AND kind='trial' AND campaign_id=?",
+            (transaction.workspace_id, request.campaign_id),
+        ).fetchone()[0]
+        if count >= campaign.contract.stopping.max_trials:
+            raise ResearchError(ErrorCode.BUDGET_EXHAUSTED, "Campaign trial limit reached")
+        revision = ProjectRevisionData.model_validate(
+            transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
+        )
+        resolved = revision.resolved
+        ArtifactCatalog.available(transaction, candidate.source_artifact)
+        spec = ExperimentSpec(
+            workspace_id=transaction.workspace_id,
+            project_id=candidate.project_id,
+            campaign_id=request.campaign_id,
+            candidate_id=request.candidate_id,
+            source=SourceRef(
+                artifact_id=candidate.source_artifact.id,
+                tree_digest=candidate.source.tree_digest,
+                base_revision=candidate.source.base_revision,
+            ),
+            protocol_digest=campaign.contract.protocol_digest,
+            comparison_class=campaign.contract.comparison_class,
+            environment_digest=resolved.environment_contract_digest,
+            evaluator_contract_digest=resolved.evaluator_contract_digest,
+            data_manifest_digest=resolved.data_manifest_digest,
+            metrics=resolved.manifest.evaluation.metrics,
+            stages=resolved.manifest.stages,
+            seed=request.seed,
+            policy_version=campaign.contract.search.version,
+            mutation_allow=resolved.manifest.mutation.allow,
+            mutation_deny=resolved.manifest.mutation.deny + resolved.protected_paths,
+            extensions={
+                "timing": resolved.manifest.timing.model_dump(mode="json"),
+                "campaign_contract_digest": campaign.contract_digest,
+                **(
+                    {
+                        "confirmation_plan_id": confirmation_plan_id,
+                        "confirmation_side": confirmation_side,
+                    }
+                    if confirmation_plan_id
+                    else {}
+                ),
+            },
+        ).sealed()
+        job_ids = {stage.id: new_id() for stage in spec.stages}
+        bindings = input_sources(resolved, campaign.contract.input_artifacts)
+        trial = transaction.insert(
+            "trial",
+            spec.trial_id,
+            TrialData(
+                candidate_id=request.candidate_id,
+                validation_id=request.validation_id,
+                spec=spec,
+                job_ids=tuple(job_ids.values()),
+                confirmation_plan_id=confirmation_plan_id,
+                confirmation_side=confirmation_side,
+            ).model_dump(mode="json"),
+            state="queued",
+            campaign_id=request.campaign_id,
+            parent_id=request.candidate_id,
+        )
+        for stage in spec.stages:
+            job = transaction.insert(
+                "job",
+                job_ids[stage.id],
+                JobData(
+                    trial_id=spec.trial_id,
+                    stage=stage,
+                    predecessor_ids=tuple(job_ids[name] for name in stage.dependencies),
+                    input_sources={
+                        name: job_ids[provider]
+                        for name, provider in bindings[stage.id].items()
+                        if provider is not None
+                    },
+                    inputs={
+                        name: campaign.contract.input_artifacts[name]
+                        for name, provider in bindings[stage.id].items()
+                        if provider is None
+                    },
+                ).model_dump(mode="json"),
+                state="blocked" if stage.dependencies else "ready",
+                campaign_id=request.campaign_id,
+                parent_id=spec.trial_id,
+            )
+            transaction.event("job.created", job, {"trial_id": spec.trial_id, "stage_id": stage.id})
+        transaction.event("trial.submitted", trial, {"spec_digest": spec.spec_digest})
+        return trial

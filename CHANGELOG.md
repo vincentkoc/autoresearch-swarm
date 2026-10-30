@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Seal complete paired confirmation plans and create all seed-bound candidate/comparator trials atomically.
+- Reserve evaluation exposure separately, retain uncertain access, and release only on positive no-access evidence.
+- Require planned stage fingerprints and evaluator authority before confirmation scoring can dispatch.
 - Persist promotion assessments before atomic incumbent selection, with explicit observed baseline adoption.
 - Compare actual training and evaluator profiles, preserve conflicting assessments, and retain rejected candidates.
 - Append evidence corrections without rewriting receipts and suspend affected incumbent eligibility.
