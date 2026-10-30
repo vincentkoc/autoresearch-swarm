@@ -28,6 +28,7 @@ from research_swarm.runtime import (
     write_private,
 )
 from research_swarm.state.identity import read_identity
+from research_swarm.state.workspace_gate import require_workspace_mutation
 from research_swarm.workers.local import LocalWorker
 
 
@@ -114,6 +115,11 @@ def ensure_local_enrollment(
     operator.require("worker.manage")
     operator.require("auth.manage")
     operator.require("read")
+    runtime.database.store.read(
+        lambda connection: require_workspace_mutation(
+            connection, runtime.identity.workspace_id, "worker.enroll"
+        )
+    )
     root = runtime.root / "local-worker"
     registry = (
         (

@@ -14,6 +14,7 @@ from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import ID, Timestamp, new_id, utc_now
 from research_swarm.state.database import Database, encode
 from research_swarm.state.sql import SqlSession
+from research_swarm.state.workspace_gate import require_workspace_mutation
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class CredentialStore:
         identifier = new_id()
 
         def persist(connection: SqlSession) -> None:
+            require_workspace_mutation(connection, principal.workspace_id, "credential.issue")
             connection.execute(
                 "INSERT INTO credentials"
                 "(id,token_digest,workspace_id,principal,created_at,expires_at) "
@@ -111,6 +113,7 @@ class CredentialStore:
                         "Enrollment credential differs or is no longer active",
                     )
             else:
+                require_workspace_mutation(connection, principal.workspace_id, "credential.install")
                 connection.execute(
                     "INSERT INTO credentials"
                     "(id,token_digest,workspace_id,principal,created_at) VALUES (?,?,?,?,?)",
@@ -154,6 +157,7 @@ class CredentialStore:
         issuer.require("auth.manage")
 
         def revoke(connection: SqlSession) -> None:
+            require_workspace_mutation(connection, issuer.workspace_id, "credential.revoke")
             changed = connection.execute(
                 "UPDATE credentials SET revoked=1 WHERE workspace_id=? AND id=? RETURNING id",
                 (issuer.workspace_id, identifier),

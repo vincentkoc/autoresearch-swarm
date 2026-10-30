@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
+from research_swarm.control.backup import BackupControl
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
 from research_swarm.control.child_models import (
@@ -118,6 +119,7 @@ from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSes
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.artifacts import ArtifactRetention
+from research_swarm.domain.backup import SealWorkspace
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
@@ -192,6 +194,7 @@ class ResearchService:
         if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
+        self.backups = BackupControl(database)
         self.crypto_provider = resolve_crypto(crypto_provider)
         self.event_recovery = EventRecovery(database, get_args(RecordKind))
         self.artifacts = artifacts
@@ -243,6 +246,9 @@ class ResearchService:
         self.orchestration_waits = OrchestrationWaitControl(database)
         self.orchestration_transfer = OrchestrationTransferControl(database, artifacts)
         self.worker_lifecycle = WorkerLifecycle(database, self.acceptance)
+
+    def seal_workspace(self, context: CommandContext, request: SealWorkspace) -> JsonObject:
+        return self.backups.seal(context, request)
 
     def expire_acceptance(self, context: CommandContext, request: ExpireAcceptance) -> JsonObject:
         return self.acceptance.expire(context, request)

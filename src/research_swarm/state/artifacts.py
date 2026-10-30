@@ -274,10 +274,12 @@ class ArtifactService:
 
     def upload_status(self, context: CommandContext, upload_id: str) -> JsonObject:
         context.principal.require("artifact.upload")
-        row = self.database.read_record(context, "upload", upload_id)
-        upload = self._upload_owner(context, row)
-        progress = self.store.progress(upload) if row["state"] == "pending" else None
-        return {**row, "transfer": progress.model_dump(mode="json") if progress else None}
+        self._upload_owner(context, self.database.read_record(context, "upload", upload_id))
+        with self.store.upload_guard(context.principal.workspace_id, upload_id):
+            row = self.database.read_record(context, "upload", upload_id)
+            upload = self._upload_owner(context, row)
+            progress = self.store.progress(upload) if row["state"] == "pending" else None
+            return {**row, "transfer": progress.model_dump(mode="json") if progress else None}
 
     def publish_upload_in(
         self, transaction: Transaction, upload_id: str, blob: StoredBlob
@@ -353,6 +355,11 @@ class ArtifactService:
         row = self.database.read_record(context, "upload", upload_id)
         upload = self._upload_owner(context, row)
         if row["state"] in {"aborted", "aborting"}:
+            previous = self.database.replay(
+                context, "artifact.finalize_upload", {"upload_id": upload_id}, "artifact.upload"
+            )
+            if previous is not None:
+                return previous
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload was aborted")
         if row["state"] == "pending":
             self._storage_authority(context, upload_id)
@@ -738,6 +745,26 @@ class ArtifactService:
         return response
 
     def _finish_deletion(self, context: CommandContext, record: ArtifactRecord) -> None:
+        # Reuse the generation's lifecycle guard across the byte operation and its
+        # terminal commit. Duplicate delivery must observe that commit before it
+        # can touch storage; the workspace seal refuses every unfinished deletion.
+        with self.store.upload_guard(record.workspace_id, record.storage_generation):
+            current = self.database.store.read(
+                lambda connection: ArtifactRecord.model_validate(
+                    Transaction(connection, context).get("artifact", record.reference.id)["data"]
+                )
+            )
+            if current.storage_generation != record.storage_generation or (
+                current.state == "deleted" and current.deletion_id == record.deletion_id
+            ):
+                return
+            if current != record:
+                raise ResearchError(
+                    ErrorCode.REVISION_CONFLICT, "Artifact deletion generation changed"
+                )
+            self._delete_generation(context, record)
+
+    def _delete_generation(self, context: CommandContext, record: ArtifactRecord) -> None:
         self.store.delete(record.workspace_id, self._blob(record))
 
         def finish(transaction: Transaction) -> JsonObject:

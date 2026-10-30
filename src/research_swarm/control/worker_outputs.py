@@ -221,6 +221,11 @@ class WorkerOutputs:
     def status(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
         context.principal.require("worker.outputs")
         request = WorkerUploadTarget.model_validate(request)
+        self._check_owner(context, request)
+        with self.artifacts.store.upload_guard(context.principal.workspace_id, request.upload_id):
+            return self._status(context, request)
+
+    def _status(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
 
         def read(connection: SqlSession) -> tuple[WorkerUploadData, JsonObject, UploadSpec]:
             _, data, row, upload, _ = owned_upload(Transaction(connection, context), request)

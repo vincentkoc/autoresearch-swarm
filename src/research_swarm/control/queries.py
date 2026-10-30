@@ -20,6 +20,7 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
+    "workspace_gate",
     "acceptance_lease",
     "imported_evidence",
     "campaign_obligations",

@@ -398,6 +398,11 @@ class Database:
             previous = _stored_response(connection, context, request_digest)
             if previous is not None:
                 return previous
+            from research_swarm.state.workspace_gate import require_workspace_mutation
+
+            # Fencing precedes rejection hooks: an inactive authority cannot settle or
+            # quarantine new observations through a failed command's side effects.
+            require_workspace_mutation(connection, workspace_id, operation)
             from research_swarm.state.drive_guard import require_reserved_command_key
 
             require_reserved_command_key(Transaction(connection, context), request_digest)
@@ -549,10 +554,13 @@ class Database:
     def acknowledge_notification(self, event_id: str) -> None:
         def acknowledge(connection: SqlSession) -> None:
             row = connection.execute(
-                "SELECT delivery_attempts FROM outbox WHERE event_id=?", (event_id,)
+                "SELECT delivery_attempts,workspace_id FROM outbox WHERE event_id=?", (event_id,)
             ).fetchone()
             if row is None:
                 return
+            from research_swarm.state.workspace_gate import require_workspace_mutation
+
+            require_workspace_mutation(connection, row["workspace_id"], "outbox.acknowledge")
             connection.execute(
                 "UPDATE outbox SET delivered=1,delivery_attempts=? WHERE event_id=?",
                 (next_counter(row[0]), event_id),

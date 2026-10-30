@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a shared workspace seal for backup admission: freeze new commands, credential changes, enrollment and notification acknowledgment while preserving exact prior replies and unresolved execution obligations.
+- Refuse sealing during uploads, deletions or retained artifact reads. Serialize deletion cleanup through its terminal commit so completed command replay cannot mutate storage after the cut.
+
 - Preserve the R2 verified-reader binary-file contract across POSIX and Windows temporary-file implementations; fresh Windows type checks now accept the delegating wrapper.
 
 - Add a reproducible local controller/CPU benchmark with independent connection loads, budget races, exact command replay and paired one/two-lane native throughput. Retain failed/censored cells, evaluator receipts and exact comparison identities.

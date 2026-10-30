@@ -75,6 +75,7 @@ from research_swarm.control.worker_outputs import BeginWorkerUpload, WorkerUploa
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession
 from research_swarm.control.workers import ClaimJob, EnrollWorker
+from research_swarm.domain.backup import SealWorkspace
 from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.event_recovery import (
@@ -99,6 +100,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "workspace.seal": CommandDefinition(
+        SealWorkspace,
+        "seal_workspace",
+        "service.manage",
+        True,
+        "Seal workspace mutations for backup; retain original execution obligations "
+        "without releasing custody.",
+    ),
     "artifact.retain": CommandDefinition(
         RetainArtifact,
         "retain_artifact",
