@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a Cloudflare hybrid Workflow driver over the native delivery gateway, with immutable Durable Object generation records, exact pending-work handoff and provider-safe instance IDs.
+- Recover duplicate starts and lost replies without resetting research work; preserve observed-history markers, recheck generation on each callback, and explicitly nudge saved local history after a runtime restart.
+- Qualify actual local Workflow delivery around CPU training/evaluation, native fencing, redirect refusal and unsupported hosted-authority rejection; add pinned TypeScript/formatting checks and provider-boundary CI tests.
+
 - Add an optional native delivery gateway for remote orchestration adapters, with exact campaign registration, separate scoped credentials and bounded versioned references around the existing delivery kernel.
 - Preserve committed-action replay, cancellation custody and transport uncertainty across HTTP; sanitize malformed inputs and provider failures, including deep JSON nesting.
 - Document the deployed Cloudflare clock constraint and the hybrid delivery direction without claiming authoritative hosted execution qualification.

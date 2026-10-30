@@ -1,0 +1,27 @@
+{
+  "name": "research-swarm-hybrid",
+  "main": "hybrid.ts",
+  "workers_dev": false,
+  "compatibility_date": "2026-10-30",
+  "vars": {
+    "AUTHORITY_PROFILE": "hybrid-native-v1",
+    "NATIVE_DELIVERY_ORIGIN": "https://controller.example.invalid",
+    "ALLOW_LOCAL_GATEWAY": "false",
+  },
+  "workflows": [
+    {
+      "binding": "RESEARCH_FLOW",
+      "name": "research-delivery",
+      "class_name": "ResearchWorkflow",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "RESEARCH_REGISTRY", "class_name": "DeliveryRegistry" },
+    ],
+  },
+  "migrations": [
+    { "tag": "hybrid-v1", "new_sqlite_classes": ["DeliveryRegistry"] },
+  ],
+  "dev": { "ip": "127.0.0.1" },
+}

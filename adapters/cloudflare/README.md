@@ -1,9 +1,11 @@
 # Cloudflare runtime qualification
 
-This directory qualifies infrastructure seams for the Cloudflare adapter. It is
-not the research API, a production controller, or a deployment template. The
-complete Durable Object command service, R2 custody, authority clock and Workflow
-delivery integration remain separate implementation work.
+This directory contains two distinct configurations. `wrangler.jsonc` is the
+local-only SQL/signing qualification fixture described below; do not deploy it.
+`wrangler.hybrid.jsonc` selects the Workflow delivery adapter around a native
+research authority. See [hybrid setup and recovery](../../docs/cloudflare.md).
+R2 storage, notification bridging and agent forwarding remain separate work.
+The authoritative hosted-controller clock contract remains unqualified.
 
 The fixture imports the actual Python command kernel through `Database.from_store`
 and the `StateStore` contract. The Durable Object adapter owns SQL cursor conversion,

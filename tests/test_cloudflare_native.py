@@ -66,21 +66,28 @@ def port():
 
 
 @contextmanager
-def server(tmp_path: Path, *, sequence: int):
-    executable = ROOT / ".venv/bin/uv"
-    assert executable.is_file(), "Prepare the isolated Cloudflare tool environment first"
-    assert (ROOT / ".generated/crypto.mjs").is_file(), "Run npm run build first"
+def server(tmp_path: Path, *, sequence: int, variables: dict[str, str] | None = None):
+    if variables is None:
+        executable = ROOT / ".venv/bin/uv"
+        assert executable.is_file(), "Prepare the isolated Cloudflare tool environment first"
+        assert (ROOT / ".generated/crypto.mjs").is_file(), "Run npm run build first"
+        command = [str(executable), "run", "--frozen", "pywrangler", "dev"]
+    else:
+        command = [
+            str(ROOT / "node_modules/.bin/wrangler"),
+            "dev",
+            "--config",
+            "wrangler.hybrid.jsonc",
+        ]
+        for name, value in variables.items():
+            command.extend(["--var", f"{name}:{value}"])
     selected_port = port()
     url = f"http://127.0.0.1:{selected_port}"
     log = tmp_path / f"local-workerd-{sequence}.log"
     with log.open("wb") as output:
         process = subprocess.Popen(
             [
-                str(executable),
-                "run",
-                "--frozen",
-                "pywrangler",
-                "dev",
+                *command,
                 "--local",
                 "--persist-to",
                 str(tmp_path / "state"),
@@ -120,6 +127,9 @@ def server(tmp_path: Path, *, sequence: int):
                     text = text.replace(str(ROOT.parents[1]), "<repo>").replace(
                         str(tmp_path), "<fixture>"
                     )
+                    for name, value in (variables or {}).items():
+                        if "TOKEN" in name:
+                            text = text.replace(value, "<fixture-token>")
                     pytest.fail("Local workerd did not become ready:\n" + text)
                 time.sleep(0.1)
             yield url

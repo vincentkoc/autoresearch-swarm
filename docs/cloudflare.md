@@ -5,9 +5,11 @@ research authority and places Cloudflare delivery services around its API.
 This preserves the same experiment identities, budgets, worker protocol,
 evaluation rules and promotion decisions used by local and Temporal delivery.
 
-Current implementation includes a native delivery gateway and locally qualified
-Cloudflare storage/signing primitives. The Workflow driver, R2 adapter and agent
-facade are separate work; their presence is not implied by the primitive tests.
+Current implementation includes the native delivery gateway, a hybrid Workflow
+driver with a durable transport registry, and locally qualified Cloudflare
+storage/signing primitives. R2 storage, the native notification bridge and the
+agent facade remain separate work. Hosted deployment is not part of the local
+qualification.
 
 ## Authority clock boundary
 
@@ -101,3 +103,79 @@ a deployed Cloudflare Workflow or authorize account deployment.
 
 See the [local runtime qualification fixture](../adapters/cloudflare/README.md)
 for the actual Durable Object SQL and cross-runtime signed-envelope tests.
+
+## Hybrid Workflow driver
+
+`adapters/cloudflare/wrangler.hybrid.jsonc` selects the TypeScript delivery adapter.
+It has no Python Workers dependency. `ResearchWorkflow` calls the native gateway;
+`DeliveryRegistry` stores transport identities and continuation inputs in a
+SQLite-backed Durable Object. Neither implements research decisions.
+
+Configure `NATIVE_DELIVERY_ORIGIN` as an HTTPS origin and keep
+`AUTHORITY_PROFILE=hybrid-native-v1`. Provision `GATEWAY_TOKEN` with the native
+gateway credential and `CONTROL_TOKEN` with a separate, at least 32-character
+adapter administration secret. Keep those values out of Workflow parameters and
+history. The committed configuration uses a placeholder origin and has
+`workers_dev=false`. Agent tools continue to use the research API.
+
+The adapter administration API accepts authenticated POST requests:
+
+| Path | Body | Behavior |
+|---|---|---|
+| `/adapter/start` | `{binding, options}` | Reserve or verify the original start; ensure and nudge its current generation |
+| `/adapter/status` | `{binding}` | Read current generation, provider status and its immutable initial pending reference |
+| `/adapter/wake` | `{binding, actor_id, wait_id}` | Notify an existing registered Workflow; never create one |
+
+`options` requires integer `poll_seconds` (1–60), `rotate_after` (2–128), and
+`request_timeout_seconds` (1–120). Responses and parameters contain bounded
+references. A start retry must repeat the same binding and options; changed input
+conflicts. The returned start ID stays stable when the current generation advances.
+
+Each successful inspect step freezes its selected work reference. Delivery
+retries use that exact reference. Settled work clears the pending reference;
+uncertain work retains it. At a generation boundary the registry atomically
+reserves the complete successor input before provider creation. A lost creation
+or handoff reply recovers that reservation. Every native callback checks current
+generation again; a cached startup check cannot authorize a later retry.
+
+Observed-generation markers outlive provider history. A missing or temporarily
+inaccessible observed history is never recreated. Lookup failures remain
+retryable without interpreting them as permanent deletion. An unobserved creation
+can retry the exact ID/input; Workflow startup records observation before its
+first native call. Native domain records remain the permanent research ledger.
+
+## Local recovery qualification
+
+The pinned local emulator persists a running status across process restart but
+does not resume execution on a status read. An explicit `/adapter/start` retry
+ensures the current reserved instance and sends a wake hint to its existing
+history. It does not call provider `restart()`, clear cached steps, create another
+research action, or resume a paused native campaign. Paused, terminated and
+errored provider instances are not reset by this operation.
+
+Wake hints do not establish readiness. Normal polling rechecks the native
+condition when hints are lost. The local fixture proves both resumed history
+after an explicit start retry and a later settled native wait without an
+evaluation wakeup. It separately verifies actual CPU training, authenticated
+evaluation, resource closure, lost-response retry, concurrent identical starts,
+generation handoff, fencing and refusal of a hosted-authority profile.
+
+Workerd requires manual redirect handling for this fetch path. The adapter
+rejects every 3xx response and the native test verifies that gateway credentials
+never reach the redirect destination. Event timeout handling accepts the pinned
+runtime's named timeout or its exact RPC timeout shape; other errors remain
+failures. This runtime-specific guard requires requalification on upgrades.
+
+Run the local suites from the repository root:
+
+```sh
+RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q \
+  tests/test_cloudflare_hybrid.py tests/test_cloudflare_native.py
+```
+
+Both fixtures use owned local process groups and temporary persisted state.
+The hybrid fixture uses only loopback native services and ephemeral credentials.
+The standard CI job checks TypeScript, formatting, crypto and delivery boundary
+tests without starting a hosted service. Cloudflare documents local Workflows as
+an emulator, so these results do not establish deployed restart behavior.
+[Local development](https://developers.cloudflare.com/workflows/build/local-development/)
