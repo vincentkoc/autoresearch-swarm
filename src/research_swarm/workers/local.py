@@ -24,6 +24,16 @@ from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.types import new_id, utc_now
+from research_swarm.engines.execution import (
+    capacities,
+    demand,
+    prepare_engine,
+    validate_stage,
+)
+from research_swarm.engines.execution import (
+    context as engine_context,
+)
+from research_swarm.engines.registration import EnvironmentRegistration
 from research_swarm.projects.manifest import TimingContract
 from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.source import extract_bundle
@@ -58,9 +68,14 @@ class LocalWorker:
         root: Path,
         machine_registry: Path,
         executable: Path | None = None,
+        registration: EnvironmentRegistration | None = None,
         maximum_output_bytes: int = 256 * 1024 * 1024,
     ) -> None:
         self.client, self.worker = client, WorkerData.model_validate(worker)
+        if registration is None and worker.environment_contracts is not None:
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Registered worker requires its pinned environment"
+            )
         self.scoped = worker.project_ids is not None
         self.assignment_verifier = (
             AssignmentVerifier(worker.assignment_authority)
@@ -75,14 +90,35 @@ class LocalWorker:
         if self.assignment_verifier is None and self.verifier is None:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker verification key is absent")
         self.root = root.absolute()
-        self.executable = (executable or Path(sys.executable)).absolute()
-        self.maximum_output_bytes = maximum_output_bytes
-        self.profile = next(
-            (profile for profile in worker.profiles if profile.name == "python-cpu"), None
+        self.registration = (
+            EnvironmentRegistration.model_validate(registration)
+            if registration is not None
+            else None
         )
-        if self.profile is None or self.profile.backend != "python":
+        self.executable = (
+            executable or Path(registration.executable if registration else sys.executable)
+        ).absolute()
+        self.maximum_output_bytes = maximum_output_bytes
+        self.profile = (
+            registration.profile
+            if registration is not None
+            else next(
+                (profile for profile in worker.profiles if profile.name == "python-cpu"), None
+            )
+        )
+        if self.profile is None or (registration is None and self.profile.backend != "python"):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Local worker requires a Python CPU profile"
+            )
+        if registration is not None and (
+            worker.profiles != (registration.profile,)
+            or worker.environment_contracts != registration.environment_contracts
+            or self.executable != Path(registration.executable)
+            or worker.max_concurrency
+            > (1 if registration.descriptor.device else registration.cpu_slots)
+        ):
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Worker registration differs from enrollment"
             )
         with private_state_directory(self.root):
             self.journal = WorkerJournal(self.root / "journal.sqlite")
@@ -90,12 +126,14 @@ class LocalWorker:
         machine_registry = machine_registry.absolute()
         with private_state_directory(machine_registry.parent):
             self.resources = MachineResources(machine_registry)
-        capacities = {"cpu": self.profile.cpu_slots}
+        pools = {"cpu": self.profile.cpu_slots}
         if self.profile.memory_bytes:
-            capacities["memory"] = self.profile.memory_bytes
+            pools["memory"] = self.profile.memory_bytes
         if self.profile.scratch_bytes:
-            capacities["scratch"] = self.profile.scratch_bytes
-        self.resources.enroll(worker.binding, ResourceDemand(amounts=capacities))
+            pools["scratch"] = self.profile.scratch_bytes
+        if registration is not None:
+            pools = capacities(registration)
+        self.resources.enroll(worker.binding, ResourceDemand(amounts=pools))
 
     def claim(self, job: dict[str, Any]) -> dict[str, Any]:
         return dict(
@@ -243,6 +281,8 @@ class LocalWorker:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Local executable profile differs"
             )
+        if self.registration is not None:
+            validate_stage(self.registration, trial.spec, stage)
         execution = Path(received.command.cwd)
         source = root / "source.zip"
         self._download(attempt.dispatch.attempt_id, attempt.source_artifact, source)
@@ -251,7 +291,7 @@ class LocalWorker:
             prepared = PreparedExecution.model_validate(
                 strict_json_loads(read_private(root, marker.name, limit=1024 * 1024))
             )
-            prepared.verify(attempt.dispatch, trial.spec)
+            prepared.verify_launch(attempt.dispatch, trial.spec)
             prepared.verify_context_file()
             if prepared.working_directory is None:
                 raise ResearchError(
@@ -268,13 +308,10 @@ class LocalWorker:
                     ),
                 ),
                 prepared.machine_claim_id,
+                expected=ResourceDemand(amounts=demand(stage.resources, self.registration)),
             )
         else:
-            amounts = {"cpu": stage.resources.cpu_slots}
-            if stage.resources.memory_bytes:
-                amounts["memory"] = stage.resources.memory_bytes
-            if stage.resources.scratch_bytes:
-                amounts["scratch"] = stage.resources.scratch_bytes
+            amounts = demand(stage.resources, self.registration)
             plain = (
                 verified.assignment if isinstance(verified, VerifiedAssignmentTime) else verified
             )
@@ -308,6 +345,9 @@ class LocalWorker:
                 inputs=materialized,
                 output_root=str(outputs),
                 report_path=str(root / "report.json"),
+                parameters={"engine": engine_context(self.registration, trial.spec, stage)}
+                if self.registration is not None
+                else {},
             ).sealed()
             write_private(root / "context.json", context.model_dump_json().encode("utf-8"))
             prepared = PreparedExecution(
@@ -318,6 +358,9 @@ class LocalWorker:
                 resource_registry=str(self.resources.path),
                 machine_claim_id=claim.id,
                 working_directory=str(execution),
+                engine=prepare_engine(root / "engine", self.registration)
+                if self.registration is not None
+                else None,
             )
             write_private(marker, prepared.model_dump_json().encode("utf-8"))
         return self.journal.bind_prepared(attempt.dispatch.attempt_id, prepared)
@@ -344,6 +387,21 @@ class LocalWorker:
                 entry.signed_assignment,
             )
         return LiveTimingOrigin(sampler, verified)
+
+    def _verify_registered_preparation(self, entry: JournalEntry) -> None:
+        from research_swarm.engines.execution import resolve_engine
+
+        prepared = entry.prepared
+        if prepared is None:
+            return
+        if (self.registration is None) != (prepared.engine is None):
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Prepared execution mode differs from installation"
+            )
+        if prepared.engine is not None and resolve_engine(prepared.engine) != self.registration:
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Prepared registration differs from installation"
+            )
 
     def execute(self, attempt_id: str) -> dict[str, Any]:
         row = self._get("attempt", attempt_id)
@@ -394,6 +452,7 @@ class LocalWorker:
             process = None
             supervised = None
             if entry.state == JournalState.RECEIVED:
+                self._verify_registered_preparation(entry)
                 if entry.clock_mode == "bounded-continuous-v1":
                     try:
                         origin = self._timed_origin(entry)

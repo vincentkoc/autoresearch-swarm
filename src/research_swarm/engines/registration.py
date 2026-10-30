@@ -16,6 +16,7 @@ from research_swarm.domain.canonical import canonical_bytes, record_digest, stri
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, ByteCount, Digest, VersionedRecord, new_id
 from research_swarm.domain.workers import EngineCapabilities
+from research_swarm.engines.adapter import current_adapter_digest
 from research_swarm.engines.custody import default_probe_directory
 from research_swarm.engines.models import EngineDescriptor
 from research_swarm.engines.probe import InterpreterIdentity, observe_engine
@@ -38,6 +39,9 @@ class EnvironmentRegistration(VersionedRecord):
     executable: str
     probe_directory: str
     executable_digest: Digest
+    launch_adapter_digest: Digest | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     interpreter: InterpreterIdentity
     descriptor: EngineDescriptor
     environment_contracts: tuple[Digest, ...] = Field(min_length=1, max_length=128)
@@ -70,6 +74,11 @@ class EnvironmentRegistration(VersionedRecord):
                 "cpu_slots": self.cpu_slots,
                 "memory_bytes": self.memory_bytes,
                 "scratch_bytes": self.scratch_bytes,
+                **(
+                    {"launch_adapter_digest": self.launch_adapter_digest}
+                    if self.launch_adapter_digest is not None
+                    else {}
+                ),
             },
         )
         return EngineCapabilities(
@@ -79,6 +88,14 @@ class EnvironmentRegistration(VersionedRecord):
             cpu_slots=self.cpu_slots,
             memory_bytes=self.memory_bytes,
             scratch_bytes=self.scratch_bytes,
+            features=frozenset(
+                {
+                    "registered-python-v1",
+                    *({"shared-host-device-memory"} if device and device.unified_memory else set()),
+                }
+            )
+            if self.launch_adapter_digest is not None
+            else frozenset(),
             accelerator_count=1 if device else 0,
             # Unified memory belongs to the same admitted host pool, never a second pool.
             accelerator_memory_bytes=(
@@ -118,6 +135,7 @@ class EnvironmentRegistration(VersionedRecord):
             "qualification": self.qualification,
             "dependency_provenance": self.dependency_provenance,
             "lock_qualification": self.lock_qualification,
+            "launch_adapter_digest": self.launch_adapter_digest,
             "device_identity_resolved": self.descriptor.device is None
             or self.descriptor.device.physical_id is not None,
         }
@@ -238,6 +256,7 @@ def register_environment(
             executable=str(interpreter),
             probe_directory=str(custody),
             executable_digest=digest,
+            launch_adapter_digest=current_adapter_digest(),
             interpreter=observed.identity,
             descriptor=observed.report.descriptor,
             environment_contracts=tuple(sorted(set(environment_contracts))),

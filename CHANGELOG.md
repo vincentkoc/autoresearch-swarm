@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Execute registered Python environments through frozen, fingerprinted launch adapters inside the attempt's native deadline and resource claim.
+- Apply environment-contract admission before reservation, require exclusive accelerator slots, and share MPS/MLX physical device and unified-memory pools.
+- Pin registrations in local and HTTP worker enrollment, verify exact demands before native release, and recover publication without reopening worker launch files.
+- Add real separate-venv training/evaluation and HTTP execution tests, plus drift failure, launch tampering, shared-device quarantine, and interpreter-loss recovery checks.
 - Add optional CPU, PyTorch CUDA/ROCm/MPS, and MLX Metal environment probes without importing or installing frameworks in the controller.
 - Register selected interpreters and authorized environment contracts privately, verify observed drift, and expose JSON CLI discovery, probe, registration, and verification commands.
 - Separate physical device identity from framework profiles and label environment observations independently from lock, workload, and scientific qualification.

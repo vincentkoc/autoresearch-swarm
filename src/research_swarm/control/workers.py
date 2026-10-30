@@ -58,6 +58,9 @@ class EnrollWorker(VersionedRecord):
     max_concurrency: int = Field(default=1, strict=True, ge=1, le=1024)
     project_ids: tuple[ID, ...] | None = Field(default=None, min_length=1, max_length=128)
     clock_mode: ClockMode = "local-utc-v1"
+    environment_contracts: tuple[Digest, ...] | None = Field(
+        default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def distinct_profiles(self) -> EnrollWorker:
@@ -65,6 +68,11 @@ class EnrollWorker(VersionedRecord):
             raise ValueError("Worker profiles must be unique")
         if self.project_ids is not None and len(set(self.project_ids)) != len(self.project_ids):
             raise ValueError("Worker projects must be unique")
+        if (
+            self.environment_contracts is not None
+            and tuple(sorted(set(self.environment_contracts))) != self.environment_contracts
+        ):
+            raise ValueError("Worker environment contracts must be sorted and unique")
         return self
 
 
@@ -77,6 +85,9 @@ class WorkerData(VersionedRecord):
     assignment_authority: AssignmentAuthority | None = None
     project_ids: tuple[ID, ...] | None = None
     clock_mode: ClockMode = "local-utc-v1"
+    environment_contracts: tuple[Digest, ...] | None = Field(
+        default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
+    )
     enrolled_at: Timestamp = Field(default_factory=utc_now)
 
     @model_validator(mode="after")
@@ -255,6 +266,7 @@ class WorkerControl:
                     max_concurrency=request.max_concurrency,
                     project_ids=request.project_ids,
                     clock_mode=request.clock_mode,
+                    environment_contracts=request.environment_contracts,
                     assignment_authority=(
                         AssignmentSigner(binding, self._assignment_key).authority
                         if self._assignment_key is not None
@@ -285,6 +297,14 @@ class WorkerControl:
             campaign = CampaignData.model_validate(campaign_row["data"])
             trial_row = transaction.get("trial", job.trial_id)
             trial = TrialData.model_validate(trial_row["data"])
+            if (
+                worker.environment_contracts is not None
+                and trial.spec.environment_digest not in worker.environment_contracts
+            ):
+                raise ResearchError(
+                    ErrorCode.CAPABILITY_UNAVAILABLE,
+                    "Environment contract is outside worker admission",
+                )
             if worker.project_ids is not None and trial.spec.project_id not in worker.project_ids:
                 raise ResearchError(
                     ErrorCode.AUTHORIZATION_DENIED, "Project is outside worker scope"

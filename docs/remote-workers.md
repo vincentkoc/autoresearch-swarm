@@ -1,4 +1,4 @@
-# Remote CPU enrollment
+# Remote worker enrollment
 
 Remote enrollment has three explicit steps: describe the worker machine, provision
 its authority on the controller, and connect the worker with that private bundle.
@@ -22,6 +22,14 @@ clock profile. The CPU fingerprint covers OS, architecture, CPU model, Python
 runtime, and admitted capacity. The private installation record is written before
 the description is returned. Repeating the command preserves the UUID and profile.
 It cannot silently change CPU slots or replace missing native execution history.
+
+Pass `--registration path/to/private-engine.json` to pin a
+[registered execution environment](engines.md). The description then includes its
+public execution profile and environment-contract allowlist. Interpreter and probe
+paths remain in the private installation. Match `--cpu-slots` to the registration.
+Registered accelerator workers admit one exclusive device and have concurrency one;
+the same provision/connect/start commands apply. Physical accelerator qualification
+remains separate from the tested CPU transport path.
 
 All workers on a physical host must use the same machine registry. The default is
 `~/.local/state/autoresearch-swarm-machine/resources.sqlite`. An explicit

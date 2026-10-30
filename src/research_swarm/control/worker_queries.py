@@ -37,6 +37,11 @@ def eligible_offer(transaction: Transaction, worker: WorkerData, row: JsonObject
     job = JobData.model_validate(row["data"])
     trial_row = transaction.get("trial", job.trial_id)
     trial = TrialData.model_validate(trial_row["data"])
+    if (
+        worker.environment_contracts is not None
+        and trial.spec.environment_digest not in worker.environment_contracts
+    ):
+        return False
     if worker.project_ids is not None and trial.spec.project_id not in worker.project_ids:
         return False
     campaign_row = transaction.get("campaign", row["campaign_id"])

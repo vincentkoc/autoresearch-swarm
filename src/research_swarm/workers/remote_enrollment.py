@@ -18,8 +18,10 @@ from research_swarm.control.workers import EnrollWorker, WorkerData
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
-from research_swarm.domain.types import ID, Name, VersionedRecord, new_id
+from research_swarm.domain.types import ID, Digest, Name, VersionedRecord, new_id
 from research_swarm.domain.workers import EngineCapabilities
+from research_swarm.engines.registration import EnvironmentRegistration, verify_registration
+from research_swarm.engines.registry import engine_definition
 from research_swarm.runtime import (
     default_state_directory,
     private_state_directory,
@@ -34,7 +36,7 @@ from research_swarm.workers.local_enrollment import cpu_profile
 WORKER_SCOPES = frozenset(
     {"worker.query", "worker.claim", "worker.inputs", "worker.outputs", "worker.publish"}
 )
-MAX_ENROLLMENT_BYTES = 128 * 1024
+MAX_ENROLLMENT_BYTES = 2 * 1024 * 1024
 SecretRecord = TypeVar("SecretRecord", bound=VersionedRecord)
 
 
@@ -42,15 +44,31 @@ class WorkerDescription(VersionedRecord):
     worker_id: ID
     profile: EngineCapabilities
     clock_profile: Name
+    environment_contracts: tuple[Digest, ...] | None = Field(
+        default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
+    )
+
+    @property
+    def max_concurrency(self) -> int:
+        return 1 if self.profile.accelerator_count else self.profile.cpu_slots
 
     @model_validator(mode="after")
     def supported(self) -> Self:
-        if (
-            self.profile.name != "python-cpu"
-            or self.profile.backend != "python"
-            or self.clock_profile not in NATIVE_CLOCK_PROFILES
+        legacy = self.environment_contracts is None
+        if self.clock_profile not in NATIVE_CLOCK_PROFILES or (
+            legacy and (self.profile.name != "python-cpu" or self.profile.backend != "python")
         ):
             raise ValueError("Remote enrollment requires a supported CPU and native clock profile")
+        if not legacy:
+            definition = engine_definition(self.profile.name)
+            if self.profile.backend != definition.framework or self.profile.accelerator_count != (
+                0 if definition.device_backend == "cpu" else 1
+            ):
+                raise ValueError(
+                    "Registered worker profile has inconsistent framework or device capacity"
+                )
+            if tuple(sorted(set(self.environment_contracts or ()))) != self.environment_contracts:
+                raise ValueError("Worker environment contracts must be sorted and unique")
         return self
 
 
@@ -73,7 +91,8 @@ class RemoteWorkerBundle(VersionedRecord):
         if (
             self.worker.binding.worker_id != self.description.worker_id
             or self.worker.profiles != (self.description.profile,)
-            or self.worker.max_concurrency != self.description.profile.cpu_slots
+            or self.worker.max_concurrency != self.description.max_concurrency
+            or self.worker.environment_contracts != self.description.environment_contracts
             or self.worker.assignment_authority is None
             or not self.worker.project_ids
             or self.worker.clock_mode != "bounded-continuous-v1"
@@ -91,6 +110,9 @@ class WorkerInstallation(VersionedRecord):
     initialized: bool = False
     journal_identity: ID | None = None
     registry_identity: ID | None = None
+    registration: EnvironmentRegistration | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def matching_state(self) -> Self:
@@ -100,6 +122,13 @@ class WorkerInstallation(VersionedRecord):
             self.bundle is None or self.journal_identity is None or self.registry_identity is None
         ):
             raise ValueError("Initialized worker lacks its persistent authority or storage pins")
+        if self.registration is not None and (
+            self.registration.profile != self.description.profile
+            or self.registration.environment_contracts != self.description.environment_contracts
+        ):
+            raise ValueError("Private registration differs from worker description")
+        if self.registration is None and self.description.environment_contracts is not None:
+            raise ValueError("Registered worker is missing its private environment binding")
         return self
 
 
@@ -159,23 +188,31 @@ def _write_installation(root: Path, state: WorkerInstallation) -> None:
 def _verify_machine(state: WorkerInstallation) -> None:
     description = state.description
     if (
-        description.profile
+        state.registration is None
+        and description.profile
         != cpu_profile(
             cpu_slots=description.profile.cpu_slots, fallback_identity=description.worker_id
         )
-        or description.clock_profile != native_clock().profile
-    ):
+    ) or description.clock_profile != native_clock().profile:
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Enrolled machine profile changed")
     if description.profile.cpu_slots > (os.cpu_count() or 1):
         raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Enrolled CPU capacity is unavailable")
 
 
 def describe_worker(
-    root: Path, *, cpu_slots: int = 1, machine_registry: Path | None = None
+    root: Path,
+    *,
+    cpu_slots: int = 1,
+    machine_registry: Path | None = None,
+    registration: EnvironmentRegistration | None = None,
 ) -> WorkerDescription:
     """Persist a machine request before emitting its non-secret provisioning description."""
     if type(cpu_slots) is not int or not 1 <= cpu_slots <= (os.cpu_count() or 1):
         raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Requested CPU capacity is unavailable")
+    if registration is not None and registration.cpu_slots != cpu_slots:
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE, "CPU capacity differs from registration"
+        )
     root = root.expanduser().absolute()
     registry = (
         (
@@ -191,6 +228,7 @@ def describe_worker(
             if (
                 state.machine_registry != str(registry)
                 or state.description.profile.cpu_slots != cpu_slots
+                or state.registration != registration
             ):
                 raise ResearchError(
                     ErrorCode.IDEMPOTENCY_CONFLICT, "Worker description inputs changed"
@@ -200,13 +238,19 @@ def describe_worker(
         if (root / "execution").exists():
             raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Worker installation is missing")
         identifier = new_id()
+        if registration is not None:
+            verify_registration(registration)
         state = WorkerInstallation(
             description=WorkerDescription(
                 worker_id=identifier,
-                profile=cpu_profile(cpu_slots=cpu_slots, fallback_identity=identifier),
+                profile=registration.profile
+                if registration
+                else cpu_profile(cpu_slots=cpu_slots, fallback_identity=identifier),
                 clock_profile=native_clock().profile,
+                environment_contracts=registration.environment_contracts if registration else None,
             ),
             machine_registry=str(registry),
+            registration=registration,
         )
         _write_installation(root, state)
         return state.description
@@ -288,7 +332,8 @@ def provision_worker(
                 principal_id=state.principal_id,
                 name=state.name,
                 profiles=(description.profile,),
-                max_concurrency=description.profile.cpu_slots,
+                max_concurrency=description.max_concurrency,
+                environment_contracts=description.environment_contracts,
                 project_ids=projects,
                 clock_mode="bounded-continuous-v1",
             ),
@@ -379,7 +424,11 @@ def connect_worker(root: Path, *, bundle_path: Path | None = None) -> RemoteEnro
                     ErrorCode.STALE_FENCE, "Remote enrollment differs from pinned authority"
                 )
             worker = LocalWorker(
-                client, bundle.worker, root=root / "execution", machine_registry=registry
+                client,
+                bundle.worker,
+                root=root / "execution",
+                machine_registry=registry,
+                registration=state.registration,
             )
             if state.initialized and (
                 worker.journal.identity != state.journal_identity

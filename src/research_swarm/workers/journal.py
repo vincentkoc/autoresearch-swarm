@@ -93,6 +93,12 @@ class JournalEntry(VersionedRecord):
         if self.signed_assignment is None:
             return self
         payload = self.signed_assignment.payload
+        if (
+            self.prepared is not None
+            and "registered-python-v1" in payload.profile.features
+            and self.prepared.engine is None
+        ):
+            raise ValueError("Registered assignment requires its prepared engine binding")
         if payload.dispatch != self.dispatch or payload.spec != self.spec:
             raise ValueError("Journal differs from its signed assignment")
         if self.prepared is not None and (

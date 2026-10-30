@@ -19,6 +19,7 @@ from research_swarm.domain.canonical import canonical_bytes, record_digest, stri
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import ID, VersionedRecord, new_id
+from research_swarm.engines.registration import EnvironmentRegistration, verify_registration
 from research_swarm.runtime import (
     LocalRuntime,
     default_state_directory,
@@ -44,6 +45,9 @@ class EnrollmentState(VersionedRecord):
     evaluator_token: str = Field(repr=False)
     profile: EngineCapabilities
     machine_registry: str
+    registration: EnvironmentRegistration | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 @dataclass(frozen=True)
@@ -98,9 +102,14 @@ def ensure_local_enrollment(
     cpu_slots: int = 1,
     machine_registry: Path | None = None,
     principal: Principal | None = None,
+    registration: EnvironmentRegistration | None = None,
 ) -> LocalEnrollment:
     if type(cpu_slots) is not int or not 1 <= cpu_slots <= (os.cpu_count() or 1):
         raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Requested CPU capacity is unavailable")
+    if registration is not None and registration.cpu_slots != cpu_slots:
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE, "CPU capacity differs from registration"
+        )
     operator = principal or runtime.principal()
     operator.require("worker.manage")
     operator.require("auth.manage")
@@ -118,10 +127,17 @@ def ensure_local_enrollment(
         path = root / "enrollment.json"
         if path.exists():
             state = EnrollmentState.model_validate(
-                strict_json_loads(read_private(root, path.name, limit=65536))
+                strict_json_loads(read_private(root, path.name, limit=2 * 1024 * 1024))
             )
-            if state.machine_registry != str(registry) or state.profile != cpu_profile(
-                cpu_slots=cpu_slots, fallback_identity=state.worker_id
+            profile = (
+                registration.profile
+                if registration
+                else cpu_profile(cpu_slots=cpu_slots, fallback_identity=state.worker_id)
+            )
+            if (
+                state.machine_registry != str(registry)
+                or state.profile != profile
+                or state.registration != registration
             ):
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE,
@@ -134,6 +150,8 @@ def ensure_local_enrollment(
                     "Local enrollment is missing from existing execution state",
                 )
             identifier = new_id()
+            if registration is not None:
+                verify_registration(registration)
             state = EnrollmentState(
                 worker_id=identifier,
                 session_id=new_id(),
@@ -143,8 +161,11 @@ def ensure_local_enrollment(
                 evaluator_principal_id=new_id(),
                 evaluator_credential_id=new_id(),
                 evaluator_token="rsw_" + secrets.token_urlsafe(32),
-                profile=cpu_profile(cpu_slots=cpu_slots, fallback_identity=identifier),
+                profile=registration.profile
+                if registration
+                else cpu_profile(cpu_slots=cpu_slots, fallback_identity=identifier),
                 machine_registry=str(registry),
+                registration=registration,
             )
             write_private(path, canonical_bytes(state.model_dump(mode="json")))
         worker_principal = Principal(
@@ -196,7 +217,12 @@ def ensure_local_enrollment(
                     principal_id=state.worker_principal_id,
                     name="Local CPU worker",
                     profiles=(state.profile,),
-                    max_concurrency=cpu_slots,
+                    max_concurrency=1
+                    if registration and registration.descriptor.device
+                    else cpu_slots,
+                    environment_contracts=registration.environment_contracts
+                    if registration
+                    else None,
                 ),
                 idempotency_key="local-enrollment:" + state.worker_id,
             )
@@ -214,7 +240,10 @@ def ensure_local_enrollment(
             or registered.binding.worker_session_id != state.session_id
             or registered.principal_id != state.worker_principal_id
             or registered.profiles != (state.profile,)
-            or registered.max_concurrency != cpu_slots
+            or registered.max_concurrency
+            != (1 if registration and registration.descriptor.device else cpu_slots)
+            or registered.environment_contracts
+            != (registration.environment_contracts if registration else None)
         ):
             raise ResearchError(
                 ErrorCode.STALE_FENCE, "Local worker enrollment is no longer current"
@@ -235,6 +264,7 @@ def ensure_local_enrollment(
             ),
             root=root / "execution",
             machine_registry=registry,
+            registration=registration,
         )
         if state.initialized and (
             worker.journal.identity != state.journal_identity

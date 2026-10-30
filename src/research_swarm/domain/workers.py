@@ -37,8 +37,18 @@ class EngineCapabilities(VersionedRecord):
     network_policies: StringSet = frozenset({"inherit"})
 
     def require(self, resources: ResourceRequirements, network_policy: str) -> None:
+        registered_mismatch = "registered-python-v1" in self.features and (
+            resources.accelerator_count != self.accelerator_count
+            or self.accelerator_count > 1
+            or (self.accelerator_count > 0 and not resources.exclusive_device)
+            or (
+                "shared-host-device-memory" in self.features
+                and resources.memory_bytes + resources.accelerator_memory_bytes > self.memory_bytes
+            )
+        )
         if (
-            resources.engine_profile != self.name
+            registered_mismatch
+            or resources.engine_profile != self.name
             or resources.cpu_slots > self.cpu_slots
             or resources.memory_bytes > self.memory_bytes
             or resources.scratch_bytes > self.scratch_bytes

@@ -6,6 +6,7 @@ from typing import Literal
 from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, VersionedRecord
+from research_swarm.engines.registration import EnvironmentRegistration
 from research_swarm.orchestration.bootstrap import RunOptions, prepare_run
 from research_swarm.orchestration.local import DriverResult, LocalDriver
 from research_swarm.state.database import JsonObject
@@ -40,6 +41,7 @@ async def run_project(
     options: RunOptions | None = None,
     cpu_slots: int = 1,
     machine_registry: Path | None = None,
+    registration: EnvironmentRegistration | None = None,
 ) -> LocalRunResult:
     if not isinstance(client.transport, LocalTransport):
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Local runs require local state")
@@ -48,6 +50,7 @@ async def run_project(
         cpu_slots=cpu_slots,
         machine_registry=machine_registry,
         principal=client.transport.resolve_principal(),
+        registration=registration,
     )
     prepared = prepare_run(
         client, source, key=key, options=options, profile=enrollment.worker.profile

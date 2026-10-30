@@ -102,7 +102,10 @@ service must connect this admission step to dispatch before launching research c
 an authenticated client, the registered worker identity, its dispatch verification
 key, a private work directory, and the host's shared resource registry. The worker
 resolves `python` and `python3` to its explicitly configured interpreter.
-Other engine adapters must qualify their own execution profiles.
+[Registered engines](engines.md) use the same supervision and publication protocol
+with a pinned interpreter, environment-contract allowlist, frozen launch adapter,
+and independently checked resource demand. Accelerator qualification remains
+separate from this generic execution path.
 
 `PreparedExecution` connects a sealed workload context, its exact file contents,
 the profile's absolute executable, and a machine claim to a journal dispatch.

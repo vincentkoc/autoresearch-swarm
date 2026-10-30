@@ -207,9 +207,14 @@ class MachineResources:
                 (finding, claim.attempt_id),
             )
 
-    def verify_held(self, entry: JournalEntry, claim_id: str) -> MachineClaim:
+    def verify_held(
+        self, entry: JournalEntry, claim_id: str, *, expected: ResourceDemand | None = None
+    ) -> MachineClaim:
         """Check a local launch binding without accepting network-provided closure claims."""
-        return self._claim(entry, claim_id, states={"held"})
+        claim = self._claim(entry, claim_id, states={"held"})
+        if expected is not None and claim.demand != expected:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Native claim demand differs from its stage")
+        return claim
 
     def observe_claim(self, entry: JournalEntry, claim_id: str) -> MachineClaim:
         """Recover held or quarantined custody without issuing launch authority."""

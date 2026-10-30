@@ -71,6 +71,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--max-trials", type=int, default=10)
     run.add_argument("--cpu-slots", type=int, default=1)
     run.add_argument("--machine-registry", type=Path)
+    run.add_argument("--registration", type=Path, help="Private registered execution environment")
     run.add_argument(
         "--inputs-file", type=Path, help="JSON mapping of input names to artifact references"
     )
@@ -80,10 +81,12 @@ def parser() -> argparse.ArgumentParser:
     local.add_argument("campaign_id")
     local.add_argument("--cpu-slots", type=int, default=1)
     local.add_argument("--machine-registry", type=Path)
+    local.add_argument("--registration", type=Path)
     describe = worker_actions.add_parser("describe", help="Describe a persistent remote CPU worker")
     describe.add_argument("--worker-dir", type=Path, required=True)
     describe.add_argument("--cpu-slots", type=int, default=1)
     describe.add_argument("--machine-registry", type=Path)
+    describe.add_argument("--registration", type=Path)
     provision = worker_actions.add_parser("provision", help="Write a private scoped worker bundle")
     provision.add_argument("--description", type=Path, required=True)
     provision.add_argument("--url", required=True)
@@ -170,6 +173,7 @@ def _request(path: Path | None) -> dict[str, Any]:
 
 def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
     if args.action == "run":
+        from research_swarm.engines.registration import read_registration
         from research_swarm.orchestration.bootstrap import RunOptions
         from research_swarm.orchestration.run import run_project
 
@@ -190,6 +194,7 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 options=options,
                 cpu_slots=args.cpu_slots,
                 machine_registry=args.machine_registry,
+                registration=read_registration(args.registration) if args.registration else None,
             )
         ).model_dump(mode="json")
     if args.action == "worker":
@@ -205,6 +210,7 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 name=args.name,
             )
             return {"state": "provisioned", "worker": bundle.worker.model_dump(mode="json")}
+        from research_swarm.engines.registration import read_registration
         from research_swarm.orchestration.local import LocalDriver
         from research_swarm.workers.local_enrollment import ensure_local_enrollment
 
@@ -217,6 +223,7 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
             cpu_slots=args.cpu_slots,
             machine_registry=args.machine_registry,
             principal=client.transport.resolve_principal(),
+            registration=read_registration(args.registration) if args.registration else None,
         )
         return asyncio.run(LocalDriver(client, enrollment).drain(args.campaign_id)).model_dump(
             mode="json"
@@ -326,10 +333,15 @@ def main(argv: list[str] | None = None) -> int:
             if args.controller or args.token_file or args.state_dir:
                 raise ValueError("Worker installation uses --worker-dir and its provisioned bundle")
             if args.worker_action == "describe":
+                from research_swarm.engines.registration import read_registration
+
                 description = describe_worker(
                     args.worker_dir,
                     cpu_slots=args.cpu_slots,
                     machine_registry=args.machine_registry,
+                    registration=read_registration(args.registration)
+                    if args.registration
+                    else None,
                 )
                 print(canonical_bytes(description.model_dump(mode="json")).decode("utf-8"))
             else:

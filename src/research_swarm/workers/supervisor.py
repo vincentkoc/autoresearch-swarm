@@ -75,12 +75,17 @@ def run_attempt(
     environment = base_environment()
     resources = None
     if received.prepared is not None:
-        from research_swarm.workers.resources import MachineResources
+        from research_swarm.workers.resources import MachineResources, ResourceDemand
 
-        received.prepared.verify(received.dispatch, received.spec)
+        received.prepared.verify_launch(received.dispatch, received.spec)
         received.prepared.verify_context_file()
         resources = MachineResources(Path(received.prepared.resource_registry))
-        resources.verify_held(received, received.prepared.machine_claim_id)
+        resources.verify_held(
+            received,
+            received.prepared.machine_claim_id,
+            expected=ResourceDemand(amounts=received.prepared.resource_amounts(received.spec)),
+        )
+        environment.update(received.prepared.environment(received.spec))
         environment["RESEARCH_CONTEXT"] = received.prepared.context_path
     launch_deadline_ns = None
     if channel is not None:
@@ -127,7 +132,12 @@ def run_attempt(
     def held(native: NativeIdentity) -> bool:
         journal.held(attempt_id, supervisor_id, native)
         if resources is not None and entry.prepared is not None:
-            resources.verify_held(entry, entry.prepared.machine_claim_id)
+            entry.prepared.verify_launch(entry.dispatch, entry.spec)
+            resources.verify_held(
+                entry,
+                entry.prepared.machine_claim_id,
+                expected=ResourceDemand(amounts=entry.prepared.resource_amounts(entry.spec)),
+            )
         if channel is None:
             return journal.authorize_release(attempt_id, supervisor_id)
         permit = channel.request("release")
