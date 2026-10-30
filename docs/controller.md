@@ -74,6 +74,24 @@ provider is absent. Callback-only tests cover probes, claims, input authorizatio
 and acceptance with an injected clock. A hosted clock still needs its own qualified
 profile and continuity contract; the native clock profile is not a cloud capability.
 
+## Portable worker evidence
+
+Controller code imports `JournalEntry`, `JournalState` and `JournalEvent` from
+`workers.journal_records`. The native `WorkerJournal` retains compatibility exports,
+but its SQLite implementation and control inbox are not part of controller imports.
+Source capture, local report verification, process inspection and platform clock
+bindings load native dependencies only when those operations run.
+
+Worker path metadata accepts absolute POSIX, Windows drive and Windows UNC forms
+without rewriting the original string. Relative, drive-relative and NUL-containing
+paths are rejected. A controller checks the sealed context and original assignment;
+it does not resolve a worker's paths against its own filesystem. Native launch and
+local file validation remain worker responsibilities.
+
+Import tests exclude native worker dependencies, and reconciliation tests preserve
+original dispatch/native closure while using synthetic foreign path metadata.
+This does not qualify hosted cryptography, process custody, or execution on a second OS.
+
 ## Worker admission
 
 `worker.enroll` binds an operator-approved worker session and principal to explicit

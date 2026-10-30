@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -29,7 +29,7 @@ class NativeCommand(VersionedRecord):
     def valid_command(self) -> NativeCommand:
         if not self.argv[0] or any("\0" in value for value in (*self.argv, self.cwd)):
             raise ValueError("Native command requires a nonempty executable and NUL-free inputs")
-        if not Path(self.cwd).is_absolute():
+        if not (PurePosixPath(self.cwd).is_absolute() or PureWindowsPath(self.cwd).is_absolute()):
             raise ValueError("Native command requires an absolute working directory")
         if not self.timeout_ms or not self.cleanup_ms:
             raise ValueError("Native command requires positive execution and cleanup deadlines")

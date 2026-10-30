@@ -15,7 +15,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, Name, Revision, VersionedRecord, new_id
 from research_swarm.state.identity import connect_existing, initialize_identity
 from research_swarm.workers.authority import VerifiedDispatch, WorkerBinding
-from research_swarm.workers.journal import JournalEntry, JournalState
+from research_swarm.workers.journal_records import JournalEntry, JournalState
 
 Capacity = Annotated[int, Field(strict=True, ge=1, le=9_007_199_254_740_991)]
 

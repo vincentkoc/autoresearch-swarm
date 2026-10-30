@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import socket
 
-import psutil
 from pydantic import Field
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -19,6 +18,8 @@ class LocalProcessIdentity(Record):
 
     @classmethod
     def current(cls) -> LocalProcessIdentity:
+        import psutil
+
         return cls(
             host=socket.gethostname(),
             pid=os.getpid(),
@@ -27,6 +28,8 @@ class LocalProcessIdentity(Record):
 
     def require_closed(self) -> None:
         # This proof is valid only for the local SQLite profile, not a shared/network DB.
+        import psutil
+
         if self.host != socket.gethostname():
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Process closure needs its native host"

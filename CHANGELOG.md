@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Separate portable journal evidence from the native worker database and defer native capture, process-inspection and clock imports until their operations run.
+- Accept absolute POSIX and Windows worker paths independently of the controller OS while preserving sealed path strings; reject ambiguous relative paths and verify controller reconciliation with synthetic foreign path metadata.
+
 - Inject controller authority time through a synchronous provider bound to state and signing authority; keep fresh observations inside calibrated admission, input and acceptance decisions.
 - Install the native provider in the local runtime while preserving lazy UTC compatibility, shared process epochs, clock poisoning and fork refusal; refuse missing or mismatched calibrated providers.
 

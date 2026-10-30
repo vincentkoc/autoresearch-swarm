@@ -276,7 +276,7 @@ def test_git_reader_bounds_output_and_entire_child_lifetime(
     def fake_git(*args, **kwargs):
         return original([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
 
-    monkeypatch.setattr(source_module.subprocess, "Popen", fake_git)
+    monkeypatch.setattr(subprocess, "Popen", fake_git)
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         source_module._git_read(tmp_path, [], limit=32, deadline=started + 0.2)
@@ -285,7 +285,7 @@ def test_git_reader_bounds_output_and_entire_child_lifetime(
     def noisy_git(*args, **kwargs):
         return original([sys.executable, "-c", "print('x' * 10000)"], **kwargs)
 
-    monkeypatch.setattr(source_module.subprocess, "Popen", noisy_git)
+    monkeypatch.setattr(subprocess, "Popen", noisy_git)
     with pytest.raises(ValueError, match="bound"):
         source_module._git_read(tmp_path, [], limit=32, deadline=time.monotonic() + 5)
 
@@ -303,7 +303,7 @@ def test_inherited_git_output_does_not_extend_deadline(
     def fake_git(*args, **kwargs):
         return original([sys.executable, "-c", program], **kwargs)
 
-    monkeypatch.setattr(source_module.subprocess, "Popen", fake_git)
+    monkeypatch.setattr(subprocess, "Popen", fake_git)
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         source_module._git_read(tmp_path, [], limit=32, deadline=started + 0.5)
@@ -322,7 +322,7 @@ def test_git_reads_disable_implicit_fetch_and_ambient_repository_override(
     def fake_git(*args, **kwargs):
         return original([sys.executable, "-c", program], **kwargs)
 
-    monkeypatch.setattr(source_module.subprocess, "Popen", fake_git)
+    monkeypatch.setattr(subprocess, "Popen", fake_git)
     monkeypatch.setenv("GIT_DIR", str(tmp_path / "wrong-project"))
     result = source_module._git_read(tmp_path, [], limit=64, deadline=time.monotonic() + 5)
     assert result.strip() == b"1 1 None"

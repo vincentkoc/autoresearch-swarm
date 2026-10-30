@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ctypes
 import sys
 import time
 from collections.abc import Callable
@@ -68,6 +67,8 @@ def require_continuity(
 
 
 def _darwin_clock() -> NativeClock:
+    import ctypes
+
     library = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
 
     class Timebase(ctypes.Structure):
@@ -90,6 +91,8 @@ def _darwin_clock() -> NativeClock:
 
 
 def _windows_clock() -> NativeClock:
+    import ctypes
+
     if sys.platform != "win32":
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Windows clocks are unavailable")
     library = ctypes.WinDLL("kernel32", use_last_error=True)

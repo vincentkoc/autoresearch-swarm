@@ -12,7 +12,7 @@ from research_swarm.domain.types import utc_now
 from research_swarm.domain.workers import WorkerBinding
 
 if TYPE_CHECKING:
-    from research_swarm.workers.journal import JournalEntry
+    from research_swarm.workers.journal_records import JournalEntry
 
 
 SCHEMA = """

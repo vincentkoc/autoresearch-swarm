@@ -38,7 +38,7 @@ from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
 from research_swarm.state.sql import SqlSession
-from research_swarm.workers.journal import JournalEntry
+from research_swarm.workers.journal_records import JournalEntry
 
 
 class ResultControl:

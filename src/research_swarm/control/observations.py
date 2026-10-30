@@ -16,7 +16,7 @@ from research_swarm.domain.types import ID, Name, VersionedRecord
 from research_swarm.projects.manifest import TimingContract
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.database import JsonObject, Transaction
-from research_swarm.workers.journal import JournalEntry, JournalState
+from research_swarm.workers.journal_records import JournalEntry, JournalState
 from research_swarm.workers.timed_launch import verify_timing
 
 

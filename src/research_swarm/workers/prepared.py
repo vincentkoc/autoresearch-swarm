@@ -10,7 +10,6 @@ from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
 from research_swarm.domain.types import ID, Digest, VersionedRecord
-from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.workload import WorkloadContext, absolute_path
 from research_swarm.workers.contracts import NativeCommand
 from research_swarm.workers.engine_binding import EngineBinding
@@ -103,6 +102,8 @@ class PreparedExecution(VersionedRecord):
         return environment(resolve_engine(self.engine), stage)
 
     def verify_context_file(self) -> None:
+        from research_swarm.projects.native_files import SourceReader
+
         path = Path(self.context_path)
         with SourceReader(path.parent) as reader, reader.open(path.name) as stream:
             payload = stream.read(1024 * 1024 + 1)

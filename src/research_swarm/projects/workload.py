@@ -10,7 +10,6 @@ from pydantic import Field, JsonValue, field_validator, model_validator
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.experiments import Metric, StageSpec
 from research_swarm.domain.types import ID, ByteCount, Digest, Milliseconds, Name, VersionedRecord
-from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.source import portable_path
 
 
@@ -94,6 +93,8 @@ class VerifiedOutput(VersionedRecord):
 
 
 def read_report(context: WorkloadContext, stage: StageSpec) -> WorkloadReport:
+    from research_swarm.projects.native_files import SourceReader
+
     context.verify()
     if context.stage_id != stage.id:
         raise ValueError("Workload context identifies another stage")
@@ -117,6 +118,8 @@ def verify_outputs(
     context: WorkloadContext, report: WorkloadReport, *, maximum_bytes: int
 ) -> tuple[VerifiedOutput, ...]:
     """Verify bounded file contents before upload; final publication verifies them again."""
+    from research_swarm.projects.native_files import SourceReader
+
     context.verify()
     report = WorkloadReport.model_validate(report)
     if (

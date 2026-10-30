@@ -33,7 +33,7 @@ from research_swarm.domain.workers import WorkerBinding
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
-from research_swarm.workers.journal import JournalEntry, JournalState
+from research_swarm.workers.journal_records import JournalEntry, JournalState
 
 
 class AttemptSubmission(VersionedRecord):

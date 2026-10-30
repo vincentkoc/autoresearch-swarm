@@ -9,7 +9,6 @@ import os
 import shutil
 import signal
 import stat
-import subprocess
 import sys
 import tempfile
 import time
@@ -21,13 +20,11 @@ from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import IO
 
-import psutil
 from pydantic import Field, field_validator, model_validator
 
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ByteCount, Digest, VersionedRecord
-from research_swarm.projects.native_files import SourceReader
 
 MANIFEST_NAME = ".research-source.json"
 CHUNK_SIZE = 1024 * 1024
@@ -253,6 +250,8 @@ def _selected_files(root: Path, patterns: tuple[str, ...]) -> Iterable[tuple[str
 
 def bundle_directory(root: Path, destination: Path, *, paths: tuple[str, ...]) -> SourceManifest:
     """Capture explicitly selected working files; no Git revision is inferred."""
+    from research_swarm.projects.native_files import SourceReader
+
     root = root.resolve(strict=True)
     if not root.is_dir() or destination.resolve().is_relative_to(root):
         raise ValueError("Bundle destination must be outside the source directory")
@@ -292,6 +291,10 @@ def bundle_directory(root: Path, destination: Path, *, paths: tuple[str, ...]) -
 
 
 def _git_read(root: Path, arguments: list[str], *, limit: int, deadline: float) -> bytes:
+    import subprocess
+
+    import psutil
+
     if deadline <= time.monotonic():
         raise TimeoutError("Source capture deadline expired")
     environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}

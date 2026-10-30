@@ -24,7 +24,7 @@ from research_swarm.orchestration.intents import CommandIntents
 from research_swarm.orchestration.worker_controls import WorkerControlSession
 from research_swarm.runtime import private_state_directory, read_private, write_private
 from research_swarm.state.database import JsonObject
-from research_swarm.workers.journal import JournalState
+from research_swarm.workers.journal_records import JournalState
 from research_swarm.workers.remote_enrollment import RemoteEnrollment
 
 TRANSIENT_DELIVERY = {ErrorCode.DELIVERY_UNCERTAIN, ErrorCode.TRANSPORT_UNAVAILABLE}
