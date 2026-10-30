@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Drive local campaign stages concurrently through persisted API commands and automatic scoped enrollment.
+- Recover lost command acknowledgments and pending receipts, retain uncertain capacity, and drain native threads before releasing driver ownership.
+- Add `research worker run` with bounded JSON outcomes and explicit blocked exit status.
 - Bind initialized local enrollment to persistent journal and machine-registry identities; reject missing or replaced native state before resume.
 - Persist separate local worker and evaluator credentials before enrollment and resume interrupted setup without changing their authority.
 - Refuse missing or revoked enrollment state, changed execution profiles, and conflicting machine ownership.

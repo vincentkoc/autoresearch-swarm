@@ -1,8 +1,49 @@
 # Native worker execution
 
-The core includes a native supervisor, worker journal, and explicit `LocalWorker`.
-The async campaign driver and remote worker enrollment remain integration work.
-These primitives do not authorize enrollment or execution on another machine.
+The core includes native supervision, a worker journal, `LocalWorker`, and a local
+async campaign driver. Remote worker enrollment remains integration work.
+
+## Run a local campaign
+
+After submitting trials through the API, SDK, CLI, or MCP, run:
+
+~~~sh
+research worker run CAMPAIGN_ID
+~~~
+
+This command automatically enrolls a local CPU worker and evaluator, then drains
+the campaign's executable stage graphs. Use `--cpu-slots 2` to admit two CPU slots.
+Keep the same value on resume. Changing an established profile requires recovery.
+`--state-dir` selects the controller before the `worker` subcommand.
+
+The driver uses the same revision checks, budgets, and command service as agents.
+It authorizes evaluation before native execution and completes receipts with the
+separate evaluator identity. It preserves failed stages and invalid receipts.
+It does not propose candidates, select an incumbent, or complete the campaign.
+
+The JSON result reports `idle`, `paused`, `blocked`, `terminal`, or `stopped`.
+It includes counts and up to 50 attempt IDs and findings. `blocked` exits with
+code 3. A command error exits with code 2. An idle worker does not imply campaign
+completion. External agents can submit more work and invoke the driver again.
+
+The driver persists command envelopes before delivery, including route, payload,
+revision, and idempotency key. Lost acknowledgments replay the same command.
+A known capacity rejection permits a new scheduling decision. A failure after
+attempt admission resumes that attempt instead of creating another one.
+
+One native lock owns the worker driver. Restart reconciles its admitted attempts
+before claiming new work and completes pending receipts independently of the
+ready queue. Uncertain execution retains capacity and blocks further admission.
+Work admitted for another campaign requires that campaign's driver to resume.
+
+The foreground process exits when no more work can progress. It is not a background
+daemon. On the first interrupt, its async task drains already launched native
+execution before releasing driver ownership. A forced process termination still
+requires journal reconciliation on restart. Terminal loss does not prove closure.
+
+Python callers can use `await LocalDriver(client, enrollment).drain(campaign_id)`.
+The driver accepts local transports. HTTP worker delivery and hosted workflow
+adapters require their own qualified acknowledgment and ownership semantics.
 
 ## Local enrollment
 
@@ -14,7 +55,7 @@ credential creation and enrollment does not create another identity.
 The worker can claim and publish native attempts. It cannot publish evaluator
 receipts. The evaluator can publish receipts but cannot claim jobs. Both clients
 resolve their credentials on each request, so revocation takes effect immediately.
-These roles separate authority; they do not create a protected evaluation sandbox.
+These roles separate authority. They do not create a protected evaluation sandbox.
 
 The default machine registry is shared across local controller directories at
 `~/.local/state/autoresearch-swarm-machine/resources.sqlite`. Its native pools
@@ -71,16 +112,16 @@ The controller environment does not supply additional credentials.
 
 Cancellation or expiry can settle an unstarted grant even if its context file has
 been lost. Other preparation failures do not cross the native start barrier.
-The lower-level native test primitive can still run without a prepared workload;
-the integrated project worker must supply one. A real supervisor subprocess test
+The lower-level native test primitive can still run without a prepared workload.
+The integrated project worker must supply one. A real supervisor subprocess test
 trains the CPU example through this binding and releases its recorded capacity.
 
 Preparation ownership enters the journal before source materialization or native
 reservation. Such an entry requires an immutable preparation binding before launch.
 If preparation fails, the worker records an authenticated unstarted outcome and
 releases an existing native claim. It never infers no-launch from a missing PID.
-An interrupted extraction requires a new attempt; its partial files are retained
-as task-owned working material until cleanup.
+An interrupted extraction requires a new attempt. The worker retains its partial
+files as task-owned working material until cleanup.
 
 Each stage receives fresh source extracted from the immutable candidate bundle.
 Inputs are downloaded by their recorded digest and size. The worker uploads bounded
@@ -94,7 +135,7 @@ a held native child that never passed the barrier. They consume no launched-atte
 count. A held child's observed supervision time still consumes execution time.
 Unknown execution keeps its reservation and campaign slot. A later original closure
 can settle it without repeating execution. Storage or transport errors during upload
-leave publication retryable; they do not convert successful execution into a scientific
+leave publication retryable. They do not convert successful execution into a scientific
 failure. Reports remain descriptive until accepted evaluator receipts support them.
 
 ## Authority and durable launch

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -29,6 +30,12 @@ def parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765)
     commands.add_parser("mcp", help="Expose typed agent tools over stdio")
     commands.add_parser("capabilities")
+    worker = commands.add_parser("worker")
+    worker_actions = worker.add_subparsers(dest="worker_action", required=True)
+    local = worker_actions.add_parser("run", help="Drain admitted campaign work on the local CPU")
+    local.add_argument("campaign_id")
+    local.add_argument("--cpu-slots", type=int, default=1)
+    local.add_argument("--machine-registry", type=Path)
     command = commands.add_parser("command", help="Send a typed domain command")
     command.add_argument("operation")
     command.add_argument("--file", type=Path, help="JSON request file, otherwise read stdin")
@@ -97,6 +104,23 @@ def _request(path: Path | None) -> dict[str, Any]:
 
 
 def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
+    if args.action == "worker":
+        from research_swarm.orchestration.local import LocalDriver
+        from research_swarm.workers.local_enrollment import ensure_local_enrollment
+
+        if not isinstance(client.transport, LocalTransport):
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Local driver requires local state"
+            )
+        enrollment = ensure_local_enrollment(
+            client.transport.runtime,
+            cpu_slots=args.cpu_slots,
+            machine_registry=args.machine_registry,
+            principal=client.transport.resolve_principal(),
+        )
+        return asyncio.run(LocalDriver(client, enrollment).drain(args.campaign_id)).model_dump(
+            mode="json"
+        )
     if args.action == "capabilities":
         return client.capabilities()
     if args.action == "command":
@@ -182,7 +206,10 @@ def main(argv: list[str] | None = None) -> int:
                     capture = authorize_capture
                 make_mcp(client, authorize_local_capture=capture).run(transport="stdio")
                 return 0
-            print(canonical_bytes(_execute(client, args)).decode("utf-8"))
+            result = _execute(client, args)
+            print(canonical_bytes(result).decode("utf-8"))
+            if args.action == "worker" and result["state"] == "blocked":
+                return 3
         return 0
     except ResearchError as error:
         print(canonical_bytes(error.as_dict()).decode("utf-8"), file=sys.stderr)
