@@ -448,6 +448,9 @@ class ResearchService:
 
     @staticmethod
     def _validate_contract(transaction: Transaction, campaign: CampaignData) -> None:
+        from research_swarm.control.portfolio import portfolio_contract
+
+        portfolio_contract(campaign)
         revision = ProjectRevisionData.model_validate(
             transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
         )
@@ -567,7 +570,23 @@ class ResearchService:
 
     def submit_trial(self, context: CommandContext, request: SubmitTrial) -> JsonObject:
         def submit(transaction: Transaction) -> JsonObject:
-            check_revision(context, transaction.get("campaign", request.campaign_id))
+            row = transaction.get("campaign", request.campaign_id)
+            check_revision(context, row)
+            campaign = CampaignData.model_validate(row["data"])
+            if campaign.contract.search.policy == "portfolio":
+                from research_swarm.control.portfolio import require_portfolio_trial_allowance
+                from research_swarm.control.proposals import search_state
+                from research_swarm.control.search_models import SearchState
+
+                state = SearchState.model_validate(
+                    search_state(transaction, request.campaign_id, campaign)["data"]
+                )
+                require_portfolio_trial_allowance(
+                    transaction,
+                    request.campaign_id,
+                    campaign,
+                    len(state.pending_request_ids),
+                )
             return self._submit_trial(transaction, request)
 
         return self._execute(

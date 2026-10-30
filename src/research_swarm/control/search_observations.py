@@ -254,6 +254,8 @@ class ObservationControl:
             observed = transaction.get("search_observation", intent.observation_id)
             observation = TrialObservation.model_validate(observed["data"])
             facts = observation.facts
+            if state.policy == "portfolio" and state.selection_trial_id != facts.trial_id:
+                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Trial does not own selection")
             if (
                 facts.campaign_id != intent.campaign_id
                 or facts.trial_id not in state.active_trial_ids
@@ -346,6 +348,7 @@ class ObservationControl:
                             item for item in state.active_trial_ids if item != facts.trial_id
                         ),
                         "generation": state.generation + 1,
+                        "selection_trial_id": None,
                     }
                 ),
             )

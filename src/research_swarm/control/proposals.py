@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.models import CampaignData, CandidateData
+from research_swarm.control.portfolio import portfolio_contract, validate_portfolio_request
 from research_swarm.control.queries import summarize
 from research_swarm.control.search_models import (
     CancelProposal,
@@ -38,9 +39,11 @@ def search_state(transaction: Transaction, campaign_id: str, campaign: CampaignD
         if error.code != ErrorCode.NOT_FOUND:
             raise
         config = campaign.contract.search
+        portfolio_contract(campaign)
         if (config.policy, config.version) not in {
             ("greedy", "greedy-v1"),
             ("external", "external-v1"),
+            ("portfolio", "portfolio-v1"),
         }:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Search policy version is not implemented"
@@ -138,6 +141,7 @@ class ProposalControl:
             if context.expected_revision != previous["revision"]:
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Search state revision changed")
             state = SearchState.model_validate(previous["data"])
+            validate_portfolio_request(transaction, campaign, state, request)
             slots = 1 if state.policy == "greedy" else campaign.contract.search.max_parallel_trials
             if len(state.pending_request_ids) + len(state.active_trial_ids) >= slots:
                 raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Search slots are occupied")
@@ -192,6 +196,7 @@ class ProposalControl:
                     ErrorCode.CAPABILITY_UNAVAILABLE, "Proposal context exceeds its bound"
                 )
             data = ProposalRequest(
+                theme_id=request.theme_id,
                 campaign_id=request.campaign_id,
                 proposer_id=request.proposer_id,
                 controller_id=controller_id,

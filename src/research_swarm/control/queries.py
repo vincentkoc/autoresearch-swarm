@@ -81,6 +81,8 @@ def summarize(row: JsonObject) -> JsonObject:
         for name in ("pending_request_ids", "active_trial_ids"):
             result["data"][name] = data[name][:32]
             result["data"][name + "_count"] = len(data[name])
+        if data.get("selection_trial_id") is not None:
+            result["data"]["selection_trial_id"] = data["selection_trial_id"]
     elif row["kind"] == "search_observation":
         result["data"] = {
             key: data[key]
@@ -116,6 +118,8 @@ def summarize(row: JsonObject) -> JsonObject:
                 "incumbent_revision",
             )
         }
+        if data.get("theme_id") is not None:
+            result["data"]["theme_id"] = data["theme_id"]
     elif row["kind"] == "proposal_response":
         result["data"] = {
             key: data[key]

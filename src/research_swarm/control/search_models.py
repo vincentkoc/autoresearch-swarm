@@ -23,12 +23,21 @@ from research_swarm.state.database import JsonObject
 class SearchState(VersionedRecord):
     campaign_id: ID
     campaign_contract_digest: Digest
-    policy: Literal["greedy", "external"]
+    policy: Literal["greedy", "external", "portfolio"]
     policy_version: Name
     generation: Revision = 0
     pending_request_ids: tuple[ID, ...] = Field(default=(), max_length=1024)
     active_trial_ids: tuple[ID, ...] = Field(default=(), max_length=1024)
     request_count: Revision = 0
+    selection_trial_id: ID | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def selection_owner(self) -> Self:
+        if self.selection_trial_id is not None and (
+            self.policy != "portfolio" or self.selection_trial_id not in self.active_trial_ids
+        ):
+            raise ValueError("Portfolio selection must belong to an active policy trial")
+        return self
 
 
 class RequestProposal(VersionedRecord):
@@ -39,6 +48,7 @@ class RequestProposal(VersionedRecord):
     expected_controller_id: ID
     expected_control_epoch: Revision
     instructions: str = Field(default="", max_length=8192)
+    theme_id: Name | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class ProposalRequest(VersionedRecord):
@@ -59,6 +69,7 @@ class ProposalRequest(VersionedRecord):
     context_watermark: Revision
     requested_at: Timestamp
     budget_reservation_id: ID
+    theme_id: Name | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class ReportedAgentUsage(VersionedRecord):

@@ -36,10 +36,31 @@ class ProjectRevisionData(VersionedRecord):
     resolved: ResolvedProject
 
 
+class ResearchTheme(VersionedRecord):
+    theme_id: Name
+    proposer_id: ID
+    instructions: str = Field(min_length=1, max_length=8192)
+
+
+class PortfolioConfiguration(VersionedRecord):
+    themes: tuple[ResearchTheme, ...] = Field(min_length=1, max_length=16)
+    first_seed: Seed = 0
+
+    @model_validator(mode="after")
+    def unique_themes(self) -> PortfolioConfiguration:
+        if len({item.theme_id for item in self.themes}) != len(self.themes):
+            raise ValueError("Portfolio theme IDs must be unique")
+        return self
+
+
 class SearchConfiguration(VersionedRecord):
     policy: Literal["greedy", "portfolio", "external"] = "greedy"
     version: Name = "greedy-v1"
     max_parallel_trials: int = Field(default=1, strict=True, ge=1, le=1024)
+    portfolio: PortfolioConfiguration | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
 
 
 class PromotionConfiguration(VersionedRecord):

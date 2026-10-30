@@ -443,3 +443,65 @@ the scanned records needed no action, not that the campaign or workers finished.
 Compose `SearchDriver`, `EvaluationDriver`, external proposal agents, and
 independent worker processes to run the complete loop through the API. Their
 execution, evaluation, proposal, and promotion authorities remain separate.
+
+
+## Seal parallel research themes
+
+The portfolio control contract is available through the existing campaign and
+search commands. Set `campaign.create.search` to a configuration such as this,
+replacing the agent IDs with registered principals:
+
+~~~json
+{
+  "policy": "portfolio",
+  "version": "portfolio-v1",
+  "max_parallel_trials": 4,
+  "portfolio": {
+    "first_seed": 100,
+    "themes": [
+      {"theme_id": "optimizer", "proposer_id": "AGENT_A_ID", "instructions": "Explore optimizer changes"},
+      {"theme_id": "architecture", "proposer_id": "AGENT_B_ID", "instructions": "Explore architecture changes"}
+    ]
+  }
+}
+~~~
+
+Declare a cumulative `proposal_requests/count` budget as for other research
+policies. `portfolio-v1` supports observed promotion and at most sixteen slots
+and themes. Paired confirmation requires a separate allocation design and is
+explicitly rejected for this version. Campaign validation and sealing agree on
+these restrictions. Theme order is part of the immutable campaign contract.
+
+For request ordinal `n`, use theme `n % len(themes)` and seed `first_seed + n`.
+`search.request_proposal` must name the exact `theme_id`, proposer, instructions,
+and seed. Issuance advances the ordinal only when its transaction commits.
+Cancellation preserves the original request, response, artifact references,
+and consumed request budget; it does not rewind theme allocation.
+
+Pending proposals and admitted policy trials share the configured concurrency
+slots. Pending proposals also reserve room under the total trial limit. Public
+manual trial submission cannot consume that promised room. Atomic response
+admission converts its own pending request into a trial in the same transaction.
+Native device/resource admission remains independent.
+
+Parallel execution has one scientific selection owner. Selecting an observation
+atomically records `selection_trial_id` with its immutable pin. Other trials may
+execute and be observed, but cannot select until the owner resolves or explicitly
+abandons corrected evidence. `promotion.commit` enforces the same owner and exact
+pinned evidence, including for direct API callers. Another authorized controller
+can recover the owner; the owner identifies a trial, not a live process.
+
+A newly initialized baseline may be committed before there is a selection owner.
+Explicit replacement of suspended baseline evidence requires the current owner
+to be resolved first. Neither path silently abandons an active selection.
+
+When one trial promotes, still-pending responses retain their original parent
+and comparator context. They cannot be admitted against the replacement
+incumbent. Cancel the obsolete request explicitly, preserve the response, and
+issue a fresh request. Already admitted trials keep their source and ancestry;
+once selection becomes available, observe them against the current eligible
+incumbent. The platform never relabels an old patch as a rebased proposal.
+
+These commands provide the portfolio state contract. The automatic plural
+portfolio planner is tracked separately; `search plan/advance` currently runs
+the greedy policy and does not silently reinterpret a portfolio campaign.

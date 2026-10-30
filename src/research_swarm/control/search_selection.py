@@ -41,6 +41,11 @@ class SelectionControl:
             observed = transaction.get("search_observation", intent.observation_id)
             observation = TrialObservation.model_validate(observed["data"])
             facts = observation.facts
+            if state.policy == "portfolio" and state.selection_trial_id not in {
+                None,
+                facts.trial_id,
+            }:
+                raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Another trial owns selection")
             if (
                 facts.campaign_id != intent.campaign_id
                 or facts.trial_id not in state.active_trial_ids
@@ -86,7 +91,12 @@ class SelectionControl:
                     ErrorCode.INCUMBENT_REVISION_CONFLICT,
                     "Observation comparator changed before selection",
                 )
-            updated = write_search_state(transaction, previous, state)
+            selected_state = (
+                state.model_copy(update={"selection_trial_id": facts.trial_id})
+                if state.policy == "portfolio"
+                else state
+            )
+            updated = write_search_state(transaction, previous, selected_state)
             selection = ObservationSelection(
                 campaign_id=intent.campaign_id,
                 trial_id=facts.trial_id,

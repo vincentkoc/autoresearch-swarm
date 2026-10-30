@@ -9,6 +9,7 @@ from pydantic import Field
 
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.models import CampaignData, TrialData
+from research_swarm.control.portfolio import require_portfolio_selection
 from research_swarm.control.validity import EvidenceReference, require_current
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import PromotionDecision
@@ -215,6 +216,7 @@ class PromotionControl:
                 raise ResearchError(
                     ErrorCode.EVIDENCE_INVALIDATED, "Incumbent evidence is suspended"
                 )
+            require_portfolio_selection(transaction, campaign, assessment)
             if assessment.confirmation_plan_id is not None:
                 from research_swarm.control.confirmation_assessment import verify_planned_assessment
 

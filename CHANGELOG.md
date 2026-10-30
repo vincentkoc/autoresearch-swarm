@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add the sealed `portfolio-v1` API contract with ordered research themes, exact proposer/instruction/seed admission, and bounded concurrent slots.
+- Protect pending trial allowance from manual submission and keep cumulative proposal costs and ordinals after cancellation.
+- Serialize portfolio selection through a durable trial owner enforced by observation pinning, resolution, abandonment, and direct promotion commits; retain admitted candidate ancestry across incumbent changes.
+- Preserve legacy canonical shapes by omitting absent portfolio fields; reject unsupported paired-confirmation combinations explicitly.
+
 - Add API-driven evaluation control with separate controller/evaluator clients and an `evaluation advance` CLI command for independently running workers.
 - Recover authorization and receipt acknowledgment loss through bounded resumable scans, preserving unprocessed page tails and exact evaluator ownership.
 - Keep failed scoring, UNKNOWN execution, drain pause, confirmation exposure, and credential failures distinct; complete a real HTTP greedy improvement cycle with a scoped CPU worker and separate evaluator credentials.
