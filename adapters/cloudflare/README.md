@@ -5,13 +5,14 @@ not the research API, a production controller, or a deployment template. The
 complete Durable Object command service, R2 custody, authority clock and Workflow
 delivery integration remain separate implementation work.
 
-The fixture imports the actual shared Python domain types and canonicalization
-code. A Python Durable Object runs nested SQLite `transactionSync` callbacks and
-calls a prebundled synchronous Ed25519 implementation through local JavaScript FFI.
-It preserves a rejected acknowledgment and conservative fence after rolling back
-the failed inner operation; a failing rejection hook must roll back the outer
-transaction too. Parallel duplicate deliveries and process restart exercise saved
-acknowledgments. This establishes runtime primitives, not full domain conformance.
+The fixture imports the actual Python command kernel through `Database.from_store`
+and the `StateStore` contract. The Durable Object adapter owns SQL cursor conversion,
+synchronous transactions and schema-version metadata. Shared Python code owns
+command replay, revision checks, records, events, the outbox and rejection behavior.
+It calls a prebundled synchronous Ed25519 implementation through local JavaScript FFI.
+A failed inner operation rolls back before its fence and rejected acknowledgment
+commit; a failed rejection hook rolls back the entire command. Parallel duplicate
+deliveries and process restart exercise the actual saved command acknowledgments.
 
 ## Local setup
 
@@ -51,8 +52,9 @@ names, but that fixture guard is not production authentication. Do not deploy it
 
 ## Boundaries and cryptography
 
-`build.py` copies the shared domain package unchanged into an owned generated
-directory. It does not maintain a second implementation of those Python rules.
+`build.py` copies the shared domain and state packages unchanged into an owned
+generated directory. The native fixture asserts that the SQLite adapter and
+`sqlite3` are never imported. It does not maintain a second implementation of those Python rules.
 The JavaScript bundle uses MIT-licensed `@noble/curves` 2.4.0, with strict Ed25519
 verification (`zip215: false`). Node checks an RFC 8032 vector. The Worker repeats
 that vector inside its transaction; the host's existing cryptography library
@@ -68,9 +70,22 @@ inside an atomic callback.
 rollback boundary. The native fixture catches the actual `ResearchError` after
 inner rollback. CPU tests separately preserve foreign-wrapper exception identity,
 distinguish commit failure and reject asynchronous or repeated callbacks.
-This does not yet replace the core `Database.execute` implementation.
-Cursor row counts also need explicit adaptation: Cloudflare `rowsWritten` is not
-equivalent to SQLite's affected-row count. Use `UPDATE ... RETURNING` for CAS.
+`durable_sql.py` implements that storage boundary for the unchanged command kernel.
+It fully consumes raw cursors before returning, preserves column order and binary
+values, maps constraint failures, and invalidates sessions when callbacks finish.
+It uses `UPDATE ... RETURNING` for CAS, never billing-oriented `rowsWritten`.
+
+SQL bindings reject non-finite or inexact values. Authority counters share an exact
+`2**53 - 1` ceiling; their increment fails before any state becomes inexact. The
+Workers RPC bridge requires explicit numeric conversion for large Python integers
+and returns binary columns as buffer objects. Empty and non-UTF-8 bytes, SQL NULL,
+duplicate column names and shared cursor consumption have native contract probes.
+
+The adapter stores schema versions in a singleton table because the runtime does
+not support the native `PRAGMA user_version` mechanism. Both adapters apply the
+same migration statements. Unknown versions and unversioned application tables
+are refused. Interrupted migration tests preserve existing acknowledgments and
+roll back both the schema changes and version update. Foreign keys remain enabled.
 
 ## Sources
 
@@ -84,7 +99,7 @@ equivalent to SQLite's affected-row count. Use `UPDATE ... RETURNING` for CAS.
 Local workerd evidence does not establish hosted recovery, regional failover,
 production signing-key custody, R2 durability, or the complete M5 deployment profile.
 
-The final local qualification passed one native test in 18.10 seconds on macOS,
-including a full owned-process restart and eight contending HTTP deliveries. The
-three callback tests and Node RFC vector test also passed. These are infrastructure observations,
-not provider throughput or research-performance measurements.
+The opt-in native test exercises the shared kernel, storage boundary, full owned
+process restart and eight contending HTTP deliveries. CPU tests cover callback
+failure propagation and native counter exhaustion. These are infrastructure
+observations, not provider throughput or research-performance measurements.

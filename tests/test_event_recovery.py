@@ -123,7 +123,7 @@ def test_schema_v1_migrates_once_under_concurrent_openers_and_preserves_commands
 def test_failed_schema_migration_rolls_back_and_newer_schema_is_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from research_swarm.state import migrations
+    from research_swarm.state import schema as migrations
 
     path = tmp_path / "rollback.sqlite"
     legacy(path)

@@ -13,7 +13,13 @@ from research_swarm.domain.evidence import Event
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
 from research_swarm.state.events import event_page
-from research_swarm.state.sql import IntegrityViolation, SqlSession, StateStore, StoreIdentity
+from research_swarm.state.sql import (
+    IntegrityViolation,
+    SqlSession,
+    StateStore,
+    StoreIdentity,
+    next_counter,
+)
 
 if TYPE_CHECKING:
     from research_swarm.state.sqlite import SQLiteSession, SQLiteStore
@@ -248,11 +254,12 @@ class Transaction:
         state: str,
     ) -> JsonObject:
         cursor = self.connection.execute(
-            """UPDATE records SET payload=?,state=?,revision=revision+1,updated_at=?
+            """UPDATE records SET payload=?,state=?,revision=?,updated_at=?
             WHERE workspace_id=? AND kind=? AND id=? AND revision=? RETURNING revision""",
             (
                 encode(data),
                 state,
+                next_counter(expected_revision),
                 utc_now(),
                 self.workspace_id,
                 kind,
@@ -276,8 +283,8 @@ class Transaction:
         assert row is not None
         sequence = row["next_sequence"]
         self.connection.execute(
-            "UPDATE workspaces SET next_sequence=next_sequence+1 WHERE id=?",
-            (self.workspace_id,),
+            "UPDATE workspaces SET next_sequence=? WHERE id=?",
+            (next_counter(sequence), self.workspace_id),
         )
         now = utc_now()
         event = Event(
@@ -541,10 +548,14 @@ class Database:
 
     def acknowledge_notification(self, event_id: str) -> None:
         def acknowledge(connection: SqlSession) -> None:
+            row = connection.execute(
+                "SELECT delivery_attempts FROM outbox WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if row is None:
+                return
             connection.execute(
-                "UPDATE outbox SET delivered=1,delivery_attempts=delivery_attempts+1 "
-                "WHERE event_id=?",
-                (event_id,),
+                "UPDATE outbox SET delivered=1,delivery_attempts=? WHERE event_id=?",
+                (next_counter(row[0]), event_id),
             )
 
         self.store.write(acknowledge)

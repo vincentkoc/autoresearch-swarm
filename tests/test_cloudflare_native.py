@@ -135,6 +135,11 @@ def exercise(url, *, key, mode="accept", value=7):
 def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp_path):
     build_current_sources()
     with server(tmp_path, sequence=1) as url:
+        with httpx.Client(trust_env=False, timeout=30) as client:
+            for case in ("roundtrip", "unknown-version", "foreign-state", "migration-rollback"):
+                response = client.post(url + "/storage/" + case)
+                assert response.status_code == 200, response.text[-3000:]
+                assert response.json() and all(value is True for value in response.json().values())
         accepted = exercise(url, key="accepted")
         assert accepted["state"] == "accepted"
         assert accepted["counts"] == {"effects": 1, "fences": 0, "acknowledgments": 1}

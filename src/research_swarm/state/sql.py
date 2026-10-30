@@ -4,8 +4,18 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar
 
+from research_swarm.domain.errors import ErrorCode, ResearchError
+
 SqlValue = str | int | float | bytes | None
 T = TypeVar("T")
+MAX_SQL_COUNTER = 2**53 - 1
+
+
+def next_counter(value: int) -> int:
+    """Keep SQL authority counters exact in both native and JavaScript runtimes."""
+    if type(value) is not int or not 0 <= value < MAX_SQL_COUNTER:
+        raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "SQL authority counter exhausted")
+    return value + 1
 
 
 class IntegrityViolation(Exception):

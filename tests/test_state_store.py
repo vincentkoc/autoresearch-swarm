@@ -7,7 +7,7 @@ import pytest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from research_swarm.state.database import Database
-from research_swarm.state.sql import IntegrityViolation
+from research_swarm.state.sql import MAX_SQL_COUNTER, IntegrityViolation
 from tests.test_database import create_campaign
 
 
@@ -27,6 +27,57 @@ class CallbacksOnly:
     def write(self, callback):
         self.writes += 1
         return self.store.write(callback)
+
+
+@pytest.mark.parametrize("counter", ["revision", "next_sequence", "delivery_attempts"])
+def test_sql_counters_fail_before_inexact_increment(database, context, counter):
+    created = create_campaign(database, context("initial"))["result"]
+    if counter == "revision":
+        database.store.write(
+            lambda sql: sql.execute("UPDATE records SET revision=?", (MAX_SQL_COUNTER,))
+        )
+
+        def operation():
+            return database.execute(
+                context("overflow"),
+                "update",
+                {},
+                "write",
+                lambda tx: tx.update(
+                    "campaign",
+                    created["id"],
+                    expected_revision=MAX_SQL_COUNTER,
+                    data={},
+                    state="changed",
+                ),
+            )
+
+        query = "SELECT revision FROM records"
+    elif counter == "next_sequence":
+        database.store.write(
+            lambda sql: sql.execute("UPDATE workspaces SET next_sequence=?", (MAX_SQL_COUNTER,))
+        )
+
+        def operation():
+            return create_campaign(database, context("overflow"))
+
+        query = "SELECT next_sequence FROM workspaces"
+    else:
+        database.store.write(
+            lambda sql: sql.execute("UPDATE outbox SET delivery_attempts=?", (MAX_SQL_COUNTER,))
+        )
+        event = database.pending_notifications()[0]
+
+        def operation():
+            return database.acknowledge_notification(event.id)
+
+        query = "SELECT delivery_attempts FROM outbox"
+    with pytest.raises(ResearchError) as exhausted:
+        operation()
+    assert exhausted.value.code == ErrorCode.RESOURCE_UNAVAILABLE
+    assert database.store.read(lambda sql: sql.execute(query).one()[0]) == MAX_SQL_COUNTER
+    assert len(database.pending_notifications()) == 1
+    assert len(database.snapshot(context())["records"]) == 1
 
 
 def test_native_capability_refusal_does_not_import_native_sqlite(database, tmp_path, monkeypatch):

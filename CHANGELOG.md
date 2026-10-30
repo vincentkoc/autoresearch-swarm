@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Run the shared command kernel through a real Durable Object SQL adapter, preserving command replay, event/outbox transactions and rejection fencing across local workerd restart.
+- Share schema migrations, reject unversioned/unsupported state, normalize SQL constraints and binary/NULL values, and bound authority counters before JavaScript precision can change their meaning.
+
 - Extract synchronous SQL store/session contracts and a native SQLite adapter while preserving one command kernel, exact acknowledgment replay, nested rollback and conservative rejection fencing.
 - Replace affected-row assumptions with `RETURNING`, distinguish required from optional rows, and identify shared transaction authority independently of filesystem paths; keep unported native operations explicitly unavailable to hosted stores.
 

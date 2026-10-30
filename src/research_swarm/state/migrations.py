@@ -5,9 +5,7 @@ from __future__ import annotations
 import sqlite3
 from time import monotonic, sleep
 
-from research_swarm.domain.errors import ErrorCode, ResearchError
-
-SCHEMA_VERSION = 3
+from research_swarm.state.schema import SCHEMA_VERSION, apply_schema
 
 
 def enable_wal(connection: sqlite3.Connection, *, timeout_ms: int) -> None:
@@ -30,65 +28,11 @@ def enable_wal(connection: sqlite3.Connection, *, timeout_ms: int) -> None:
             delay = min(delay * 2, 0.1)
 
 
-RECOVERY_SCHEMA = """
-CREATE TABLE IF NOT EXISTS recovery_snapshots (
-    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
-    id TEXT NOT NULL,
-    actor_id TEXT NOT NULL,
-    watermark INTEGER NOT NULL,
-    expires_at TEXT NOT NULL,
-    released_at TEXT,
-    expired_at TEXT,
-    payload TEXT NOT NULL,
-    PRIMARY KEY(workspace_id,id)
-);
-CREATE INDEX IF NOT EXISTS recovery_pins ON recovery_snapshots(
-    workspace_id,expires_at,watermark
-) WHERE released_at IS NULL;
-CREATE TABLE IF NOT EXISTS recovery_items (
-    workspace_id TEXT NOT NULL,
-    snapshot_id TEXT NOT NULL,
-    ordinal INTEGER NOT NULL,
-    content_digest TEXT NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    content BLOB NOT NULL,
-    PRIMARY KEY(workspace_id,snapshot_id,ordinal),
-    FOREIGN KEY(workspace_id,snapshot_id) REFERENCES recovery_snapshots(workspace_id,id)
-        ON DELETE CASCADE
-);
-"""
-
-
-def apply_statements(connection: sqlite3.Connection, schema: str) -> None:
-    # These are fixed internal DDL statements, without triggers or quoted semicolons.
-    for statement in schema.split(";"):
-        if statement.strip():
-            connection.execute(statement)
-
-
-def migrate_v2(connection: sqlite3.Connection) -> None:
-    columns = {row[1] for row in connection.execute("PRAGMA table_info(workspaces)")}
-    if "event_floor" not in columns:
-        connection.execute(
-            "ALTER TABLE workspaces ADD COLUMN event_floor INTEGER NOT NULL DEFAULT 1"
-        )
-    apply_statements(connection, RECOVERY_SCHEMA)
-
-
 def initialize(connection: sqlite3.Connection, base_schema: str) -> None:
     connection.execute("BEGIN IMMEDIATE")
     try:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, SCHEMA_VERSION):
-            raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported database schema")
-        apply_statements(connection, base_schema)
-        if version < 2:
-            migrate_v2(connection)
-        if version < 3:
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS acceptance_leases ON records"
-                "(workspace_id, campaign_id, state, id) WHERE kind='acceptance_lease'"
-            )
+        apply_schema(connection, base_schema, version)
         connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         connection.commit()
     except BaseException:

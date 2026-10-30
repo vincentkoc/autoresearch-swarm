@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import TypeVar, cast
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.state.migrations import SCHEMA_VERSION, enable_wal, initialize
+from research_swarm.state.migrations import enable_wal, initialize
+from research_swarm.state.schema import SCHEMA_VERSION
 from research_swarm.state.sql import (
     IntegrityViolation,
     SqlRow,
