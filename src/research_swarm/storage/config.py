@@ -13,5 +13,4 @@ class FilesystemConfig(VersionedRecord):
 
 
 StorageConfig = Annotated[FilesystemConfig | R2Config, Field(discriminator="kind")]
-# Pydantic accepts discriminated unions; its constructor overload only names concrete types.
-storage_configuration: TypeAdapter[StorageConfig] = TypeAdapter(StorageConfig)  # type: ignore[arg-type]
+storage_configuration: TypeAdapter[StorageConfig] = TypeAdapter(StorageConfig)

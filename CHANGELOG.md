@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a reproducible local controller/CPU benchmark with independent connection loads, budget races, exact command replay and paired one/two-lane native throughput. Retain failed/censored cells, evaluator receipts and exact comparison identities.
+- Preserve original attempts on interrupted benchmark resume and report incomplete timing explicitly. Keep full measurements opt-in and CI focused on correctness.
+- Remove an unnecessary R2 type-ignore comment exposed by fresh CI type checking.
+
 - Persist filesystem/R2 selection in runtime identity; initialize through `research init --storage-config` and reopen it through existing SDK, HTTP and agent tools. Preserve legacy filesystem identities and refuse backend changes or missing staging.
 - Check optional dependencies before new state, keep partial initialization fail-closed, and reject oversized worker uploads before quota admission.
 - Qualify native R2 publication, restart, reader pins, delayed-write fences, deletion accounting and corruption checks against a real local R2 binding; hosted S3 deployment remains separate.

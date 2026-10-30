@@ -73,3 +73,5 @@ uv run mypy src
 ~~~
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development boundaries.
+
+A bounded [controller and CPU benchmark](examples/controller_benchmark/README.md) measures local scheduling overhead and paired one/two-lane throughput, with retained failure and evaluator evidence.
