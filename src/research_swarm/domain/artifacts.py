@@ -39,6 +39,11 @@ class StoredBlob(VersionedRecord):
     generation: ID
 
 
+class UploadProgress(VersionedRecord):
+    received_bytes: ByteCount
+    published: bool
+
+
 class ArtifactRecord(VersionedRecord):
     reference: ArtifactRef
     storage_generation: ID

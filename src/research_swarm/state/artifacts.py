@@ -211,6 +211,13 @@ class ArtifactService:
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload is not pending")
         return self.store.append(upload, offset, content)
 
+    def upload_status(self, context: CommandContext, upload_id: str) -> JsonObject:
+        context.principal.require("artifact.upload")
+        row = self.database.read_record(context, "upload", upload_id)
+        upload = self._upload_owner(context, row)
+        progress = self.store.progress(upload) if row["state"] == "pending" else None
+        return {**row, "transfer": progress.model_dump(mode="json") if progress else None}
+
     def finalize_upload(self, context: CommandContext, upload_id: str) -> JsonObject:
         context.principal.require("artifact.upload")
         row = self.database.read_record(context, "upload", upload_id)

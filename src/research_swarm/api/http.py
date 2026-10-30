@@ -289,6 +289,12 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         )
         return {"offset": size}
 
+    @app.get("/v1/artifact-uploads/{identifier}")
+    async def upload_status(
+        identifier: str, context: Annotated[CommandContext, Depends(transfer_context)]
+    ) -> JsonObject:
+        return await asyncio.to_thread(service.artifacts.upload_status, context, identifier)
+
     @app.post("/v1/artifact-uploads/{identifier}/finalize")
     async def finalize_upload(
         identifier: str, context: Annotated[CommandContext, Depends(write_context)]

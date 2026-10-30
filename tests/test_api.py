@@ -1,65 +1,20 @@
 from __future__ import annotations
 
-import socket
-import threading
-import time
-from collections.abc import AsyncIterator, Iterator
-from dataclasses import dataclass
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 import pytest
-import uvicorn
 from pydantic import ValidationError
 
-from research_swarm.api.http import MAX_COMMAND_BYTES, ArtifactResponse, create_app
-from research_swarm.control.auth import CredentialStore
+from research_swarm.api.http import MAX_COMMAND_BYTES, ArtifactResponse
 from research_swarm.control.commands import CampaignTarget, CreateCampaign
 from research_swarm.control.dispatch import dispatch_command
 from research_swarm.control.queries import RecordQuery, ResearchQueries
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
-from tests.support import LIMITS, ResearchFixture
-
-
-@dataclass
-class APIFixture:
-    client: httpx.Client
-    credentials: CredentialStore
-    root: Principal
-    url: str
-
-
-@pytest.fixture
-def api(research: ResearchFixture) -> Iterator[APIFixture]:
-    credentials = CredentialStore(research.service.database)
-    root = research.context().principal
-    issued = credentials.issue(root, root)
-    app = create_app(research.service, credentials)
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
-    url = f"http://127.0.0.1:{listener.getsockname()[1]}"
-    server = uvicorn.Server(
-        uvicorn.Config(app, log_level="error", access_log=False, lifespan="off")
-    )
-    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
-    thread.start()
-    try:
-        deadline = time.monotonic() + 5
-        while not server.started:
-            if not thread.is_alive() or time.monotonic() >= deadline:
-                raise AssertionError("Owned HTTP server did not start")
-            time.sleep(0.01)
-        with httpx.Client(
-            base_url=url, headers={"Authorization": "Bearer " + issued.token}, timeout=5
-        ) as client:
-            yield APIFixture(client, credentials, root, url)
-    finally:
-        server.should_exit = True
-        thread.join(timeout=5)
-        listener.close()
-        assert not thread.is_alive(), "Owned HTTP server did not stop"
+from tests.support import LIMITS, APIFixture, ResearchFixture
 
 
 def post_command(

@@ -345,6 +345,29 @@ def _git_read(root: Path, arguments: list[str], *, limit: int, deadline: float) 
                 process.wait(timeout=10)
 
 
+def read_git_file(
+    root: Path, revision: str, path: str, *, limit: int, timeout_seconds: float = 30
+) -> tuple[str, bytes]:
+    """Resolve once, then read a contract file from that exact local commit."""
+    portable_path(path)
+    if not 1 <= limit <= MAX_SOURCE_BYTES or not 0 < timeout_seconds <= 3600:
+        raise ValueError("Git contract read exceeds its bounds")
+    deadline = time.monotonic() + timeout_seconds
+    resolved = (
+        _git_read(
+            root,
+            ["rev-parse", "--verify", "--end-of-options", revision + "^{commit}"],
+            limit=128,
+            deadline=deadline,
+        )
+        .decode("ascii")
+        .strip()
+    )
+    return resolved, _git_read(
+        root, ["cat-file", "blob", resolved + ":" + path], limit=limit, deadline=deadline
+    )
+
+
 def bundle_git(
     root: Path,
     revision: str,

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add local and HTTP Python clients, async convenience methods, and durable private runtime initialization.
+- Resume artifact transfers through their recorded lifecycle and verify downloaded content.
 - Expose authenticated research commands, bounded context, event streams, and verified artifact transfer over HTTP.
 - Keep credential authority server-side and validate canonical expiry and safe artifact media types.
 - Register immutable project revisions and seal campaign contracts with explicit input and budget rules.

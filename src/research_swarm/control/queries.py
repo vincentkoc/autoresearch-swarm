@@ -87,6 +87,21 @@ def summarize(row: JsonObject) -> JsonObject:
         }
     elif row["kind"] == "project":
         result["data"] = {key: data[key] for key in ("name", "slug", "current_revision_id")}
+    elif row["kind"] == "project_revision":
+        result["data"] = {
+            "project_id": data["project_id"],
+            "source_artifact": data["source_artifact"],
+            "manifest_digest": data["resolved"]["manifest_digest"],
+            "protocol_digest": data["resolved"]["protocol_digest"],
+        }
+    elif row["kind"] == "candidate_validation":
+        result["data"] = {
+            "candidate_id": data["candidate_id"],
+            "valid": data["valid"],
+            "findings": data["findings"][:20],
+            "changed_paths": data["changed_paths"][:50],
+            "changed_path_count": len(data["changed_paths"]),
+        }
     else:
         result["data"] = {"detail_available": True}
     return result

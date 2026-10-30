@@ -6,11 +6,13 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import BinaryIO, Protocol
 
-from research_swarm.domain.artifacts import StoredBlob, UploadSpec
+from research_swarm.domain.artifacts import StoredBlob, UploadProgress, UploadSpec
 
 
 class BlobStore(Protocol):
     def begin(self, upload: UploadSpec) -> int: ...
+
+    def progress(self, upload: UploadSpec) -> UploadProgress: ...
 
     def append(self, upload: UploadSpec, offset: int, content: bytes) -> int: ...
 

@@ -19,7 +19,7 @@ from typing import BinaryIO, cast
 from filelock import FileLock
 from pydantic import TypeAdapter
 
-from research_swarm.domain.artifacts import StoredBlob, UploadSpec
+from research_swarm.domain.artifacts import StoredBlob, UploadProgress, UploadSpec
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.types import ID, new_id
@@ -178,6 +178,24 @@ class FilesystemBlobStore:
                     return offset + len(content)
             except FileNotFoundError as error:
                 raise ResearchError(ErrorCode.NOT_FOUND, "Staged upload not found") from error
+
+    def progress(self, upload: UploadSpec) -> UploadProgress:
+        upload = UploadSpec.model_validate(upload)
+        with self._lock(upload.workspace_id, upload.id):
+            blob = StoredBlob(reference=upload.reference(), generation=upload.id)
+            published = self._object(upload.workspace_id, blob)
+            if published.exists() or published.is_symlink():
+                with _file(published, "rb") as source:
+                    _check(source, blob.reference)
+                return UploadProgress(received_bytes=upload.size_bytes, published=True)
+            try:
+                with _file(self._staged(upload), "rb") as source:
+                    received = os.fstat(source.fileno()).st_size
+            except FileNotFoundError:
+                received = 0
+            if received > upload.size_bytes:
+                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Staged upload exceeds its size")
+            return UploadProgress(received_bytes=received, published=False)
 
     def finalize(self, upload: UploadSpec) -> StoredBlob:
         upload = UploadSpec.model_validate(upload)
