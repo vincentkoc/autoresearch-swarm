@@ -25,6 +25,8 @@ RecordKind = Literal[
     "trial",
     "job",
     "attempt",
+    "attempt_submission",
+    "attempt_reconciliation",
     "run_result",
     "worker",
     "worker_session",
@@ -62,7 +64,18 @@ def summarize(row: JsonObject) -> JsonObject:
         key: row[key] for key in ("id", "kind", "revision", "state", "campaign_id", "parent_id")
     }
     data = row["data"]
-    if row["kind"] in {"worker_admission", "worker_presence", "attempt_control"}:
+    if row["kind"] == "attempt_submission":
+        result["data"] = {
+            key: data[key]
+            for key in ("publication_digest", "original_binding", "submitted_by", "submitted_at")
+        }
+        result["data"]["attempt_id"] = data["publication"]["attempt_id"]
+    elif row["kind"] in {
+        "worker_admission",
+        "worker_presence",
+        "attempt_control",
+        "attempt_reconciliation",
+    }:
         result["data"] = data
     elif row["kind"] == "candidate":
         result["data"] = {
@@ -293,10 +306,11 @@ class ResearchQueries:
             transaction = Transaction(connection, context)
             campaign = transaction.get("campaign", campaign_id)
             data = CampaignData.model_validate(campaign["data"])
-            watermark = connection.execute(
-                "SELECT next_sequence-1 FROM workspaces WHERE id=?",
+            authority = connection.execute(
+                "SELECT next_sequence-1 AS watermark,controller_id,control_epoch "
+                "FROM workspaces WHERE id=?",
                 (context.principal.workspace_id,),
-            ).fetchone()[0]
+            ).fetchone()
             counts = connection.execute(
                 "SELECT kind,state,COUNT(*) AS count FROM records WHERE workspace_id=? "
                 "AND campaign_id=? GROUP BY kind,state",
@@ -318,7 +332,11 @@ class ResearchQueries:
             connection.commit()
         return {
             "schema_version": "1.0",
-            "watermark": watermark,
+            "watermark": authority["watermark"],
+            "authority": {
+                "controller_id": authority["controller_id"],
+                "control_epoch": authority["control_epoch"],
+            },
             "campaign": summarize(campaign),
             "contract": {
                 "project_id": data.contract.project_id,

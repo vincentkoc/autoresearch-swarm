@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import model_validator
 
 from research_swarm.control.worker_artifacts import WorkerAttemptTarget
+from research_swarm.control.worker_records import WorkerData
 from research_swarm.control.worker_sessions import historical_attempt_owner
 from research_swarm.control.workers import AttemptData
 from research_swarm.domain.artifacts import (
@@ -69,15 +70,33 @@ def owned_upload(
     worker, attempt = historical_attempt_owner(
         transaction, request.worker_id, request.session_id, request.attempt_id
     )
+    return verify_upload(transaction, request, worker, attempt)
+
+
+def verify_upload(
+    transaction: Transaction,
+    request: WorkerUploadTarget,
+    worker: WorkerData,
+    attempt: AttemptData,
+) -> tuple[JsonObject, WorkerUploadData, JsonObject, UploadSpec, AttemptData]:
+    """Verify persisted provenance after the caller authenticates its own authority."""
     receipt = transaction.get("worker_upload", request.upload_id)
     data = WorkerUploadData.model_validate(receipt["data"])
     row = transaction.get("upload", request.upload_id)
     upload = UploadSpec.model_validate(row["data"])
     if (
         data.binding != worker.binding
+        or worker.binding.workspace_id != transaction.workspace_id
+        or request.worker_id != worker.binding.worker_id
+        or request.session_id != worker.binding.worker_session_id
+        or request.attempt_id != attempt.dispatch.attempt_id
+        or any(
+            getattr(attempt.dispatch, name) != getattr(worker.binding, name)
+            for name in WorkerBinding.model_fields
+        )
         or data.attempt_id != request.attempt_id
         or data.upload_id != request.upload_id
-        or upload.actor_id != transaction.context.principal.id
+        or upload.actor_id != worker.principal_id
     ):
         raise ResearchError(
             ErrorCode.AUTHORIZATION_DENIED, "Upload belongs to another attempt authority"
@@ -91,6 +110,20 @@ def evidence_receipt(
     reference: ArtifactRef,
 ) -> WorkerUploadData:
     """Require a completed transfer for this exact attempt, role, and canonical reference."""
+    worker, attempt = historical_attempt_owner(
+        transaction, intent.worker_id, intent.session_id, intent.attempt_id
+    )
+    return verify_evidence_receipt(transaction, intent, reference, worker, attempt)
+
+
+def verify_evidence_receipt(
+    transaction: Transaction,
+    intent: WorkerOutputIntent,
+    reference: ArtifactRef,
+    worker: WorkerData,
+    attempt: AttemptData,
+) -> WorkerUploadData:
+    """Original transfer ownership is independent of the reconciling operator."""
     row = transaction.connection.execute(
         "SELECT id FROM records WHERE workspace_id=? AND kind='worker_upload' "
         "AND parent_id=? AND state='finalized' "
@@ -113,7 +146,7 @@ def evidence_receipt(
         attempt_id=intent.attempt_id,
         upload_id=row["id"],
     )
-    _, data, _, _, _ = owned_upload(transaction, target)
+    _, data, _, _, _ = verify_upload(transaction, target, worker, attempt)
     if data.artifact != reference or data.retention_id is None:
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Attempt upload receipt differs")
     return data

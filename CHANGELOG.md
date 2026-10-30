@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add immutable quarantined attempt submissions and explicit operator reconciliation under current controller authority.
+- Validate ordinary and recovered observations through one contract, preserve original grants and digests, and settle costs once without issuing evaluator receipts.
+- Keep incomplete and invalid recovery evidence retained, separate operator permissions from worker credentials, and preserve exact acknowledgments across concurrent preflight failures and epoch changes.
+
 - Preserve immutable worker session records at enrollment and expose explicit historical session and pending-attempt reads.
 - Let the authenticated original session finish scoped evidence transfers after an epoch change while current inputs, launch, and scientific publication remain fenced.
 - Preserve legacy session reads without implicit migration and reject reused session IDs or unavailable historical authority.

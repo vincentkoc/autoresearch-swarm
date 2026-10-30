@@ -2,21 +2,27 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
-from decimal import Decimal
-
-from pydantic import Field
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 
 from research_swarm.control.campaigns import settle_pause
 from research_swarm.control.confirmation_runtime import release_unused_exposure, settle_exposure
 from research_swarm.control.models import JobData, TrialData
+from research_swarm.control.observations import (
+    PublishAttempt as PublishAttempt,
+)
+from research_swarm.control.observations import (
+    evidence_roles,
+    output_intent,
+    validate_observation,
+)
 from research_swarm.control.worker_outputs import (
-    OutputRole,
     WorkerOutputIntent,
     WorkerUploadTarget,
-    evidence_receipt,
-    owned_upload,
+    verify_evidence_receipt,
+    verify_upload,
 )
+from research_swarm.control.worker_records import WorkerData
 from research_swarm.control.worker_state import settle_cancellation
 from research_swarm.control.workers import AttemptData, worker_authority
 from research_swarm.domain.artifacts import ArtifactRecord, ArtifactRetention, StoredBlob
@@ -24,48 +30,12 @@ from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef, RunResult
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import ID, Name, VersionedRecord, utc_now
-from research_swarm.projects.manifest import TimingContract
+from research_swarm.domain.types import utc_now
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
-from research_swarm.workers.journal import JournalEntry, JournalState
-from research_swarm.workers.timed_launch import verify_timing
-
-
-class PublishAttempt(VersionedRecord):
-    attempt_id: ID
-    journal_artifact: ArtifactRef
-    report_artifact: ArtifactRef | None = None
-    outputs: dict[Name, ArtifactRef] = Field(default_factory=dict)
-    logs: dict[Name, ArtifactRef] = Field(default_factory=dict)
-    finding: str = Field(default="", max_length=4096)
-
-
-def evidence_roles(request: PublishAttempt) -> list[tuple[OutputRole, str | None, ArtifactRef]]:
-    if set(request.logs) - {"stdout", "stderr"}:
-        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Unknown native log stream")
-    result: list[tuple[OutputRole, str | None, ArtifactRef]] = [
-        ("journal", None, request.journal_artifact)
-    ]
-    if request.report_artifact is not None:
-        result.append(("report", None, request.report_artifact))
-    result.extend(("output", name, ref) for name, ref in request.outputs.items())
-    for name in ("stdout", "stderr"):
-        if name in request.logs:
-            result.append(("stdout" if name == "stdout" else "stderr", None, request.logs[name]))
-    return result
-
-
-def output_intent(attempt: AttemptData, role: OutputRole, name: str | None) -> WorkerOutputIntent:
-    return WorkerOutputIntent(
-        worker_id=attempt.dispatch.worker_id,
-        session_id=attempt.dispatch.worker_session_id,
-        attempt_id=attempt.dispatch.attempt_id,
-        role=role,
-        output_name=name,
-    )
+from research_swarm.workers.journal import JournalEntry
 
 
 class ResultControl:
@@ -73,7 +43,7 @@ class ResultControl:
         self.database, self.artifacts = database, artifacts
 
     @staticmethod
-    def _settle_uploads(transaction: Transaction, attempt: AttemptData) -> None:
+    def _settle_uploads(transaction: Transaction, attempt: AttemptData, worker: WorkerData) -> None:
         """Preserve every finalized observation under the closed attempt's lifecycle."""
         rows = transaction.connection.execute(
             "SELECT id FROM records WHERE workspace_id=? AND kind='worker_upload' "
@@ -87,7 +57,7 @@ class ResultControl:
                 attempt_id=attempt.dispatch.attempt_id,
                 upload_id=row["id"],
             )
-            _, receipt, _, _, _ = owned_upload(transaction, target)
+            _, receipt, _, _, _ = verify_upload(transaction, target, worker, attempt)
             assert receipt.artifact is not None and receipt.retention_id is not None
             ArtifactCatalog.retain(
                 transaction,
@@ -102,16 +72,22 @@ class ResultControl:
                 transaction,
                 receipt.retention_id,
                 owner_release=("worker_upload", receipt.upload_id),
+                owner_scope="attempt.reconcile"
+                if transaction.context.principal.id != worker.principal_id
+                else None,
             )
 
     def publish(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
-        payload = request.model_dump(mode="json")
-        previous = self.database.replay(
-            context, "worker.publish_attempt", payload, "worker.publish"
+        return self.database.with_preflight(
+            context,
+            "worker.publish_attempt",
+            request.model_dump(mode="json"),
+            "worker.publish",
+            lambda: self._publish_preflight(context, request),
         )
-        if previous is not None:
-            return previous
-        # Reject another worker before opening any submitted evidence.
+
+    def _publish_preflight(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
+        payload = request.model_dump(mode="json")
         with self.database.connect() as connection:
             connection.execute("BEGIN")
             transaction = Transaction(connection, context)
@@ -123,27 +99,9 @@ class ResultControl:
                 admitted.dispatch.worker_id,
                 admitted.dispatch.worker_session_id,
             )
-            scoped = worker.project_ids is not None
-        with ExitStack() as pins:
-            records: dict[str, ArtifactRecord] = {}
-            for role, name, reference in evidence_roles(request):
-                intent = output_intent(admitted, role, name)
-
-                def authorize(
-                    transaction: Transaction,
-                    reference: ArtifactRef,
-                    intent: WorkerOutputIntent = intent,
-                ) -> None:
-                    evidence_receipt(transaction, intent, reference)
-
-                manager = (
-                    self.artifacts.pinned_authorized(
-                        context, reference, scope="worker.publish", authorize=authorize
-                    )
-                    if scoped
-                    else self.artifacts.pinned(context, reference)
-                )
-                records[reference.id] = pins.enter_context(manager)
+        with self.pin_evidence(
+            context, request, admitted, worker, scope="worker.publish"
+        ) as records:
             journal = JournalEntry.model_validate(self._read(records[request.journal_artifact.id]))
             report = (
                 WorkloadReport.model_validate(self._read(records[request.report_artifact.id]))
@@ -157,6 +115,40 @@ class ResultControl:
                 "worker.publish",
                 lambda transaction: self._accept(transaction, request, journal, report),
             )
+
+    @contextmanager
+    def pin_evidence(
+        self,
+        context: CommandContext,
+        request: PublishAttempt,
+        attempt: AttemptData,
+        worker: WorkerData,
+        *,
+        scope: str,
+    ) -> Iterator[dict[str, ArtifactRecord]]:
+        """Entry points authenticate their caller before opening original evidence."""
+        with ExitStack() as pins:
+            records: dict[str, ArtifactRecord] = {}
+            for role, name, reference in evidence_roles(request):
+                intent = output_intent(attempt, role, name)
+
+                def authorize(
+                    transaction: Transaction,
+                    reference: ArtifactRef,
+                    intent: WorkerOutputIntent = intent,
+                ) -> None:
+                    if worker.project_ids is not None:
+                        verify_evidence_receipt(transaction, intent, reference, worker, attempt)
+
+                manager = (
+                    self.artifacts.pinned_authorized(
+                        context, reference, scope=scope, authorize=authorize
+                    )
+                    if worker.project_ids is not None or scope == "attempt.reconcile"
+                    else self.artifacts.pinned(context, reference)
+                )
+                records[reference.id] = pins.enter_context(manager)
+            yield records
 
     def _read(self, record: ArtifactRecord) -> JsonObject:
         reference = record.reference
@@ -183,106 +175,39 @@ class ResultControl:
         worker = worker_authority(
             transaction, attempt.dispatch.worker_id, attempt.dispatch.worker_session_id
         )
+        return self._accept_observation(transaction, request, journal, report, worker)
+
+    def _accept_observation(
+        self,
+        transaction: Transaction,
+        request: PublishAttempt,
+        journal: JournalEntry,
+        report: WorkloadReport | None,
+        worker: WorkerData,
+    ) -> JsonObject:
+        """Caller supplies independently authorized original enrollment; no authority is issued."""
+        row = transaction.get("attempt", request.attempt_id)
+        attempt = AttemptData.model_validate(row["data"])
         digest = record_digest("research.attempt-publication", request.model_dump(mode="json"))
         if attempt.publication_status == "accepted":
             if attempt.result_digest != digest:
                 raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Accepted observation changed")
             return row
-        job_row = transaction.get("job", attempt.dispatch.job_id)
-        job = JobData.model_validate(job_row["data"])
-        trial_row = transaction.get("trial", job.trial_id)
-        trial = TrialData.model_validate(trial_row["data"])
-        if (
-            journal.dispatch != attempt.dispatch
-            or journal.spec != trial.spec
-            or journal.signed_assignment != attempt.signed_assignment
-            or journal.assignment_time != attempt.assignment_time
-            or journal.clock_mode != worker.clock_mode
-            or job.current_attempt_id != request.attempt_id
-            or journal.command.argv != job.stage.argv
-            or journal.command.timeout_ms > job.stage.timeout_ms
-        ):
-            raise ResearchError(
-                ErrorCode.STALE_FENCE, "Observation differs from its original grant"
-            )
-        if journal.timing is not None:
-            assert worker.assignment_authority is not None
-            assert journal.assignment_time is not None and journal.signed_assignment is not None
-            verify_timing(
-                journal.timing,
-                worker.assignment_authority,
-                journal.assignment_time,
-                journal.signed_assignment,
-            )
-        if journal.state not in {
-            JournalState.CLOSED,
-            JournalState.NOT_STARTED,
-            JournalState.UNKNOWN,
-        }:
-            raise ResearchError(
-                ErrorCode.INVALID_TRANSITION, "Observation is not a completion or uncertainty"
-            )
+        observation = validate_observation(transaction, request, journal, report, worker)
+        job_row, trial_row = observation.job_row, observation.trial_row
+        job, trial = observation.job, observation.trial
+        not_started, unknown = observation.not_started, observation.unknown
+        success, state, consumed = observation.success, observation.state, observation.consumed
         outcome = journal.outcome
-        if outcome is not None and outcome.closure.identity != journal.native:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Native closure identity differs")
-        not_started = (
-            journal.state == JournalState.NOT_STARTED and journal.native is None and outcome is None
-        )
-        closed = (
-            journal.state in {JournalState.CLOSED, JournalState.NOT_STARTED}
-            and outcome is not None
-            and outcome.closure.scope_closed
-        )
-        not_started = not_started or (
-            closed
-            and journal.state == JournalState.NOT_STARTED
-            and outcome is not None
-            and outcome.reason == "not_started"
-            and outcome.released_at is None
-        )
-        unknown = journal.state == JournalState.UNKNOWN
-        if not (not_started or closed or unknown):
-            raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Observation lacks native closure")
-        if journal.prepared is not None:
-            journal.prepared.verify(attempt.dispatch, trial.spec)
-            if journal.prepared.profile_digest != attempt.profile.execution_fingerprint:
-                raise ResearchError(ErrorCode.COMPARISON_INELIGIBLE, "Execution profile differs")
-            prepared_context = journal.prepared.context
-            timing = TimingContract.model_validate(trial.spec.extensions["timing"])
-            if prepared_context.time_budget_ms != timing.budget_ms or {
-                name: (value.digest, value.size_bytes)
-                for name, value in prepared_context.inputs.items()
-            } != {name: (value.digest, value.size_bytes) for name, value in attempt.inputs.items()}:
-                raise ResearchError(
-                    ErrorCode.COMPARISON_INELIGIBLE, "Workload inputs or budget differ"
-                )
-        elif not not_started:
-            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Workload was not prepared")
-        if report is not None and (
-            journal.prepared is None
-            or report.context_digest != journal.prepared.context.context_digest
-            or report.observed_seed != trial.spec.seed
-        ):
-            raise ResearchError(ErrorCode.COMPARISON_INELIGIBLE, "Report context or seed differs")
-        if set(request.logs) - {"stdout", "stderr"}:
-            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Unknown native log stream")
-        if closed and set(request.logs) != {"stdout", "stderr"}:
-            raise ResearchError(
-                ErrorCode.ARTIFACT_UNVERIFIED, "Closed execution requires both log streams"
-            )
-        if outcome is not None:
-            for name, reference in request.logs.items():
-                observed = getattr(outcome, name)
-                if (
-                    reference.digest != observed.digest
-                    or reference.size_bytes != observed.retained_bytes
-                ):
-                    raise ResearchError(
-                        ErrorCode.ARTIFACT_UNVERIFIED, "Native log identity differs"
-                    )
         for role, output_name, reference in evidence_roles(request):
             receipt = (
-                evidence_receipt(transaction, output_intent(attempt, role, output_name), reference)
+                verify_evidence_receipt(
+                    transaction,
+                    output_intent(attempt, role, output_name),
+                    reference,
+                    worker,
+                    attempt,
+                )
                 if worker.project_ids is not None
                 else None
             )
@@ -302,6 +227,9 @@ class ResultControl:
                     transaction,
                     receipt.retention_id,
                     owner_release=("worker_upload", receipt.upload_id),
+                    owner_scope="attempt.reconcile"
+                    if transaction.context.principal.id != worker.principal_id
+                    else None,
                 )
         if unknown:
             for reservation_id in attempt.dispatch.reservation_ids:
@@ -340,38 +268,7 @@ class ResultControl:
             transaction.event("attempt.execution_unknown", updated, {})
             return updated
         if worker.project_ids is not None:
-            self._settle_uploads(transaction, attempt)
-        success = (
-            closed
-            and outcome is not None
-            and outcome.reason == "exited"
-            and outcome.exit_code == 0
-            and report is not None
-            and not request.finding
-        )
-        if success and (
-            set(request.outputs) != set(job.stage.output_names)
-            or report is None
-            or {output.name for output in report.outputs} != set(job.stage.output_names)
-        ):
-            raise ResearchError(
-                ErrorCode.PROJECT_CONTRACT_INVALID, "Successful stage output contract differs"
-            )
-        state = (
-            "not_started"
-            if not_started
-            else (
-                "succeeded"
-                if success
-                else "cancelled"
-                if outcome is not None and outcome.reason == "cancelled"
-                else "failed"
-            )
-        )
-        consumed = {
-            "attempts": Decimal(0 if not_started else 1),
-            "execution_ms": Decimal(0 if outcome is None else outcome.elapsed_ms),
-        }
+            self._settle_uploads(transaction, attempt, worker)
         for reservation_id in attempt.dispatch.reservation_ids:
             BudgetLedger.settle(transaction, reservation_id, row["id"], consumed)
         settle_exposure(transaction, job, row["id"], not_started=not_started)

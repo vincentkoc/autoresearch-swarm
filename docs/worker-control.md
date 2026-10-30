@@ -206,6 +206,74 @@ or select an incumbent. Accepted native closure can release its worker-owned
 machine claim independently; the controller reservation remains pending until
 an authorized reconciliation proves the appropriate disposition.
 
-This slice exposes evidence recovery primitives. Public fencing/replacement,
-quarantine submission, reconciliation, and a recovery-only worker reopening path
-follow separately; it does not silently reconnect an old worker for execution.
+Public fencing/replacement and a recovery-only worker reopening path follow
+separately. Historical evidence access does not reconnect an old worker for execution.
+
+
+## Quarantine and explicit reconciliation
+
+`worker.submit_evidence` accepts the same `PublishAttempt` payload as ordinary
+publication, with `worker.publish` scope. The original session authenticates the
+submission. Scoped workers must supply finalized upload receipts for the exact
+attempt, artifact, and role. Submission records and retained artifact references
+are immutable. Repeating the same publication returns the same submission; a later
+closed observation can create a distinct submission after an UNKNOWN observation.
+
+A submission is evidence custody, not acceptance. It does not settle a reservation,
+change a job, create a `RunResult`, authorize evaluation, or select an incumbent.
+The `attempt_submission` record remains `quarantined` even after reconciliation;
+its separate reconciliation receipt records the acceptance decision. This preserves
+the original submission instead of rewriting its history.
+
+An operator uses `attempt.reconcile` with:
+
+~~~json
+{
+  "attempt_id": "<original-attempt-id>",
+  "submission_id": "<immutable-submission-id>",
+  "expected_controller_id": "<current-controller-id>",
+  "expected_control_epoch": 2,
+  "reason": "Recover the original native closure after controller replacement"
+}
+~~~
+
+The command envelope must include the current attempt `expected_revision`. The
+operator requires `attempt.reconcile`. The bounded campaign context query exposes
+`authority.controller_id` and `authority.control_epoch` in the same read snapshot.
+The command does not impersonate the original worker
+or need broad artifact administration. This operation is available through the
+same command catalog used by the Python SDK, HTTP, CLI, and MCP tools. Use record
+queries for `attempt_submission` and `attempt_reconciliation` to inspect evidence
+and receipts. Read access remains independently scoped.
+
+Reconciliation rechecks current controller authority, the original archived session,
+complete dispatch binding, assignment and timing evidence, native closure, prepared
+inputs, seed, log identity, report, output names, artifact availability, and current
+job ownership. It uses the ordinary publication validator and settlement path.
+It cannot substitute a new attempt or change the historical epoch or result digest.
+It records original and current authority in an immutable receipt. Accounting,
+accepted execution, dependency changes, cancellation resolution, and the receipt
+commit in one transaction. The native machine registry remains worker-owned;
+controller acceptance never proves physical resource release by itself.
+
+A reconciled execution still needs its separately authorized evaluator receipt
+before scientific comparison or promotion. An UNKNOWN observation, changed job
+owner, invalid evidence, unavailable original session, or terminal campaign prevents
+this acceptance. Failed reconciliation retains the submission and existing budget
+uncertainty. There is no force-accept option. Closure-only resource settlement and
+terminal-campaign recovery need a separate disposition and are not exposed here.
+
+Fresh submissions continue to require valid original worker credentials. A current
+operator can reconcile evidence already submitted before that credential was
+revoked, because the operator acts under its own recorded authority. Revoking the
+archived session evidence authority also blocks fresh reconciliation.
+
+Exact command replay checks actor, scope, and request digest before current authority
+or artifact access. If another identical request commits while preflight is in
+progress, a subsequent preflight failure returns that exact committed acknowledgment.
+No execution or settlement is retried. New keys still undergo current checks;
+changed payloads on old keys conflict.
+
+`DispatchEnvelope.expires_at` remains a launch cutoff. It is not a result delivery
+lease. Epoch-change recovery is verified; an independent acceptance-lease policy
+must be specified and tested before claiming that separate qualification.

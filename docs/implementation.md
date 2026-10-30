@@ -37,6 +37,7 @@ not implicitly supported.
 | Scoped worker outputs | Role-bound upload receipts, canonical dedup, atomic evidence retention, guarded upload lifecycle, HTTP native execution | Restricted CPU stage graph, separate evaluator authority, wrong-role rejection, duplicate logs, abort race, cleanup recovery, replay after revocation | Independent scoped driver and publication-recovery proof; physical-host qualification pending |
 | Worker operational control | Independent presence/admission records, sticky attempt cancellation, scoped control pages | Independent-connection claim/drain races, HTTP heartbeat, restart/replay, 105-control paging, native closure and UNKNOWN settlement | Independent scoped polling, durable heartbeat replay, pre-receipt cancellation, and offline driver restart verified locally; physical-host qualification pending |
 | Original worker session custody | Immutable enrollment archives, legacy read fallback, explicit historical reads, scoped evidence transport | Epoch-change HTTP uploads preserve native closure while normal publication remains denied; revocation, collision, and cursor isolation checks | Public fencing/replacement and reconciliation follow separately |
+| Quarantined result reconciliation | Immutable submissions, shared validation, dedicated operator command, exact acknowledgment recovery | Real HTTP CPU closure after epoch change, controller reopen, original accounting, invalid evidence, concurrent acceptance and same-key races | Local CPU proof; closure-only and terminal-campaign reconciliation remain pending |
 | Search policies and atomic promotion | Observed/paired assessment, atomic selection, correction, explicit baseline recovery; search pending | Real CPU evidence, incumbent CAS, rejected control, profile mismatch, invalidation before/after commit | Equal-budget research-policy comparison pending |
 | Statistical gates and exposure | Fixed paired sign gate, sealed plans, exposure accounting, complete-panel assessment | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release, actual paired CPU control | Independent workload variance and held-out generalization pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
@@ -91,8 +92,8 @@ transport, process, or provider behavior.
 - **C30** — API/MCP/CLI perform the same operation. Shared SDK/HTTP replay and real CLI/MCP command replay pass locally; integrated execution remains pending.
 - **C31** — Controller restarts with budget exhausted. Pending end-to-end evidence.
 - **C32** — Campaign completes with an unresolved resource. Pending end-to-end evidence.
-- **C33** — A late valid result returns after lease expiry. Pending end-to-end evidence.
-- **C34** — An already accepted result replays after epoch change. Pending end-to-end evidence.
+- **C33** — Original late closure can be quarantined after an epoch change and explicitly reconciled without another execution. An acceptance-lease expiry policy is not yet defined; dispatch expiry remains the launch cutoff, so this criterion is only partially qualified.
+- **C34** — Locally verified: exact ordinary publication, submission, and reconciliation acknowledgments replay after epoch change; ordinary replay does not reopen artifacts. Concurrent same-key acceptance wins over subsequent mutable preflight failure.
 - **C35** — A training worker fabricates an evaluation ID. Local pipeline rejects worker publication and substitution of a training attempt.
 - **C36** — Two controllers enroll the same exclusive device. Pending end-to-end evidence.
 - **C37** — Concurrent policy computations use one state revision. Pending end-to-end evidence.

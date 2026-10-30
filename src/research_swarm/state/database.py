@@ -423,6 +423,30 @@ class Database:
             response = _stored_response(connection, context, digest)
         return _deliver(response) if response is not None else None
 
+    def with_preflight(
+        self,
+        context: CommandContext,
+        operation: str,
+        payload: Mapping[str, Any],
+        scope: str,
+        handler: Callable[[], JsonObject],
+    ) -> JsonObject:
+        """Preserve a concurrent acknowledgment if mutable preflight subsequently fails.
+
+        The handler must still commit through execute(). This helper retries no
+        effect; it only recovers the exact authenticated, digest-matched response.
+        """
+        previous = self.replay(context, operation, payload, scope)
+        if previous is not None:
+            return previous
+        try:
+            return handler()
+        except Exception:
+            previous = self.replay(context, operation, payload, scope)
+            if previous is not None:
+                return previous
+            raise
+
     def snapshot(self, context: CommandContext) -> JsonObject:
         context.principal.require("read")
         workspace_id = context.principal.workspace_id

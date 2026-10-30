@@ -45,6 +45,7 @@ from research_swarm.control.promotions import (
     InvalidateEvidence,
     PromotionControl,
 )
+from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
 from research_swarm.control.worker_lifecycle import (
@@ -148,11 +149,20 @@ class ResearchService:
             else None
         )
         self.results = ResultControl(database, artifacts)
+        self.reconciliation = ReconciliationControl(database, self.results)
         self.evaluations = EvaluationControl(database, artifacts)
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
         self.worker_lifecycle = WorkerLifecycle(database)
+
+    def submit_attempt_evidence(
+        self, context: CommandContext, request: PublishAttempt
+    ) -> JsonObject:
+        return self.reconciliation.submit(context, request)
+
+    def reconcile_attempt(self, context: CommandContext, request: ReconcileAttempt) -> JsonObject:
+        return self.reconciliation.reconcile(context, request)
 
     def worker_heartbeat(self, context: CommandContext, request: WorkerHeartbeat) -> JsonObject:
         return self.worker_lifecycle.heartbeat(context, request)

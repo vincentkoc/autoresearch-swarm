@@ -99,14 +99,20 @@ class ArtifactCatalog:
         reference_id: str,
         *,
         owner_release: tuple[str, str] | None = None,
+        owner_scope: str | None = None,
     ) -> JsonObject:
+        """Internal owner lifecycles can name their already verified command authority."""
         row = transaction.get("artifact_reference", reference_id)
         principal = transaction.context.principal
-        if row["data"]["actor_id"] != principal.id:
+        retention = ArtifactRetention.model_validate(row["data"]["retention"])
+        if owner_scope is not None:
+            if owner_release != (retention.owner_kind, retention.owner_id):
+                raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Retention owner differs")
+            principal.require(owner_scope)
+        elif row["data"]["actor_id"] != principal.id:
             principal.require("artifact.admin")
         if row["state"] == "released":
             return row
-        retention = ArtifactRetention.model_validate(row["data"]["retention"])
         if retention.required and owner_release != (retention.owner_kind, retention.owner_id):
             raise ResearchError(
                 ErrorCode.RESOURCE_UNAVAILABLE,

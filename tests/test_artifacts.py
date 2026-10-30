@@ -486,3 +486,54 @@ with service.pinned(context, ArtifactRef.model_validate_json(sys.argv[4])):
     service.reconcile_reader_session(context(), session_id)
     service.delete(context(revision=1), record.reference.id, "cleanup")
     assert service.get(context(), record.reference.id).state == "deleted"
+
+
+@pytest.mark.parametrize("required", [True, False])
+def test_internal_owner_release_requires_exact_owner_and_explicit_scope(
+    service: ArtifactService,
+    context: Callable[..., CommandContext],
+    required: bool,
+) -> None:
+    artifact = publish(service, context, b"owner transition")
+    retention = ArtifactRetention(
+        artifact_id=artifact.reference.id,
+        owner_kind="worker_upload",
+        owner_id=new_id(),
+        purpose="evidence",
+        required=required,
+    )
+    reference = service.retain(context(), retention)["result"]
+    operator = Principal(
+        id=new_id(),
+        workspace_id=context().principal.workspace_id,
+        scopes=frozenset({"attempt.reconcile", "artifact.release"}),
+    )
+
+    def release(owner: tuple[str, str] | None, scope: str | None) -> dict[str, Any]:
+        return service.database.execute(
+            CommandContext(principal=operator, idempotency_key=new_id()),
+            "fixture.owner_release",
+            {},
+            "attempt.reconcile",
+            lambda transaction: ArtifactCatalog.release(
+                transaction, reference["id"], owner_release=owner, owner_scope=scope
+            ),
+        )["result"]
+
+    for owner in (None, ("attempt", retention.owner_id), (retention.owner_kind, new_id())):
+        with pytest.raises(ResearchError) as wrong_owner:
+            release(owner, "attempt.reconcile")
+        assert wrong_owner.value.code == ErrorCode.AUTHORIZATION_DENIED
+    exact = (retention.owner_kind, retention.owner_id)
+    with pytest.raises(ResearchError) as wrong_scope:
+        release(exact, "artifact.admin")
+    assert wrong_scope.value.code == ErrorCode.AUTHORIZATION_DENIED
+    with pytest.raises(ResearchError) as public_release:
+        service.release(
+            CommandContext(principal=operator, idempotency_key=new_id()), reference["id"]
+        )
+    assert public_release.value.code == ErrorCode.AUTHORIZATION_DENIED
+    assert release(exact, "attempt.reconcile")["state"] == "released"
+    with pytest.raises(ResearchError) as released_owner:
+        release(("attempt", new_id()), "attempt.reconcile")
+    assert released_owner.value.code == ErrorCode.AUTHORIZATION_DENIED

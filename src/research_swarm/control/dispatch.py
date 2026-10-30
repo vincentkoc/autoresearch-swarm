@@ -20,6 +20,7 @@ from research_swarm.control.commands import (
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
+from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
@@ -50,6 +51,20 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "worker.submit_evidence": CommandDefinition(
+        PublishAttempt,
+        "submit_attempt_evidence",
+        "worker.publish",
+        False,
+        "Quarantine original attempt evidence without accepting execution or settling costs.",
+    ),
+    "attempt.reconcile": CommandDefinition(
+        ReconcileAttempt,
+        "reconcile_attempt",
+        "attempt.reconcile",
+        True,
+        "Reconcile quarantined closure against the original attempt and current authority.",
+    ),
     "worker.heartbeat": CommandDefinition(
         WorkerHeartbeat,
         "worker_heartbeat",
