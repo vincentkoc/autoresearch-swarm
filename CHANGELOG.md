@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add generic immutable historical-evidence import with exact raw-byte retention, schema-specific source identity, bounded normalized observations, and shared HTTP/SDK/CLI/MCP access.
+- Preserve missing measurements and provenance without minting current attempts, evaluator receipts, budget authority, or promotion eligibility; reject changed content under an existing historical identity.
+
 - Qualify built-wheel installation in a fresh environment outside the checkout, with locked runtime dependencies and no optional accelerator or Temporal packages.
 - Exercise installed CLI/native training, independent evaluation, MCP selection/reporting, and source-free replay; add dedicated Linux, macOS, and Windows package jobs.
 

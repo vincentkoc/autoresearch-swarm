@@ -29,6 +29,7 @@ from research_swarm.control.completion_models import (
 )
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
+from research_swarm.control.import_models import ImportHistoricalEvidence
 from research_swarm.control.observation_models import (
     AbandonObservationSelection,
     ObserveTrial,
@@ -95,6 +96,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "evidence.import_historical": CommandDefinition(
+        ImportHistoricalEvidence,
+        "import_historical_evidence",
+        "evidence.import",
+        False,
+        "Retain historical metadata without granting execution, budget, or promotion authority.",
+        additional_scopes=("read",),
+    ),
     "orchestration.transfer": CommandDefinition(
         TransferOrchestration,
         "transfer_orchestration",

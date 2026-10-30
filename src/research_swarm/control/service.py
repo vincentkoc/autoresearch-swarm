@@ -41,6 +41,8 @@ from research_swarm.control.evaluations import (
     CompleteEvaluation,
     EvaluationControl,
 )
+from research_swarm.control.import_models import ImportHistoricalEvidence
+from research_swarm.control.imports import HistoricalImportControl
 from research_swarm.control.models import (
     CampaignContract,
     CampaignData,
@@ -206,6 +208,7 @@ class ResearchService:
         self.reconciliation = ReconciliationControl(database, self.results)
         self.closures = ClosureControl(database, self.reconciliation)
         self.evaluations = EvaluationControl(database, artifacts)
+        self.historical_imports = HistoricalImportControl(database, artifacts)
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
@@ -215,6 +218,11 @@ class ResearchService:
         self.orchestration_waits = OrchestrationWaitControl(database)
         self.orchestration_transfer = OrchestrationTransferControl(database, artifacts)
         self.worker_lifecycle = WorkerLifecycle(database)
+
+    def import_historical_evidence(
+        self, context: CommandContext, intent: ImportHistoricalEvidence
+    ) -> JsonObject:
+        return self.historical_imports.record(context, intent)
 
     def create_recovery_snapshot(
         self, context: CommandContext, intent: CreateRecoverySnapshot

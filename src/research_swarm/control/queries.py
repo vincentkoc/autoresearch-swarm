@@ -19,6 +19,7 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
+    "imported_evidence",
     "campaign_obligations",
     "campaign_obligation_chunk",
     "scientific_completion",
@@ -113,6 +114,23 @@ def summarize(row: JsonObject) -> JsonObject:
         "wakeup_acknowledgment",
     }:
         result["data"] = data
+    elif row["kind"] == "imported_evidence":
+        manifest = data["manifest"]
+        result["data"] = {
+            "import_manifest_digest": data["import_manifest_digest"],
+            "imported": True,
+            "promotion_eligible": False,
+            "source_authenticity": data["source_authenticity"],
+            "execution_authority": data["execution_authority"],
+            "budget_authority": data["budget_authority"],
+            "source_system": manifest["source_system"],
+            "source_schema": manifest["source_schema"],
+            "source_record_id": manifest["source_record_id"],
+            "source_status": manifest["source_status"],
+            "raw_artifact": manifest["raw_artifact"],
+            "observations": manifest["observations"][:8],
+            "observation_count": len(manifest["observations"]),
+        }
     elif row["kind"] == "campaign_obligation_chunk":
         result["data"] = {
             "review_id": data["review_id"],

@@ -45,6 +45,8 @@ HTTP connections, and persistent asynchronous execution.
 See [worker control](docs/worker-control.md) for presence, draining, and cancellation evidence.
 See [engine profiles](docs/engines.md) for bounded CPU, PyTorch, and MLX environment
 probes and explicit private registrations. Accelerator worker qualification remains separate.
+See [historical evidence](docs/historical-evidence.md) to retain an existing project's
+receipts without treating imported claims as current execution or validated results.
 
 See the [implementation ledger](docs/implementation.md) for qualification status,
 the [design](docs/design.md) for the complete contract, and
