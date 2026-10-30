@@ -21,6 +21,7 @@ from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
     "workspace_gate",
+    "restoration",
     "acceptance_lease",
     "imported_evidence",
     "campaign_obligations",

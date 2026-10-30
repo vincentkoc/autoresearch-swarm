@@ -190,10 +190,13 @@ def _deliver(response: JsonObject) -> JsonObject:
 class Transaction:
     """Private repository access used only inside a domain command."""
 
-    def __init__(self, connection: SqlSession, context: CommandContext) -> None:
+    def __init__(
+        self, connection: SqlSession, context: CommandContext, *, observe_waits: bool = True
+    ) -> None:
         self.connection = connection
         self.context = context
         self.workspace_id = context.principal.workspace_id
+        self.observe_waits = observe_waits
 
     def get(self, kind: str, identifier: str) -> JsonObject:
         row = self.connection.execute(
@@ -311,7 +314,8 @@ class Transaction:
         )
         from research_swarm.state.waits import consider_event
 
-        consider_event(self, event)
+        if self.observe_waits:
+            consider_event(self, event)
         return event
 
 

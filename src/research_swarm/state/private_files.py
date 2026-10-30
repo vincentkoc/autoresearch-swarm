@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 import sys
+import unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -12,6 +14,29 @@ from pathlib import Path
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from research_swarm.projects.native_files import SourceReader
+
+
+def restore_admission_path(root: Path) -> Path:
+    """Publish the native restore admission barrier before creating its root."""
+    target = root.expanduser().resolve()
+    name = target.name
+    if target.exists():
+        current = target.stat()
+        with os.scandir(target.parent) as entries:
+            for entry in entries:
+                try:
+                    candidate = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                if (candidate.st_dev, candidate.st_ino) == (current.st_dev, current.st_ino):
+                    name = entry.name
+                    break
+    # The containing directory supplies parent identity. Do not persist device
+    # numbers, which can change after reboot. Coalesce case/normalization aliases
+    # conservatively, including on case-sensitive volumes.
+    normalized = unicodedata.normalize("NFD", name).casefold()
+    identity = hashlib.sha256(os.fsencode(normalized)).hexdigest()
+    return target.parent / (".research-restore-" + identity + ".pending")
 
 
 def read_private(root: Path, name: str, *, limit: int) -> bytes:

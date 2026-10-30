@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Restore verified native checkpoints into a distinct inactive epoch, preserving artifact generations, acknowledgments, budgets and unresolved execution while archiving and fencing original worker sessions.
+- Publish admission barriers before destination creation, resume exact private staging/SQLite interruptions, compare preserved ledger contents and prevent recovery events from waking old workflows. Keep activation unavailable pending source and worker reconciliation.
+
 - Export and verify sealed native SQLite/filesystem checkpoints with complete generation inventories, private identity material, source-only custody keys and signed manifest digests.
 - Publish the manifest last, preserve exact completed-export replay, reject corrupt/incomplete bundles and restrict credential-bearing exports to full operators. Add exclusive private-directory creation on POSIX and Windows.
 

@@ -71,3 +71,18 @@ class BackupManifest(VersionedRecord):
 class SignedBackup(VersionedRecord):
     manifest: BackupManifest
     signature: str = Field(pattern=r"^[0-9a-f]{128}$")
+
+
+class RestoreReceipt(VersionedRecord):
+    restore_id: ID
+    backup_id: ID
+    manifest_digest: Digest
+    workspace_id: ID
+    controller_id: ID
+    source_custody_id: ID
+    target_public_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_control_epoch: Revision
+    target_control_epoch: Revision
+    restored_at: Timestamp
+    unresolved_attempt_ids: tuple[ID, ...] = Field(max_length=10_000)
+    worker_ids: tuple[ID, ...] = Field(max_length=10_000)

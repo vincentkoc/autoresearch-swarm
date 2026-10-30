@@ -22,8 +22,9 @@ Normal artifact downloads require a new reader pin and therefore refuse too.
 A seal does not stop processes, release machine capacity, refund reservations,
 settle attempts or prove that native execution ended. Keep original worker
 journals and resource registries. This command is a recovery foundation, not a
-rolling backup or an unseal operation. [Verified native export](backup.md) is
-available; inactive restoration is separate work. Do not seal a working campaign
+rolling backup or an unseal operation. [Verified native export and inactive
+restore](backup.md) are available; reconciliation and activation are separate
+work. Do not seal a working campaign
 merely to inspect it.
 
 The command kernel depends on a synchronous `StateStore` and `SqlSession` contract.

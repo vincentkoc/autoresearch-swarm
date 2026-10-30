@@ -100,12 +100,58 @@ an interrupted destination remains incomplete. Export to a new destination after
 inspection. Retrying a completed destination verifies and returns the same
 manifest instead of recopying it or changing the cut.
 
+## Restore inactive
+
+```sh
+research backup restore backup-directory --destination restored-state \
+  --restore-id RESTORE_UUID --digest sha256:MANIFEST_DIGEST
+```
+
+Choose a new destination with an existing parent and retain the restore UUID.
+The command verifies the whole bundle before creating that destination. It
+publishes a private admission barrier before creating the runtime directory.
+The barrier uses the native directory entry and conservatively normalized name
+to cover case aliases. Both runtime initialization and reopening refuse while
+the restore is incomplete.
+
+The importer materializes the original artifact generations through the native
+byte store. It copies no worker journal, machine resource registry or supervisor.
+One offline transaction advances the workspace control epoch exactly once,
+archives original worker sessions, fences current workers and records a
+`restoration` receipt. The workspace gate becomes `restoring`. The original
+workspace/controller IDs and historical dispatch bindings remain unchanged.
+
+Source and target tables are compared as streams. The only permitted changes are
+the new control epoch, worker fences/session archives, workspace gate, restore
+receipt and corresponding events/outbox entries. Prior acknowledgments, budgets,
+reservations, costs, evidence and other records must match the verified source.
+Restore events do not wake existing research workflows.
+
+Repeat the exact command after interruption. The validated intent owns a narrow
+staging namespace; incomplete private writes can be removed and recopied without
+adopting unrelated files. SQLite recovers its own interrupted transaction. A
+committed restore receipt prevents a second epoch increment. The importer checks
+the preserved database content and artifacts again before removing its admission
+barrier. A changed intent, lost custody key or changed ledger is a refusal, not a
+request to reset the state. Keep an incomplete destination at its original path.
+
+After completion, normal clients can inspect the inactive runtime and replay
+previous acknowledgments. New research mutations, credentials, enrollment and
+ordinary artifact reads still refuse. The native backup verifier and importer
+have direct access to verified bytes; that access does not admit research work.
+The target keeps a distinct private `restore-custody.json` key for its identity.
+
+There is no activation command in this slice. Original worker processes may
+still be running and remain charged. Live worker reconciliation and a durable
+source-side claim selecting one target are required before activation can exist.
+Do not remove the gate, reset budgets or copy machine registries to force progress.
+
 ## Qualification boundary
 
 Native tests cover a real SQLite snapshot, artifact and key corruption, missing
-files, hardlinks, scoped-authority refusal, incomplete publication and exact
-completed-export replay. Verification can run without opening a controller.
-
-This slice supplies verified export. Inactive import, epoch advancement, live
-worker reconciliation and single-target activation remain separate work. A
-successful export is not yet a qualified restore procedure.
+files, hardlinks, scoped-authority refusal and incomplete export publication.
+Restore tests cover real process exit before the root marker, during a private
+file write and inside the SQLite transaction; concurrent exact replay; unchanged
+pending dispatch/budget custody; and rejection of lost acknowledgments or changed
+reservations. These qualify inactive import. A running-process reconciliation and
+single-target activation demonstration remains required for release recovery.

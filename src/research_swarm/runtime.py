@@ -35,6 +35,7 @@ from research_swarm.state.private_files import (
 from research_swarm.state.private_files import (
     read_private as read_private,
 )
+from research_swarm.state.private_files import restore_admission_path
 from research_swarm.state.private_files import (
     write_private as write_private,
 )
@@ -85,7 +86,22 @@ class LocalRuntime:
         # Required SDK and named credentials are checked before new runtime state exists.
         transport = S3R2Transport(storage_config) if isinstance(storage_config, R2Config) else None
         root = (root or default_state_directory()).expanduser().absolute()
+        admission = restore_admission_path(root)
+        if admission.exists() or admission.is_symlink():
+            raise ResearchError(ErrorCode.STALE_FENCE, "Native restore is incomplete")
         with private_state_directory(root), FileLock(root / "initialize.lock"):
+            admission = restore_admission_path(root)
+            pending = root / "recovery.pending"
+            if (
+                pending.exists()
+                or pending.is_symlink()
+                or admission.exists()
+                or admission.is_symlink()
+            ):
+                raise ResearchError(
+                    ErrorCode.STALE_FENCE,
+                    "Native restore is incomplete; resume its exact restore operation",
+                )
             identity_path = root / "identity.json"
             initialize = not (identity_path.exists() or identity_path.is_symlink())
             if not initialize:

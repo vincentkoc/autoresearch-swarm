@@ -42,6 +42,15 @@ def parser() -> argparse.ArgumentParser:
     )
     verify.add_argument("path", type=Path)
     verify.add_argument("--digest", help="Expected manifest digest from trusted custody")
+    restore = backups.add_parser(
+        "restore", help="Restore a verified checkpoint into an inactive epoch"
+    )
+    restore.add_argument("path", type=Path)
+    restore.add_argument("--destination", type=Path, required=True)
+    restore.add_argument(
+        "--restore-id", required=True, help="Stable UUID for interruption recovery"
+    )
+    restore.add_argument("--digest", help="Expected manifest digest from trusted custody")
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -447,6 +456,19 @@ def main(argv: list[str] | None = None) -> int:
             from research_swarm.checkpoints.backup import export_backup, verify_backup
             from research_swarm.domain.identity import CommandContext
 
+            if args.backup_action == "restore":
+                if args.state_dir or args.token_file:
+                    raise ValueError("Inactive restore uses its explicit destination")
+                from research_swarm.checkpoints.restore import restore_inactive
+
+                receipt = restore_inactive(
+                    args.path,
+                    args.destination,
+                    restore_id=args.restore_id,
+                    expected_digest=args.digest,
+                )
+                print(canonical_bytes(receipt.model_dump(mode="json")).decode("utf-8"))
+                return 0
             if args.backup_action == "export":
                 runtime = LocalRuntime.open(args.state_dir)
                 manifest = export_backup(
