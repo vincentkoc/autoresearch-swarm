@@ -1,0 +1,54 @@
+schema_version = "1.0"
+
+[project]
+name = "Categorical research-policy training"
+slug = "cpu-policy-learning"
+description = "One on-policy REINFORCE update with an independent protected checker."
+
+[source]
+mode = "directory"
+paths = ["*.py", "*.json", "research.toml"]
+
+[mutation]
+allow = ["train.py"]
+
+[environment]
+profile = "python-cpu"
+lock_path = "environment.json"
+network_policy = "inherit"
+
+[data]
+manifest_path = "training.json"
+
+[evaluation]
+protected_paths = ["common.py", "verify.py", "training.json"]
+comparison_class = "categorical-reinforce-update-v1"
+measurement_trust = "authenticated"
+expected_members = ["frozen-development-batch"]
+
+[[evaluation.metrics]]
+name = "update_error"
+unit = "absolute_parameter_error"
+direction = "minimize"
+aggregation = "maximum_absolute_residual"
+
+[timing]
+budget_ms = 1000
+scope = "active_training"
+timer_authority = "project_reported"
+
+[[stages]]
+id = "train"
+kind = "train"
+argv = ["python", "train.py"]
+required_artifacts = ["behavior", "trajectories"]
+timeout_ms = 10000
+output_names = ["policy", "update"]
+
+[[stages]]
+id = "evaluate"
+kind = "evaluate"
+argv = ["python", "verify.py"]
+dependencies = ["train"]
+required_artifacts = ["behavior", "trajectories", "policy", "update"]
+timeout_ms = 10000

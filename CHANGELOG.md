@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add bounded policy, reward, decision, trajectory, dataset and training-receipt contracts, with a one-step categorical REINFORCE adapter that rejects mixed behavior policies, missing episodes, held-out data and invalid rewards.
+- Run policy-parameter training as an ordinary CPU project with protected independent update checking and normal job/evaluator accounting. Numerical qualification is separate from controller-authenticated research trajectories and held-out policy adoption.
+
 - Reseal activated targets at their current epoch with compare-and-swap gate revisions, fresh backup IDs and immutable seal history. Share the upload/deletion/reader barrier with activation and preserve old election and activation records.
 - Qualify a live native worker across single-target recovery through activation and a fresh export, a second successor election, and explicit queued evaluation on a newly enrolled worker while original sessions remain fenced.
 

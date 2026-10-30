@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "algorithm": "one-step-reinforce-v1",
+  "learning_rate": 0.5,
+  "epochs": 1,
+  "panel": "frozen-development-batch",
+  "maximum_update_error": 1e-12
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "implementation": "cpython",
+  "python_requires": ">=3.11",
+  "dependencies": ["autoresearch-swarm==0.1.0.dev0"],
+  "required_module": "research_swarm.learning.reinforce",
+  "runtime_identity": "Record the installed package build and worker execution fingerprint; a development version alone does not identify package bytes."
+}
