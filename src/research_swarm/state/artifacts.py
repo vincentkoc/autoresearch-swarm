@@ -75,6 +75,12 @@ class ArtifactCatalog:
         for item in existing:
             previous = transaction.get("artifact_reference", item["id"])
             data = previous["data"]
+            if (
+                retention.owner_kind == "manual"
+                and not retention.required
+                and data["actor_id"] != transaction.context.principal.id
+            ):
+                continue
             if data["retention"] == retention.model_dump(mode="json"):
                 return previous
         reference_row = transaction.insert(

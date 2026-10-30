@@ -42,6 +42,8 @@ Run the original CPU example with `uv run research run examples/cpu_bigram`.
 The same reference scorer also qualifies a [native MLX Metal workload](docs/mlx-workload.md).
 Run a second ordinary workload with [the synthetic pose project](examples/synthetic_pose/README.md),
 including historical receipt import and fresh authorized replay.
+Run the [empirical policy benchmark](examples/policy_benchmark/README.md) to compare
+funded greedy/portfolio campaigns and timed no-op confirmation panels.
 See [local runs](docs/local-runs.md) for resume, budgets, and agent control.
 See [remote workers](docs/remote-workers.md) for explicit CPU enrollment, pinned
 HTTP connections, and persistent asynchronous execution.

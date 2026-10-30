@@ -17,6 +17,16 @@ from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.types import ID, Name, VersionedRecord
 
 
+class RetainArtifact(VersionedRecord):
+    artifact_id: ID
+    owner_id: ID
+    purpose: Name
+
+
+class ReleaseArtifact(VersionedRecord):
+    reference_id: ID
+
+
 class RegisterProject(VersionedRecord):
     source_artifact: ArtifactRef
     manifest_path: str = "research.toml"

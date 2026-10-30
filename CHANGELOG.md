@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a reproducible CPU benchmark comparing funded greedy and portfolio searches under equal allowances, with frozen development/held-out starting seeds and a fresh final audit of each selected candidate.
+- Measure timed no-op confirmation panels through authenticated evaluations and the existing paired gate; preserve missing cells, actual costs, optimizer steps, immutable reports and descriptive uncertainty.
+- Add replayable discretionary artifact retention/release to the shared agent API, preserving required evidence ownership, and allow a local driver to reduce concurrency within its worker's admission.
+
 - Add an original MLX Metal bigram workload with a platform-specific hash lock, explicit GPU stream/materialization, discarded warmup state, and separate active-training timing.
 - Reuse the independent standard-library scorer and qualify real registered-worker training/evaluation on Apple Silicon, including a fixed-step float32 differential check and two injected seeds.
 

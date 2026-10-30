@@ -25,6 +25,8 @@ from research_swarm.control.commands import (
     PauseCampaign,
     ProposeCandidate,
     RegisterProject,
+    ReleaseArtifact,
+    RetainArtifact,
     SubmitTrial,
     ValidateCandidate,
 )
@@ -113,6 +115,7 @@ from research_swarm.control.worker_outputs import (
 )
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession, WorkerTurnover
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
+from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
@@ -226,6 +229,21 @@ class ResearchService:
 
     def expire_acceptance(self, context: CommandContext, request: ExpireAcceptance) -> JsonObject:
         return self.acceptance.expire(context, request)
+
+    def retain_artifact(self, context: CommandContext, request: RetainArtifact) -> JsonObject:
+        context.principal.require("read")
+        return self.artifacts.retain(
+            context,
+            ArtifactRetention(
+                **request.model_dump(exclude={"schema_version"}),
+                owner_kind="manual",
+                required=False,
+            ),
+        )
+
+    def release_artifact(self, context: CommandContext, request: ReleaseArtifact) -> JsonObject:
+        context.principal.require("read")
+        return self.artifacts.release(context, request.reference_id)
 
     def import_historical_evidence(
         self, context: CommandContext, intent: ImportHistoricalEvidence

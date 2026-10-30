@@ -20,6 +20,8 @@ from research_swarm.control.commands import (
     PauseCampaign,
     ProposeCandidate,
     RegisterProject,
+    ReleaseArtifact,
+    RetainArtifact,
     SubmitTrial,
     ValidateCandidate,
 )
@@ -97,6 +99,22 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "artifact.retain": CommandDefinition(
+        RetainArtifact,
+        "retain_artifact",
+        "artifact.retain",
+        False,
+        "Retain verified bytes for a named purpose without granting scientific authority.",
+        additional_scopes=("read",),
+    ),
+    "artifact.release": CommandDefinition(
+        ReleaseArtifact,
+        "release_artifact",
+        "artifact.release",
+        False,
+        "Release a discretionary hold; required evidence references remain owner-controlled.",
+        additional_scopes=("read",),
+    ),
     "attempt.expire_acceptance": CommandDefinition(
         ExpireAcceptance,
         "expire_acceptance",

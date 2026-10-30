@@ -133,6 +133,38 @@ async def test_task_cancellation_keeps_driver_lock_until_owned_thread_finishes(
 
 
 @pytest.mark.parametrize("pipeline", [True], indirect=True)
+async def test_driver_can_reduce_parallelism_without_changing_resource_admission(
+    pipeline: Pipeline, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    enrolled = driver(pipeline).enrollment
+    for invalid in (0, 3, True):
+        with pytest.raises(ResearchError, match="concurrency"):
+            LocalDriver(pipeline.client, enrolled, concurrency=invalid)
+    run = LocalDriver(pipeline.client, enrolled, concurrency=1)
+    original = pipeline.worker.execute
+    active = 0
+    maximum = 0
+    lock = threading.Lock()
+
+    def observe(identifier: str) -> dict[str, Any]:
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(active, maximum)
+        try:
+            return original(identifier)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(pipeline.worker, "execute", observe)
+    result = await run.drain(pipeline.campaign["id"])
+    assert result.state == "idle" and len(result.executed_attempts) == 3
+    assert maximum == 1 and pipeline.worker.worker.max_concurrency == 2
+    assert pipeline.worker.resources.availability() == {"cpu": 2}
+
+
+@pytest.mark.parametrize("pipeline", [True], indirect=True)
 async def test_independent_ready_stages_execute_concurrently_and_keep_failure(
     pipeline: Pipeline, monkeypatch: pytest.MonkeyPatch
 ) -> None:

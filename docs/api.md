@@ -212,6 +212,14 @@ headers, holds a retention pin for the response lifetime, and streams an immutab
 generation in bounded chunks. It does not create a full temporary copy for every
 download. A disconnect releases the reader even when no body chunk was sent.
 
+`artifact.retain` accepts `artifact_id`, `owner_id` and `purpose` through the shared
+command endpoint. It requires `read` and `artifact.retain` scopes and returns a
+discretionary manual retention reference. `owner_id` groups the caller's hold; it
+does not create a campaign relation or scientific evidence. `artifact.release`
+accepts `reference_id` and requires `read` and `artifact.release`. It can release
+discretionary holds but cannot override required evidence retention. These commands
+also appear in SDK, CLI and MCP discovery. Neither command deletes physical bytes.
+
 ## Current verification
 
 Tests use a real loopback HTTP server. They cover command replay across HTTP and

@@ -33,13 +33,28 @@ class DriverResult(VersionedRecord):
 
 
 class LocalDriver:
-    def __init__(self, controller: ResearchClient, enrollment: LocalEnrollment) -> None:
+    def __init__(
+        self,
+        controller: ResearchClient,
+        enrollment: LocalEnrollment,
+        *,
+        concurrency: int | None = None,
+    ) -> None:
         if not isinstance(controller.transport, LocalTransport):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "This driver requires a local controller"
             )
         self.controller, self.enrollment = controller, enrollment
         self.worker = enrollment.worker
+        self.concurrency = (
+            self.worker.worker.max_concurrency if concurrency is None else concurrency
+        )
+        if type(self.concurrency) is not int or not (
+            1 <= self.concurrency <= self.worker.worker.max_concurrency
+        ):
+            raise ResearchError(
+                ErrorCode.RESOURCE_UNAVAILABLE, "Driver concurrency exceeds worker admission"
+            )
         self.root = self.worker.root / "driver"
         with private_state_directory(self.root):
             pass
@@ -216,7 +231,7 @@ class LocalDriver:
                 unresolved = True
             elif row["id"] not in active:
                 unresolved = True
-                if len(active) < self.worker.worker.max_concurrency and not self.stop.is_set():
+                if len(active) < self.concurrency and not self.stop.is_set():
                     active[row["id"]] = asyncio.create_task(
                         asyncio.to_thread(self.worker.execute, row["id"])
                     )
@@ -256,7 +271,7 @@ class LocalDriver:
                     and campaign["state"] in {"running", "pausing"}
                 ):
                     for summary in self._records("job", campaign_id):
-                        if len(active) >= self.worker.worker.max_concurrency:
+                        if len(active) >= self.concurrency:
                             break
                         if summary["state"] != "ready":
                             continue
