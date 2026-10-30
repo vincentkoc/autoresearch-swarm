@@ -40,11 +40,25 @@ the owning domain operation to authorize its retention release. The internal
 owner's checked lifecycle handler. It is not an ordinary API override.
 
 Reads pin the selected artifact through verification and use. A read pin records
-its native process identity and reader session. A local administrator can reconcile
-a crashed session only after native inspection proves that its original process
-ended. A live process, inaccessible process, or different host does not qualify.
-This reconciliation applies to the local SQLite profile. Hosted adapters need
-their own equivalent session-closure evidence.
+an immutable owner profile/identity and reader session. `ArtifactService` accepts
+a synchronous `ReaderOwnership` provider. Its native default captures the process
+identity; existing untagged native records remain readable. A local administrator
+can reconcile a crashed session only after same-host inspection proves that the
+original process ended. A live process, inaccessible process or different host
+does not qualify.
+
+Portable runtimes can explicitly select `OpaqueReaderOwnership`, which creates
+an opaque incarnation without importing native process tools. Normal reads still
+release their exact pins in `finally`. This provider cannot prove orphan closure:
+restarting a controller, replacing an object incarnation or expiring a lease does
+not release abandoned pins. Such artifacts stay retained. Native ownership also
+refuses to interpret a foreign profile as a process.
+
+New pins require the session's original owner and active state. Reconciliation
+checks ownership and revision again in the release transaction, after the external
+closure proof. Closed-session replay remains idempotent. A future provider must
+prove permanent closure of the exact owner; an async result, boolean or unknown
+profile cannot stand in for that proof.
 
 The quota charges retained content, declared staging capacity, and unfinished
 deletions. It conservatively reserves the full upload size. Directory, lock-file,

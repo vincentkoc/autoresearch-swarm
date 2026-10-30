@@ -18,7 +18,7 @@ from research_swarm.domain.artifacts import (
     StoredBlob,
     UploadSpec,
 )
-from research_swarm.domain.canonical import content_digest, record_digest
+from research_swarm.domain.canonical import content_digest, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, artifact_context
@@ -31,7 +31,13 @@ from research_swarm.domain.types import (
     utc_now,
 )
 from research_swarm.state.database import Database, JsonObject, Transaction
-from research_swarm.state.process_identity import LocalProcessIdentity
+from research_swarm.state.reader_sessions import (
+    NativeReaderOwnership,
+    ReaderOwnership,
+    capture_owner,
+    decode_owner,
+    require_owner_closed,
+)
 from research_swarm.state.sql import SqlSession
 from research_swarm.storage.base import BlobStore
 
@@ -143,6 +149,7 @@ class ArtifactService:
         store: BlobStore,
         *,
         storage_limit_bytes: int = 1024**4,
+        reader_ownership: ReaderOwnership | None = None,
     ) -> None:
         if type(storage_limit_bytes) is not int or storage_limit_bytes < 0:
             raise ValueError("Storage limit must be a nonnegative integer")
@@ -150,7 +157,10 @@ class ArtifactService:
         self.store = store
         self.storage_limit_bytes = storage_limit_bytes
         self.reader_session_id = new_id()
-        self.process_identity = LocalProcessIdentity.current()
+        self.reader_ownership = (
+            reader_ownership if reader_ownership is not None else NativeReaderOwnership()
+        )
+        self.reader_owner = capture_owner(self.reader_ownership)
 
     @staticmethod
     def _upload_owner(context: CommandContext, row: JsonObject) -> UploadSpec:
@@ -524,7 +534,7 @@ class ArtifactService:
             authorize(transaction, reference)
             record = ArtifactCatalog.available(transaction, reference)
             session = transaction.connection.execute(
-                "SELECT state FROM records WHERE workspace_id=? "
+                "SELECT state,payload FROM records WHERE workspace_id=? "
                 "AND kind='artifact_read_session' AND id=?",
                 (transaction.workspace_id, self.reader_session_id),
             ).fetchone()
@@ -532,11 +542,13 @@ class ArtifactService:
                 transaction.insert(
                     "artifact_read_session",
                     self.reader_session_id,
-                    self.process_identity.model_dump(mode="json"),
+                    self.reader_owner.model_dump(mode="json"),
                     state="active",
                 )
             elif session["state"] != "active":
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Reader session is closed")
+            elif decode_owner(strict_json_loads(session["payload"])) != self.reader_owner:
+                raise ResearchError(ErrorCode.STALE_FENCE, "Reader session ownership differs")
             retained = ArtifactCatalog.retain(
                 transaction,
                 ArtifactRetention(
@@ -586,13 +598,25 @@ class ArtifactService:
 
     def reconcile_reader_session(self, context: CommandContext, session_id: str) -> JsonObject:
         context.principal.require("artifact.admin")
+        payload = {"session_id": session_id}
+        replay = self.database.replay(
+            context, "artifact.reconcile_reader_session", payload, "artifact.admin"
+        )
+        if replay is not None:
+            return replay
         session = self.database.read_record(context, "artifact_read_session", session_id)
-        LocalProcessIdentity.model_validate(session["data"]).require_closed()
+        owner = decode_owner(session["data"])
+        if session["state"] != "closed":
+            require_owner_closed(self.reader_ownership, owner)
 
         def reconcile(transaction: Transaction) -> JsonObject:
             row = transaction.get("artifact_read_session", session_id)
+            if decode_owner(row["data"]) != owner:
+                raise ResearchError(ErrorCode.STALE_FENCE, "Reader session ownership changed")
             if row["state"] == "closed":
                 return row
+            if row["revision"] != session["revision"] or session["state"] != "active":
+                raise ResearchError(ErrorCode.REVISION_CONFLICT, "Reader session changed")
             refs = transaction.connection.execute(
                 "SELECT id FROM records WHERE workspace_id=? "
                 "AND kind='artifact_reference' AND state='retained'",
@@ -620,7 +644,7 @@ class ArtifactService:
         return self.database.execute(
             context,
             "artifact.reconcile_reader_session",
-            {"session_id": session_id},
+            payload,
             "artifact.admin",
             reconcile,
         )

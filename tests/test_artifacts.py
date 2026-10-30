@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import sys
 from collections.abc import Callable
@@ -22,6 +23,7 @@ from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import new_id
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService, BeginUpload
 from research_swarm.state.database import Database
+from research_swarm.state.reader_sessions import OpaqueReaderOwnership
 from research_swarm.storage.filesystem import FilesystemBlobStore
 
 
@@ -443,11 +445,13 @@ def test_live_reader_session_cannot_be_reconciled(
         service.reconcile_reader_session(context(), service.reader_session_id)
 
 
+@pytest.mark.parametrize("legacy", [False, True])
 def test_crashed_reader_session_can_be_reconciled(
     service: ArtifactService,
     store: FilesystemBlobStore,
     context: Callable[..., CommandContext],
     principal: Principal,
+    legacy: bool,
 ) -> None:
     record = publish(service, context, b"abc")
     program = """
@@ -481,9 +485,28 @@ with service.pinned(context, ArtifactRef.model_validate_json(sys.argv[4])):
         timeout=30,
     )
     session_id = completed.stdout.strip()
+    if legacy:
+
+        def legacy_record(transaction):
+            row = transaction.get("artifact_read_session", session_id)
+            return transaction.update(
+                "artifact_read_session",
+                session_id,
+                expected_revision=row["revision"],
+                data=json.loads(row["data"]["identity"]),
+                state="active",
+            )
+
+        service.database.execute(
+            context(), "fixture.legacy_reader", {}, "artifact.admin", legacy_record
+        )
     with pytest.raises(ResearchError, match="retained references"):
         service.delete(context(revision=1), record.reference.id, "cleanup")
-    service.reconcile_reader_session(context(), session_id)
+    reconciliation = context()
+    acknowledgment = service.reconcile_reader_session(reconciliation, session_id)
+    portable = ArtifactService(service.database, store, reader_ownership=OpaqueReaderOwnership())
+    assert portable.reconcile_reader_session(reconciliation, session_id) == acknowledgment
+    assert portable.reconcile_reader_session(context(), session_id)["result"]["state"] == "closed"
     service.delete(context(revision=1), record.reference.id, "cleanup")
     assert service.get(context(), record.reference.id).state == "deleted"
 

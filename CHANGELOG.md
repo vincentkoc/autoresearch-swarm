@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Separate artifact reader ownership from native process inspection with an explicit synchronous provider and immutable owner records; preserve legacy local reader recovery.
+- Permit portable controller construction with conservative opaque ownership, retain abandoned pins when closure is unqualified, and recheck session ownership/revision before admitting reads or releasing references.
+
 - Inject synchronous Ed25519 primitives per service while preserving canonical assignment, clock and timing records; load native cryptography only for the default provider.
 - Qualify the same signed-envelope codecs through Cloudflare's local Noble adapter, with native verification in both directions, transaction-local signing and explicit rejection of provider failures, malformed outputs and async results.
 
