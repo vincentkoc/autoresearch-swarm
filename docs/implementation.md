@@ -6,12 +6,12 @@ not implicitly supported.
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|
 | Domain schemas and JCS hashing | Implemented foundation | Golden/validation tests pass | Cross-language pending |
-| SQLite transactions, events, outbox | Transaction substrate implemented | Restart, independent connections, rollback, watermark tests pass | Cross-platform CI pending |
+| SQLite transactions, events, outbox | Transaction substrate implemented | Restart, independent connections, rollback, watermark tests pass | Foundation CI passes on Linux, macOS, Windows, Python 3.11–3.13 |
 | Exact budget arithmetic | Implemented foundation | Exact arithmetic, uncertainty, settlement, overshoot tests pass | Hierarchical accounting pending |
 | Evaluator receipts | Validator implemented | Identity, seed, provenance, and panel tests pass | Authenticated transport pending |
-| Artifact lifecycle | Pending | Pending | Pending |
+| Artifact lifecycle | Local verified catalog, generations, retention, quotas, recovery | Corruption, interrupted commit, duplicate upload, retain/delete race, native reader crash tests | Current change awaits cross-platform CI; hosted stores pending |
 | Local worker and supervision | Pending | Pending | Each supported OS pending |
-| Project manifests and source isolation | Pending | Pending | Original workload pending |
+| Project manifests and source isolation | Source bundles and mutation boundary implemented; project manifest pending | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation | Original workload pending |
 | API, SDK, CLI, MCP | Pending | Pending | Real transport pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Pending | Pending | Equal-budget research pending |
@@ -26,9 +26,10 @@ not implicitly supported.
 
 ## Contract scenarios
 
-The first foundation suite has 53 passing tests on Python 3.12/macOS, with Ruff
-and strict source type checks. It exercises the underlying ledger and validators.
-It does not yet establish complete worker, API, provider, or scientific behavior.
+The foundation suite has 53 tests. Artifact and source tests extend it to 100
+passing tests on Python 3.12/macOS. They include separate-process locks, a crashed
+reader, independent database races, and source isolation. This does not establish
+complete worker, API, provider, or scientific behavior.
 
 The design defines C01–C42. Unit coverage alone does not qualify their complete
 transport, process, or provider behavior.

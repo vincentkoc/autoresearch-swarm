@@ -381,6 +381,11 @@ class Database:
             connection.commit()
             return result
 
+    def read_record(self, context: CommandContext, kind: str, identifier: str) -> JsonObject:
+        context.principal.require("read")
+        with self.connect() as connection:
+            return Transaction(connection, context).get(kind, identifier)
+
     def events(self, context: CommandContext, *, after: int = 0, limit: int = 100) -> list[Event]:
         context.principal.require("read")
         if not after >= 0 or not 1 <= limit <= 1000:

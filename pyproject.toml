@@ -12,8 +12,10 @@ license = "MIT"
 authors = [{name = "Vincent Koc"}]
 dependencies = [
   "fastapi>=0.115,<1",
+  "filelock>=3.20,<4",
   "httpx>=0.28,<1",
   "mcp>=2.3,<3",
+  "psutil>=6,<8",
   "pydantic>=2.12,<3",
   "rfc8785>=0.1.4,<1",
   "uvicorn>=0.34,<1",
@@ -33,6 +35,7 @@ dev = [
   "hypothesis>=6.130,<7",
   "ruff>=0.11,<1",
   "mypy>=1.15,<2",
+  "types-psutil>=7.2.2.20260906",
 ]
 
 [project.urls]

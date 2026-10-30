@@ -17,7 +17,15 @@ results. An interface declaration is not a hardware or scientific qualification.
 The core contract separates immutable experiments from mutable dispatch authority.
 Every attempt, evaluator receipt, budget settlement, and promotion retains its
 own identity. The local implementation starts with Python, SQLite, and subprocesses.
-Temporal and Cloudflare use the same domain semantics through adapters.
+Temporal and Cloudflare adapters are planned against the same domain semantics.
+
+Implemented foundations include the transactional ledger, exact budget arithmetic,
+evaluation receipt validation, verified artifact lifecycle, and immutable source
+bundles. The complete campaign runner and public control transports are still in progress.
+
+See the [implementation ledger](docs/implementation.md) for qualification status,
+the [design](docs/design.md) for the complete contract, and
+[artifacts and source](docs/artifacts-and-source.md) for the current storage behavior.
 
 ## Development
 
