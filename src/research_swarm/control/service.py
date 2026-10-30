@@ -244,7 +244,9 @@ class ResearchService:
         self.campaigns = CampaignControl(database)
         self.scientific_completion = ScientificCompletionControl(database)
         self.children = ChildControl(database, self._create_campaign, self._validate_contract)
-        self.orchestration = OrchestrationControl(database, self._dispatch_drive)
+        self.orchestration = OrchestrationControl(
+            database, self._dispatch_drive, crypto_provider=self.crypto_provider
+        )
         self.orchestration_waits = OrchestrationWaitControl(database)
         self.orchestration_transfer = OrchestrationTransferControl(database, artifacts)
         self.worker_lifecycle = WorkerLifecycle(database, self.acceptance)

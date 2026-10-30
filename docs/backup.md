@@ -273,8 +273,8 @@ the exact artifact or upload. No generic artifact mutation is granted. Cleanup
 of an existing unpublished transfer remains possible after native settlement.
 
 An explicit recovery route binds the original private worker installation to the
-elected destination before the recovery driver can deliver there. Saved-turn
-reconciliation and final activation remain required work. The target stays `recovering`; ordinary
+elected destination before the recovery driver can deliver there. Final activation
+remains required work. The target stays `recovering`; ordinary
 research mutation, new dispatch and scientific acceptance remain unavailable.
 Neither a source claim nor an admission receipt proves native process closure.
 
@@ -345,6 +345,31 @@ roll back all releases. Cleanup changes neither execution accounting nor scienti
 evidence retention, and grants no generic artifact release or deletion authority.
 The original accepted command replays without obtaining another native proof.
 
+## Reconcile original saved agent turns
+
+An admitted target permits two existing orchestration commands for a principal
+with `orchestration.manage`, the command's ordinary scopes, and `read`:
+
+- `orchestration.reconcile_turn` records the exact existing target acknowledgment,
+  whether accepted or rejected. It never dispatches the saved action.
+- `orchestration.close_turn` explicitly retires an original prepared turn when
+  no target acknowledgment exists. Supply its original binding epoch, current
+  turn revision and a finding. The resulting closure states that no reply was
+  recorded; it does not invent a target success or failure.
+
+A separate internal capability binds the request to an admitted campaign, its
+original turn/action, dedicated actor, fenced binding and pending pointer, and
+the exact target acknowledgment. All are checked again in the write transaction.
+The existing settlement or closure helper then records the outcome and clears
+the pending pointer atomically. A changed acknowledgment or ownership revision
+invalidates preflight. Exact committed replies survive a later preflight refusal.
+
+The old dedicated driver cannot grant itself maintenance authority. Execution,
+preparation, transfer and new research remain fenced. Campaign state, native
+attempt custody and budgets do not change when retiring this bookkeeping.
+Bindings retain their old identities and remain fenced after the pending turn
+is resolved; final activation must separately check all outstanding obligations.
+
 ## Qualification boundary
 
 Native tests cover a real SQLite snapshot, artifact and key corruption, missing
@@ -377,3 +402,7 @@ routing and lost target acknowledgments. Final target activation remains unquali
 Reader tests use actual child-process exit and a live child handshake. They cover
 multiple pin actors, exact-set races, atomic rollback, opaque and foreign-host
 refusal, and authenticated HTTP replay.
+Saved-turn tests cover absent, accepted and rejected target replies, unchanged
+execution accounting, preserved actor fences, target-acknowledgment races,
+interrupted transaction rollback and exact acknowledgment replay through a
+competing database connection.

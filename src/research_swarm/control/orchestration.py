@@ -14,6 +14,7 @@ from research_swarm.control.orchestration_models import (
     FenceOrchestration,
     PrepareDriveTurn,
 )
+from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, DriveGuard, guarded_context
@@ -127,8 +128,11 @@ class OrchestrationControl:
         self,
         database: Database,
         dispatch: Callable[[CommandContext, str, JsonObject], JsonObject],
+        *,
+        crypto_provider: Ed25519Provider | None = None,
     ) -> None:
         self.database, self.dispatch = database, dispatch
+        self.crypto_provider = crypto_provider
 
     def bind(self, context: CommandContext, intent: BindOrchestration) -> JsonObject:
         def bind(transaction: Transaction) -> JsonObject:
@@ -358,6 +362,27 @@ class OrchestrationControl:
     def _finish(
         self, context: CommandContext, operation: str, intent: DriveTurnTarget
     ) -> JsonObject:
+        return self.database.with_preflight(
+            context,
+            operation,
+            intent.model_dump(mode="json"),
+            "orchestration.drive",
+            lambda: self._finish_preflight(context, operation, intent),
+        )
+
+    def _finish_preflight(
+        self, context: CommandContext, operation: str, intent: DriveTurnTarget
+    ) -> JsonObject:
+        from research_swarm.control.recovery_turns import recovery_turn_context
+
+        context = recovery_turn_context(
+            self.database,
+            context,
+            operation,
+            intent.model_dump(mode="json"),
+            crypto_provider=self.crypto_provider,
+        )
+
         def finish(transaction: Transaction) -> JsonObject:
             row = transaction.get("drive_turn", intent.turn_id)
             turn = DriveTurn.model_validate(row["data"])
@@ -426,6 +451,24 @@ class OrchestrationControl:
 
     def close(self, context: CommandContext, intent: CloseDriveTurn) -> JsonObject:
         context.principal.require("read")
+        return self.database.with_preflight(
+            context,
+            "orchestration.close_turn",
+            intent.model_dump(mode="json"),
+            "orchestration.manage",
+            lambda: self._close(context, intent),
+        )
+
+    def _close(self, context: CommandContext, intent: CloseDriveTurn) -> JsonObject:
+        from research_swarm.control.recovery_turns import recovery_turn_context
+
+        context = recovery_turn_context(
+            self.database,
+            context,
+            "orchestration.close_turn",
+            intent.model_dump(mode="json"),
+            crypto_provider=self.crypto_provider,
+        )
         request_digest = record_digest(
             "research.drive-closure-request-v1",
             {

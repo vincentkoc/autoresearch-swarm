@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reconcile original saved agent turns during recovery through separate maintenance capabilities bound to the admitted campaign, original actor/action, fenced binding and exact target acknowledgment.
+- Preserve accepted and rejected target replies, explicitly close unacknowledged prepared turns, and clear pending pointers atomically without executing saved actions or resuming research. Recover exact committed replies if later preflight fails.
+
 - Expose reader-session reconciliation through the shared command catalog and bounded session queries. During recovery, require native owner closure and an exact session/reference capability tied to the elected target; release only that session's read pins in one transaction.
 - Preserve replay without repeating closure proof, reject changed or added pins, and keep live, foreign-host and opaque readers unresolved. Share elected-target verification with the attempt evidence path without widening execution or artifact authority.
 

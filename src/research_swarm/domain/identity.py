@@ -35,6 +35,7 @@ class CommandContext(Record):
     _recovery_guard: RecoveryGuard | None = PrivateAttr(default=None)
     _recovery_operation: RecoveryOperationGuard | None = PrivateAttr(default=None)
     _recovery_reader: RecoveryReaderGuard | None = PrivateAttr(default=None)
+    _recovery_turn: RecoveryTurnGuard | None = PrivateAttr(default=None)
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,16 @@ class RecoveryReaderGuard(RecoveryAuthority):
     reader_session_id: str
     reader_digest: str
     references_digest: str
+    request_digest: str
+
+
+@dataclass(frozen=True)
+class RecoveryTurnGuard(RecoveryAuthority):
+    """One original saved action's bookkeeping, with no execution authority."""
+
+    turn_id: str
+    scope_digest: str
+    operation: str
     request_digest: str
 
 
