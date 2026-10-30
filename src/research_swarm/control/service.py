@@ -118,7 +118,7 @@ from research_swarm.control.worker_outputs import (
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession, WorkerTurnover
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.crypto import Ed25519Provider, resolve_crypto
-from research_swarm.domain.artifacts import ArtifactRetention
+from research_swarm.domain.artifacts import ArtifactRetention, ReaderSessionTarget
 from research_swarm.domain.backup import RegisterBackupCustody, SealWorkspace
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
@@ -251,6 +251,13 @@ class ResearchService:
 
     def seal_workspace(self, context: CommandContext, request: SealWorkspace) -> JsonObject:
         return self.backups.seal(context, request)
+
+    def reconcile_reader_session(
+        self, context: CommandContext, request: ReaderSessionTarget
+    ) -> JsonObject:
+        return self.artifacts.reconcile_reader_session(
+            context, request.session_id, crypto_provider=self.crypto_provider
+        )
 
     def register_backup_custody(
         self, context: CommandContext, request: RegisterBackupCustody

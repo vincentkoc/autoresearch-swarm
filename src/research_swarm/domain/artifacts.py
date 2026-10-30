@@ -17,6 +17,10 @@ from research_swarm.domain.types import (
 )
 
 
+class ReaderSessionTarget(VersionedRecord):
+    session_id: ID
+
+
 class UploadSpec(VersionedRecord):
     id: ID
     workspace_id: ID

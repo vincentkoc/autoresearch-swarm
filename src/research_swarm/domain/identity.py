@@ -34,11 +34,12 @@ class CommandContext(Record):
     _drive_guard: DriveGuard | None = PrivateAttr(default=None)
     _recovery_guard: RecoveryGuard | None = PrivateAttr(default=None)
     _recovery_operation: RecoveryOperationGuard | None = PrivateAttr(default=None)
+    _recovery_reader: RecoveryReaderGuard | None = PrivateAttr(default=None)
 
 
 @dataclass(frozen=True)
-class RecoveryOperationGuard:
-    """One attempt-bound recovery operation and its exact internal artifact effects."""
+class RecoveryAuthority:
+    """Verified elected-target identity, rebound at each transaction boundary."""
 
     authority: tuple[str, str]
     restore_id: str
@@ -46,11 +47,27 @@ class RecoveryOperationGuard:
     admission_digest: str
     gate_revision: int
     control_epoch: int
+    actor_id: str
+
+
+@dataclass(frozen=True)
+class RecoveryReaderGuard(RecoveryAuthority):
+    """Closure proof for one exact recovery reader and its retained references."""
+
+    reader_session_id: str
+    reader_digest: str
+    references_digest: str
+    request_digest: str
+
+
+@dataclass(frozen=True)
+class RecoveryOperationGuard(RecoveryAuthority):
+    """One attempt-bound recovery operation and its exact internal artifact effects."""
+
     attempt_id: str
     worker_id: str
     session_id: str
     worker_principal_id: str
-    actor_id: str
     root_operation: str
     root_request_digest: str
     upload_id: str | None = None

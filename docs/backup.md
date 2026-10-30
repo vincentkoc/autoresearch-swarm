@@ -273,9 +273,8 @@ the exact artifact or upload. No generic artifact mutation is granted. Cleanup
 of an existing unpublished transfer remains possible after native settlement.
 
 An explicit recovery route binds the original private worker installation to the
-elected destination before the recovery driver can deliver there. Crashed
-recovery-reader reconciliation, saved-turn reconciliation and final activation
-remain required work. The target stays `recovering`; ordinary
+elected destination before the recovery driver can deliver there. Saved-turn
+reconciliation and final activation remain required work. The target stays `recovering`; ordinary
 research mutation, new dispatch and scientific acceptance remain unavailable.
 Neither a source claim nor an admission receipt proves native process closure.
 
@@ -322,6 +321,30 @@ and keys. Each route also freezes its own journal until acknowledgment, then can
 submit a later observation. Without `--route-id`, recovery uses its original
 destination as before. Recovery never launches or enrolls a worker.
 
+## Reconcile an interrupted evidence reader
+
+An interrupted target process can leave read pins after a journal upload or
+closure check. Use `artifact.reconcile_reader_session` with
+`{"session_id":"READER_SESSION_UUID"}` through the SDK, HTTP, CLI or agent tools.
+The command requires `artifact.admin` and `read`; `artifact_read_session` records
+are available through ordinary bounded queries. A still-active reader session
+with no retained pins needs no cleanup for activation.
+
+Cleanup first proves that the exact reader incarnation cannot resume. Native
+ownership checks the original host, PID and process start time. A live,
+inaccessible, foreign-host or opaque incarnation remains unresolved. Neither
+elapsed time nor a controller restart proves closure.
+
+During recovery, a separate internal maintenance capability binds that proof to
+the elected target, current gate and epoch, operator, request, session revision
+and complete retained-reference set. The transaction rechecks each pin's original
+actor, artifact, retention owner and reader session, releases only its read pins,
+and closes the session atomically. One reader may have pins for several actors.
+Changes or additions after preflight refuse the write; partial cleanup failures
+roll back all releases. Cleanup changes neither execution accounting nor scientific
+evidence retention, and grants no generic artifact release or deletion authority.
+The original accepted command replays without obtaining another native proof.
+
 ## Qualification boundary
 
 Native tests cover a real SQLite snapshot, artifact and key corruption, missing
@@ -351,3 +374,6 @@ while running, then delivery and settlement after the same native scope exits,
 without changing the original pending intent. They also cover signature/source-pin
 substitution, missing stores, immutable route IDs, driver-lock contention, CLI
 routing and lost target acknowledgments. Final target activation remains unqualified.
+Reader tests use actual child-process exit and a live child handshake. They cover
+multiple pin actors, exact-set races, atomic rollback, opaque and foreign-host
+refusal, and authenticated HTTP replay.

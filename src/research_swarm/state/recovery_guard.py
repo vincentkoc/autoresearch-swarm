@@ -6,7 +6,7 @@ from typing import Any
 from research_swarm.domain.backup import RecoveryAdmission, RestoreReceipt, WorkspaceSeal
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.identity import CommandContext, RecoveryAuthority
 from research_swarm.state.sql import SqlSession, StoreIdentity
 
 ROOT_OPERATIONS = frozenset(
@@ -23,33 +23,34 @@ ROOT_OPERATIONS = frozenset(
 )
 
 
-def require_recovery_operation(
+def recovery_record(
+    connection: SqlSession, workspace: str, kind: str, identifier: str
+) -> tuple[str, int, dict[str, Any]]:
+    row = connection.execute(
+        "SELECT state,revision,payload FROM records WHERE workspace_id=? AND kind=? AND id=?",
+        (workspace, kind, identifier),
+    ).fetchone()
+    if row is None:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Recovery record is absent")
+    return row["state"], row["revision"], dict(strict_json_loads(row["payload"]))
+
+
+def require_recovery_authority(
     connection: SqlSession,
     context: CommandContext,
     authority: StoreIdentity,
-    operation: str,
-    payload: Mapping[str, Any],
-    request_digest: str,
-) -> None:
-    proof = context._recovery_operation
+    proof: RecoveryAuthority,
+) -> RestoreReceipt:
     if (
-        proof is None
-        or proof.authority != (authority.backend, authority.location)
+        proof.authority != (authority.backend, authority.location)
         or proof.actor_id != context.principal.id
         or context._drive_guard is not None
-        or proof.root_operation not in ROOT_OPERATIONS
     ):
         raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Recovery operation proof is required")
     workspace = context.principal.workspace_id
 
     def record(kind: str, identifier: str) -> tuple[str, int, dict[str, Any]]:
-        row = connection.execute(
-            "SELECT state,revision,payload FROM records WHERE workspace_id=? AND kind=? AND id=?",
-            (workspace, kind, identifier),
-        ).fetchone()
-        if row is None:
-            raise ResearchError(ErrorCode.STALE_FENCE, "Recovery record is absent")
-        return row["state"], row["revision"], dict(strict_json_loads(row["payload"]))
+        return recovery_record(connection, workspace, kind, identifier)
 
     state, revision, gate_data = record("workspace_gate", workspace)
     restored_state, _, restored_data = record("restoration", proof.restore_id)
@@ -75,7 +76,6 @@ def require_recovery_operation(
         != (workspace, current["controller_id"], current["control_epoch"])
         or current["control_epoch"] != proof.control_epoch
         or (seal.backup_id, seal.control_epoch) != (receipt.backup_id, receipt.source_control_epoch)
-        or proof.attempt_id not in receipt.unresolved_attempt_ids
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Recovery evidence authority changed")
     owner = connection.execute(
@@ -86,6 +86,28 @@ def require_recovery_operation(
         raise ResearchError(
             ErrorCode.AUTHORIZATION_DENIED, "Drivers cannot submit recovery evidence"
         )
+    return receipt
+
+
+def require_recovery_operation(
+    connection: SqlSession,
+    context: CommandContext,
+    authority: StoreIdentity,
+    operation: str,
+    payload: Mapping[str, Any],
+    request_digest: str,
+) -> None:
+    proof = context._recovery_operation
+    if proof is None or proof.root_operation not in ROOT_OPERATIONS:
+        raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Recovery operation proof is required")
+    receipt = require_recovery_authority(connection, context, authority, proof)
+    if proof.attempt_id not in receipt.unresolved_attempt_ids:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Attempt is outside the recovery inventory")
+    workspace = context.principal.workspace_id
+
+    def record(kind: str, identifier: str) -> tuple[str, int, dict[str, Any]]:
+        return recovery_record(connection, workspace, kind, identifier)
+
     session_state, _, session = record("worker_session", proof.session_id)
     _, _, attempt = record("attempt", proof.attempt_id)
     binding = session["binding"]

@@ -75,6 +75,7 @@ from research_swarm.control.worker_outputs import BeginWorkerUpload, WorkerUploa
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession
 from research_swarm.control.workers import ClaimJob, EnrollWorker
+from research_swarm.domain.artifacts import ReaderSessionTarget
 from research_swarm.domain.backup import RegisterBackupCustody, SealWorkspace
 from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -100,6 +101,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "artifact.reconcile_reader_session": CommandDefinition(
+        ReaderSessionTarget,
+        "reconcile_reader_session",
+        "artifact.admin",
+        False,
+        "Release one reader session's pins only after proving its exact owner cannot resume.",
+        additional_scopes=("read",),
+    ),
     "workspace.register_backup_custody": CommandDefinition(
         RegisterBackupCustody,
         "register_backup_custody",

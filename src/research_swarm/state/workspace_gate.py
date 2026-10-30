@@ -85,6 +85,13 @@ def require_workspace_mutation(
         and payload is not None
         and request_digest is not None
     ):
+        if context._recovery_reader is not None:
+            from research_swarm.state.recovery_readers import require_recovery_reader
+
+            require_recovery_reader(
+                connection, context, authority, operation, payload, request_digest
+            )
+            return
         from research_swarm.state.recovery_guard import require_recovery_operation
 
         require_recovery_operation(

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expose reader-session reconciliation through the shared command catalog and bounded session queries. During recovery, require native owner closure and an exact session/reference capability tied to the elected target; release only that session's read pins in one transaction.
+- Preserve replay without repeating closure proof, reject changed or added pins, and keep live, foreign-host and opaque readers unresolved. Share elected-target verification with the attempt evidence path without widening execution or artifact authority.
+
 - Add native target-signed recovery routes with an independently trusted source-custody pin. Bind each destination to the original attempt, session and credential ID, then install it under the worker's existing enrollment, driver and attempt locks.
 - Deliver through an explicitly selected route without rewriting enrollment or resolving original-controller uncertainty. Preserve separate frozen journals and command keys, verify original native stores before connection, and expose route issuance, installation and selection through the CLI.
 

@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.artifacts import (
     ArtifactRecord,
     ArtifactRetention,
@@ -680,18 +681,42 @@ class ArtifactService:
                 ),
             )
 
-    def reconcile_reader_session(self, context: CommandContext, session_id: str) -> JsonObject:
+    def reconcile_reader_session(
+        self,
+        context: CommandContext,
+        session_id: str,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> JsonObject:
+        return self.database.with_preflight(
+            context,
+            "artifact.reconcile_reader_session",
+            {"session_id": session_id},
+            "artifact.admin",
+            lambda: self._reconcile_reader_session(
+                context, session_id, crypto_provider=crypto_provider
+            ),
+        )
+
+    def _reconcile_reader_session(
+        self,
+        context: CommandContext,
+        session_id: str,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> JsonObject:
+        from research_swarm.control.recovery_readers import recovery_reader_context
+        from research_swarm.state.recovery_readers import reader_references
+
         context.principal.require("artifact.admin")
         payload = {"session_id": session_id}
-        replay = self.database.replay(
-            context, "artifact.reconcile_reader_session", payload, "artifact.admin"
-        )
-        if replay is not None:
-            return replay
         session = self.database.read_record(context, "artifact_read_session", session_id)
         owner = decode_owner(session["data"])
         if session["state"] != "closed":
             require_owner_closed(self.reader_ownership, owner)
+        context = recovery_reader_context(
+            self.database, context, session, crypto_provider=crypto_provider
+        )
 
         def reconcile(transaction: Transaction) -> JsonObject:
             row = transaction.get("artifact_read_session", session_id)
@@ -701,20 +726,13 @@ class ArtifactService:
                 return row
             if row["revision"] != session["revision"] or session["state"] != "active":
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Reader session changed")
-            refs = transaction.connection.execute(
-                "SELECT id FROM records WHERE workspace_id=? "
-                "AND kind='artifact_reference' AND state='retained'",
-                (transaction.workspace_id,),
-            ).fetchall()
-            for item in refs:
-                reference = transaction.get("artifact_reference", item["id"])
-                if reference["data"].get("reader_session_id") == session_id:
-                    retention = ArtifactRetention.model_validate(reference["data"]["retention"])
-                    ArtifactCatalog.release(
-                        transaction,
-                        item["id"],
-                        owner_release=(retention.owner_kind, retention.owner_id),
-                    )
+            for reference in reader_references(transaction, session_id):
+                retention = ArtifactRetention.model_validate(reference["data"]["retention"])
+                ArtifactCatalog.release(
+                    transaction,
+                    reference["id"],
+                    owner_release=("artifact_read", retention.owner_id),
+                )
             updated = transaction.update(
                 "artifact_read_session",
                 session_id,
