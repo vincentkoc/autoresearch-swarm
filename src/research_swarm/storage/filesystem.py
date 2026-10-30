@@ -12,7 +12,7 @@ import os
 import stat
 import sys
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import BinaryIO, cast
 
@@ -45,7 +45,10 @@ def _file(path: Path, mode: str) -> Iterator[BinaryIO]:
     flags = {"rb": os.O_RDONLY, "r+b": os.O_RDWR, "xb": os.O_WRONLY | os.O_CREAT | os.O_EXCL}
     descriptor = os.open(
         path,
-        flags[mode] | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0),
+        flags[mode]
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NONBLOCK", 0),
         0o600,
     )
     try:
@@ -222,6 +225,26 @@ class FilesystemBlobStore:
     def verify(self, workspace_id: str, blob: StoredBlob) -> None:
         with self._verified(workspace_id, blob):
             pass
+
+    @contextmanager
+    def reader(self, workspace_id: str, blob: StoredBlob) -> Iterator[BinaryIO]:
+        """Open a verified generation without copying it or holding a lock over I/O waits.
+
+        The artifact service retains its catalog pin for the reader's lifetime.
+        Publication never writes an existing generation's bytes.
+        """
+        workspace_id = self._workspace(workspace_id)
+        blob = StoredBlob.model_validate(blob)
+        try:
+            with ExitStack() as stack:
+                with self._lock(workspace_id, blob.reference.digest.removeprefix("sha256:")):
+                    stream = stack.enter_context(_file(self._object(workspace_id, blob), "rb"))
+                    _check(stream, blob.reference)
+                yield stream
+        except FileNotFoundError as error:
+            raise ResearchError(
+                ErrorCode.ARTIFACT_UNVERIFIED, "Artifact content is absent"
+            ) from error
 
     def fetch(self, workspace_id: str, blob: StoredBlob, destination: Path) -> None:
         # An exclusive destination never overwrites user files or follows a leaf symlink.

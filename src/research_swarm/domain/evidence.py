@@ -13,6 +13,7 @@ from research_swarm.domain.types import (
     Amount,
     Digest,
     Dimension,
+    MediaType,
     Milliseconds,
     Name,
     Revision,
@@ -28,7 +29,7 @@ class ArtifactRef(VersionedRecord):
     id: ID
     digest: Digest
     size_bytes: int = Field(strict=True, ge=0)
-    media_type: str = "application/octet-stream"
+    media_type: MediaType = "application/octet-stream"
 
 
 class RunResult(VersionedRecord):

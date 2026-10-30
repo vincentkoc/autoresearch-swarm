@@ -10,9 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
-
-from pydantic import Field
+from typing import Any, BinaryIO
 
 from research_swarm.domain.artifacts import (
     ArtifactRecord,
@@ -23,7 +21,14 @@ from research_swarm.domain.artifacts import (
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import ByteCount, Digest, VersionedRecord, new_id, utc_now
+from research_swarm.domain.types import (
+    ByteCount,
+    Digest,
+    MediaType,
+    VersionedRecord,
+    new_id,
+    utc_now,
+)
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.process_identity import LocalProcessIdentity
 from research_swarm.storage.base import BlobStore
@@ -32,7 +37,7 @@ from research_swarm.storage.base import BlobStore
 class BeginUpload(VersionedRecord):
     digest: Digest
     size_bytes: ByteCount
-    media_type: str = Field(default="application/octet-stream", min_length=1, max_length=128)
+    media_type: MediaType = "application/octet-stream"
 
 
 class ArtifactCatalog:
@@ -480,6 +485,14 @@ class ArtifactService:
     def fetch(self, context: CommandContext, reference: ArtifactRef, destination: Path) -> None:
         with self.pinned(context, reference) as record:
             self.store.fetch(context.principal.workspace_id, self._blob(record), destination)
+
+    @contextmanager
+    def reader(self, context: CommandContext, reference: ArtifactRef) -> Iterator[BinaryIO]:
+        with (
+            self.pinned(context, reference) as record,
+            self.store.reader(context.principal.workspace_id, self._blob(record)) as source,
+        ):
+            yield source
 
     def delete(self, context: CommandContext, artifact_id: str, reason: str) -> JsonObject:
         if context.expected_revision is None or not reason.strip():

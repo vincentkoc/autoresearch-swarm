@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 from research_swarm.domain.artifacts import StoredBlob, UploadSpec
 
@@ -16,6 +17,8 @@ class BlobStore(Protocol):
     def finalize(self, upload: UploadSpec) -> StoredBlob: ...
 
     def verify(self, workspace_id: str, blob: StoredBlob) -> None: ...
+
+    def reader(self, workspace_id: str, blob: StoredBlob) -> AbstractContextManager[BinaryIO]: ...
 
     def fetch(self, workspace_id: str, blob: StoredBlob, destination: Path) -> None: ...
 

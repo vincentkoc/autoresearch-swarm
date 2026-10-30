@@ -25,6 +25,14 @@ ID = Annotated[
 ]
 Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 Name = Annotated[str, StringConstraints(min_length=1, max_length=128)]
+MediaType = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+/[A-Za-z0-9!#$%&'*+.^_`|~-]+$",
+        min_length=3,
+        max_length=128,
+    ),
+]
 Dimension = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 Revision = Annotated[int, Field(strict=True, ge=0)]
 Milliseconds = Annotated[int, Field(strict=True, ge=0)]

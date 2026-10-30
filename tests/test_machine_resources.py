@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from worker_support import dispatch
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
@@ -19,6 +18,7 @@ from research_swarm.workers.authority import (
 from research_swarm.workers.journal import WorkerJournal
 from research_swarm.workers.resources import MachineResources, ResourceDemand
 from research_swarm.workers.supervisor import run_attempt
+from tests.worker_support import dispatch
 
 
 def binding(dispatch: VerifiedDispatch) -> WorkerBinding:

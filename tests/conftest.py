@@ -8,6 +8,7 @@ import pytest
 from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import new_id
 from research_swarm.state.database import Database
+from tests.support import research as research
 
 
 @pytest.fixture

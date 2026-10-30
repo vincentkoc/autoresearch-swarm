@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expose authenticated research commands, bounded context, event streams, and verified artifact transfer over HTTP.
+- Keep credential authority server-side and validate canonical expiry and safe artifact media types.
 - Register immutable project revisions and seal campaign contracts with explicit input and budget rules.
 - Preserve candidate validation evidence and create complete trial job graphs atomically.
 - Replay committed command responses before transient preflight, with current authorization and atomic rechecks.

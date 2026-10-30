@@ -5,10 +5,16 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID, uuid5
 
-from pydantic import Field
-
 from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.types import ID, ByteCount, Digest, Name, Timestamp, VersionedRecord
+from research_swarm.domain.types import (
+    ID,
+    ByteCount,
+    Digest,
+    MediaType,
+    Name,
+    Timestamp,
+    VersionedRecord,
+)
 
 
 class UploadSpec(VersionedRecord):
@@ -17,7 +23,7 @@ class UploadSpec(VersionedRecord):
     actor_id: ID
     digest: Digest
     size_bytes: ByteCount
-    media_type: str = Field(default="application/octet-stream", min_length=1, max_length=128)
+    media_type: MediaType = "application/octet-stream"
 
     def reference(self) -> ArtifactRef:
         return ArtifactRef(

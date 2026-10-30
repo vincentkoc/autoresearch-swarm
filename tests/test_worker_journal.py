@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 
 import pytest
-from worker_support import dispatch
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
@@ -17,6 +16,7 @@ from research_swarm.workers.authority import (
 )
 from research_swarm.workers.journal import JournalState, WorkerJournal
 from research_swarm.workers.supervisor import reconcile_outcome, run_attempt, spawn_supervisor
+from tests.worker_support import dispatch
 
 
 def test_dispatch_requires_authentication_and_enrolled_identity(tmp_path: Path) -> None:
