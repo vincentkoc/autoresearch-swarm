@@ -34,6 +34,19 @@ class BackupFile(VersionedRecord):
     size_bytes: ByteCount
 
 
+class BackupCustodyPin(VersionedRecord):
+    custody_id: ID
+    workspace_id: ID
+    controller_id: ID
+    control_epoch: Revision
+    public_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class RegisterBackupCustody(VersionedRecord):
+    backup_id: ID
+    pin: BackupCustodyPin
+
+
 class BackupPrivateFile(BackupFile):
     name: Literal["identity.json", "operator.token", "dispatch.key", "assignment.key"]
 
@@ -80,9 +93,49 @@ class RestoreReceipt(VersionedRecord):
     workspace_id: ID
     controller_id: ID
     source_custody_id: ID
+    source_public_key: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda value: value is None
+    )
     target_public_key: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_control_epoch: Revision
     target_control_epoch: Revision
     restored_at: Timestamp
     unresolved_attempt_ids: tuple[ID, ...] = Field(max_length=10_000)
     worker_ids: tuple[ID, ...] = Field(max_length=10_000)
+
+
+class RestoreClaimRequest(VersionedRecord):
+    backup_id: ID
+    manifest_digest: Digest
+    workspace_id: ID
+    controller_id: ID
+    source_custody_id: ID
+    source_control_epoch: Revision
+    restore_id: ID
+    target_public_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_control_epoch: Revision
+
+    @property
+    def digest(self) -> str:
+        return record_digest("research.restore-claim-request.v1", self.model_dump(mode="json"))
+
+
+class SignedRestoreRequest(VersionedRecord):
+    request: RestoreClaimRequest
+    signature: str = Field(pattern=r"^[0-9a-f]{128}$")
+
+
+class RestoreClaim(VersionedRecord):
+    claim_id: ID
+    request: RestoreClaimRequest
+    source_public_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    claimed_at: Timestamp
+
+    @property
+    def digest(self) -> str:
+        return record_digest("research.restore-claim.v1", self.model_dump(mode="json"))
+
+
+class SignedRestoreClaim(VersionedRecord):
+    claim: RestoreClaim
+    signature: str = Field(pattern=r"^[0-9a-f]{128}$")

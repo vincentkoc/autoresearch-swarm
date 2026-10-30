@@ -64,6 +64,16 @@ def sync_directory(path: Path) -> None:
             os.close(directory)
 
 
+def replace_private(source: Path, destination: Path) -> None:
+    if sys.platform == "win32":
+        from research_swarm.state.windows_privacy import replace_write_through
+
+        replace_write_through(source, destination)
+    else:
+        os.replace(source, destination)
+    sync_directory(destination.parent)
+
+
 def write_private(path: Path, content: bytes) -> None:
     staged = path.with_name(path.name + "." + new_id() + ".pending")
     if sys.platform == "win32":
@@ -77,8 +87,7 @@ def write_private(path: Path, content: bytes) -> None:
             stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(staged, path)
-        sync_directory(path.parent)
+        replace_private(staged, path)
     finally:
         staged.unlink(missing_ok=True)
 

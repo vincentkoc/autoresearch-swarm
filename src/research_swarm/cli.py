@@ -51,6 +51,16 @@ def parser() -> argparse.ArgumentParser:
         "--restore-id", required=True, help="Stable UUID for interruption recovery"
     )
     restore.add_argument("--digest", help="Expected manifest digest from trusted custody")
+    claim_request = backups.add_parser(
+        "request-claim", help="Prove possession of one completed inactive restore"
+    )
+    claim_request.add_argument("path", type=Path)
+    claim_request.add_argument("--destination", type=Path, required=True)
+    claim_request.add_argument("--restore-id", required=True)
+    claim_request.add_argument("--digest", help="Expected manifest digest from trusted custody")
+    claim = backups.add_parser("claim", help="Irreversibly elect one target at the original source")
+    claim.add_argument("path", type=Path)
+    claim.add_argument("--request-file", type=Path, required=True)
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -456,6 +466,41 @@ def main(argv: list[str] | None = None) -> int:
             from research_swarm.checkpoints.backup import export_backup, verify_backup
             from research_swarm.domain.identity import CommandContext
 
+            if args.backup_action == "request-claim":
+                if args.state_dir or args.token_file:
+                    raise ValueError("Restore claim requests use their explicit destination")
+                from research_swarm.checkpoints.claims import request_restore_claim
+
+                proof = request_restore_claim(
+                    args.path,
+                    args.destination,
+                    restore_id=args.restore_id,
+                    expected_digest=args.digest,
+                )
+                print(canonical_bytes(proof.model_dump(mode="json")).decode("utf-8"))
+                return 0
+            if args.backup_action == "claim":
+                if args.state_dir is None or not (args.state_dir / "identity.json").is_file():
+                    raise ResearchError(
+                        ErrorCode.PROJECT_CONTRACT_INVALID,
+                        "Restore claims require the explicit existing source state",
+                    )
+                from research_swarm.checkpoints.claims import claim_restore
+                from research_swarm.domain.backup import SignedRestoreRequest
+
+                proof = SignedRestoreRequest.model_validate(_request(args.request_file))
+                runtime = LocalRuntime.open(args.state_dir)
+                claimed = claim_restore(
+                    runtime,
+                    CommandContext(
+                        principal=runtime.principal(args.token_file),
+                        idempotency_key="restore-claim:" + proof.request.restore_id,
+                    ),
+                    args.path,
+                    proof,
+                )
+                print(canonical_bytes(claimed.model_dump(mode="json")).decode("utf-8"))
+                return 0
             if args.backup_action == "restore":
                 if args.state_dir or args.token_file:
                     raise ValueError("Inactive restore uses its explicit destination")

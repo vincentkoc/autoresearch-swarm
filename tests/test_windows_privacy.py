@@ -9,6 +9,7 @@ import pytest
 
 from research_swarm.domain.errors import ResearchError
 from research_swarm.runtime import LocalRuntime
+from research_swarm.state.private_files import read_private, write_private
 from research_swarm.state.windows_privacy import (
     create_private_descriptor,
     current_user_sid,
@@ -98,3 +99,15 @@ def test_runtime_rejects_broad_token_before_database_mutation(tmp_path: Path) ->
     with pytest.raises(ResearchError, match="another account"):
         LocalRuntime.open(root)
     assert (root / "research.sqlite").read_bytes() == before
+
+
+def test_atomic_private_replacement_retains_owner_and_system_acl(tmp_path: Path) -> None:
+    root = tmp_path / "replace-private"
+    with private_directory(root):
+        path = root / "custody.json"
+        write_private(path, b"original custody")
+        write_private(path, b"elected target")
+        assert read_private(root, path.name, limit=256) == b"elected target"
+        with verified_path(path, directory=False, protected=True):
+            pass
+        assert {entry.name for entry in root.iterdir()} == {path.name}

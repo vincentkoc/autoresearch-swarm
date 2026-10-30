@@ -239,6 +239,8 @@ def test_native_exit_preserves_admission_and_exact_resume(sealed_runtime, tmp_pa
 import os, sys
 from pathlib import Path
 from research_swarm.checkpoints import restore
+from research_swarm.checkpoints import files
+from research_swarm.state import private_files
 from research_swarm.state.database import Transaction
 phase = sys.argv[4]
 original_event = Transaction.event
@@ -254,12 +256,13 @@ def write(path, content):
         os._exit(73)
     return original_write(path, content)
 restore.write_private = write
-original_replace = os.replace
+original_replace = private_files.replace_private
 def replace(source, destination):
     if phase == 'staged-file' and Path(destination).name == 'identity.json':
         os._exit(73)
     return original_replace(source, destination)
-os.replace = replace
+private_files.replace_private = replace
+files.replace_private = replace
 restore.restore_inactive(Path(sys.argv[1]), Path(sys.argv[2]), restore_id=sys.argv[3])
 """
     exited = subprocess.run(

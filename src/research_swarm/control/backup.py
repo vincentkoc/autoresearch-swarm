@@ -1,6 +1,11 @@
 """Seal research mutations at one transaction cut before native backup export."""
 
-from research_swarm.domain.backup import SealWorkspace, WorkspaceSeal
+from research_swarm.domain.backup import (
+    BackupCustodyPin,
+    RegisterBackupCustody,
+    SealWorkspace,
+    WorkspaceSeal,
+)
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
@@ -10,6 +15,59 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 class BackupControl:
     def __init__(self, database: Database) -> None:
         self.database = database
+
+    def register_custody(
+        self, context: CommandContext, request: RegisterBackupCustody
+    ) -> JsonObject:
+        def register(transaction: Transaction) -> JsonObject:
+            row = transaction.get("workspace_gate", transaction.workspace_id)
+            seal = WorkspaceSeal.model_validate(row["data"])
+            authority = transaction.connection.execute(
+                "SELECT controller_id,control_epoch FROM workspaces WHERE id=?",
+                (transaction.workspace_id,),
+            ).one()
+            pin = request.pin
+            if (
+                row["state"] != "sealed"
+                or request.backup_id != seal.backup_id
+                or pin.workspace_id != transaction.workspace_id
+                or (pin.controller_id, pin.control_epoch)
+                != (authority["controller_id"], authority["control_epoch"])
+                or pin.control_epoch != seal.control_epoch
+            ):
+                raise ResearchError(ErrorCode.STALE_FENCE, "Backup custody cut differs")
+            existing = transaction.connection.execute(
+                "SELECT id FROM records WHERE workspace_id=? AND kind='backup_custody' "
+                "AND json_extract(payload,'$.control_epoch')=?",
+                (transaction.workspace_id, pin.control_epoch),
+            ).fetchall()
+            if existing:
+                previous = transaction.get("backup_custody", existing[0]["id"])
+                if (
+                    len(existing) != 1
+                    or previous["state"] != "immutable"
+                    or BackupCustodyPin.model_validate(previous["data"]) != pin
+                ):
+                    raise ResearchError(
+                        ErrorCode.IDEMPOTENCY_CONFLICT, "Backup custody is already pinned"
+                    )
+                return previous
+            registered = transaction.insert(
+                "backup_custody", pin.custody_id, pin.model_dump(mode="json"), state="immutable"
+            )
+            transaction.observe_waits = False
+            transaction.event(
+                "workspace.backup_custody_registered", registered, {"backup_id": request.backup_id}
+            )
+            return registered
+
+        return self.database.execute(
+            context,
+            "workspace.register_backup_custody",
+            request.model_dump(mode="json"),
+            "*",
+            register,
+        )
 
     def seal(self, context: CommandContext, request: SealWorkspace) -> JsonObject:
         def seal(transaction: Transaction) -> JsonObject:

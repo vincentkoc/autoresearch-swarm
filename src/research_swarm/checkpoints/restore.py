@@ -223,6 +223,7 @@ def _transform(
             workspace_id=manifest.seal.workspace_id,
             controller_id=manifest.seal.controller_id,
             source_custody_id=manifest.source_custody_id,
+            source_public_key=manifest.source_public_key,
             target_public_key=custody.public_key,
             source_control_epoch=manifest.seal.control_epoch,
             target_control_epoch=epoch,
@@ -286,6 +287,7 @@ def _verify_receipt(
         or receipt.workspace_id != seal.workspace_id
         or receipt.controller_id != seal.controller_id
         or receipt.source_custody_id != backup.manifest.source_custody_id
+        or receipt.source_public_key not in (None, backup.manifest.source_public_key)
         or receipt.target_public_key != custody.public_key
         or receipt.source_control_epoch != seal.control_epoch
         or receipt.target_control_epoch != next_counter(seal.control_epoch)

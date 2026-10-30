@@ -16,7 +16,17 @@ def require_workspace_mutation(connection: SqlSession, workspace_id: str, operat
     seal = WorkspaceSeal.model_validate(strict_json_loads(row["payload"]))
     if seal.workspace_id != workspace_id:
         raise ResearchError(ErrorCode.STALE_FENCE, "Workspace recovery identity differs")
-    if row["state"] == "sealed" and operation == "workspace.seal":
+    if row["state"] == "sealed" and operation in {
+        "workspace.seal",
+        "workspace.register_backup_custody",
+    }:
+        pinned = connection.execute(
+            "SELECT 1 FROM records WHERE workspace_id=? AND kind='backup_custody' "
+            "AND json_extract(payload,'$.control_epoch')=? LIMIT 1",
+            (workspace_id, seal.control_epoch),
+        ).fetchone()
+        if pinned is not None:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Backup custody finalized the sealed cut")
         return  # The command still verifies the exact original seal and current revision.
     raise ResearchError(
         ErrorCode.STALE_FENCE,

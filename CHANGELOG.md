@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Pin source custody per control epoch and irreversibly elect one inactive restore target through signed native requests and claims. Persist the claim with its source key, preserve exact replay and refuse missing or substituted custody.
+- Expose native claim request/issuance commands, keep elected targets inactive and document the source-custody rollback trust boundary. Use Windows write-through private-file replacement with explicit failure propagation.
+
 - Restore verified native checkpoints into a distinct inactive epoch, preserving artifact generations, acknowledgments, budgets and unresolved execution while archiving and fencing original worker sessions.
 - Publish admission barriers before destination creation, resume exact private staging/SQLite interruptions, compare preserved ledger contents and prevent recovery events from waking old workflows. Keep activation unavailable pending source and worker reconciliation.
 

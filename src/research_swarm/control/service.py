@@ -119,7 +119,7 @@ from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSes
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.artifacts import ArtifactRetention
-from research_swarm.domain.backup import SealWorkspace
+from research_swarm.domain.backup import RegisterBackupCustody, SealWorkspace
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
@@ -249,6 +249,11 @@ class ResearchService:
 
     def seal_workspace(self, context: CommandContext, request: SealWorkspace) -> JsonObject:
         return self.backups.seal(context, request)
+
+    def register_backup_custody(
+        self, context: CommandContext, request: RegisterBackupCustody
+    ) -> JsonObject:
+        return self.backups.register_custody(context, request)
 
     def expire_acceptance(self, context: CommandContext, request: ExpireAcceptance) -> JsonObject:
         return self.acceptance.expire(context, request)

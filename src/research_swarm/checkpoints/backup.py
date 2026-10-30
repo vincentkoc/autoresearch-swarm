@@ -24,16 +24,19 @@ from research_swarm.control.auth import CredentialStore
 from research_swarm.domain.artifacts import ArtifactRecord, StoredBlob, UploadSpec
 from research_swarm.domain.assignments import signing_key_id
 from research_swarm.domain.backup import (
+    BackupCustodyPin,
     BackupFile,
     BackupManifest,
     BackupPrivateFile,
+    RegisterBackupCustody,
     SignedBackup,
+    SignedRestoreClaim,
     WorkspaceSeal,
 )
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, Principal
-from research_swarm.domain.types import ID, VersionedRecord, new_id, utc_now
+from research_swarm.domain.types import ID, Revision, VersionedRecord, new_id, utc_now
 from research_swarm.projects.native_files import SourceReader
 from research_swarm.runtime import LocalRuntime, RuntimeIdentity
 from research_swarm.state.private_files import (
@@ -53,7 +56,9 @@ class SourceCustody(VersionedRecord):
     id: ID
     workspace_id: ID
     controller_id: ID
+    control_epoch: Revision | None = Field(default=None, exclude_if=lambda value: value is None)
     private_key: str = Field(pattern=r"^[0-9a-f]{64}$", repr=False)
+    claim: SignedRestoreClaim | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @property
     def key(self) -> Ed25519PrivateKey:
@@ -67,6 +72,7 @@ class SnapshotInventory:
     seal_digest: str
     evidence_through: int
     artifacts: tuple[StoredBlob, ...]
+    custody_pin: BackupCustodyPin | None
 
 
 @dataclass(frozen=True)
@@ -74,26 +80,88 @@ class VerifiedBackup:
     root: Path
     manifest: BackupManifest
     identity: RuntimeIdentity
+    custody_pin: BackupCustodyPin | None = None
 
 
-def source_custody(runtime: LocalRuntime, *, create: bool = False) -> SourceCustody:
+def source_custody(
+    runtime: LocalRuntime, *, create: bool = False, context: CommandContext | None = None
+) -> SourceCustody:
+    def registered() -> tuple[int, BackupCustodyPin | None]:
+        with runtime.database.connect() as connection:
+            authority = connection.execute(
+                "SELECT control_epoch FROM workspaces WHERE id=?", (runtime.identity.workspace_id,)
+            ).one()
+            pins = connection.execute(
+                "SELECT id,state,payload FROM records WHERE workspace_id=? "
+                "AND kind='backup_custody' "
+                "AND json_extract(payload,'$.control_epoch')=?",
+                (runtime.identity.workspace_id, authority["control_epoch"]),
+            ).fetchall()
+        if len(pins) > 1 or (pins and pins[0]["state"] != "immutable"):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Source custody registration differs")
+        pin = BackupCustodyPin.model_validate_json(pins[0]["payload"]) if pins else None
+        if pin is not None and pin.custody_id != pins[0]["id"]:
+            raise ResearchError(
+                ErrorCode.STALE_FENCE, "Source custody registration identity differs"
+            )
+        return authority["control_epoch"], pin
+
+    epoch, pin = registered()
+    if create:
+        if context is None:
+            raise ValueError("Custody creation requires an explicit operator context")
+        context.principal.require("*")
+    elif pin is None:
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE,
+            "Source custody is not registered; re-export its checkpoint",
+        )
     path = runtime.root / "backup-custody.json"
-    if not path.exists() and not path.is_symlink() and create:
+    if not path.exists() and not path.is_symlink():
+        if pin is not None or not create:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Original source custody file is missing")
         custody = SourceCustody(
             id=new_id(),
             workspace_id=runtime.identity.workspace_id,
             controller_id=runtime.identity.controller_id,
+            control_epoch=epoch,
             private_key=Ed25519PrivateKey.generate().private_bytes_raw().hex(),
         )
         write_private(path, canonical_bytes(custody.model_dump(mode="json")))
     custody = SourceCustody.model_validate(
-        strict_json_loads(read_private(runtime.root, path.name, limit=2048))
+        strict_json_loads(read_private(runtime.root, path.name, limit=16_384))
     )
     if (custody.workspace_id, custody.controller_id) != (
         runtime.identity.workspace_id,
         runtime.identity.controller_id,
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Source custody identity differs")
+    if custody.control_epoch is None and pin is None and create:
+        custody = custody.model_copy(update={"control_epoch": epoch})
+        write_private(path, canonical_bytes(custody.model_dump(mode="json")))
+    expected = BackupCustodyPin(
+        custody_id=custody.id,
+        workspace_id=custody.workspace_id,
+        controller_id=custody.controller_id,
+        control_epoch=epoch,
+        public_key=custody.key.public_key().public_bytes_raw().hex(),
+    )
+    if custody.control_epoch != epoch or (pin is not None and pin != expected):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Original source custody does not match its pin")
+    if pin is None:
+        assert context is not None
+        gate = runtime.database.read_record(
+            context, "workspace_gate", runtime.identity.workspace_id
+        )
+        seal = WorkspaceSeal.model_validate(gate["data"])
+        runtime.service.register_backup_custody(
+            CommandContext(
+                principal=context.principal, idempotency_key="backup-custody:" + custody.id
+            ),
+            RegisterBackupCustody(backup_id=seal.backup_id, pin=expected),
+        )
+        if registered() != (epoch, expected):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Source custody pin was not retained")
     return custody
 
 
@@ -219,12 +287,28 @@ def snapshot_inventory(root: Path, identity: RuntimeIdentity) -> SnapshotInvento
             id=identity.operator_id, workspace_id=identity.workspace_id, scopes=frozenset({"*"})
         ):
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Backup operator identity differs")
+        pins = connection.execute(
+            "SELECT id,state,payload FROM records WHERE kind='backup_custody' "
+            "AND json_extract(payload,'$.control_epoch')=?",
+            (seal.control_epoch,),
+        ).fetchall()
+        if len(pins) > 1 or (pins and pins[0]["state"] != "immutable"):
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup custody pins differ")
+        pin = BackupCustodyPin.model_validate_json(pins[0]["payload"]) if pins else None
+        if pin is not None and (
+            pin.custody_id != pins[0]["id"]
+            or pin.workspace_id != seal.workspace_id
+            or pin.controller_id != seal.controller_id
+            or pin.control_epoch != seal.control_epoch
+        ):
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup custody identity differs")
         return SnapshotInventory(
             seal,
             gate["revision"],
             record_digest("research.workspace-seal.v1", seal.model_dump(mode="json")),
             authority["next_sequence"] - 1,
             tuple(inventory),
+            pin,
         )
     except sqlite3.DatabaseError as error:
         raise ResearchError(
@@ -276,6 +360,11 @@ def verify_backup(root: Path, *, expected_digest: str | None = None) -> Verified
         or inventory.evidence_through != manifest.snapshot_evidence_through
         or inventory.artifacts != manifest.artifacts
         or manifest.database_schema != SCHEMA_VERSION
+        or (
+            inventory.custody_pin is not None
+            and (inventory.custody_pin.custody_id, inventory.custody_pin.public_key)
+            != (manifest.source_custody_id, manifest.source_public_key)
+        )
     ):
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup snapshot inventory differs")
     for blob in manifest.artifacts:
@@ -287,7 +376,7 @@ def verify_backup(root: Path, *, expected_digest: str | None = None) -> Verified
             != expected_file
         ):
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup artifact differs")
-    return VerifiedBackup(root, manifest, identity)
+    return VerifiedBackup(root, manifest, identity, inventory.custody_pin)
 
 
 def export_backup(
@@ -313,8 +402,12 @@ def export_backup(
         seal = WorkspaceSeal.model_validate(row["data"])
         if row["state"] != "sealed" or seal.backup_id != backup_id:
             raise ResearchError(ErrorCode.STALE_FENCE, "Backup seal differs")
-        custody = source_custody(runtime, create=True)
+        custody = source_custody(runtime, create=True, context=context)
         public = custody.key.public_key().public_bytes_raw().hex()
+        if custody.claim is not None:
+            from research_swarm.checkpoints.claims import verify_claim
+
+            verify_claim(custody.claim, source_public_key=public)
         if destination.exists() or destination.is_symlink():
             existing = verify_backup(destination).manifest
             if existing.seal != seal or (
@@ -322,7 +415,16 @@ def export_backup(
                 existing.source_public_key,
             ) != (custody.id, public):
                 raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Backup destination differs")
+            if (
+                custody.claim is not None
+                and existing.digest != custody.claim.claim.request.manifest_digest
+            ):
+                raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Another manifest was elected")
             return existing
+        if custody.claim is not None:
+            raise ResearchError(
+                ErrorCode.STALE_FENCE, "Source already elected a target; copy the original bundle"
+            )
         staged = destination.parent / (".research-backup-" + new_id())
         with private_state_directory(staged, exclusive=True):
             pass

@@ -15,7 +15,7 @@ from research_swarm.domain.backup import BackupFile
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from research_swarm.projects.native_files import SourceReader
-from research_swarm.state.private_files import sync_directory
+from research_swarm.state.private_files import replace_private
 
 CHUNK_BYTES = 1024 * 1024
 DATABASE_LIMIT = 1024**3
@@ -72,7 +72,6 @@ def copy_private(stream: BinaryIO, destination: Path, expected: BackupFile) -> N
                 raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup file differs")
             target.flush()
             os.fsync(target.fileno())
-        os.replace(staged, destination)
-        sync_directory(destination.parent)
+        replace_private(staged, destination)
     finally:
         staged.unlink(missing_ok=True)

@@ -70,6 +70,7 @@ def _api() -> dict[str, Any]:
         (kernel, "CloseHandle", [HANDLE], BOOL),
         (kernel, "LocalFree", [PTR], PTR),
         (kernel, "CreateDirectoryW", [wintypes.LPCWSTR, ctypes.POINTER(SecurityAttributes)], BOOL),
+        (kernel, "MoveFileExW", [wintypes.LPCWSTR, wintypes.LPCWSTR, DWORD], BOOL),
         (
             kernel,
             "CreateFileW",
@@ -318,6 +319,11 @@ def create_private_descriptor(path: Path) -> int:
     except BaseException:
         api["CloseHandle"](handle)
         raise
+
+
+def replace_write_through(source: Path, destination: Path) -> None:
+    """Publish a closed, flushed private file without a weaker rename fallback."""
+    _check(_api()["MoveFileExW"](str(source), str(destination), 0x1 | 0x8))
 
 
 def verify_descriptor(descriptor: int, *, protected: bool = True) -> None:
