@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "dataset": "fictional-linear-pose-v1",
+  "units": "radians",
+  "partition": {
+    "fit": ["fictional-fit-a", "fictional-fit-b"],
+    "search": ["fictional-search-a", "fictional-search-b"]
+  },
+  "people": {
+    "fictional-fit-a": [[-1.0, -0.48], [-0.4, -0.12], [0.4, 0.36], [1.0, 0.72]],
+    "fictional-fit-b": [[-1.0, -0.52], [-0.4, -0.16], [0.4, 0.32], [1.0, 0.68]],
+    "fictional-search-a": [[-0.5, -0.1], [0.5, 0.5]],
+    "fictional-search-b": [[-0.9, -0.46], [-0.6, -0.28], [-0.3, -0.1], [0.1, 0.14], [0.5, 0.38], [0.9, 0.62]]
+  }
+}

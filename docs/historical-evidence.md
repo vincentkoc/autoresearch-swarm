@@ -72,3 +72,7 @@ Import and fresh replay establish different claims. A disposable ordinary projec
 may replay a compatible recipe and compare receipt identities and statistics.
 Only fresh authorized execution/evaluation can enter a new campaign's promotion
 contract. Metadata import alone proves neither replay equivalence nor improvement.
+
+The [ordinary-project adoption guide](project-adoption.md) maps this sequence to
+an existing research repository. Its public synthetic pose example qualifies
+receipt replay and denominator handling without a project-specific engine plugin.

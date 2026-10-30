@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a second ordinary CPU research project with fictional pose data, deterministic training, protected evaluation, and two explicit historical receipt readers.
+- Qualify historical import followed by fresh native replay, preserving checkpoint and draw-order identity, missing observations, separate panels, and distinct macro/pooled error denominators without a project-specific engine plugin.
+
 - Add generic immutable historical-evidence import with exact raw-byte retention, schema-specific source identity, bounded normalized observations, and shared HTTP/SDK/CLI/MCP access.
 - Preserve missing measurements and provenance without minting current attempts, evaluator receipts, budget authority, or promotion eligibility; reject changed content under an existing historical identity.
 

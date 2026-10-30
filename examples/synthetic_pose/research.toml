@@ -1,0 +1,60 @@
+schema_version = "1.0"
+
+[project]
+name = "Synthetic pose receipt replay"
+slug = "synthetic-pose"
+description = "An ordinary CPU project demonstrating distinct pose receipt formats and denominators."
+
+[source]
+mode = "directory"
+paths = ["*.py", "*.json", "research.toml"]
+
+[mutation]
+allow = ["train.py"]
+
+[environment]
+profile = "python-cpu"
+lock_path = "environment.json"
+network_policy = "inherit"
+
+[data]
+manifest_path = "dataset.json"
+
+[evaluation]
+protected_paths = ["common.py", "receipts.py", "evaluate.py"]
+comparison_class = "synthetic-pose-receipt-v1"
+measurement_trust = "authenticated"
+expected_members = ["fictional-search-a", "fictional-search-b"]
+
+[[evaluation.metrics]]
+name = "macro_mae_deg"
+unit = "degrees"
+direction = "minimize"
+aggregation = "mean_of_full_panel_person_means"
+
+[[evaluation.metrics]]
+name = "pooled_mae_deg"
+unit = "degrees"
+direction = "minimize"
+aggregation = "full_panel_absolute_error_sum_over_valid_elements"
+
+[timing]
+budget_ms = 1000
+scope = "active_training"
+timer_authority = "project_reported"
+
+[[stages]]
+id = "train"
+kind = "train"
+argv = ["python", "train.py"]
+timeout_ms = 10000
+output_names = ["model", "fit_receipt"]
+
+[[stages]]
+id = "evaluate"
+kind = "evaluate"
+argv = ["python", "evaluate.py"]
+dependencies = ["train"]
+required_artifacts = ["model", "fit_receipt"]
+timeout_ms = 10000
+output_names = ["endpoint_schema2", "endpoint_candidates_v2"]

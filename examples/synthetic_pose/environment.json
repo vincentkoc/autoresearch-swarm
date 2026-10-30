@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "implementation": "cpython",
+  "python_requires": ">=3.11",
+  "dependencies": [],
+  "runtime_identity": "Record the exact worker Python version and execution fingerprint"
+}
