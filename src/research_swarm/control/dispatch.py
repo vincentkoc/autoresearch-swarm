@@ -285,5 +285,10 @@ def capabilities() -> JsonObject:
             "calibrated_execution": "live_origin_required",
         },
         "evaluation": "authenticated_receipts",
-        "drivers": {"local": "explicit_worker", "temporal": "pending", "cloudflare": "pending"},
+        "drivers": {
+            "local": "explicit_worker",
+            "remote": "scoped_http_worker",
+            "temporal": "pending",
+            "cloudflare": "pending",
+        },
     }

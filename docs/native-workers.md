@@ -2,7 +2,7 @@
 
 The core includes native supervision, a worker journal, `LocalWorker`, and a local
 async campaign driver. [Remote CPU enrollment](remote-workers.md) uses explicit
-operator bundles; persistent remote scheduling remains integration work.
+operator bundles and a separate scoped HTTP driver.
 
 ## Run a local campaign
 
@@ -43,8 +43,8 @@ execution before releasing driver ownership. A forced process termination still
 requires journal reconciliation on restart. Terminal loss does not prove closure.
 
 Python callers can use `await LocalDriver(client, enrollment).drain(campaign_id)`.
-The driver accepts local transports. HTTP worker delivery and hosted workflow
-adapters require their own qualified acknowledgment and ownership semantics.
+This driver accepts local transports. `ScopedWorkerDriver` supplies outbound HTTP
+execution with restricted worker authority. Hosted workflow adapters remain separate.
 
 ## Local enrollment
 

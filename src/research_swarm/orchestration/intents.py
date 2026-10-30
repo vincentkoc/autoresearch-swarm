@@ -7,7 +7,8 @@ from typing import Literal
 
 from pydantic import Field
 
-from research_swarm.client import LocalTransport, ResearchClient
+from research_swarm.client import HTTPTransport, LocalTransport, ResearchClient
+from research_swarm.control.workers import WorkerData
 from research_swarm.domain.canonical import canonical_bytes, content_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Revision, VersionedRecord, new_id
@@ -31,8 +32,25 @@ class CommandIntent(VersionedRecord):
 class CommandIntents:
     """Caller holds one driver lock across recovery, scheduling, and drain."""
 
-    def __init__(self, root: Path, clients: dict[Route, ResearchClient]) -> None:
-        if any(not isinstance(client.transport, LocalTransport) for client in clients.values()):
+    def __init__(
+        self,
+        root: Path,
+        clients: dict[Route, ResearchClient],
+        *,
+        remote_worker: WorkerData | None = None,
+    ) -> None:
+        if remote_worker is not None and (
+            set(clients) != {"worker"}
+            or not isinstance(clients["worker"].transport, HTTPTransport)
+            or remote_worker.project_ids is None
+            or remote_worker.clock_mode != "bounded-continuous-v1"
+        ):
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Remote intents require one scoped worker route"
+            )
+        if remote_worker is None and any(
+            not isinstance(client.transport, LocalTransport) for client in clients.values()
+        ):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Local intents require local command authority"
             )
@@ -41,6 +59,14 @@ class CommandIntents:
             identity = {}
             for route, client in clients.items():
                 transport = client.transport
+                if remote_worker is not None:
+                    assert isinstance(transport, HTTPTransport)
+                    identity[route] = {
+                        "binding": remote_worker.binding.model_dump(mode="json"),
+                        "actor_id": remote_worker.principal_id,
+                        "controller_url": str(transport.http.base_url),
+                    }
+                    continue
                 assert isinstance(transport, LocalTransport)
                 principal = transport.resolve_principal()
                 identity[route] = {
@@ -83,10 +109,10 @@ class CommandIntents:
                 expected_revision=intent.expected_revision,
             )
         except ResearchError as error:
-            if intent.state != "accepted" and error.code in {
-                ErrorCode.RESOURCE_UNAVAILABLE,
-                ErrorCode.REVISION_CONFLICT,
-            }:
+            if intent.state != "accepted" and (
+                error.command_id is not None
+                or error.code in {ErrorCode.RESOURCE_UNAVAILABLE, ErrorCode.REVISION_CONFLICT}
+            ):
                 self._write(intent.model_copy(update={"state": "rejected", "error": error.code}))
             raise
         self._write(intent.model_copy(update={"state": "accepted"}))

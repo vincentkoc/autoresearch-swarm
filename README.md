@@ -34,8 +34,8 @@ See [campaign control](docs/campaigns.md) for pause, completion, and evidence re
 
 Run the original CPU example with `uv run research run examples/cpu_bigram`.
 See [local runs](docs/local-runs.md) for resume, budgets, and agent control.
-See [remote workers](docs/remote-workers.md) for explicit CPU enrollment and pinned
-HTTP connections. Persistent remote scheduling is the next integration layer.
+See [remote workers](docs/remote-workers.md) for explicit CPU enrollment, pinned
+HTTP connections, and persistent asynchronous execution.
 
 See the [implementation ledger](docs/implementation.md) for qualification status,
 the [design](docs/design.md) for the complete contract, and

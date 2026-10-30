@@ -54,7 +54,8 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     parallel_stage = options is True
     campaign_options = {"limits": LIMITS, **(options if isinstance(options, dict) else {})}
     learning_rate = campaign_options.pop("source_learning_rate", None)
-    if parallel_stage or learning_rate is not None:
+    finish_delay = campaign_options.pop("source_finish_delay", None)
+    if parallel_stage or learning_rate is not None or finish_delay is not None:
         copied = tmp_path / "parallel-source"
         shutil.copytree(source, copied)
         source = copied
@@ -64,6 +65,13 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
                 training.read_text(encoding="utf-8").replace(
                     "LEARNING_RATE = 0.35", f"LEARNING_RATE = {learning_rate}"
                 ),
+                encoding="utf-8",
+            )
+        if finish_delay is not None:
+            training = source / "train.py"
+            training.write_text(
+                training.read_text(encoding="utf-8")
+                + f"\nimport time\ntime.sleep({finish_delay})\n",
                 encoding="utf-8",
             )
     if parallel_stage:

@@ -7,7 +7,7 @@ local controller database or receives an evaluator credential.
 
 This release supplies enrollment, scoped discovery, calibrated native execution,
 and publication. `worker connect` verifies and persists the connection, then exits.
-A persistent polling/scheduling driver is still separate integration work.
+`worker start` runs the scoped worker in the foreground.
 
 ## Describe the worker
 
@@ -99,15 +99,81 @@ with connect_worker(Path("worker-state")) as enrollment:
     # result = worker.execute(attempt_id)
 ~~~
 
-The context closes the HTTP client. It does not terminate native work or release
-machine claims. A future driver must reconcile journals and pending commands
-before new admission, preserve uncertain outcomes, and drain work on graceful stop.
+The context closes the HTTP client. Native closure and machine-claim release remain
+explicit execution outcomes.
+
+## Run the scoped worker
+
+~~~sh
+research worker start --worker-dir ./worker-state
+research worker start --worker-dir ./worker-state --once
+~~~
+
+The persistent mode polls for admitted project work. `--once` drains currently
+available work and returns a bounded JSON result. `idle` means no eligible work is
+available to this worker. It does not complete a campaign. Evaluation jobs still
+need a controller-side authorization; the worker never issues evaluator receipts
+or changes scientific selection.
+
+Polling defaults to 500 milliseconds and backs off to 15 seconds when idle or
+disconnected. `--poll-ms` and `--maximum-backoff-ms` configure bounded integer
+durations. One native lock owns scheduling, command delivery, and drain. Driver
+identity pins the endpoint, credential ID, full enrollment, journal, and registry.
+The command-intent store accepts a remote worker route only; local controller and
+evaluator routing retain their existing authority requirements.
+
+Before new admission, the driver replays unresolved command envelopes with their
+original keys, queries its own pending assignments, and reconciles its journal.
+An unavailable acknowledgment remains uncertain. An explicit rejected command can
+support a later scheduling decision. A lost publication acknowledgment recovers
+the already closed attempt even when the controller no longer lists it as pending.
+
+HTTP operations run outside the event loop. A slow claim does not postpone an
+already admitted execution task. Free slots are refilled while other experiments
+continue; there is no generation barrier. Recovery retries have per-attempt timers,
+so a slow sibling cannot delay reconciliation of another result.
+
+Observed native uncertainty adds a worker-local admission fence. The driver can
+reconcile the uncertain attempt, but it holds new native execution until terminal
+accepted publication agrees with local closure. It rechecks completed tasks and
+journals before each claim and after awaited claim replies. A claim accepted while
+an in-flight failure becomes visible remains reserved for recovery. Other workers
+retain their independent authority and resource accounting. Clock or lease expiry
+never substitutes for native closure.
+
+`driver.stop.set()` stops new scheduling and drains already launched native work.
+Cancellation of the run task also retains its owner lock until outstanding control
+calls and execution threads finish. A control call accepted during cancellation
+can remain durably pending for the next resume. Forced driver termination leaves
+the independent supervisor's original deadline in force; restart observes the
+original process instead of launching its attempt again.
+
+Python callers can use:
+
+~~~python
+from research_swarm.orchestration.scoped import ScopedWorkerDriver
+
+with connect_worker(Path("worker-state")) as enrollment:
+    result = await ScopedWorkerDriver(enrollment).run(once=True)
+~~~
+
+Results report `idle`, `blocked`, `disconnected`, or `stopped`, observation counts,
+and at most 50 recent attempt IDs/findings. Observation counts include successful
+reconciliation deliveries and are not counts of distinct scientific experiments.
+The CLI returns exit code 3 for blocked/disconnected drain results and code 2 for
+command errors. Persistent mode requires explicit stop; it does not install a
+background service.
 
 ## Evidence and limits
 
 Tests run real CLI subprocesses, scoped HTTP connections, and CPU execution. They
 cover concurrent setup, interrupted credential/enrollment/export, interrupted native
 initialization, immutable resume, secret-safe validation errors, changed profiles
-and bundles, and missing or revoked authority. Physical remote hosts, service
-installation, persistent remote scheduling, and non-CPU engines are separately
-qualified features. No cloud service is required for the local default.
+and bundles, and missing or revoked authority. Driver tests cover asynchronous
+slot refill, delayed HTTP replies, exact uncertain-command recovery, worker-lock
+ownership during cancellation, and uncertainty discovered during offer/claim RPCs.
+An independent HTTP controller, worker driver, and native supervisor test kills the
+driver while training runs and verifies recovery of the same native identity.
+Physical remote hosts, service installation, remote cancellation/heartbeats, and
+non-CPU engines remain separately qualified features. No cloud service is required
+for the local default.

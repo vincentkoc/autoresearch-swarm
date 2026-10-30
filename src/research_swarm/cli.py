@@ -66,6 +66,12 @@ def parser() -> argparse.ArgumentParser:
     )
     connect.add_argument("--worker-dir", type=Path, required=True)
     connect.add_argument("--bundle", type=Path)
+    start = worker_actions.add_parser("start", help="Run the scoped HTTP worker in the foreground")
+    start.add_argument("--worker-dir", type=Path, required=True)
+    start.add_argument("--bundle", type=Path)
+    start.add_argument("--once", action="store_true", help="Drain available work and exit")
+    start.add_argument("--poll-ms", type=int, default=500)
+    start.add_argument("--maximum-backoff-ms", type=int, default=15000)
     command = commands.add_parser("command", help="Send a typed domain command")
     command.add_argument("operation")
     command.add_argument("--file", type=Path, help="JSON request file, otherwise read stdin")
@@ -237,7 +243,7 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        if args.action == "worker" and args.worker_action in {"describe", "connect"}:
+        if args.action == "worker" and args.worker_action in {"describe", "connect", "start"}:
             from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
 
             if args.controller or args.token_file or args.state_dir:
@@ -251,6 +257,18 @@ def main(argv: list[str] | None = None) -> int:
                 print(canonical_bytes(description.model_dump(mode="json")).decode("utf-8"))
             else:
                 with connect_worker(args.worker_dir, bundle_path=args.bundle) as enrollment:
+                    if args.worker_action == "start":
+                        from research_swarm.orchestration.scoped import ScopedWorkerDriver
+
+                        outcome = asyncio.run(
+                            ScopedWorkerDriver(
+                                enrollment,
+                                poll_ms=args.poll_ms,
+                                maximum_backoff_ms=args.maximum_backoff_ms,
+                            ).run(once=args.once)
+                        )
+                        print(canonical_bytes(outcome.model_dump(mode="json")).decode("utf-8"))
+                        return 3 if outcome.state in {"blocked", "disconnected"} else 0
                     print(
                         canonical_bytes(
                             {
