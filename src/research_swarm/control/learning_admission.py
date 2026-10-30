@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 
+from research_swarm.control.benchmark_guard import require_benchmark_training
 from research_swarm.control.commands import SubmitTrial
 from research_swarm.control.learning_guard import optional_record
 from research_swarm.control.learning_inputs import require_prepared_inputs
@@ -22,7 +23,7 @@ class LearningAdmissionControl:
     def __init__(
         self,
         database: Database,
-        submit_trial: Callable[[Transaction, SubmitTrial], JsonObject],
+        submit_trial: Callable[[Transaction, SubmitTrial, str], JsonObject],
     ) -> None:
         self.database = database
         self.submit_trial = submit_trial
@@ -46,6 +47,7 @@ class LearningAdmissionControl:
             campaign = CampaignData.model_validate(campaign_row["data"])
             profile = require_training_profile(transaction, intent.profile_id)
             inputs = require_prepared_inputs(transaction, intent.inputs_id)
+            require_benchmark_training(transaction, intent, inputs, profile)
             if (
                 campaign.contract.project_id != profile.project_id
                 or campaign.contract.project_revision_id != profile.request.project_revision_id
@@ -65,6 +67,7 @@ class LearningAdmissionControl:
                     validation_id=intent.validation_id,
                     seed=intent.seed,
                 ),
+                intent.admission_id,
             )
             trial = TrialData.model_validate(trial_row["data"])
             jobs = {

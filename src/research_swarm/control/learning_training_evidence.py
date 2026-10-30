@@ -1,5 +1,6 @@
 """Current execution and input bindings for a completed ordinary training trial."""
 
+from research_swarm.control.benchmark_guard import require_benchmark_training
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.evaluations import EvaluationAuthorization, evaluation_inputs
 from research_swarm.control.learning_costs import attempt_cost
@@ -58,6 +59,7 @@ def training_evidence(transaction: Transaction, admission_id: str) -> TrainingEv
     intent = admission.request
     profile = require_training_profile(transaction, intent.profile_id)
     inputs = require_prepared_inputs(transaction, intent.inputs_id)
+    require_benchmark_training(transaction, intent, inputs, profile)
     inputs_digest = record_digest(
         "research.prepared-policy-inputs.v1", inputs.model_dump(mode="json")
     )

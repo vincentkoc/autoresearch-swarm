@@ -65,6 +65,7 @@ class AdmitPolicyTraining(SubmitTrial):
     admission_id: ID
     profile_id: ID
     inputs_id: ID
+    benchmark_id: ID | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class PolicyTrainingAdmission(VersionedRecord):

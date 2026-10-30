@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Freeze a held-out seed protocol before policy fitting, with an exact future training admission, original research family, reward rule and equal arm caps. Reserve the learning-plan identity so requalifying the same data cannot reset fitting history.
+- Guard reserved seeds in shared trial admission and require reserved training to name its benchmark. Freeze/admission races commit one consistent owner; preserve standalone numerical training and historical command serialization.
+
 - Publish one learned checkpoint per admitted training trial, deriving output references and evaluator authority from ordinary execution records. Verify exact input/output lineage, current research evidence, settled successful attempts and the approved numerical tolerance.
 - Keep bounded checkpoint/report reads pinned through atomic publication and artifact retention. Preserve historical replay after later corrections while requiring fresh evidence checks for current use; publication does not adopt the policy.
 

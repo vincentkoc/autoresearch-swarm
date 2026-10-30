@@ -874,6 +874,91 @@ future admission can rely on it.
 
 Preparing artifacts does not launch a trial or authorize policy adoption.
 
+## Freeze held-out seeds before fitting
+
+The first benchmark profile is `categorical-seed-holdout-v1`: new training seeds
+within one frozen research family and starting source. It does not claim transfer
+to another dataset, action set or hardware class. Full-source categorical actions
+are not portable patches; their protected project files remain fixed.
+
+After approving a training profile, freeze the panel before admitting any training
+from its development learning plan:
+
+```python
+from research_swarm.control.benchmark_models import FreezePolicyBenchmark
+from research_swarm.domain.budgets import BudgetLimit
+from research_swarm.evaluation.statistics import FixedPairedPolicy
+
+training_admission_id = new_id()
+benchmark = operator.command(
+    "learning.freeze_benchmark",
+    FreezePolicyBenchmark(
+        benchmark_id=new_id(),
+        training_admission_id=training_admission_id,
+        inputs_id=binding["request"]["binding_id"],
+        profile_id=profile["id"],
+        gate=FixedPairedPolicy(seeds=(101, 102, 103, 104, 105, 106, 107, 108)),
+        per_arm_limits=(
+            BudgetLimit(dimension="attempts", limit=4, unit="count"),
+            BudgetLimit(dimension="execution_ms", limit=300000, unit="ms"),
+            BudgetLimit(dimension="proposal_requests", limit=1, unit="count"),
+            BudgetLimit(dimension="trial_admissions", limit=2, unit="count"),
+        ),
+    ),
+    idempotency_key="freeze-policy-holdout",
+)["result"]
+```
+
+This command requires `learning.manage` and `read`; MCP exposes
+`research_learning_freeze_benchmark`. It derives the original research contract,
+starting source, comparison fingerprint, behavior policy and reward rule from the
+qualified development evidence. All development episodes must share that family.
+The two future arms have identical explicit caps: one proposal and two trials
+(starting comparator and selected candidate). Attempt capacity must cover both
+declared stage graphs. The objective is the original episode reward; incomplete
+or invalid cases block assessment. Plan creation does not allocate campaign funds.
+
+Reservations bind the learning-plan digest, exact prepared inputs, approved
+training profile, future admission ID and ordered seed panel. Requalifying a
+dataset changes its dataset identity, but cannot hide prior fitting or evade a
+reservation on the original learning plan. Even an admitted training trial that
+has not executed prevents retrospective benchmark creation for that plan. This
+includes ordinary trials whose campaign contains a canonical prepared `behavior`
+and `trajectories` pair, matched by named digest and size across every binding for
+the plan. Adding another campaign input does not hide that pair.
+
+Seed identity uses the **campaign** protocol digest, which includes protected
+evaluation/data/timing and campaign input names, digests and sizes. It is not a
+project registry ID. Any earlier trial admitted under that protocol and seed
+disqualifies the case. Freeze and ordinary trial admission serialize atomically;
+they cannot both claim a fresh case. The guard sits in the shared trial admission
+path, covering direct, proposal-driven and confirmation submissions.
+
+When admitting reserved training, use the saved `training_admission_id` and include
+`benchmark_id=benchmark["id"]` in `AdmitPolicyTraining`. Omitting that field, changing
+the input binding or choosing another admission ID does not bypass the reservation.
+Numerical training without a reserved benchmark remains available; omitted fields
+preserve the existing serialized command contract.
+
+The shared trial path also recognizes those canonical prepared pairs. Once their
+plan is reserved, it accepts them only through the qualified admission's internal
+authority for the frozen future ID. Public `SubmitTrial` has no field that grants
+that authority. Re-exported raw or independently transformed data outside canonical
+prepared bindings is outside this controller-visible fitting claim.
+
+Query `policy_benchmark`, `benchmark_plan`, `benchmark_training` and `benchmark_seed`
+for immutable protocol and reservation records. The protocol freezes the current
+SHA-256 sampling method; matching training seeds do not imply matching action
+draws, because policy and proposal identities enter those draws. The fixed sign
+gate counts ties as non-wins. Rejection or inconclusive evidence is a valid result;
+do not replace the seed panel after seeing outcomes.
+
+This slice freezes and guards the protocol. Reserved seeds remain unavailable to
+ordinary trial submission until benchmark arm authority is implemented. Binding
+the learned checkpoint, executing both arms, assessing the full panel and adopting
+a policy remain separate work. The reservation proves controller-observed ordering;
+it cannot certify that no external experiment used the same data or seeds.
+
 ## Approve and admit ordinary policy training
 
 The initial training profile supports one categorical REINFORCE update. An

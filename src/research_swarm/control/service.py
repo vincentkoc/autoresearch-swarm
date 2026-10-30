@@ -10,6 +10,12 @@ from pydantic import ValidationError
 from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.backup import BackupControl
+from research_swarm.control.benchmark_guard import (
+    require_prepared_training_authority,
+    require_unreserved_seed,
+)
+from research_swarm.control.benchmark_models import FreezePolicyBenchmark
+from research_swarm.control.benchmarks import BenchmarkControl
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
 from research_swarm.control.child_models import (
@@ -238,11 +244,17 @@ class ResearchService:
         )
         self.proposals = ProposalControl(database)
         self.learning = LearningControl(database)
+        self.benchmarks = BenchmarkControl(database)
         self.learning_datasets = LearningDatasetControl(database)
         self.learning_inputs = LearningInputControl(database, artifacts)
         self.learning_profiles = LearningProfileControl(database, artifacts)
         self.learning_publication = LearningPublicationControl(database, artifacts)
-        self.learning_admission = LearningAdmissionControl(database, self._submit_direct_trial)
+        self.learning_admission = LearningAdmissionControl(
+            database,
+            lambda transaction, request, admission_id: self._submit_direct_trial(
+                transaction, request, qualified_training_id=admission_id
+            ),
+        )
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
         self.search_admission = SearchAdmission(
@@ -440,6 +452,11 @@ class ResearchService:
         self, context: CommandContext, request: FreezeLearningPlan
     ) -> JsonObject:
         return self.learning.freeze(context, request)
+
+    def freeze_policy_benchmark(
+        self, context: CommandContext, request: FreezePolicyBenchmark
+    ) -> JsonObject:
+        return self.benchmarks.freeze(context, request)
 
     def qualify_trajectory_dataset(
         self, context: CommandContext, request: QualifyTrajectoryDataset
@@ -873,7 +890,13 @@ class ResearchService:
             lambda transaction: self._submit_direct_trial(transaction, request),
         )
 
-    def _submit_direct_trial(self, transaction: Transaction, request: SubmitTrial) -> JsonObject:
+    def _submit_direct_trial(
+        self,
+        transaction: Transaction,
+        request: SubmitTrial,
+        *,
+        qualified_training_id: str | None = None,
+    ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         check_revision(transaction.context, row)
         campaign = CampaignData.model_validate(row["data"])
@@ -888,7 +911,7 @@ class ResearchService:
             require_portfolio_trial_allowance(
                 transaction, request.campaign_id, campaign, len(state.pending_request_ids)
             )
-        return self._submit_trial(transaction, request)
+        return self._submit_trial(transaction, request, qualified_training_id=qualified_training_id)
 
     @staticmethod
     def _submit_trial(
@@ -898,6 +921,7 @@ class ResearchService:
         confirmation_side: Literal["candidate", "comparator"] | None = None,
         *,
         consuming_proposal_id: str | None = None,
+        qualified_training_id: str | None = None,
     ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         campaign = CampaignData.model_validate(row["data"])
@@ -913,6 +937,8 @@ class ResearchService:
             raise ResearchError(
                 ErrorCode.INVALID_TRANSITION, "Trial admission requires a running campaign"
             )
+        require_unreserved_seed(transaction, campaign.contract.protocol_digest, request.seed)
+        require_prepared_training_authority(transaction, campaign.contract, qualified_training_id)
         candidate = CandidateData.model_validate(
             transaction.get("candidate", request.candidate_id)["data"]
         )

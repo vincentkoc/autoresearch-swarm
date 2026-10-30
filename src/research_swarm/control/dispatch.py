@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from research_swarm.control.acceptance_models import ExpireAcceptance
+from research_swarm.control.benchmark_models import FreezePolicyBenchmark
 from research_swarm.control.child_models import (
     CancelChildCampaign,
     CreateChildCampaign,
@@ -112,6 +113,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.freeze_benchmark": CommandDefinition(
+        FreezePolicyBenchmark,
+        "freeze_policy_benchmark",
+        "learning.manage",
+        False,
+        "Freeze a fresh held-out seed panel and reserve one future policy-training admission.",
+        additional_scopes=("read",),
+    ),
     "learning.publish_training": CommandDefinition(
         PublishPolicyTraining,
         "publish_policy_training",
