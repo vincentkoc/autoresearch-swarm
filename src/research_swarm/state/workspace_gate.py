@@ -1,5 +1,8 @@
 """Shared authority admission, including callers that do not use an HTTP server."""
 
+from collections.abc import Mapping
+from typing import Any
+
 from research_swarm.domain.backup import BackupCustodyPin, RestoreReceipt, WorkspaceSeal
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -59,12 +62,34 @@ def require_recovery_admission(
         raise ResearchError(ErrorCode.STALE_FENCE, "Verified recovery cut changed")
 
 
-def require_workspace_mutation(connection: SqlSession, workspace_id: str, operation: str) -> None:
+def require_workspace_mutation(
+    connection: SqlSession,
+    workspace_id: str,
+    operation: str,
+    *,
+    context: CommandContext | None = None,
+    authority: StoreIdentity | None = None,
+    payload: Mapping[str, Any] | None = None,
+    request_digest: str | None = None,
+) -> None:
     row = connection.execute(
         "SELECT state,payload FROM records WHERE workspace_id=? AND kind='workspace_gate' AND id=?",
         (workspace_id, workspace_id),
     ).fetchone()
     if row is None:
+        return
+    if (
+        row["state"] == "recovering"
+        and context is not None
+        and authority is not None
+        and payload is not None
+        and request_digest is not None
+    ):
+        from research_swarm.state.recovery_guard import require_recovery_operation
+
+        require_recovery_operation(
+            connection, context, authority, operation, payload, request_digest
+        )
         return
     seal = WorkspaceSeal.model_validate(strict_json_loads(row["payload"]))
     if seal.workspace_id != workspace_id:

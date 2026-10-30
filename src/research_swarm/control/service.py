@@ -198,7 +198,9 @@ class ResearchService:
         self.crypto_provider = resolve_crypto(crypto_provider)
         self.event_recovery = EventRecovery(database, get_args(RecordKind))
         self.artifacts = artifacts
-        self.worker_outputs = WorkerOutputs(database, artifacts)
+        self.worker_outputs = WorkerOutputs(
+            database, artifacts, crypto_provider=self.crypto_provider
+        )
         if assignment_key is not None and dispatch_key is None:
             raise ValueError("Assignment signing requires worker control")
         if authority_time_provider is not None and dispatch_key is None:

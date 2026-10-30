@@ -65,8 +65,19 @@ class ClosureControl:
         )
 
     def _preflight(self, context: CommandContext, intent: ReconcileAttempt) -> JsonObject:
+        from research_swarm.control.recovery_operations import recovery_context
+
         submission, worker, attempt = self.database.store.read(
             lambda connection: self.reconciliation._load(Transaction(connection, context), intent)
+        )
+        context = recovery_context(
+            self.database,
+            context,
+            "attempt.reconcile_closure",
+            intent.model_dump(mode="json"),
+            attempt_id=intent.attempt_id,
+            artifact_id=submission.publication.journal_artifact.id,
+            crypto_provider=self.reconciliation.results.crypto_provider,
         )
         # Scientific artifacts may be damaged. Only original native evidence is
         # needed for this irreversible operational disposition.

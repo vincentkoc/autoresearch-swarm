@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from filelock import FileLock
 
 from research_swarm.checkpoints.backup import source_custody, verify_backup
 from research_swarm.checkpoints.preservation import verify_preservation
 from research_swarm.checkpoints.restore import RestoreCustody, RestoreIntent, _verify_completed
+from research_swarm.control.recovery_proofs import verify_claim as verify_claim
+from research_swarm.control.recovery_proofs import verify_request as verify_request
 from research_swarm.domain.backup import (
     BackupManifest,
     RestoreClaim,
@@ -26,34 +27,6 @@ from research_swarm.domain.types import new_id, utc_now
 from research_swarm.runtime import LocalRuntime
 from research_swarm.state.private_files import read_private, write_private
 from research_swarm.state.sql import next_counter
-
-
-def verify_request(request: SignedRestoreRequest) -> RestoreClaimRequest:
-    request = SignedRestoreRequest.model_validate(request)
-    try:
-        Ed25519PublicKey.from_public_bytes(bytes.fromhex(request.request.target_public_key)).verify(
-            bytes.fromhex(request.signature), request.request.digest.encode("ascii")
-        )
-    except InvalidSignature as error:
-        raise ResearchError(
-            ErrorCode.AUTHORIZATION_DENIED, "Restore target proof differs"
-        ) from error
-    return request.request
-
-
-def verify_claim(claim: SignedRestoreClaim, *, source_public_key: str) -> RestoreClaim:
-    claim = SignedRestoreClaim.model_validate(claim)
-    if claim.claim.source_public_key != source_public_key:
-        raise ResearchError(ErrorCode.STALE_FENCE, "Restore claim source key differs")
-    try:
-        Ed25519PublicKey.from_public_bytes(bytes.fromhex(source_public_key)).verify(
-            bytes.fromhex(claim.signature), claim.claim.digest.encode("ascii")
-        )
-    except InvalidSignature as error:
-        raise ResearchError(
-            ErrorCode.AUTHORIZATION_DENIED, "Restore source signature differs"
-        ) from error
-    return claim.claim
 
 
 def _manifest_binding(manifest: BackupManifest, request: RestoreClaimRequest) -> None:
@@ -95,17 +68,7 @@ def request_restore_claim(
     custody = RestoreCustody.model_validate(
         strict_json_loads(read_private(destination, "restore-custody.json", limit=16_384))
     )
-    request = RestoreClaimRequest(
-        backup_id=receipt.backup_id,
-        manifest_digest=receipt.manifest_digest,
-        workspace_id=receipt.workspace_id,
-        controller_id=receipt.controller_id,
-        source_custody_id=receipt.source_custody_id,
-        source_control_epoch=receipt.source_control_epoch,
-        restore_id=receipt.restore_id,
-        target_public_key=receipt.target_public_key,
-        target_control_epoch=receipt.target_control_epoch,
-    )
+    request = receipt.claim_request()
     _manifest_binding(backup.manifest, request)
     key = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(custody.private_key))
     return SignedRestoreRequest(

@@ -3,23 +3,30 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import model_validator
 
+from research_swarm.control.recovery_operations import (
+    recovery_context,
+    require_journal_upload,
+    require_raw_operation,
+)
 from research_swarm.control.worker_artifacts import WorkerAttemptTarget
 from research_swarm.control.worker_records import WorkerData
 from research_swarm.control.worker_sessions import historical_attempt_owner
 from research_swarm.control.workers import AttemptData
+from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.artifacts import (
     ArtifactRecord,
     ArtifactRetention,
     StoredBlob,
     UploadSpec,
 )
+from research_swarm.domain.canonical import content_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.identity import CommandContext, artifact_context
 from research_swarm.domain.types import ID, Name, VersionedRecord
 from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService, BeginUpload
@@ -27,6 +34,9 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.sql import SqlSession
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from research_swarm.workers.journal_records import JournalEntry
 
 OutputRole = Literal["journal", "report", "stdout", "stderr", "output"]
 
@@ -154,10 +164,84 @@ def verify_evidence_receipt(
 
 
 class WorkerOutputs:
-    def __init__(self, database: Database, artifacts: ArtifactService) -> None:
+    def __init__(
+        self,
+        database: Database,
+        artifacts: ArtifactService,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> None:
         if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Worker outputs must share artifact transaction authority")
         self.database, self.artifacts = database, artifacts
+        self.crypto_provider = crypto_provider
+
+    def _recovery_context(
+        self,
+        context: CommandContext,
+        operation: str,
+        request: WorkerUploadTarget,
+        payload: JsonObject | None = None,
+    ) -> CommandContext:
+        context = recovery_context(
+            self.database,
+            context,
+            operation,
+            request.model_dump(mode="json") if payload is None else payload,
+            attempt_id=request.attempt_id,
+            upload_id=request.upload_id,
+            crypto_provider=self.crypto_provider,
+        )
+
+        def read(connection: SqlSession) -> None:
+            _, data, _, upload, _ = owned_upload(Transaction(connection, context), request)
+            require_journal_upload(context, data.role, data.output_name, upload.size_bytes)
+
+        self.database.store.read(read)
+        return context
+
+    def _validate_journal(
+        self, context: CommandContext, request: WorkerUploadTarget, blob: StoredBlob
+    ) -> JournalEntry | None:
+        if context._recovery_operation is None:
+            return None
+        from research_swarm.workers.journal_records import JournalEntry
+
+        with self.artifacts.store.reader(context.principal.workspace_id, blob) as stream:
+            raw = stream.read(1024 * 1024 + 1)
+        try:
+            journal = JournalEntry.model_validate(strict_json_loads(raw))
+        except ValueError as error:
+            raise ResearchError(
+                ErrorCode.ARTIFACT_UNVERIFIED, "Recovery journal is invalid"
+            ) from error
+
+        self.database.store.read(
+            lambda connection: self._verify_journal_in(
+                Transaction(connection, context), request, blob, journal
+            )
+        )
+        return journal
+
+    def _verify_journal_in(
+        self,
+        transaction: Transaction,
+        request: WorkerUploadTarget,
+        blob: StoredBlob,
+        journal: JournalEntry,
+    ) -> None:
+        from research_swarm.control.observations import PublishAttempt, validate_native_grant
+
+        worker, _ = historical_attempt_owner(
+            transaction, request.worker_id, request.session_id, request.attempt_id
+        )
+        validate_native_grant(
+            transaction,
+            PublishAttempt(attempt_id=request.attempt_id, journal_artifact=blob.reference),
+            journal,
+            worker,
+            crypto_provider=self.crypto_provider,
+        )
 
     def _check_owner(self, context: CommandContext, request: WorkerUploadTarget) -> None:
         # Check immutable ownership before creating a lock for a supplied identifier.
@@ -182,6 +266,26 @@ class WorkerOutputs:
 
     def begin(self, context: CommandContext, request: BeginWorkerUpload) -> JsonObject:
         request = BeginWorkerUpload.model_validate(request)
+        return self.database.with_preflight(
+            context,
+            "worker.begin_upload",
+            request.model_dump(mode="json"),
+            "worker.outputs",
+            lambda: self._begin(context, request),
+        )
+
+    def _begin(self, context: CommandContext, request: BeginWorkerUpload) -> JsonObject:
+        context = recovery_context(
+            self.database,
+            context,
+            "worker.begin_upload",
+            request.model_dump(mode="json"),
+            attempt_id=request.attempt_id,
+            crypto_provider=self.crypto_provider,
+        )
+        require_journal_upload(
+            context, request.role, request.output_name, request.content.size_bytes
+        )
 
         def begin(transaction: Transaction) -> JsonObject:
             worker, attempt = historical_attempt_owner(
@@ -232,6 +336,11 @@ class WorkerOutputs:
             return data, row, upload
 
         data, row, upload = self.database.store.read(read)
+        if row["state"] == "pending":
+            context = self._recovery_context(context, "worker.output", request)
+            require_raw_operation(
+                self.database, context, "worker.output", request.model_dump(mode="json")
+            )
         progress = self.artifacts.store.progress(upload) if row["state"] == "pending" else None
         return {
             **row,
@@ -246,6 +355,13 @@ class WorkerOutputs:
         request = WorkerUploadTarget.model_validate(request)
         self._check_owner(context, request)
         with self.artifacts.store.upload_guard(context.principal.workspace_id, request.upload_id):
+            payload = {
+                **request.model_dump(mode="json"),
+                "offset": offset,
+                "content_digest": content_digest(content),
+            }
+            context = self._recovery_context(context, "worker.upload_part", request, payload)
+            require_raw_operation(self.database, context, "worker.upload_part", payload)
             return self._append(context, request, offset, content)
 
     def _append(
@@ -279,6 +395,7 @@ class WorkerOutputs:
             )
             if previous is not None:
                 return previous
+            context = self._recovery_context(context, "worker.finalize_upload", request)
             return self._finalize(context, request)
 
     def _finalize(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
@@ -295,13 +412,19 @@ class WorkerOutputs:
             return row, upload
 
         row, upload = self.database.store.read(read)
+        require_raw_operation(self.database, context, "worker.finalize_upload", payload)
         if row["state"] == "pending":
             self.artifacts.store.begin(upload)
             blob = self.artifacts.store.finalize(upload)
         else:
             blob = StoredBlob(reference=upload.reference(), generation=upload.id)
+        journal = (
+            self._validate_journal(context, request, blob) if row["state"] == "pending" else None
+        )
 
         def finalize(transaction: Transaction) -> JsonObject:
+            if journal is not None:
+                self._verify_journal_in(transaction, request, blob, journal)
             receipt, data, _, _, attempt = owned_upload(transaction, request)
             if data.artifact is None:
                 require_pending(attempt)
@@ -360,6 +483,9 @@ class WorkerOutputs:
             )
             if previous is not None:
                 return previous
+
+            context = self._recovery_context(context, "worker.cleanup_upload", request)
+            require_raw_operation(self.database, context, "worker.cleanup_upload", payload)
 
             def read(connection: SqlSession) -> tuple[JsonObject, UploadSpec]:
                 _, _, row, upload, _ = owned_upload(Transaction(connection, context), request)
@@ -433,6 +559,10 @@ class WorkerOutputs:
 
                 if self.database.store.read(completed):
                     return previous
+            context = self._recovery_context(context, "worker.abort_upload", request)
+            require_raw_operation(
+                self.database, context, "worker.abort_upload", request.model_dump(mode="json")
+            )
             return self.artifacts.abort_authorized(
                 context,
                 request.upload_id,
@@ -492,8 +622,11 @@ class WorkerOutputs:
                 return result
 
             self.database.execute(
-                CommandContext(
-                    principal=context.principal, idempotency_key="worker-cleanup:" + upload.id
+                artifact_context(
+                    context,
+                    "worker-cleanup:" + upload.id,
+                    "worker.finish_upload_cleanup",
+                    {"upload_id": upload.id},
                 ),
                 "worker.finish_upload_cleanup",
                 {"upload_id": upload.id},

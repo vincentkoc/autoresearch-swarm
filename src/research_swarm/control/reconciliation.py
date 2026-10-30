@@ -9,7 +9,13 @@ from pydantic import Field
 from research_swarm.control.acceptance import lease_row
 from research_swarm.control.acceptance_models import AcceptanceLease
 from research_swarm.control.obligations import admitted_before_completion
-from research_swarm.control.observations import PublishAttempt, evidence_roles, output_intent
+from research_swarm.control.observations import (
+    PublishAttempt,
+    evidence_roles,
+    output_intent,
+    validate_native_grant,
+)
+from research_swarm.control.recovery_operations import recovery_context
 from research_swarm.control.results import ResultControl
 from research_swarm.control.worker_outputs import verify_evidence_receipt
 from research_swarm.control.worker_records import AttemptData, WorkerData
@@ -99,22 +105,58 @@ class ReconciliationControl:
 
     def _submit_preflight(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         payload = request.model_dump(mode="json")
+        context = recovery_context(
+            self.database,
+            context,
+            "worker.submit_evidence",
+            payload,
+            attempt_id=request.attempt_id,
+            artifact_id=request.journal_artifact.id,
+            crypto_provider=self.results.crypto_provider,
+        )
+        recovering = context._recovery_operation is not None
+        if recovering and (request.report_artifact is not None or request.outputs or request.logs):
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Recovery accepts journal evidence only"
+            )
         worker, attempt = self.database.store.read(
             lambda connection: self._owner(Transaction(connection, context), request)
         )
-        with self.results.pin_evidence(context, request, attempt, worker, scope="worker.publish"):
+        with self.results.pin_evidence(
+            context, request, attempt, worker, scope="worker.publish"
+        ) as records:
+            journal = (
+                JournalEntry.model_validate(
+                    self.results._read(records[request.journal_artifact.id])
+                )
+                if recovering
+                else None
+            )
+
+            def submit(transaction: Transaction) -> JsonObject:
+                if journal is not None:
+                    validate_native_grant(
+                        transaction,
+                        request,
+                        journal,
+                        worker,
+                        crypto_provider=self.results.crypto_provider,
+                    )
+                return self._submit(transaction, request)
+
             return self.database.execute(
                 context,
                 "worker.submit_evidence",
                 payload,
                 "worker.publish",
-                lambda transaction: self._submit(transaction, request),
+                submit,
             )
 
     def _submit(self, transaction: Transaction, request: PublishAttempt) -> JsonObject:
         worker, attempt = self._owner(transaction, request)
         archive_session(transaction, worker)
-        self.results.acceptance.expire_if_due(transaction, attempt, worker)
+        if transaction.context._recovery_operation is None:
+            self.results.acceptance.expire_if_due(transaction, attempt, worker)
         digest = publication_digest(request)
         identifier = str(uuid5(UUID(transaction.workspace_id), "attempt-submission:" + digest))
         try:

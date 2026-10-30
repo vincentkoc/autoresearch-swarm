@@ -107,6 +107,19 @@ class RestoreReceipt(VersionedRecord):
     def digest(self) -> str:
         return record_digest("research.restore-receipt.v1", self.model_dump(mode="json"))
 
+    def claim_request(self) -> "RestoreClaimRequest":
+        return RestoreClaimRequest(
+            backup_id=self.backup_id,
+            manifest_digest=self.manifest_digest,
+            workspace_id=self.workspace_id,
+            controller_id=self.controller_id,
+            source_custody_id=self.source_custody_id,
+            source_control_epoch=self.source_control_epoch,
+            restore_id=self.restore_id,
+            target_public_key=self.target_public_key,
+            target_control_epoch=self.target_control_epoch,
+        )
+
 
 class RestoreClaimRequest(VersionedRecord):
     backup_id: ID

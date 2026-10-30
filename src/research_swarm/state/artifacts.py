@@ -192,8 +192,12 @@ class ArtifactService:
 
     def _storage_authority(self, context: CommandContext, upload_id: str) -> None:
         from research_swarm.state.drive_guard import require_storage_authority
+        from research_swarm.state.workspace_gate import require_workspace_mutation
 
         def read(connection: SqlSession) -> None:
+            require_workspace_mutation(
+                connection, context.principal.workspace_id, "artifact.storage"
+            )
             require_storage_authority(Transaction(connection, context), upload_id)
 
         self.database.store.read(read)
@@ -278,6 +282,8 @@ class ArtifactService:
         with self.store.upload_guard(context.principal.workspace_id, upload_id):
             row = self.database.read_record(context, "upload", upload_id)
             upload = self._upload_owner(context, row)
+            if row["state"] == "pending":
+                self._storage_authority(context, upload_id)
             progress = self.store.progress(upload) if row["state"] == "pending" else None
             return {**row, "transfer": progress.model_dump(mode="json") if progress else None}
 

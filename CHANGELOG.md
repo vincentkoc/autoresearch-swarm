@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Admit original attempt journals through the existing scoped worker API on an elected recovery target. Bind internal evidence capabilities to the signed admission, target epoch, exact request, original session and frozen unresolved-attempt inventory; fence raw byte routes and derived artifact effects.
+- Quarantine unfinished journals without expiring original acceptance leases. Reconcile proven native closure once without scientific acceptance, preserve exact replies and deduplicated upload provenance, and keep malformed or interrupted transfers abortable after settlement. Automatic worker redirection and final activation remain unavailable.
+
 - Add attempt-bound `worker.abort_upload` through SDK command dispatch, HTTP and agent tools without granting generic artifact authority. Abort unpublished staging or materialized generations, retain quota through failed byte cleanup, and atomically close the upload and worker receipt.
 - Preserve the original abort acknowledgment while retrying unfinished cleanup; allow cleanup after attempt settlement and refuse published or deduplicated evidence. Share the authorized lifecycle with ordinary artifact aborts.
 

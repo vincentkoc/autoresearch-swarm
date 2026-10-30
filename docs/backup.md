@@ -239,11 +239,46 @@ Rejected native admission rolls back the whole transition, including any propose
 rejection acknowledgment, so the original pristine import remains retryable with
 corrected authority.
 
-The `recovering` gate currently still refuses worker delivery and all ordinary
-mutations. Recovery-only routing of original journals, operational closure of
-issued attempts, saved-turn reconciliation and final activation remain separate
-required steps. Neither a source claim nor an admission receipt proves native
-process closure.
+## Deliver original evidence during recovery
+
+The `recovering` gate admits a narrow subset of the existing worker API. The
+original worker principal can upload a journal of at most 1 MiB for an attempt in
+the restoration's frozen unresolved-attempt inventory. The journal must retain
+its original dispatch, signed assignment, clock evidence, experiment and native
+command. Reports, named outputs and log uploads remain unavailable. Invalid
+unpublished journals can be aborted through `worker.abort_upload`, including after
+the attempt settles. Storage quota remains reserved until physical cleanup ends.
+
+Use `worker_upload_file` with `role="journal"`, then `worker.submit_evidence` with
+only its journal reference. These operations share the SDK, HTTP and agent command
+contracts. The target verifies its signed source election and admission before
+minting an internal capability for that actor, attempt, session and request. Raw
+transfer operations check authority under the upload lock; publication checks
+again in the write transaction. The capability is not a wire field. Generic
+artifact upload routes cannot bypass it, even for a full operator.
+
+Submission records quarantine evidence. Received, running and UNKNOWN journals
+remain observations of unresolved custody: they do not expire the original
+acceptance lease, settle budgets or grant execution. A principal with
+`attempt.reconcile` can call `attempt.reconcile_closure` against a quarantined
+submission and the target's current epoch and attempt revision. The existing
+native closure checks remain mandatory. Proven closure settles the original
+reservations once, produces `closed_unaccepted` and lets a drain pause finish.
+It creates no scientific result, evaluator receipt or successor job.
+
+Exact committed acknowledgments replay before fresh authority checks. Partial
+uploads resume after reopening the target. Canonical artifact deduplication uses
+the original worker receipt; internal pin, unpin and cleanup capabilities bind to
+the exact artifact or upload. No generic artifact mutation is granted. Cleanup
+of an existing unpublished transfer remains possible after native settlement.
+
+The original worker installation is not automatically redirected. A separate
+explicit recovery route must bind its original private installation to the
+elected destination before the recovery driver can deliver there. That route,
+crashed recovery-reader reconciliation, saved-turn reconciliation and final
+activation remain required work. The target stays `recovering`; ordinary
+research mutation, new dispatch and scientific acceptance remain unavailable.
+Neither a source claim nor an admission receipt proves native process closure.
 
 ## Qualification boundary
 
@@ -263,3 +298,9 @@ Admission tests cover actual process exit within the transaction and after
 commit, concurrent replay, rollback of fences and pauses, native-proof mismatch,
 target/source-key rejection, preserved UNKNOWN custody, pending driver turns and
 both waiting and ready workflow fences.
+Recovery evidence tests use a real native CPU attempt and HTTP delivery after
+target reopen. They cover duplicate-generation cleanup, once-only operational
+settlement without scientific acceptance, unfinished/UNKNOWN quarantine, partial
+transfer restart, malformed or altered journals, cleanup interruption, authority
+changes between preflight and commit, foreign artifacts and generic-I/O refusal.
+They do not qualify automatic worker redirection or final target activation.

@@ -2,18 +2,17 @@
 
 from pathlib import Path
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from filelock import FileLock
 
 from research_swarm.checkpoints.backup import verify_backup
-from research_swarm.checkpoints.claims import verify_claim
 from research_swarm.checkpoints.restore import RestoreCustody, RestoreIntent, _verify_completed
 from research_swarm.control.campaigns import request_drain_pause, settle_pause
 from research_swarm.control.orchestration import fence_binding
+from research_swarm.control.recovery_proofs import validate_claim_binding
+from research_swarm.control.recovery_proofs import verify_admission as verify_admission
 from research_swarm.domain.backup import (
     RecoveryAdmission,
-    RestoreClaimRequest,
     RestoreReceipt,
     SignedRestoreClaim,
     WorkspaceSeal,
@@ -26,39 +25,6 @@ from research_swarm.runtime import LocalRuntime
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.private_files import read_private, restore_admission_path
 from research_swarm.state.sql import SqlSession
-
-
-def _check_claim(receipt: RestoreReceipt, signed: SignedRestoreClaim) -> None:
-    if receipt.source_public_key is None:
-        raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Restore has no source key binding")
-    claim = verify_claim(signed, source_public_key=receipt.source_public_key)
-    expected = RestoreClaimRequest(
-        backup_id=receipt.backup_id,
-        manifest_digest=receipt.manifest_digest,
-        workspace_id=receipt.workspace_id,
-        controller_id=receipt.controller_id,
-        source_custody_id=receipt.source_custody_id,
-        source_control_epoch=receipt.source_control_epoch,
-        restore_id=receipt.restore_id,
-        target_public_key=receipt.target_public_key,
-        target_control_epoch=receipt.target_control_epoch,
-    )
-    if claim.request != expected:
-        raise ResearchError(ErrorCode.STALE_FENCE, "Source claim elected another restoration")
-
-
-def verify_admission(admission: RecoveryAdmission, receipt: RestoreReceipt) -> None:
-    _check_claim(receipt, admission.signed_claim)
-    if admission.restoration_digest != receipt.digest:
-        raise ResearchError(ErrorCode.STALE_FENCE, "Recovery admission restoration differs")
-    try:
-        Ed25519PublicKey.from_public_bytes(bytes.fromhex(receipt.target_public_key)).verify(
-            bytes.fromhex(admission.target_signature), admission.proof_digest.encode("ascii")
-        )
-    except InvalidSignature as error:
-        raise ResearchError(
-            ErrorCode.AUTHORIZATION_DENIED, "Recovery target proof differs"
-        ) from error
 
 
 def verify_admitted(database: Database, receipt: RestoreReceipt) -> bool:
@@ -198,7 +164,7 @@ def admit_recovery(
                 destination=str(runtime.root.resolve()),
             )
             receipt = _verify_completed(backup, runtime.root, intent)
-            _check_claim(receipt, signed_claim)
+            validate_claim_binding(receipt, signed_claim)
             custody = RestoreCustody.model_validate(
                 strict_json_loads(read_private(runtime.root, "restore-custody.json", limit=16_384))
             )

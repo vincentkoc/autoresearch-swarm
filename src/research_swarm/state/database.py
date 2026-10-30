@@ -414,7 +414,15 @@ class Database:
                     connection, context, self.authority_identity, request_digest
                 )
             else:
-                require_workspace_mutation(connection, workspace_id, operation)
+                require_workspace_mutation(
+                    connection,
+                    workspace_id,
+                    operation,
+                    context=context,
+                    authority=self.authority_identity,
+                    payload=payload,
+                    request_digest=request_digest,
+                )
             from research_swarm.state.drive_guard import require_reserved_command_key
 
             require_reserved_command_key(Transaction(connection, context), request_digest)

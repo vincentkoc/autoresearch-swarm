@@ -69,25 +69,30 @@ class ValidatedObservation:
 
 
 @dataclass(frozen=True)
-class NativeObservation:
+class NativeGrant:
     job_row: JsonObject
     trial_row: JsonObject
     job: JobData
     trial: TrialData
+
+
+@dataclass(frozen=True)
+class NativeObservation(NativeGrant):
     not_started: bool
     closed: bool
     unknown: bool
     consumed: dict[str, Decimal]
 
 
-def validate_native_observation(
+def validate_native_grant(
     transaction: Transaction,
     request: PublishAttempt,
     journal: JournalEntry,
     worker: WorkerData,
     *,
     crypto_provider: Ed25519Provider | None = None,
-) -> NativeObservation:
+) -> NativeGrant:
+    """Verify a journal's original grant without treating its state as closure."""
     attempt = AttemptData.model_validate(transaction.get("attempt", request.attempt_id)["data"])
     job_row = transaction.get("job", attempt.dispatch.job_id)
     job = JobData.model_validate(job_row["data"])
@@ -114,6 +119,22 @@ def validate_native_observation(
             journal.signed_assignment,
             crypto_provider=crypto_provider,
         )
+    if journal.outcome is not None and journal.outcome.closure.identity != journal.native:
+        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Native closure identity differs")
+    return NativeGrant(job_row, trial_row, job, trial)
+
+
+def validate_native_observation(
+    transaction: Transaction,
+    request: PublishAttempt,
+    journal: JournalEntry,
+    worker: WorkerData,
+    *,
+    crypto_provider: Ed25519Provider | None = None,
+) -> NativeObservation:
+    grant = validate_native_grant(
+        transaction, request, journal, worker, crypto_provider=crypto_provider
+    )
     if journal.state not in {
         JournalState.CLOSED,
         JournalState.NOT_STARTED,
@@ -123,8 +144,6 @@ def validate_native_observation(
             ErrorCode.INVALID_TRANSITION, "Observation is not a completion or uncertainty"
         )
     outcome = journal.outcome
-    if outcome is not None and outcome.closure.identity != journal.native:
-        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Native closure identity differs")
     not_started = (
         journal.state == JournalState.NOT_STARTED and journal.native is None and outcome is None
     )
@@ -147,7 +166,16 @@ def validate_native_observation(
         "attempts": Decimal(0 if not_started else 1),
         "execution_ms": Decimal(0 if outcome is None else outcome.elapsed_ms),
     }
-    return NativeObservation(job_row, trial_row, job, trial, not_started, closed, unknown, consumed)
+    return NativeObservation(
+        grant.job_row,
+        grant.trial_row,
+        grant.job,
+        grant.trial,
+        not_started,
+        closed,
+        unknown,
+        consumed,
+    )
 
 
 def validate_observation(

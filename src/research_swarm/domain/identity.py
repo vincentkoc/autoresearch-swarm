@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from pydantic import Field, PrivateAttr
@@ -33,6 +33,30 @@ class CommandContext(Record):
     expected_revision: Revision | None = None
     _drive_guard: DriveGuard | None = PrivateAttr(default=None)
     _recovery_guard: RecoveryGuard | None = PrivateAttr(default=None)
+    _recovery_operation: RecoveryOperationGuard | None = PrivateAttr(default=None)
+
+
+@dataclass(frozen=True)
+class RecoveryOperationGuard:
+    """One attempt-bound recovery operation and its exact internal artifact effects."""
+
+    authority: tuple[str, str]
+    restore_id: str
+    restoration_digest: str
+    admission_digest: str
+    gate_revision: int
+    control_epoch: int
+    attempt_id: str
+    worker_id: str
+    session_id: str
+    worker_principal_id: str
+    actor_id: str
+    root_operation: str
+    root_request_digest: str
+    upload_id: str | None = None
+    artifact_id: str | None = None
+    derived_request_digest: str | None = None
+    cleanup_pin_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +100,24 @@ def artifact_context(
 ) -> CommandContext:
     """Derive an exact internal artifact operation from the original trusted turn."""
     derived = CommandContext(principal=context.principal, idempotency_key=key)
+    if context._recovery_operation is not None:
+        if operation not in {
+            "artifact.pin",
+            "artifact.unpin",
+            "worker.finish_upload_cleanup",
+            "worker.finish_upload_abort",
+        } or (cleanup_pin_id is not None and operation != "artifact.unpin"):
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Recovery cannot derive this operation"
+            )
+        derived._recovery_operation = replace(
+            context._recovery_operation,
+            derived_request_digest=record_digest(
+                "research.command",
+                {"operation": operation, "expected_revision": None, "payload": payload},
+            ),
+            cleanup_pin_id=cleanup_pin_id,
+        )
     if context._drive_guard is None:
         return derived
     if operation not in {
