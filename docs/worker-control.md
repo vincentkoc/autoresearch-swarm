@@ -206,7 +206,7 @@ or select an incumbent. Accepted native closure can release its worker-owned
 machine claim independently; the controller reservation remains pending until
 an authorized reconciliation proves the appropriate disposition.
 
-Public fencing/replacement follows separately. The [recovery-only command](remote-workers.md#recover-original-evidence-without-execution-authority) opens original custody for evidence delivery. Historical evidence access does not reconnect an old worker for execution.
+The [recovery-only command](remote-workers.md#recover-original-evidence-without-execution-authority) opens original custody for evidence delivery. Historical evidence access does not reconnect an old worker for execution.
 
 
 ## Quarantine and explicit reconciliation
@@ -329,3 +329,84 @@ controller closure as native proof.
 Controller settlement never releases a native machine registry claim. That remains
 conditional on the worker's independently verified native closure. Other quarantined
 scientific artifacts retain their own evidence and storage lifecycle.
+
+
+## Explicit worker fencing and session replacement
+
+`worker.fence` requires `worker.manage`, the exact original `WorkerBinding`, a
+reason, the expected current controller ID/epoch, and the current **worker row**
+revision. It records an immutable `worker_fence` receipt and changes the current
+worker state to `fenced` in one transaction. An operator can fence an exactly
+identified older-epoch session using the current controller authority.
+
+Fencing denies fresh server authority: claims, input acquisition, clock replies,
+normal publication, and current operational control. It preserves original
+session evidence access. It does not revoke credentials, terminate processes,
+request cancellation, expire signed grants, release capacity, change job state,
+or refund budget. Already issued bounded grants retain their original local
+limits; a disconnected process cannot receive instant server-side revocation.
+
+`worker.replace_session` names that exact fence and old binding, fresh session and
+principal IDs, expected current controller authority, and the fenced worker's
+revision. It preserves worker ID, profiles, project scope, environment contracts,
+and concurrency. Reused archived session/principal IDs and identities held by
+legacy current workers are rejected. A fresh principal prevents old credentials
+from acquiring the replacement's authority using its public session ID.
+
+The command archives both enrollments and records a `worker_replacement` receipt.
+That receipt preserves the previous presence/admission values and revisions.
+Current operational projections advance their revisions, switch to the fresh
+binding, and start with `unobserved` presence and `draining` admission. Heartbeat
+sequence starts at zero. Explicit `worker.set_admission` activates the installed
+replacement. Old operational commands cannot mutate these new projections.
+
+~~~python
+from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession
+from research_swarm.control.worker_records import WorkerData
+from research_swarm.domain.types import new_id
+
+row = client.get("worker", worker_id)
+old = WorkerData.model_validate(row["data"])
+authority = client.context(campaign_id)["authority"]
+request = FenceWorker(
+    binding=old.binding,
+    expected_controller_id=authority["controller_id"],
+    expected_control_epoch=authority["control_epoch"],
+    reason="Install a replacement worker session",
+)
+fenced = client.command(
+    "worker.fence",
+    request,
+    idempotency_key=fence_command_key,
+    expected_revision=row["revision"],
+)["result"]
+replacement = ReplaceWorkerSession(
+    **request.model_dump(exclude={"schema_version"}),
+    fence_id=fenced["fence"]["id"],
+    session_id=new_id(),
+    principal_id=replacement_principal_id,
+)
+result = client.command(
+    "worker.replace_session",
+    replacement,
+    idempotency_key=replacement_command_key,
+    expected_revision=fenced["worker"]["revision"],
+)["result"]
+~~~
+
+Persist fresh IDs and exact request/command keys before delivery. Exact command
+replay returns its original acknowledgment even after authority changes. Two
+replacement commands competing for one revision produce one replacement. A stale
+old binding or fence cannot affect a later session.
+
+Controller concurrency counts unresolved attempts across all sessions of the
+stable worker ID. The machine registry independently retains physical claims.
+Original recovery can release a proven closed native claim; controller capacity
+remains occupied until explicit reconciliation settles the original attempt.
+Replacement is neither a scientific result nor a retry of that experiment.
+
+These domain commands are available through every shared transport. Resumable
+remote replacement provisioning and private bundle installation are separate
+from this API slice. Do not overwrite the old installation or create another
+machine registry to avoid its occupied capacity. Credential revocation remains
+an independent authentication operation and also denies historical delivery.

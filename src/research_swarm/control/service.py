@@ -60,6 +60,7 @@ from research_swarm.control.worker_outputs import (
     WorkerOutputs,
     WorkerUploadTarget,
 )
+from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession, WorkerTurnover
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
@@ -149,6 +150,7 @@ class ResearchService:
             if dispatch_key is not None
             else None
         )
+        self.worker_turnover = WorkerTurnover(database, assignment_key)
         self.results = ResultControl(database, artifacts)
         self.reconciliation = ReconciliationControl(database, self.results)
         self.closures = ClosureControl(database, self.reconciliation)
@@ -170,6 +172,14 @@ class ResearchService:
         self, context: CommandContext, request: ReconcileAttempt
     ) -> JsonObject:
         return self.closures.reconcile(context, request)
+
+    def fence_worker(self, context: CommandContext, request: FenceWorker) -> JsonObject:
+        return self.worker_turnover.fence(context, request)
+
+    def replace_worker_session(
+        self, context: CommandContext, request: ReplaceWorkerSession
+    ) -> JsonObject:
+        return self.worker_turnover.replace(context, request)
 
     def worker_heartbeat(self, context: CommandContext, request: WorkerHeartbeat) -> JsonObject:
         return self.worker_lifecycle.heartbeat(context, request)

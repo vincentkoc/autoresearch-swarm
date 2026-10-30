@@ -31,6 +31,8 @@ RecordKind = Literal[
     "run_result",
     "worker",
     "worker_session",
+    "worker_fence",
+    "worker_replacement",
     "worker_admission",
     "worker_presence",
     "attempt_control",

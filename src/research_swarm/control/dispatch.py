@@ -32,6 +32,7 @@ from research_swarm.control.worker_lifecycle import (
 )
 from research_swarm.control.worker_outputs import BeginWorkerUpload, WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
+from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -51,6 +52,20 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "worker.fence": CommandDefinition(
+        FenceWorker,
+        "fence_worker",
+        "worker.manage",
+        True,
+        "Fence server authority while preserving native work and original evidence access.",
+    ),
+    "worker.replace_session": CommandDefinition(
+        ReplaceWorkerSession,
+        "replace_worker_session",
+        "worker.manage",
+        True,
+        "Replace an explicitly fenced session with fresh identities and draining admission.",
+    ),
     "attempt.reconcile_closure": CommandDefinition(
         ReconcileAttempt,
         "reconcile_attempt_closure",

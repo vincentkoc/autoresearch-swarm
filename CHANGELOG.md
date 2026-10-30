@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add explicit `worker.fence` and `worker.replace_session` commands with immutable receipts, original-binding checks, and atomic worker revisions.
+- Require fresh replacement identities, preserve historical evidence authority and occupied resources, and reset presence with admission draining until activation.
+- Preserve prior operational projections in replacement history and reject stale fences, reused principals, and competing replacements without changing original experiment accounting.
+
 - Add `research worker recover` for journal-only evidence delivery from an original installation after execution authority changes.
 - Reconcile native closure and capacity before network delivery, preserve uncertain snapshots and acknowledgment keys, and keep controller disposition separate from local custody.
 - Open pinned native stores without creating replacements; recover without the original interpreter or project checkout and without launching, claiming, cancelling, or accepting research results.
