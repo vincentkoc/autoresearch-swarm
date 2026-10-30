@@ -178,6 +178,60 @@ The CLI returns exit code 3 for blocked/disconnected drain results and code 2 fo
 command errors. Persistent mode requires explicit stop; it does not install a
 background service.
 
+## Recover original evidence without execution authority
+
+An old worker can submit its original native journal after its controller epoch
+changes. Recovery uses the initialized installation, original credential, signing
+key, journal identity, and machine registry identity:
+
+~~~sh
+research worker recover --worker-dir ./worker-state --attempt ATTEMPT_UUID
+~~~
+
+The command takes one explicit attempt. It holds the same driver and attempt
+locks as normal execution. It does not import a replacement bundle, initialize
+missing databases, verify an interpreter, sample a new clock, claim work, launch
+a process, or send cancellation. Existing driver command intents are not replayed.
+A missing original installation or changed custody identity requires repair.
+
+Recovery first authenticates the original assignment and frozen timing, then
+observes a durable native outcome. Proven closure releases the original machine
+reservation before contacting the controller. A missing receipt or a running
+supervisor retains capacity. Controller acceptance cannot stand in for local
+native closure. Missing project files, logs, reports, and registered interpreters
+do not prevent journal-only delivery.
+
+The command freezes its bounded journal and delivery keys in a separate private
+recovery intent. Lost acknowledgments replay those exact bytes. If the supervisor
+closes while an older observation is awaiting delivery, recovery finishes that
+original submission first. Run the same command again to submit the newer closure.
+Submission is always quarantined; an operator chooses explicit reconciliation.
+It never creates scientific success, evaluator receipts, or a promoted candidate.
+
+The JSON result separates `native_state`, `custody_state`, `delivery_state`,
+`submitted_native_state`, and `submission_id`. A completed delivery recommends
+`operator_reconcile` when it contains the latest closure, or `observe_native`
+when more observation is needed. Transport uncertainty recommends `retry_delivery`;
+revoked or unavailable historical authority recommends `repair_authority`.
+A durably rejected command returns `review_rejection` and its command ID. Its
+original key remains rejected even after conditions change; this command does not
+automatically rotate it. An operator must resolve the cause and arrange a separate
+explicit evidence submission. Do not delete custody or pending intents to retry.
+
+`controller_terminal` reports a concurrent accepted or `closed_unaccepted`
+disposition separately and does not borrow its native proof. Exit code 3 means
+delivery is pending or blocked; successful quarantine or a recognized terminal
+controller disposition returns 0.
+
+The Python equivalent uses the same path and returns the same typed report:
+
+~~~python
+from pathlib import Path
+from research_swarm.workers.recovery import recover_worker_attempt
+
+report = recover_worker_attempt(Path("worker-state"), attempt_id)
+~~~
+
 ## Evidence and limits
 
 Tests run real CLI subprocesses, scoped HTTP connections, and CPU execution. They

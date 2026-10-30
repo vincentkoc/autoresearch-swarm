@@ -206,8 +206,7 @@ or select an incumbent. Accepted native closure can release its worker-owned
 machine claim independently; the controller reservation remains pending until
 an authorized reconciliation proves the appropriate disposition.
 
-Public fencing/replacement and a recovery-only worker reopening path follow
-separately. Historical evidence access does not reconnect an old worker for execution.
+Public fencing/replacement follows separately. The [recovery-only command](remote-workers.md#recover-original-evidence-without-execution-authority) opens original custody for evidence delivery. Historical evidence access does not reconnect an old worker for execution.
 
 
 ## Quarantine and explicit reconciliation

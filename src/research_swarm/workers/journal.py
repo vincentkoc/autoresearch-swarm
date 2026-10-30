@@ -18,7 +18,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
 from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord, utc_now
 from research_swarm.domain.workers import WorkerBinding
-from research_swarm.state.identity import initialize_identity
+from research_swarm.state.identity import connect_existing, initialize_identity
 from research_swarm.workers import control_inbox
 from research_swarm.workers.authority import VerifiedDispatch
 from research_swarm.workers.clock_signatures import VerifiedAssignmentTime
@@ -144,6 +144,8 @@ PRAGMA user_version=1;
 
 
 class WorkerJournal:
+    _existing_only: bool = False
+
     def __init__(self, path: Path) -> None:
         self.path = path
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -155,9 +157,34 @@ class WorkerJournal:
             connection.executescript(control_inbox.SCHEMA)
             self.identity = initialize_identity(connection)
 
+    @classmethod
+    def open_existing(cls, path: Path, expected_identity: str) -> WorkerJournal:
+        journal = cls.__new__(cls)
+        journal.path, journal.identity = path.absolute(), expected_identity
+        journal._existing_only = True
+        with journal._connect() as connection:
+            try:
+                connection.execute(
+                    "SELECT id,dispatch_id,input_digest,state,revision,payload "
+                    "FROM attempts LIMIT 0"
+                )
+                connection.execute(
+                    "SELECT sequence,attempt_id,type,payload,acknowledged "
+                    "FROM journal_events LIMIT 0"
+                )
+            except sqlite3.Error as error:
+                raise ResearchError(
+                    ErrorCode.SCHEMA_UNSUPPORTED, "Original journal schema is unavailable"
+                ) from error
+        return journal
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path, isolation_level=None, timeout=10)
+        connection = (
+            connect_existing(self.path, self.identity)
+            if getattr(self, "_existing_only", False)
+            else sqlite3.connect(self.path, isolation_level=None, timeout=10)
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA synchronous=FULL")

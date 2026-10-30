@@ -34,3 +34,27 @@ def read_identity(path: Path) -> str:
             ErrorCode.EXECUTION_UNKNOWN,
             "Native storage identity is unavailable; explicit recovery is required",
         ) from error
+
+
+def connect_existing(path: Path, expected_identity: str) -> sqlite3.Connection:
+    """Open pinned native storage without creating a replacement at a missing path."""
+    connection = None
+    try:
+        if path.is_symlink():
+            raise ValueError("Native storage must not be a symbolic link")
+        connection = sqlite3.connect(
+            path.absolute().as_uri() + "?mode=rw", uri=True, isolation_level=None, timeout=10
+        )
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT id FROM storage_identity WHERE slot=1").fetchone()
+        if row is None or row["id"] != expected_identity:
+            raise ValueError("Native storage identity differs")
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 1:
+            raise ValueError("Native storage schema differs")
+        return connection
+    except (sqlite3.Error, ValueError) as error:
+        if connection is not None:
+            connection.close()
+        raise ResearchError(
+            ErrorCode.EXECUTION_UNKNOWN, "Original native storage is unavailable or changed"
+        ) from error

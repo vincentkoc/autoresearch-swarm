@@ -12,6 +12,7 @@ from typing import BinaryIO
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
+from research_swarm.projects.native_files import SourceReader
 from research_swarm.workers.clock_channel import Bootstrap, SupervisorChannel
 from research_swarm.workers.clocks import native_clock
 from research_swarm.workers.contracts import NativeIdentity, NativeOutcome
@@ -183,12 +184,15 @@ def reconcile_outcome(journal: WorkerJournal, attempt_id: str) -> JournalEntry:
     if entry.state in {JournalState.CLOSED, JournalState.NOT_STARTED, JournalState.RECEIVED}:
         return entry
     assert entry.supervisor_id is not None
-    receipt = _attempt_root(journal, attempt_id) / "outcome.json"
-    if not receipt.is_file():
+    root = journal.path.parent / "executions" / entry.dispatch.attempt_id
+    try:
+        with SourceReader(root) as reader, reader.open("outcome.json") as stream:
+            content = stream.read(1024 * 1024 + 1)
+    except FileNotFoundError:
         return journal.note_reconciliation(attempt_id, "No durable native outcome is available")
-    if receipt.stat().st_size > 1024 * 1024:
+    if len(content) > 1024 * 1024:
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Native outcome exceeds its size limit")
-    outcome = NativeOutcome.model_validate_json(receipt.read_bytes())
+    outcome = NativeOutcome.model_validate_json(content)
     return journal.record_outcome(attempt_id, entry.supervisor_id, outcome)
 
 

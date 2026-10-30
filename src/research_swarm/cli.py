@@ -104,6 +104,9 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--once", action="store_true", help="Drain available work and exit")
     start.add_argument("--poll-ms", type=int, default=500)
     start.add_argument("--maximum-backoff-ms", type=int, default=15000)
+    recover = worker_actions.add_parser("recover", help="Quarantine one original native journal")
+    recover.add_argument("--worker-dir", type=Path, required=True)
+    recover.add_argument("--attempt", required=True)
     command = commands.add_parser("command", help="Send a typed domain command")
     command.add_argument("operation")
     command.add_argument("--file", type=Path, help="JSON request file, otherwise read stdin")
@@ -327,11 +330,22 @@ def main(argv: list[str] | None = None) -> int:
                 result = registered.public_description()
             print(canonical_bytes(result).decode("utf-8"))
             return 0
-        if args.action == "worker" and args.worker_action in {"describe", "connect", "start"}:
+        if args.action == "worker" and args.worker_action in {
+            "describe",
+            "connect",
+            "start",
+            "recover",
+        }:
             from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
 
             if args.controller or args.token_file or args.state_dir:
                 raise ValueError("Worker installation uses --worker-dir and its provisioned bundle")
+            if args.worker_action == "recover":
+                from research_swarm.workers.recovery import recover_worker_attempt
+
+                report = recover_worker_attempt(args.worker_dir, args.attempt)
+                print(canonical_bytes(report.model_dump(mode="json")).decode("utf-8"))
+                return 0 if report.delivery_state in {"quarantined", "controller_terminal"} else 3
             if args.worker_action == "describe":
                 from research_swarm.engines.registration import read_registration
 

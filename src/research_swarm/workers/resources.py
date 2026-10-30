@@ -13,7 +13,7 @@ from pydantic import Field, model_validator
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, Name, Revision, VersionedRecord, new_id
-from research_swarm.state.identity import initialize_identity
+from research_swarm.state.identity import connect_existing, initialize_identity
 from research_swarm.workers.authority import VerifiedDispatch, WorkerBinding
 from research_swarm.workers.journal import JournalEntry, JournalState
 
@@ -73,6 +73,8 @@ class MachineResources:
     releases capacity. This is scheduling admission, not a kernel resource sandbox.
     """
 
+    _existing_only: bool = False
+
     def __init__(self, path: Path) -> None:
         self.path = path
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -83,9 +85,33 @@ class MachineResources:
             connection.executescript(_SCHEMA)
             self.identity = initialize_identity(connection)
 
+    @classmethod
+    def open_existing(cls, path: Path, expected_identity: str) -> MachineResources:
+        resources = cls.__new__(cls)
+        resources.path, resources.identity = path.absolute(), expected_identity
+        resources._existing_only = True
+        with resources._connect() as connection:
+            try:
+                connection.execute(
+                    "SELECT name,capacity,controller_id,workspace_id FROM pools LIMIT 0"
+                )
+                connection.execute(
+                    "SELECT attempt_id,payload,state,finding,closure_digest FROM claims LIMIT 0"
+                )
+                connection.execute("SELECT attempt_id,pool,amount FROM allocations LIMIT 0")
+            except sqlite3.Error as error:
+                raise ResearchError(
+                    ErrorCode.SCHEMA_UNSUPPORTED, "Original resource schema is unavailable"
+                ) from error
+        return resources
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+        connection = (
+            connect_existing(self.path, self.identity)
+            if getattr(self, "_existing_only", False)
+            else sqlite3.connect(self.path, timeout=10, isolation_level=None)
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA synchronous=FULL")
         connection.execute("PRAGMA foreign_keys=ON")

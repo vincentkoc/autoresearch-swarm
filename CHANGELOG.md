@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add `research worker recover` for journal-only evidence delivery from an original installation after execution authority changes.
+- Reconcile native closure and capacity before network delivery, preserve uncertain snapshots and acknowledgment keys, and keep controller disposition separate from local custody.
+- Open pinned native stores without creating replacements; recover without the original interpreter or project checkout and without launching, claiming, cancelling, or accepting research results.
+
 - Add explicit native closure reconciliation with a final `closed_unaccepted` disposition, separate from execution acceptance and scientific eligibility.
 - Settle original costs and evaluation exposure despite unusable research outputs, stop undispatched successors, and preserve admitted sibling custody and terminal campaign history.
 - Keep nonacceptance sticky across sibling uncertainty and completion; resume local drivers without attempting forbidden evaluator receipts.
