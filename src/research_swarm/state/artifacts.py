@@ -531,10 +531,15 @@ class ArtifactService:
         *,
         purpose: str,
         media_type: str = "application/json",
+        max_bytes: int = 1024 * 1024,
     ) -> ArtifactRef:
         """Publish bounded controller-generated metadata through the ordinary upload lifecycle."""
-        if len(content) > 1024 * 1024:
-            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Inline artifact exceeds 1 MiB")
+        if type(max_bytes) is not int or not 1 <= max_bytes <= 8 * 1024 * 1024:
+            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid inline artifact bound")
+        if len(content) > max_bytes:
+            raise ResearchError(
+                ErrorCode.PROJECT_CONTRACT_INVALID, "Inline artifact exceeds its bound"
+            )
         key = record_digest(
             "research.inline-transfer",
             {

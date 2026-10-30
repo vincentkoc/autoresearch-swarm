@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Prepare canonical policy-training inputs directly from current controller-qualified datasets and frozen behavior policies. Recheck evidence after byte publication, retain both artifacts atomically, and preserve committed replay without renewing stale authority.
+- Expose input preparation through the common agent API with exact upload/read scopes. Support an explicit bounded 8 MiB controller artifact while preserving the 1 MiB default for other inline metadata.
+
 - Qualify complete frozen development datasets from controller-owned proposal decisions, admission transitions, independent evaluations and original same-seed comparators. Exclude predeclared held-out episodes and refuse incomplete or invalid batches without publishing partial data.
 - Capture exact proposal/trial/attempt costs and record/settlement provenance, including earlier attempts and effective corrections. Preserve historical qualification receipts while providing full-chain revalidation before future training admission.
 

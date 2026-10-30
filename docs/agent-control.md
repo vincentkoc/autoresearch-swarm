@@ -831,3 +831,48 @@ controller-bound training admission and publication of a linked `TrainingJob`
 remain separate work. A qualification receipt does not launch training or adopt a
 policy. Held-out policy evaluation is also still required before claiming that
 the learned policy improves research.
+
+## Prepare canonical policy-training inputs
+
+A qualified dataset can be materialized directly from controller records:
+
+```python
+from research_swarm.control.learning_training_models import PreparePolicyInputs
+
+binding = operator.command(
+    "learning.prepare_training_inputs",
+    PreparePolicyInputs(binding_id=new_id(), dataset_id=qualified["id"]),
+    idempotency_key="prepare-training-inputs",
+)["result"]["data"]
+inputs = {
+    "behavior": ArtifactRef.model_validate(binding["behavior"]),
+    "trajectories": ArtifactRef.model_validate(binding["trajectories"]),
+}
+```
+
+The command requires exactly `learning.manage`, `artifact.upload` and `read`.
+MCP exposes `research_learning_prepare_training_inputs`; regular evidence queries
+expose `learning_inputs`. These artifact references can be supplied as the normal
+training campaign inputs.
+
+The caller cannot provide replacement policy or trajectory bytes. The controller
+revalidates the qualified dataset, serializes it and its frozen behavior policy,
+then publishes those canonical bytes through the ordinary artifact lifecycle.
+Byte I/O runs outside SQL. The final transaction rechecks the complete evidence
+and exact content, retains both artifacts and inserts the immutable input binding.
+A correction during publication prevents binding creation. Already published
+unreferenced blobs remain visible to normal artifact lifecycle management.
+
+The dataset retains its 8 MiB bound. Other controller-generated metadata keeps the
+default 1 MiB inline limit; this preparation path explicitly selects the larger
+bounded capacity.
+
+Retries return committed bindings without repeating byte publication, including
+recovery from an error after the database commit. A later correction does not
+rewrite that historical binding. `require_prepared_inputs` verifies current
+qualification, exact canonical hashes, sizes and artifact availability before a
+future admission can rely on it.
+
+This prepares inputs only. Controller-bound training admission, approved training
+profiles and linked output receipts remain separate work; preparing artifacts does
+not launch a trial or authorize policy adoption.

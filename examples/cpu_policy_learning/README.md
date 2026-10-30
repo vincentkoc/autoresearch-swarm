@@ -31,8 +31,11 @@ The environment file declares the development package version; deployment must
 also record the installed build and worker fingerprint. A development version
 string alone does not pin installed bytes.
 
-Upload both files through the normal artifact API, then use the ordinary project
-bootstrap with `RunOptions(primary_metric="update_error", input_artifacts=...)`.
+For controller-qualified data, use
+[`learning.prepare_training_inputs`](../../docs/agent-control.md#prepare-canonical-policy-training-inputs)
+to obtain canonical `behavior` and `trajectories` references. Standalone numerical
+fixtures can upload both files through the normal artifact API. Use the ordinary
+project bootstrap with `RunOptions(primary_metric="update_error", input_artifacts=...)`.
 `orchestration.bootstrap.prepare_run` creates the regular campaign/trial/stage
 graph. Registered workers claim and execute the train and evaluation stages;
 an independently authorized evaluator completes the evaluation receipt.

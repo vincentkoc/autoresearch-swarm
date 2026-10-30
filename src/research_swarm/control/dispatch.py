@@ -38,6 +38,7 @@ from research_swarm.control.learning_models import (
     FreezeLearningPlan,
     QualifyTrajectoryDataset,
 )
+from research_swarm.control.learning_training_models import PreparePolicyInputs
 from research_swarm.control.observation_models import (
     AbandonObservationSelection,
     ObserveTrial,
@@ -106,6 +107,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.prepare_training_inputs": CommandDefinition(
+        PreparePolicyInputs,
+        "prepare_policy_inputs",
+        "learning.manage",
+        False,
+        "Publish canonical qualified data and behavior policy as immutable training inputs.",
+        additional_scopes=("artifact.upload", "read"),
+    ),
     "learning.qualify_dataset": CommandDefinition(
         QualifyTrajectoryDataset,
         "qualify_trajectory_dataset",

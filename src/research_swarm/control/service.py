@@ -50,11 +50,13 @@ from research_swarm.control.import_models import ImportHistoricalEvidence
 from research_swarm.control.imports import HistoricalImportControl
 from research_swarm.control.learning import LearningControl
 from research_swarm.control.learning_datasets import LearningDatasetControl
+from research_swarm.control.learning_inputs import LearningInputControl
 from research_swarm.control.learning_models import (
     CommitPolicyDecision,
     FreezeLearningPlan,
     QualifyTrajectoryDataset,
 )
+from research_swarm.control.learning_training_models import PreparePolicyInputs
 from research_swarm.control.models import (
     CampaignContract,
     CampaignData,
@@ -229,6 +231,7 @@ class ResearchService:
         self.proposals = ProposalControl(database)
         self.learning = LearningControl(database)
         self.learning_datasets = LearningDatasetControl(database)
+        self.learning_inputs = LearningInputControl(database, artifacts)
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
         self.search_admission = SearchAdmission(
@@ -431,6 +434,11 @@ class ResearchService:
         self, context: CommandContext, request: QualifyTrajectoryDataset
     ) -> JsonObject:
         return self.learning_datasets.qualify(context, request)
+
+    def prepare_policy_inputs(
+        self, context: CommandContext, request: PreparePolicyInputs
+    ) -> JsonObject:
+        return self.learning_inputs.prepare(context, request)
 
     def commit_policy_decision(
         self, context: CommandContext, request: CommitPolicyDecision
