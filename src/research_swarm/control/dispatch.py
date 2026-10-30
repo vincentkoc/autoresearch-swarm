@@ -15,7 +15,7 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
-from research_swarm.control.confirmation import CreateConfirmationPlan
+from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.results import PublishAttempt
@@ -38,6 +38,13 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "confirmation.assess": CommandDefinition(
+        AssessConfirmation,
+        "assess_confirmation",
+        "promotion.assess",
+        False,
+        "Assess the complete preselected seed panel without changing its membership.",
+    ),
     "confirmation.create": CommandDefinition(
         CreateConfirmationPlan,
         "create_confirmation",

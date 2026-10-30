@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -20,7 +21,7 @@ from tests.test_local_pipeline import pipeline as pipeline
 from tests.test_promotions import assess, commit, evaluated
 
 
-def options(exposures: int = 10) -> dict[str, Any]:
+def options(exposures: int = 10, *, attempts: int = 20) -> dict[str, Any]:
     return {
         "promotion": PromotionConfiguration(
             mode="paired_confirmation",
@@ -29,7 +30,8 @@ def options(exposures: int = 10) -> dict[str, Any]:
         ),
         "stopping": StoppingRule(max_trials=20),
         "limits": (
-            *LIMITS,
+            BudgetLimit(dimension="attempts", unit="count", limit=attempts),
+            LIMITS[1],
             BudgetLimit(
                 dimension="evaluation_exposures",
                 unit="count",
@@ -41,16 +43,23 @@ def options(exposures: int = 10) -> dict[str, Any]:
 
 
 def setup_plan(
-    pipeline: Pipeline, *, wrong_profile: bool = False
+    pipeline: Pipeline, *, wrong_profile: bool = False, candidate_source: Path | None = None
 ) -> tuple[CreateConfirmationPlan, dict[str, Any]]:
     commit(pipeline, assess(pipeline, evaluated(pipeline)))
     campaign = pipeline.client.get("campaign", pipeline.campaign["id"])
     previous = pipeline.client.get("candidate", pipeline.trial["data"]["candidate_id"])
+    artifact = (
+        previous["data"]["source_artifact"]
+        if candidate_source is None
+        else pipeline.client.capture_project(
+            candidate_source, idempotency_key="confirmation-source"
+        )
+    )
     candidate = pipeline.client.command(
         "candidate.propose",
         ProposeCandidate(
             campaign_id=campaign["id"],
-            source_artifact=previous["data"]["source_artifact"],
+            source_artifact=artifact,
             hypothesis="A preselected no-op replication control",
         ),
         idempotency_key="confirmation-candidate",

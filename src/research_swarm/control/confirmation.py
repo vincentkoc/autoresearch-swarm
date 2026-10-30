@@ -32,6 +32,10 @@ class CreateConfirmationPlan(VersionedRecord):
     execution_fingerprints: dict[Name, Digest] = Field(min_length=1, max_length=256)
 
 
+class AssessConfirmation(VersionedRecord):
+    plan_id: ID
+
+
 class ConfirmationControl:
     def __init__(
         self,
@@ -42,6 +46,17 @@ class ConfirmationControl:
         ],
     ) -> None:
         self.database, self.submit_trial = database, submit_trial
+
+    def assess(self, context: CommandContext, intent: AssessConfirmation) -> JsonObject:
+        from research_swarm.control.confirmation_assessment import assess_plan
+
+        return self.database.execute(
+            context,
+            "confirmation.assess",
+            intent.model_dump(mode="json"),
+            "promotion.assess",
+            lambda transaction: assess_plan(transaction, intent.plan_id),
+        )
 
     def create(self, context: CommandContext, intent: CreateConfirmationPlan) -> JsonObject:
         def create(transaction: Transaction) -> JsonObject:

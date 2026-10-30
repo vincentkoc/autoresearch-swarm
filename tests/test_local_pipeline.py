@@ -53,10 +53,20 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     options = getattr(request, "param", False)
     parallel_stage = options is True
     campaign_options = {"limits": LIMITS, **(options if isinstance(options, dict) else {})}
-    if parallel_stage:
+    learning_rate = campaign_options.pop("source_learning_rate", None)
+    if parallel_stage or learning_rate is not None:
         copied = tmp_path / "parallel-source"
         shutil.copytree(source, copied)
         source = copied
+        if learning_rate is not None:
+            training = source / "train.py"
+            training.write_text(
+                training.read_text(encoding="utf-8").replace(
+                    "LEARNING_RATE = 0.35", f"LEARNING_RATE = {learning_rate}"
+                ),
+                encoding="utf-8",
+            )
+    if parallel_stage:
         manifest = source / "research.toml"
         manifest.write_text(
             manifest.read_text(encoding="utf-8") + '\n[[stages]]\nid = "probe"\nkind = "smoke"\n'

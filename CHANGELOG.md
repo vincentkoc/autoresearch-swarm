@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Assess complete preselected confirmation panels, preserve failed realizations, and commit statistically qualified selections atomically.
+- Keep every paired receipt as a promotion dependency and suspend selection when supporting evidence is corrected.
 - Continue bounded native closure observation after a cleanup signal error instead of abandoning draining and reaping.
 - Seal complete paired confirmation plans and create all seed-bound candidate/comparator trials atomically.
 - Reserve evaluation exposure separately, retain uncertain access, and release only on positive no-access evidence.

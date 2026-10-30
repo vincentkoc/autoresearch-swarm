@@ -126,5 +126,18 @@ consumes access even if scoring fails. Positive proof that scoring never started
 releases the reservation. A failed prerequisite releases an undispatched scoring grant.
 Timeout alone cannot release exposure. Execution and exposure use separate settlements.
 
-Plan execution currently produces authenticated receipts. The service that assesses
-the complete paired plan against the statistical gate remains in progress.
+Call `confirmation.assess` after the panel produces its receipts. While evidence is
+pending, it reports the missing trials without calculating significance. Use a new
+command key after new evidence arrives. Replaying an old key returns its original response.
+
+A failed required realization makes the complete panel ineligible. Successful panels
+produce a persisted gate result and promotion assessment. `promotion.commit` checks
+the original incumbent revision and every supporting receipt before selection.
+
+Every pair remains a dependency of the selected result. Correcting either side
+suspends an incumbent that depended on that panel. The assessment does not select
+the best seed or discard unfavorable replicates.
+
+Confirmed means the specified seed gate passed under the declared contract. It does
+not establish generalization or an untouched validation split. Prior development-set
+access remains relevant. Creating another campaign does not erase that scientific exposure.

@@ -51,6 +51,7 @@ class ConfirmationPlan(VersionedRecord):
 class ConfirmationData(VersionedRecord):
     plan: ConfirmationPlan
     decision_id: ID | None = None
+    ineligible_trial_ids: tuple[ID, ...] = ()
 
 
 class ExposureData(VersionedRecord):

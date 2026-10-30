@@ -15,7 +15,7 @@ from research_swarm.domain.evidence import PromotionDecision
 from research_swarm.domain.experiments import Direction
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import ID, Digest, Revision, VersionedRecord, new_id
-from research_swarm.evaluation.statistics import Rational
+from research_swarm.evaluation.statistics import GateResult, Rational
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 
@@ -43,6 +43,8 @@ class PromotionAssessment(VersionedRecord):
     evidence_level: Literal["observed", "confirmed"] = "observed"
     exact_improvement: Rational | None = None
     replaces_suspension_id: ID | None = None
+    confirmation_plan_id: ID | None = None
+    gate: GateResult | None = None
 
 
 class PromotionControl:
@@ -210,6 +212,10 @@ class PromotionControl:
                 raise ResearchError(
                     ErrorCode.EVIDENCE_INVALIDATED, "Incumbent evidence is suspended"
                 )
+            if assessment.confirmation_plan_id is not None:
+                from research_swarm.control.confirmation_assessment import verify_planned_assessment
+
+                verify_planned_assessment(transaction, assessment)
             for identifier in decision.evaluation_ids:
                 eligible = eligible_evaluation(
                     transaction, identifier, campaign_row["id"], campaign

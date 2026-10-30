@@ -15,7 +15,11 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
-from research_swarm.control.confirmation import ConfirmationControl, CreateConfirmationPlan
+from research_swarm.control.confirmation import (
+    AssessConfirmation,
+    ConfirmationControl,
+    CreateConfirmationPlan,
+)
 from research_swarm.control.evaluations import (
     AuthorizeEvaluation,
     CompleteEvaluation,
@@ -124,6 +128,11 @@ class ResearchService:
         self, context: CommandContext, request: CreateConfirmationPlan
     ) -> JsonObject:
         return self.confirmations.create(context, request)
+
+    def assess_confirmation(
+        self, context: CommandContext, request: AssessConfirmation
+    ) -> JsonObject:
+        return self.confirmations.assess(context, request)
 
     def assess_promotion(self, context: CommandContext, request: AssessPromotion) -> JsonObject:
         return self.promotions.assess(context, request)
