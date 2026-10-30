@@ -104,6 +104,46 @@ def encode(value: Any) -> str:
     return canonical_bytes(value).decode("utf-8")
 
 
+def _request_digest(context: CommandContext, operation: str, payload: Mapping[str, Any]) -> str:
+    return record_digest(
+        "research.command",
+        {
+            "operation": operation,
+            "expected_revision": context.expected_revision,
+            "payload": dict(payload),
+        },
+    )
+
+
+def _stored_response(
+    connection: sqlite3.Connection, context: CommandContext, request_digest: str
+) -> JsonObject | None:
+    previous = connection.execute(
+        "SELECT request_digest,response FROM commands "
+        "WHERE workspace_id=? AND actor_id=? AND idempotency_key=?",
+        (context.principal.workspace_id, context.principal.id, context.idempotency_key),
+    ).fetchone()
+    if previous is None:
+        return None
+    if previous["request_digest"] != request_digest:
+        raise ResearchError(
+            ErrorCode.IDEMPOTENCY_CONFLICT, "Idempotency key was used with a different request"
+        )
+    return dict(strict_json_loads(previous["response"]))
+
+
+def _deliver(response: JsonObject) -> JsonObject:
+    if "error" in response:
+        failure = response["error"]
+        raise ResearchError(
+            ErrorCode(failure["code"]),
+            failure["message"],
+            retryable=failure["retryable"],
+            details=failure["details"],
+        )
+    return response
+
+
 class Transaction:
     """Private repository access used only inside a domain command."""
 
@@ -285,14 +325,7 @@ class Database:
         handler: Callable[[Transaction], JsonObject],
     ) -> JsonObject:
         context.principal.require(scope)
-        request_digest = record_digest(
-            "research.command",
-            {
-                "operation": operation,
-                "expected_revision": context.expected_revision,
-                "payload": dict(payload),
-            },
-        )
+        request_digest = _request_digest(context, operation, payload)
         workspace_id = context.principal.workspace_id
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -304,18 +337,9 @@ class Database:
                     is None
                 ):
                     raise ResearchError(ErrorCode.NOT_FOUND, "Workspace not found")
-                previous = connection.execute(
-                    """SELECT request_digest,response FROM commands
-                    WHERE workspace_id=? AND actor_id=? AND idempotency_key=?""",
-                    (workspace_id, context.principal.id, context.idempotency_key),
-                ).fetchone()
+                previous = _stored_response(connection, context, request_digest)
                 if previous is not None:
-                    if previous["request_digest"] != request_digest:
-                        raise ResearchError(
-                            ErrorCode.IDEMPOTENCY_CONFLICT,
-                            "Idempotency key was used with a different request",
-                        )
-                    response = strict_json_loads(previous["response"])
+                    response = previous
                 else:
                     connection.execute("SAVEPOINT domain_operation")
                     try:
@@ -344,15 +368,21 @@ class Database:
             except BaseException:
                 connection.rollback()
                 raise
-        if "error" in response:
-            failure = response["error"]
-            raise ResearchError(
-                ErrorCode(failure["code"]),
-                failure["message"],
-                retryable=failure["retryable"],
-                details=failure["details"],
-            )
-        return dict(response)
+        return _deliver(dict(response))
+
+    def replay(
+        self, context: CommandContext, operation: str, payload: Mapping[str, Any], scope: str
+    ) -> JsonObject | None:
+        """Read a committed acknowledgment before expensive or transient preflight.
+
+        A miss grants no execution authority. The caller must still use execute(),
+        which repeats the check inside its atomic write transaction.
+        """
+        context.principal.require(scope)
+        digest = _request_digest(context, operation, payload)
+        with self.connect() as connection:
+            response = _stored_response(connection, context, digest)
+        return _deliver(response) if response is not None else None
 
     def snapshot(self, context: CommandContext) -> JsonObject:
         context.principal.require("read")

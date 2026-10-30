@@ -50,6 +50,96 @@ def test_duplicate_command_returns_original_ids(
     assert len(database.pending_notifications()) == 1
 
 
+def test_replay_precedes_transient_preflight_without_recording_a_probe(
+    database: Database, context: ContextFactory, tmp_path: Path
+) -> None:
+    source = tmp_path / "preflight-source"
+    source.write_text("available")
+    checked = []
+
+    def operation(key: str) -> dict:
+        request = context(key)
+        replay = database.replay(request, "preflight-command", {}, "write")
+        if replay is not None:
+            return replay
+        checked.append(key)
+        source.read_text()
+        return database.execute(
+            request, "preflight-command", {}, "write", lambda t: {"id": new_id()}
+        )
+
+    assert database.replay(context("first"), "preflight-command", {}, "write") is None
+    first = operation("first")
+    source.unlink()
+    assert operation("first") == first
+    with pytest.raises(FileNotFoundError):
+        operation("retryable-preflight")
+    source.write_text("restored")
+    assert operation("retryable-preflight")["result"]["id"] != first["result"]["id"]
+    assert checked == ["first", "retryable-preflight", "retryable-preflight"]
+    with database.connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM commands").fetchone()[0] == 2
+
+
+def test_preflight_race_rechecks_idempotency_in_the_committing_transaction(
+    database: Database, context: ContextFactory
+) -> None:
+    barrier = Barrier(2)
+    effects = []
+
+    def submit(_: int) -> dict:
+        separate = Database(database.path)
+        request = context("race")
+        assert separate.replay(request, "submit", {}, "write") is None
+        barrier.wait(timeout=5)
+
+        def commit(transaction: Transaction) -> dict:
+            identifier = new_id()
+            effects.append(identifier)
+            return transaction.insert("trial", identifier, {}, state="queued")
+
+        return separate.execute(request, "submit", {}, "write", commit)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(submit, range(2)))
+    assert results[0] == results[1]
+    assert effects == [results[0]["result"]["id"]]
+
+
+def test_replay_uses_the_same_authority_revision_and_payload_rules(
+    database: Database, context: ContextFactory, principal: Principal
+) -> None:
+    original = create_campaign(database, context("same", revision=1))
+    assert (
+        Database(database.path).replay(
+            context("same", revision=1), "create", {"objective": "synthetic"}, "write"
+        )
+        == original
+    )
+    with pytest.raises(ResearchError) as conflict:
+        database.replay(context("same", revision=2), "create", {"objective": "synthetic"}, "write")
+    assert conflict.value.code == ErrorCode.IDEMPOTENCY_CONFLICT
+    reader = principal.model_copy(update={"scopes": frozenset({"read"})})
+    with pytest.raises(ResearchError) as denied:
+        database.replay(
+            CommandContext(principal=reader, idempotency_key="same", expected_revision=1),
+            "create",
+            {"objective": "synthetic"},
+            "write",
+        )
+    assert denied.value.code == ErrorCode.AUTHORIZATION_DENIED
+
+
+def test_replay_preserves_committed_rejections(database: Database, context: ContextFactory) -> None:
+    def refused(transaction: Transaction) -> dict:
+        raise ResearchError(ErrorCode.BUDGET_EXHAUSTED, "No remaining allowance")
+
+    with pytest.raises(ResearchError, match="No remaining allowance"):
+        database.execute(context("reject"), "claim", {}, "write", refused)
+    with pytest.raises(ResearchError, match="No remaining allowance"):
+        database.replay(context("reject"), "claim", {}, "write")
+
+
 def test_changed_payload_conflicts(database: Database, context: ContextFactory) -> None:
     create_campaign(database, context("same"))
     with pytest.raises(ResearchError) as caught:
