@@ -1883,6 +1883,10 @@ Parent and child accounts share one transactional authority in v1. The parent's 
 
 Unused allocation returns to the parent only through a recorded release. Moving child accounting across authorities requires a separate transfer protocol and is outside v1.
 
+Live ancestor accounting must also preserve known commitments after overshoot. For a child grant `A`, cumulative consumption `C`, uncertainty `U`, and current reservations `R`, the direct parent's contribution is `consumed=C`, `uncertain=U`, and `reserved=max(R, A-C-U, 0)`. Its total encumbrance is `max(A, C+U+R)`. Apply exact differences from the previous projection; a parent already includes its descendants and must not sum them again.
+
+A zero ancestor availability is valid for work inside an already funded allocation. A negative availability blocks new reservations in the affected dimension, including reservations by funded siblings. Measured usage still propagates; admission rules must never reject the recording of overshoot. Child releases do not directly refund ancestors: the grant floor remains held. Release only a proven decrease in projected encumbrance or the remaining held grant at terminal settlement.
+
 Inherited constraints include:
 
 - Maximum remaining depth.

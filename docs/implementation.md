@@ -51,7 +51,8 @@ not implicitly supported.
 | Asynchronous portfolio planning | Pure plural planner, API-only driver, sealed theme allocation, owner recovery, stale request cancellation | Local CPU/HTTP selection, lost commit while paused, UNKNOWN retention, bounded scan isolation, CLI/controller races, two registered workers with independent evaluation and early replacement work | Native CPU workload overlap verified on local macOS; physical fleet and throughput scaling pending |
 | Statistical gates and exposure | Fixed paired sign gate, sealed plans, exposure accounting, complete-panel assessment | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release, actual paired CPU control | Independent workload variance and held-out generalization pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
-| Nested campaigns and policy benchmark | Pending | Pending | Held-out comparison pending |
+| Hierarchical allocation ledger | Immutable grants, bounded lineage, live ancestor accounting, deficit admission guard, projection receipts and terminal settlement | Independent SQLite races, uncertainty, committed overshoot, sibling blocking, recursive release, replay/reopen, rollback and exact decimals | Internal ledger verified; public child lifecycle and real child execution pending |
+| Nested campaigns and policy benchmark | Pending public lifecycle and benchmark | Funding ledger foundation verified separately | Held-out comparison pending |
 | Temporal | Pending | Pending | Real server pending |
 | Cloudflare | Pending | Pending | Hosted deployment pending |
 | Actual reward-driven policy learning | Pending | Pending | Training/evaluation pending |

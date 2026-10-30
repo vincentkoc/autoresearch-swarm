@@ -44,7 +44,9 @@ class BudgetLedger:
         return BudgetAccount.model_validate_json(row["payload"])
 
     @staticmethod
-    def _save(transaction: Transaction, account: BudgetAccount) -> None:
+    def _save(
+        transaction: Transaction, account: BudgetAccount, *, lineage: tuple[str, ...] = ()
+    ) -> None:
         account = BudgetAccount.model_validate(account.model_dump())
         transaction.connection.execute(
             "UPDATE budgets SET payload=? WHERE workspace_id=? AND campaign_id=? AND dimension=?",
@@ -55,6 +57,10 @@ class BudgetLedger:
                 account.dimension,
             ),
         )
+
+        from research_swarm.state.funding import FundingLedger
+
+        FundingLedger.propagate(transaction, account, lineage)
 
     @classmethod
     def reserve(
@@ -76,6 +82,9 @@ class BudgetLedger:
                     "Reservation owner already has another allocation",
                 )
             return previous
+        from research_swarm.state.funding import FundingLedger
+
+        FundingLedger.check_admission(transaction, campaign_id, tuple(amounts))
         reservation = Reservation(campaign_id=campaign_id, owner_id=owner_id, amounts=amounts)
         for dimension, amount in amounts.items():
             account = cls.account(transaction, campaign_id, dimension)

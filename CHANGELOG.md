@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add transactional child-allocation accounting with immutable funding identities, live ancestor projections, exact signed ledger entries, and idempotent remainder settlement.
+- Preserve commitments and uncertainty after overshoot, block new reservations against ancestor deficits, and keep unused grants held until explicit closure. Public child-campaign commands follow this internal ledger foundation.
+
 - Qualify asynchronous portfolio progress with two registered HTTP CPU workers sharing native capacity: a third candidate enters its workload while the original candidate remains alive, after an independently evaluated sibling promotes.
 - Verify original process identity, distinct source lineage, separate evaluator authority, accepted closure, exact attempt counts, and restored shared capacity in the native integration test.
 
