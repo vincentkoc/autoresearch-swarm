@@ -52,7 +52,7 @@ def test_start_barrier_precedes_project_execution_and_preserves_arguments(tmp_pa
     assert outcome.exit_code == 0 and outcome.closure.scope_closed
     assert outcome.closure.identity == received[0]
     assert marker.exists()
-    text = (tmp_path / "output" / "stdout").read_text()
+    text = (tmp_path / "output" / "stdout").read_text(encoding="utf-8")
     assert "two words" in text and "猫" in text and 'a"b' in text
 
 
@@ -250,3 +250,34 @@ def test_relative_executables_resolve_from_the_project(tmp_path: Path, executabl
     outcome = run_native(invocation, tmp_path / "out", environment=environment)
     assert outcome.exit_code == 0 and outcome.closure.scope_closed
     assert (tmp_path / "out" / "stdout").read_text() == "project-directory"
+
+
+def test_failed_deadline_signal_does_not_erase_independent_closure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from research_swarm.workers import supervision
+
+    prepare = supervision._prepare
+
+    def wrapped(command: NativeCommand, environment: dict[str, str]):
+        child = prepare(command, environment)
+        stop = child.stop
+
+        def stop_with_failed_force(*, force: bool) -> None:
+            if force:
+                raise PermissionError("injected signal race")
+            stop(force=force)
+
+        child.stop = stop_with_failed_force
+        return child
+
+    monkeypatch.setattr(supervision, "_prepare", wrapped)
+    outcome = run_native(
+        command(tmp_path, "import time; time.sleep(60)", timeout_ms=250),
+        tmp_path / "out",
+        on_released=lambda _: time.sleep(0.5),
+    )
+    assert outcome.reason == "deadline" and outcome.closure.scope_closed
+    assert any(
+        "Deadline termination request failed" in finding for finding in outcome.closure.findings
+    )

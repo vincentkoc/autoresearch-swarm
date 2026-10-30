@@ -263,8 +263,8 @@ def run_native(
                 child.stop(force=True)
         stop_watchdog()
         if watchdog_errors:
-            findings.append("Native deadline termination failed")
-            closure = closure.model_copy(update={"scope_closed": False})
+            findings.append("Deadline termination request failed: " + ", ".join(watchdog_errors))
+            # A signal error cannot erase an independently verified native closure.
         if not stdout.eof or not stderr.eof or exit_code is None:
             findings.append("Incomplete native exit or output closure")
             closure = closure.model_copy(update={"scope_closed": False})

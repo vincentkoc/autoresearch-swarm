@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve independently observed native closure when a competing deadline signal fails.
 - Persist authenticated worker dispatches, launch barriers, cancellation intent, and recoverable observations.
 - Supervise bounded native process groups and Windows jobs with capped output and independent deadlines.
 - Recover native completion after publication failure without repeating the workload.
