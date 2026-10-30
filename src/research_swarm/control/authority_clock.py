@@ -4,26 +4,14 @@ from __future__ import annotations
 
 import os
 import threading
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from research_swarm.control.time_authority import AuthorityTime, ClockAuthorityScope
 from research_swarm.domain.clocks import ClockPolicy
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
+from research_swarm.state.sql import StoreIdentity
 from research_swarm.workers.clocks import NativeClock, native_clock, require_continuity
-
-
-@dataclass(frozen=True)
-class AuthorityTime:
-    epoch: str
-    milliseconds: int
-    profile: str
-    policy: ClockPolicy
-
-    @property
-    def datetime(self) -> datetime:
-        return datetime(1970, 1, 1, tzinfo=UTC) + timedelta(milliseconds=self.milliseconds)
 
 
 class AuthorityClock:
@@ -97,13 +85,23 @@ def process_authority_clock(
     Entries intentionally survive runtime collection. A new process has a new
     epoch; an inherited entry is unusable after fork and is never re-anchored.
     """
+    return _process_clock(
+        str(database_path.resolve()),
+        ClockAuthorityScope(workspace_id, controller_id, control_epoch, key_id),
+        policy,
+    )
+
+
+def _process_clock(
+    location: str, scope: ClockAuthorityScope, policy: ClockPolicy | None = None
+) -> AuthorityClock:
     policy = ClockPolicy.model_validate(policy or ClockPolicy())
     identity = (
-        str(database_path.resolve()),
-        workspace_id,
-        controller_id,
-        control_epoch,
-        key_id,
+        location,
+        scope.workspace_id,
+        scope.controller_id,
+        scope.control_epoch,
+        scope.signing_key_id,
     )
     with _registry_lock:
         if identity not in _clocks:
@@ -111,3 +109,16 @@ def process_authority_clock(
         if _clocks[identity].policy != policy:
             raise ResearchError(ErrorCode.STALE_FENCE, "Controller clock policy is process-frozen")
         return _clocks[identity]
+
+
+class NativeAuthorityTimeProvider:
+    def __init__(self, identity: StoreIdentity, policy: ClockPolicy | None = None) -> None:
+        if identity.backend != "sqlite":
+            raise ValueError("Native authority time requires native SQLite identity")
+        self.authority_identity = StoreIdentity("sqlite", str(Path(identity.location).resolve()))
+        self.policy = ClockPolicy.model_validate(policy or ClockPolicy())
+
+    def observe(self, scope: ClockAuthorityScope) -> AuthorityTime:
+        # Native clock construction stays lazy for installations using only UTC.
+        # The process registry preserves epochs and poisoned clocks across reopen.
+        return _process_clock(self.authority_identity.location, scope, self.policy).observe()

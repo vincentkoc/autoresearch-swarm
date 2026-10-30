@@ -6,8 +6,8 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from research_swarm.control.acceptance_models import AcceptanceLease, ExpireAcceptance, LeaseRenewal
-from research_swarm.control.authority_clock import AuthorityTime
 from research_swarm.control.models import TrialData
+from research_swarm.control.time_authority import AuthorityTime
 from research_swarm.control.worker_records import AttemptData, WorkerData
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError

@@ -46,12 +46,33 @@ commit-time checks revalidate its ownership, generation, revision and policy.
 Finalize/cleanup preserve acknowledgment replay both before and inside the lifecycle
 guard. Successful publication remains acknowledged if subsequent cleanup fails.
 
-The complete hosted service remains unqualified until native clock initialization,
-key custody and artifact operations have provider implementations. Real local
+The complete hosted service remains unqualified until hosted time, key custody
+and artifact operations have qualified provider implementations. Real local
 training/evaluation and late-result reconciliation tests forbid native connection
 access and check that blob I/O stays outside SQL callbacks. The
 [Cloudflare runtime fixture](../adapters/cloudflare/README.md) runs the shared command
 kernel and schema migrations through its actual SQL adapter.
+
+## Controller time
+
+`AuthorityTimeProvider` supplies fresh synchronous observations for a verified
+workspace, controller epoch and signing-key identity. `ResearchService` passes it
+to worker control and checks that it belongs to the same state authority. The
+provider does not sign grants, authorize workers or accept transport-supplied time.
+Worker control checks signing authority first and samples time inside the protected
+claim, input-acquisition and acceptance decisions.
+
+`LocalRuntime` installs `NativeAuthorityTimeProvider`. It normalizes the native
+store identity at construction and reuses the process registry across runtime
+reopens. Clock construction stays lazy for installations using only local UTC.
+The original epoch, policy freeze, discontinuity latch and fork refusal remain in
+force. A new process cannot recover qualified time merely by loading an old epoch.
+
+Generic services must explicitly supply a provider to enroll calibrated workers.
+They do not discover a database filesystem path or substitute wall time when a
+provider is absent. Callback-only tests cover probes, claims, input authorization
+and acceptance with an injected clock. A hosted clock still needs its own qualified
+profile and continuity contract; the native clock profile is not a cloud capability.
 
 ## Worker admission
 

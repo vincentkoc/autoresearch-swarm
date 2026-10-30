@@ -97,6 +97,7 @@ from research_swarm.control.search_models import (
 )
 from research_swarm.control.search_observations import ObservationControl
 from research_swarm.control.search_selection import SelectionControl
+from research_swarm.control.time_authority import AuthorityTimeProvider
 from research_swarm.control.wait_models import (
     AcknowledgeWakeup,
     OrchestrationWaitTarget,
@@ -184,6 +185,7 @@ class ResearchService:
         *,
         dispatch_key: bytes | None = None,
         assignment_key: bytes | None = None,
+        authority_time_provider: AuthorityTimeProvider | None = None,
     ) -> None:
         if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Research and artifact catalogs must share a transaction authority")
@@ -193,8 +195,15 @@ class ResearchService:
         self.worker_outputs = WorkerOutputs(database, artifacts)
         if assignment_key is not None and dispatch_key is None:
             raise ValueError("Assignment signing requires worker control")
+        if authority_time_provider is not None and dispatch_key is None:
+            raise ValueError("Authority time requires worker control")
         self.workers = (
-            WorkerControl(database, dispatch_key, assignment_key)
+            WorkerControl(
+                database,
+                dispatch_key,
+                assignment_key,
+                authority_time_provider=authority_time_provider,
+            )
             if dispatch_key is not None
             else None
         )

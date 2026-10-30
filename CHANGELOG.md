@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Inject controller authority time through a synchronous provider bound to state and signing authority; keep fresh observations inside calibrated admission, input and acceptance decisions.
+- Install the native provider in the local runtime while preserving lazy UTC compatibility, shared process epochs, clock poisoning and fork refusal; refuse missing or mismatched calibrated providers.
+
 - Complete service-layer SQL callback migration for artifact authorization, upload lifecycle, evaluation admission, result publication and late-evidence reconciliation.
 - Preserve replay-before-preflight, pinned evidence and commit-time revalidation; exercise real CPU stages and original late closure with native connection access forbidden and blob I/O checked outside transactions.
 

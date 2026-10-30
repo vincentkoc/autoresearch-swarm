@@ -16,6 +16,7 @@ from filelock import FileLock
 from pydantic import Field
 
 from research_swarm.control.auth import CredentialStore
+from research_swarm.control.authority_clock import NativeAuthorityTimeProvider
 from research_swarm.control.service import ResearchService
 from research_swarm.domain.assignments import signing_key_id
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
@@ -250,6 +251,9 @@ class LocalRuntime:
                     artifacts,
                     dispatch_key=read_private(root, "dispatch.key", limit=32),
                     assignment_key=signing_key,
+                    authority_time_provider=NativeAuthorityTimeProvider(
+                        database.authority_identity
+                    ),
                 ),
                 credentials,
             )

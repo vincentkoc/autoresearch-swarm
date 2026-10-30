@@ -8,9 +8,13 @@ from decimal import Decimal
 from pydantic import Field, model_validator
 
 from research_swarm.control.acceptance import AcceptanceControl
-from research_swarm.control.authority_clock import AuthorityTime, process_authority_clock
 from research_swarm.control.confirmation_runtime import claim_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
+from research_swarm.control.time_authority import (
+    AuthorityTime,
+    AuthorityTimeProvider,
+    ClockAuthorityScope,
+)
 from research_swarm.control.worker_records import (
     AttemptData as AttemptData,
 )
@@ -114,7 +118,12 @@ def worker_authority(transaction: Transaction, worker_id: str, session_id: str) 
 
 class WorkerControl:
     def __init__(
-        self, database: Database, dispatch_key: bytes, assignment_key: bytes | None = None
+        self,
+        database: Database,
+        dispatch_key: bytes,
+        assignment_key: bytes | None = None,
+        *,
+        authority_time_provider: AuthorityTimeProvider | None = None,
     ) -> None:
         if len(dispatch_key) < 32:
             raise ValueError("Worker control requires at least 256 bits of dispatch authority")
@@ -123,6 +132,12 @@ class WorkerControl:
         if assignment_key is not None and len(assignment_key) != 32:
             raise ValueError("Assignment signing requires a 32-byte Ed25519 key")
         self._assignment_key = assignment_key
+        if (
+            authority_time_provider is not None
+            and authority_time_provider.authority_identity != database.authority_identity
+        ):
+            raise ValueError("Clock provider must share the controller state authority")
+        self._authority_time_provider = authority_time_provider
         self.acceptance = AcceptanceControl(database, self._time)
 
     def _clock_signer(self, worker: WorkerData) -> ClockSigner:
@@ -138,13 +153,18 @@ class WorkerControl:
     def _time(self, worker: WorkerData) -> AuthorityTime:
         signer = self._clock_signer(worker)
         binding = worker.binding
-        return process_authority_clock(
-            self.database.path,
-            binding.workspace_id,
-            binding.controller_id,
-            binding.control_epoch,
-            signer.authority.key_id,
-        ).observe()
+        if self._authority_time_provider is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Authority time provider is absent"
+            )
+        return self._authority_time_provider.observe(
+            ClockAuthorityScope(
+                binding.workspace_id,
+                binding.controller_id,
+                binding.control_epoch,
+                signer.authority.key_id,
+            )
+        )
 
     def clock(self, context: CommandContext, request: ClockChallenge) -> SignedClockReply:
         context.principal.require("worker.query")
@@ -190,10 +210,12 @@ class WorkerControl:
 
     def enroll(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         def enroll(transaction: Transaction) -> JsonObject:
-            if request.clock_mode == "bounded-continuous-v1" and self._assignment_key is None:
+            if request.clock_mode == "bounded-continuous-v1" and (
+                self._assignment_key is None or self._authority_time_provider is None
+            ):
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE,
-                    "Calibrated workers require signed assignment authority",
+                    "Calibrated workers require signing and qualified time authority",
                 )
             if request.project_ids is not None:
                 if self._assignment_key is None:
