@@ -36,3 +36,31 @@ The current profile authenticates the evaluator and binds its report to executio
 It does not isolate hostile training code from all evaluator resources. Protected and
 self-reported profiles are not qualified by this service. Trusted local execution
 and protected evaluation remain distinct claims.
+
+## Fixed paired gate
+
+`paired-sign-v1` accepts a fixed, ordered panel of independent seed pairs. Define
+improvement as comparator minus candidate for a minimized metric. Reverse that
+sign for a maximized metric. A win exceeds the declared minimum practical effect.
+
+With `n` pairs and `k` wins, the one-sided binomial tail is
+`sum(comb(n, j), j=k..n) / 2**n`. The null hypothesis is
+`P(improvement > minimum_effect) <= 0.5`. This is not a confidence interval for
+the mean, or the probability that the candidate is better.
+
+The binomial sign-test basis is described in the [NIST sign-test reference](https://www.itl.nist.gov/div898/software/dataplot/refman1/auxillar/signtest.htm).
+This implementation keeps ties as non-wins in the denominator. NIST's usual
+sign test excludes ties. Keeping them makes this gate conservative for its stated null.
+
+Promotion requires a complete eligible panel, a tail probability at or below
+`1 - confidence`, and a mean improvement above the practical threshold.
+An incomplete panel cannot produce a significance result. A complete inconclusive
+panel cannot be extended after observing its results.
+
+Five unanimous wins give `1/32`. Three unanimous wins give `1/8`, which cannot
+meet a 95% threshold. The policy rejects an infeasible panel before execution.
+Exact rational strings preserve probabilities and summaries without JSON integer overflow.
+
+The caller must establish eligibility, pairing, independence, and exposure rules.
+Matching seed numbers alone does not establish these assumptions. The pure gate
+does not change an incumbent or authorize reuse of a confirmation panel.

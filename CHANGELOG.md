@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a fixed paired sign gate with exact probabilities, practical-effect checks, and explicit incomplete-panel outcomes.
+- Reject infeasible confirmation panels and verify the gate through exhaustive synthetic null signs.
 - Authorize evaluation inputs, seeds, panels, and evaluator identities before worker admission.
 - Derive authenticated receipts from accepted native reports and preserve incomplete or invalid evidence.
 - Advertise supplementary command scopes and publish bounded controller metadata through resumable artifact storage.
