@@ -9,6 +9,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from research_swarm.client import LocalTransport, ResearchClient
+from research_swarm.control.queries import RecordQuery
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.worker_outputs import WorkerOutputIntent
 from research_swarm.control.workers import AttemptData
@@ -30,6 +31,7 @@ from tests.test_authority_clock import simulated as simulated
 from tests.test_clock_estimates import advance, fixture
 from tests.test_local_pipeline import Pipeline
 from tests.test_local_pipeline import pipeline as pipeline
+from tests.test_reconciliation import reconcile
 from tests.test_worker_queries import claim
 from tests.worker_support import dispatch
 
@@ -233,7 +235,7 @@ def test_timed_mode_rejects_missing_binding_and_invented_supervisor(tmp_path: Pa
             JournalEntry.model_validate({**entry.model_dump(mode="json"), **changes})
 
 
-def test_not_started_publication_retains_timed_grant_after_controller_clock_failure(
+def test_not_started_reconciliation_retains_timed_grant_after_controller_clock_failure(
     pipeline: Pipeline,
     simulated: SimulatedClock,
     tmp_path: Path,
@@ -289,7 +291,15 @@ def test_not_started_publication_retains_timed_grant_after_controller_clock_fail
             PublishAttempt(attempt_id=row["id"], journal_artifact=wrong_artifact),
             idempotency_key="stripped-closure",
         )
-    assert downgrade.value.code == ErrorCode.STALE_FENCE
+    assert downgrade.value.code == ErrorCode.ACCEPTANCE_EXPIRED
+    wrong_submission = client.command(
+        "worker.submit_evidence",
+        PublishAttempt(attempt_id=row["id"], journal_artifact=wrong_artifact),
+        idempotency_key="stripped-closure-evidence",
+    )["result"]
+    with pytest.raises(ResearchError) as invalid_grant:
+        reconcile(pipeline, wrong_submission)
+    assert invalid_grant.value.code == ErrorCode.STALE_FENCE
     artifact = client.worker_upload_file(
         WorkerOutputIntent(
             worker_id=worker.binding.worker_id,
@@ -300,12 +310,19 @@ def test_not_started_publication_retains_timed_grant_after_controller_clock_fail
         observed,
         idempotency_key="timed-closure-upload",
     )
-    accepted = client.command(
-        "worker.publish_attempt",
+    submission = client.command(
+        "worker.submit_evidence",
         PublishAttempt(attempt_id=row["id"], journal_artifact=artifact),
-        idempotency_key="timed-closure",
-    )
-    assert accepted["result"]["state"] == "not_started"
-    assert accepted["result"]["data"]["assignment_time"] == attempt.assignment_time.model_dump(
+        idempotency_key="timed-closure-evidence",
+    )["result"]
+    accepted = reconcile(pipeline, submission)
+    assert accepted["attempt"]["state"] == "not_started"
+    assert accepted["attempt"]["data"]["assignment_time"] == attempt.assignment_time.model_dump(
         mode="json"
     )
+    assert accepted["reconciliation"]["data"]["acceptance_disposition"] == "unqualified"
+    assert not pipeline.client.list(RecordQuery(kind="run_result"))["items"]
+    budget = pipeline.client.budget(pipeline.campaign["id"])
+    assert all(account["reserved"] == account["uncertain"] == "0" for account in budget["accounts"])
+    assert reconcile(pipeline, submission)["disposition"] == "already_accepted"
+    assert pipeline.client.budget(pipeline.campaign["id"]) == budget

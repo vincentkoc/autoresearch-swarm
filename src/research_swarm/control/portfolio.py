@@ -81,7 +81,7 @@ def require_portfolio_trial_allowance(
     trials = transaction.connection.execute(
         "SELECT COUNT(*) FROM records WHERE workspace_id=? AND campaign_id=? AND kind='trial'",
         (transaction.workspace_id, campaign_id),
-    ).fetchone()[0]
+    ).one()[0]
     if trials + pending_count >= campaign.contract.stopping.max_trials:
         raise ResearchError(ErrorCode.BUDGET_EXHAUSTED, "No unpromised trial allowance remains")
 

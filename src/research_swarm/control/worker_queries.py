@@ -200,7 +200,7 @@ class WorkerQueries:
                 through = connection.execute(
                     "SELECT COALESCE(MAX(rowid),0) FROM records WHERE workspace_id=?",
                     (transaction.workspace_id,),
-                ).fetchone()[0]
+                ).one()[0]
                 cursor = RecordCursor(scope_digest=scope, after=0, through=through)
             else:
                 try:
@@ -242,7 +242,7 @@ class WorkerQueries:
                     if request.kind in {"pending", "historical_pending"}
                     else "AND state='requested'"
                 )
-            parameters = (
+            parameters: list[str | int] = (
                 [
                     request.worker_id,
                     request.session_id,

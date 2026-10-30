@@ -166,7 +166,7 @@ class ScientificCompletionControl:
                 "SELECT COUNT(*) FROM records WHERE workspace_id=? "
                 "AND campaign_id=? AND kind='trial'",
                 (transaction.workspace_id, row["id"]),
-            ).fetchone()[0]
+            ).one()[0]
             accounts = [
                 BudgetAccount.model_validate(entry["value"])
                 for entry in view.entries
@@ -191,7 +191,7 @@ class ScientificCompletionControl:
             report_id = new_id()
             watermark = transaction.connection.execute(
                 "SELECT next_sequence-1 FROM workspaces WHERE id=?", (transaction.workspace_id,)
-            ).fetchone()[0]
+            ).one()[0]
             updated = transaction.update(
                 "campaign",
                 row["id"],

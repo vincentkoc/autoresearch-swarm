@@ -243,7 +243,7 @@ class OrchestrationControl:
             watermark = transaction.connection.execute(
                 "SELECT next_sequence-1 AS watermark FROM workspaces WHERE id=?",
                 (transaction.workspace_id,),
-            ).fetchone()["watermark"]
+            ).one()["watermark"]
             if intent.planning_watermark > watermark:
                 raise ResearchError(
                     ErrorCode.PROJECT_CONTRACT_INVALID, "Planning watermark is in the future"

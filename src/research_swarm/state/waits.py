@@ -22,7 +22,7 @@ def watermark(transaction: Transaction) -> int:
         transaction.connection.execute(
             "SELECT next_sequence-1 FROM workspaces WHERE id=?",
             (transaction.workspace_id,),
-        ).fetchone()[0]
+        ).one()[0]
     )
 
 

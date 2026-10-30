@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -15,6 +14,7 @@ from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerData
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
+from research_swarm.state.sqlite import SQLiteSession
 from tests.test_http_delivery import serving
 from tests.test_local_pipeline import Pipeline
 from tests.test_local_pipeline import pipeline as pipeline
@@ -204,9 +204,9 @@ def test_empty_worker_poll_and_unowned_lookup_do_not_scan_completed_history(
         return 0
 
     @contextmanager
-    def measured() -> Iterator[sqlite3.Connection]:
+    def measured() -> Iterator[SQLiteSession]:
         with connect() as connection:
-            connection.set_progress_handler(step, 1)
+            connection.connection.set_progress_handler(step, 1)
             yield connection
 
     monkeypatch.setattr(database, "connect", measured)
@@ -228,7 +228,7 @@ def test_empty_worker_poll_and_unowned_lookup_do_not_scan_completed_history(
 
     before = observe()
     with connect() as connection:
-        connection.executemany(
+        connection.connection.executemany(
             "INSERT INTO records SELECT workspace_id,kind,?,revision,state,campaign_id,parent_id,"
             "json_set(payload,'$.dispatch.attempt_id',?),created_at,updated_at FROM records "
             "WHERE kind='attempt' AND id=?",

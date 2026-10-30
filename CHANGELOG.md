@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Extract synchronous SQL store/session contracts and a native SQLite adapter while preserving one command kernel, exact acknowledgment replay, nested rollback and conservative rejection fencing.
+- Replace affected-row assumptions with `RETURNING`, distinguish required from optional rows, and identify shared transaction authority independently of filesystem paths; keep unported native operations explicitly unavailable to hosted stores.
+
 - Qualify Python Durable Object runtime primitives in local workerd: nested transaction rollback, durable rejection acknowledgments, duplicate contention, process restart and synchronous Ed25519 FFI verified against the native cryptography library.
 - Add isolated, locked Cloudflare tooling and an opt-in native fixture without changing core dependencies or claiming the full hosted command/storage deployment is complete.
 

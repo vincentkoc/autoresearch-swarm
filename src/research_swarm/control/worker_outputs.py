@@ -154,7 +154,7 @@ def verify_evidence_receipt(
 
 class WorkerOutputs:
     def __init__(self, database: Database, artifacts: ArtifactService) -> None:
-        if database.path.resolve() != artifacts.database.path.resolve():
+        if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Worker outputs must share artifact transaction authority")
         self.database, self.artifacts = database, artifacts
 

@@ -201,7 +201,7 @@ class LocalRuntime:
                     signed_workers = connection.execute(
                         "SELECT COUNT(*) FROM records WHERE kind='worker' "
                         "AND json_type(payload,'$.assignment_authority')='object'"
-                    ).fetchone()[0]
+                    ).one()[0]
                 if signed_workers:
                     raise ResearchError(
                         ErrorCode.AUTHORIZATION_DENIED,

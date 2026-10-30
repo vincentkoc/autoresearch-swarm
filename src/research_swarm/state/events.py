@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.state.sql import SqlSession
 
 
 def event_page(
-    connection: sqlite3.Connection, workspace_id: str, *, after: int, limit: int
+    connection: SqlSession, workspace_id: str, *, after: int, limit: int
 ) -> dict[str, Any]:
     if type(after) is not int or after < 0 or type(limit) is not int or not 1 <= limit <= 1000:
         raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid event cursor or page size")

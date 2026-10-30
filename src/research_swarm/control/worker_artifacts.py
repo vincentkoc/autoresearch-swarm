@@ -76,9 +76,12 @@ class WorkerArtifacts:
     def __init__(
         self, database: Database, artifacts: ArtifactService, workers: WorkerControl | None = None
     ) -> None:
-        if database.path.resolve() != artifacts.database.path.resolve():
+        if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Worker artifacts must share the research transaction authority")
-        if workers is not None and database.path.resolve() != workers.database.path.resolve():
+        if (
+            workers is not None
+            and database.authority_identity != workers.database.authority_identity
+        ):
             raise ValueError("Worker input clocks must share the research transaction authority")
         self.database, self.artifacts = database, artifacts
         self.workers = workers

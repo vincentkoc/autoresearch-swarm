@@ -44,7 +44,7 @@ def active_snapshot(transaction: Transaction, identifier: str) -> RecoverySnapsh
     row = snapshot_row(transaction, identifier)
     floor = transaction.connection.execute(
         "SELECT event_floor FROM workspaces WHERE id=?", (transaction.workspace_id,)
-    ).fetchone()[0]
+    ).one()[0]
     if (
         row["released_at"] is not None
         or row["expired_at"] is not None
@@ -112,13 +112,13 @@ class EventRecovery:
                 "FROM recovery_snapshots WHERE workspace_id=? "
                 "AND released_at IS NULL AND expired_at IS NULL",
                 (context.principal.id, transaction.workspace_id),
-            ).fetchone()
+            ).one()
             retained = transaction.connection.execute(
                 "SELECT COALESCE(SUM(json_extract(payload,'$.size_bytes')),0) "
                 "FROM recovery_snapshots WHERE workspace_id=? "
                 "AND released_at IS NULL AND expired_at IS NULL",
                 (transaction.workspace_id,),
-            ).fetchone()[0]
+            ).one()[0]
             if counts["total"] >= 64 or counts["owned"] >= 8:
                 raise ResearchError(
                     ErrorCode.RESOURCE_UNAVAILABLE, "Release unused recovery snapshots first"
@@ -264,7 +264,7 @@ class EventRecovery:
                 "SELECT MIN(watermark) FROM recovery_snapshots WHERE workspace_id=? "
                 "AND released_at IS NULL AND expired_at IS NULL AND expires_at>?",
                 (transaction.workspace_id, utc_now()),
-            ).fetchone()[0]
+            ).one()[0]
             if pin is not None and intent.event_floor > pin + 1:
                 raise ResearchError(
                     ErrorCode.RESOURCE_UNAVAILABLE, "A recovery snapshot pins the catch-up interval"

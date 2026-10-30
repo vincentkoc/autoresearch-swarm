@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -14,7 +13,10 @@ from research_swarm.domain.evidence import Event
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
 from research_swarm.state.events import event_page
-from research_swarm.state.migrations import SCHEMA_VERSION, enable_wal, initialize
+from research_swarm.state.sql import IntegrityViolation, SqlSession, StateStore, StoreIdentity
+
+if TYPE_CHECKING:
+    from research_swarm.state.sqlite import SQLiteSession, SQLiteStore
 
 JsonObject = dict[str, Any]
 
@@ -150,7 +152,7 @@ def _request_digest(context: CommandContext, operation: str, payload: Mapping[st
 
 
 def _stored_response(
-    connection: sqlite3.Connection, context: CommandContext, request_digest: str
+    connection: SqlSession, context: CommandContext, request_digest: str
 ) -> JsonObject | None:
     previous = connection.execute(
         "SELECT request_digest,response FROM commands "
@@ -182,7 +184,7 @@ def _deliver(response: JsonObject) -> JsonObject:
 class Transaction:
     """Private repository access used only inside a domain command."""
 
-    def __init__(self, connection: sqlite3.Connection, context: CommandContext) -> None:
+    def __init__(self, connection: SqlSession, context: CommandContext) -> None:
         self.connection = connection
         self.context = context
         self.workspace_id = context.principal.workspace_id
@@ -232,7 +234,7 @@ class Transaction:
                     now,
                 ),
             )
-        except sqlite3.IntegrityError as error:
+        except IntegrityViolation as error:
             raise ResearchError(ErrorCode.REVISION_CONFLICT, f"{kind} already exists") from error
         return self.get(kind, identifier)
 
@@ -247,7 +249,7 @@ class Transaction:
     ) -> JsonObject:
         cursor = self.connection.execute(
             """UPDATE records SET payload=?,state=?,revision=revision+1,updated_at=?
-            WHERE workspace_id=? AND kind=? AND id=? AND revision=?""",
+            WHERE workspace_id=? AND kind=? AND id=? AND revision=? RETURNING revision""",
             (
                 encode(data),
                 state,
@@ -258,7 +260,7 @@ class Transaction:
                 expected_revision,
             ),
         )
-        if cursor.rowcount != 1:
+        if len(cursor.fetchall()) != 1:
             raise ResearchError(ErrorCode.REVISION_CONFLICT, f"{kind} revision changed")
         return self.get(kind, identifier)
 
@@ -310,49 +312,59 @@ class Database:
     """No global Python lock: SQLite arbitrates independent processes."""
 
     def __init__(self, path: Path, *, busy_timeout_ms: int = 10_000) -> None:
-        self.path = path
-        self.busy_timeout_ms = busy_timeout_ms
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, SCHEMA_VERSION):
-                raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported database schema")
-            enable_wal(connection, timeout_ms=busy_timeout_ms)
-            connection.execute("PRAGMA synchronous=FULL")
-            initialize(connection, SCHEMA)
+        from research_swarm.state.sqlite import SQLiteStore
+
+        native = SQLiteStore(path, SCHEMA, busy_timeout_ms=busy_timeout_ms)
+        self._native_store: SQLiteStore | None = native
+        self.store: StateStore = native
+
+    @classmethod
+    def from_store(cls, store: StateStore) -> Database:
+        """Bind the shared command kernel to an already initialized authority store."""
+        instance = cls.__new__(cls)
+        instance.store = store
+        instance._native_store = None
+        return instance
+
+    @property
+    def path(self) -> Path:
+        if self._native_store is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE,
+                "This state authority has no native filesystem path",
+            )
+        return self._native_store.path
+
+    @property
+    def authority_identity(self) -> StoreIdentity:
+        return self.store.identity
 
     @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(
-            self.path, isolation_level=None, timeout=self.busy_timeout_ms / 1000
-        )
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute(f"PRAGMA busy_timeout={self.busy_timeout_ms}")
-        try:
+    def connect(self) -> Iterator[SQLiteSession]:
+        """Legacy native connection access; hosted callers must use store callbacks."""
+        if self._native_store is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE,
+                "This operation requires the native SQLite connection adapter",
+            )
+        with self._native_store.connect() as connection:
             yield connection
-        finally:
-            connection.close()
 
     def bootstrap(self, workspace_id: str, controller_id: str) -> None:
-        with self.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                row = connection.execute(
-                    "SELECT controller_id FROM workspaces WHERE id=?", (workspace_id,)
-                ).fetchone()
-                if row is not None and row["controller_id"] != controller_id:
-                    raise ResearchError(
-                        ErrorCode.REVISION_CONFLICT, "Workspace already has a different controller"
-                    )
-                connection.execute(
-                    "INSERT OR IGNORE INTO workspaces(id,controller_id) VALUES (?,?)",
-                    (workspace_id, controller_id),
+        def initialize(connection: SqlSession) -> None:
+            row = connection.execute(
+                "SELECT controller_id FROM workspaces WHERE id=?", (workspace_id,)
+            ).fetchone()
+            if row is not None and row["controller_id"] != controller_id:
+                raise ResearchError(
+                    ErrorCode.REVISION_CONFLICT, "Workspace already has a different controller"
                 )
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+            connection.execute(
+                "INSERT OR IGNORE INTO workspaces(id,controller_id) VALUES (?,?)",
+                (workspace_id, controller_id),
+            )
+
+        self.store.write(initialize)
 
     def execute(
         self,
@@ -367,67 +379,66 @@ class Database:
         context.principal.require(scope)
         request_digest = _request_digest(context, operation, payload)
         workspace_id = context.principal.workspace_id
-        with self.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+
+        def apply(connection: SqlSession) -> JsonObject:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)
+                ).fetchone()
+                is None
+            ):
+                raise ResearchError(ErrorCode.NOT_FOUND, "Workspace not found")
+            previous = _stored_response(connection, context, request_digest)
+            if previous is not None:
+                return previous
+            from research_swarm.state.drive_guard import require_reserved_command_key
+
+            require_reserved_command_key(Transaction(connection, context), request_digest)
+
+            def operation_effects(nested: SqlSession) -> JsonObject:
+                from research_swarm.state.drive_guard import require_drive_authority
+
+                transaction = Transaction(nested, context)
+                require_drive_authority(transaction, operation, payload, request_digest)
+                result = handler(transaction)
+                response = {
+                    "command_id": context.command_id,
+                    "disposition": "accepted",
+                    "result": result,
+                }
+                encode(response)
+                return response
+
             try:
-                if (
-                    connection.execute(
-                        "SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)
-                    ).fetchone()
-                    is None
-                ):
-                    raise ResearchError(ErrorCode.NOT_FOUND, "Workspace not found")
-                previous = _stored_response(connection, context, request_digest)
-                if previous is not None:
-                    response = previous
-                else:
-                    from research_swarm.state.drive_guard import require_reserved_command_key
+                response = connection.atomic(operation_effects)
+            except ResearchError as error:
+                if on_rejection is not None:
+                    # Failed operation effects have rolled back. A conservative
+                    # fence and the rejection acknowledgment share the outer commit.
+                    on_rejection(Transaction(connection, context), error)
+                response = {
+                    "command_id": context.command_id,
+                    "disposition": "rejected",
+                    "error": error.as_dict()["error"],
+                }
+            connection.execute(
+                "INSERT INTO commands "
+                "(workspace_id,actor_id,idempotency_key,request_digest,"
+                "command_id,response,created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (
+                    workspace_id,
+                    context.principal.id,
+                    context.idempotency_key,
+                    request_digest,
+                    context.command_id,
+                    encode(response),
+                    utc_now(),
+                ),
+            )
+            return response
 
-                    require_reserved_command_key(Transaction(connection, context), request_digest)
-                    connection.execute("SAVEPOINT domain_operation")
-                    try:
-                        from research_swarm.state.drive_guard import require_drive_authority
-
-                        transaction = Transaction(connection, context)
-                        require_drive_authority(transaction, operation, payload, request_digest)
-                        result = handler(transaction)
-                        response = {
-                            "command_id": context.command_id,
-                            "disposition": "accepted",
-                            "result": result,
-                        }
-                        encode(response)
-                    except ResearchError as error:
-                        connection.execute("ROLLBACK TO domain_operation")
-                        if on_rejection is not None:
-                            # A caller may persist a separately authorized conservative
-                            # fence with the rejected acknowledgment. Failed effects
-                            # remain rolled back; a hook failure rolls back everything.
-                            on_rejection(Transaction(connection, context), error)
-                        response = {
-                            "command_id": context.command_id,
-                            "disposition": "rejected",
-                            "error": error.as_dict()["error"],
-                        }
-                    connection.execute("RELEASE domain_operation")
-                    connection.execute(
-                        """INSERT INTO commands
-                        (workspace_id,actor_id,idempotency_key,request_digest,
-                         command_id,response,created_at) VALUES (?,?,?,?,?,?,?)""",
-                        (
-                            workspace_id,
-                            context.principal.id,
-                            context.idempotency_key,
-                            request_digest,
-                            context.command_id,
-                            encode(response),
-                            utc_now(),
-                        ),
-                    )
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+        response = self.store.write(apply)
         return _deliver(dict(response))
 
     def replay(
@@ -440,8 +451,7 @@ class Database:
         """
         context.principal.require(scope)
         digest = _request_digest(context, operation, payload)
-        with self.connect() as connection:
-            response = _stored_response(connection, context, digest)
+        response = self.store.read(lambda connection: _stored_response(connection, context, digest))
         return _deliver(response) if response is not None else None
 
     def with_preflight(
@@ -471,8 +481,8 @@ class Database:
     def snapshot(self, context: CommandContext) -> JsonObject:
         context.principal.require("read")
         workspace_id = context.principal.workspace_id
-        with self.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             row = connection.execute(
                 "SELECT next_sequence,control_epoch FROM workspaces WHERE id=?",
                 (workspace_id,),
@@ -492,13 +502,15 @@ class Database:
                     {**dict(item), "payload": strict_json_loads(item["payload"])} for item in rows
                 ],
             }
-            connection.commit()
             return result
+
+        return self.store.read(read)
 
     def read_record(self, context: CommandContext, kind: str, identifier: str) -> JsonObject:
         context.principal.require("read")
-        with self.connect() as connection:
-            return Transaction(connection, context).get(kind, identifier)
+        return self.store.read(
+            lambda connection: Transaction(connection, context).get(kind, identifier)
+        )
 
     def events(self, context: CommandContext, *, after: int = 0, limit: int = 100) -> list[Event]:
         return [
@@ -510,33 +522,37 @@ class Database:
         self, context: CommandContext, *, after: int = 0, limit: int = 100
     ) -> JsonObject:
         context.principal.require("read")
-        with self.connect() as connection:
-            connection.execute("BEGIN")
-            result = event_page(
+        return self.store.read(
+            lambda connection: event_page(
                 connection, context.principal.workspace_id, after=after, limit=limit
             )
-            connection.commit()
-        return result
+        )
 
     def pending_notifications(self, *, limit: int = 100) -> list[Event]:
-        with self.connect() as connection:
+        def read(connection: SqlSession) -> list[Event]:
             rows = connection.execute(
                 """SELECT e.payload FROM outbox o JOIN events e ON e.id=o.event_id
                 WHERE o.delivered=0 ORDER BY o.workspace_id,o.sequence LIMIT ?""",
                 (limit,),
             ).fetchall()
-        return [Event.model_validate_json(row["payload"]) for row in rows]
+            return [Event.model_validate_json(row["payload"]) for row in rows]
+
+        return self.store.read(read)
 
     def acknowledge_notification(self, event_id: str) -> None:
-        with self.connect() as connection:
+        def acknowledge(connection: SqlSession) -> None:
             connection.execute(
                 "UPDATE outbox SET delivered=1,delivery_attempts=delivery_attempts+1 "
                 "WHERE event_id=?",
                 (event_id,),
             )
 
+        self.store.write(acknowledge)
+
     def backup(self, destination: Path) -> None:
-        if destination.exists():
-            raise FileExistsError(destination)
-        with self.connect() as source, sqlite3.connect(destination) as target:
-            source.backup(target)
+        if self._native_store is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE,
+                "Filesystem backup requires the native SQLite adapter",
+            )
+        self._native_store.backup(destination)

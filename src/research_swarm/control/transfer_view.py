@@ -239,13 +239,13 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
                         ErrorCode.ARTIFACT_UNVERIFIED, "Required artifact identities disagree"
                     )
                 declared[reference.id] = reference
-    for row in transaction.connection.execute(
+    for sql_row in transaction.connection.execute(
         "SELECT dimension,payload FROM budgets WHERE workspace_id=? "
         "AND campaign_id=? ORDER BY dimension",
         (transaction.workspace_id, campaign["id"]),
     ):
-        add_entry({"category": "budget_account", "value": strict_json_loads(row["payload"])})
-    for row in transaction.connection.execute(
+        add_entry({"category": "budget_account", "value": strict_json_loads(sql_row["payload"])})
+    for sql_row in transaction.connection.execute(
         "SELECT id,owner_id,state,payload FROM budget_reservations WHERE workspace_id=? "
         "AND campaign_id=? ORDER BY id",
         (transaction.workspace_id, campaign["id"]),
@@ -253,10 +253,10 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
         add_entry(
             {
                 "category": "budget_reservation",
-                "id": row["id"],
-                "owner_id": row["owner_id"],
-                "state": row["state"],
-                "value": strict_json_loads(row["payload"]),
+                "id": sql_row["id"],
+                "owner_id": sql_row["owner_id"],
+                "state": sql_row["state"],
+                "value": strict_json_loads(sql_row["payload"]),
             }
         )
     retained: dict[str, ArtifactRef] = {}

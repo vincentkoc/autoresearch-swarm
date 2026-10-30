@@ -4,6 +4,41 @@ The Python `ResearchService` owns project registration, campaign activation,
 candidate admission, and trial graph creation. Transports call these handlers.
 They do not write records or interpret success independently.
 
+## State authority
+
+The command kernel depends on a synchronous `StateStore` and `SqlSession` contract.
+The default `SQLiteStore` owns native connections, WAL, migration setup, busy
+timeouts, filesystem backup and SQL savepoints. `Database(path)` keeps the local
+construction path. `Database.from_store(store)` binds an already initialized store
+to the same command implementation; it does not create a second set of domain rules.
+
+`read(callback)` provides a consistent snapshot. `write(callback)` serializes the
+outer mutation. `session.atomic(callback)` creates a nested rollback boundary.
+Callbacks run once and must finish synchronously, materialize their returned data,
+and avoid external I/O. A callback must not return an awaitable or a live cursor.
+Rows support named and positional access; `one()` requires exactly one row.
+Constraint violations use the portable `IntegrityViolation` exception. CAS uses
+`UPDATE ... RETURNING`, without interpreting provider billing counters as row counts.
+
+The command kernel checks exact acknowledgment replay before the nested operation.
+If that operation raises `ResearchError`, its writes roll back first. An optional
+conservative rejection hook then runs in the outer transaction, followed by the
+rejected acknowledgment. Both commit together. Hook failures, unexpected exceptions
+and invalid response serialization roll back the outer transaction. A durable
+rejection is raised to the caller only after its acknowledgment commits.
+
+`StoreIdentity` identifies the actual transaction authority. Services sharing a
+ledger compare that identity rather than inventing filesystem paths for hosted
+stores. Native connection escape hatches and filesystem backup explicitly refuse
+stores that cannot provide those capabilities.
+
+The command, replay, bootstrap, record, snapshot, event and notification paths use
+these callbacks. Some higher-level services still contain native connection paths;
+the complete hosted service remains unqualified until those paths, clock/key custody
+and artifact operations are adapted. A callback-only facade has local conformance
+coverage, while the [Cloudflare runtime fixture](../adapters/cloudflare/README.md)
+separately qualifies its nested transaction and FFI primitives.
+
 ## Worker admission
 
 `worker.enroll` binds an operator-approved worker session and principal to explicit
@@ -41,7 +76,7 @@ closure settles that same attempt; a changed accepted publication is a conflict.
 
 The original CPU project now completes train → evaluate through this worker path.
 Its native evaluation report does not grant scientific acceptance: the authenticated
-evaluation-request/receipt service and promotion policy are separate remaining work.
+evaluation-request/receipt service and promotion policy validate separate evidence.
 
 ## Immutable project revisions
 

@@ -166,7 +166,7 @@ class ProposalControl:
             )
             sequence = transaction.connection.execute(
                 "SELECT next_sequence-1 FROM workspaces WHERE id=?", (transaction.workspace_id,)
-            ).fetchone()[0]
+            ).one()[0]
             recent = transaction.connection.execute(
                 "SELECT kind,id FROM records WHERE workspace_id=? AND campaign_id=? "
                 "AND kind IN ('candidate','trial','evaluation_receipt','promotion') "

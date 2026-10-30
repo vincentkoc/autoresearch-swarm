@@ -185,7 +185,7 @@ class ResearchService:
         dispatch_key: bytes | None = None,
         assignment_key: bytes | None = None,
     ) -> None:
-        if database.path.resolve() != artifacts.database.path.resolve():
+        if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
         self.event_recovery = EventRecovery(database, get_args(RecordKind))
@@ -835,7 +835,7 @@ class ResearchService:
         count = transaction.connection.execute(
             "SELECT COUNT(*) FROM records WHERE workspace_id=? AND kind='trial' AND campaign_id=?",
             (transaction.workspace_id, request.campaign_id),
-        ).fetchone()[0]
+        ).one()[0]
         if count >= campaign.contract.stopping.max_trials:
             raise ResearchError(ErrorCode.BUDGET_EXHAUSTED, "Campaign trial limit reached")
         revision = ProjectRevisionData.model_validate(

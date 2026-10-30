@@ -430,7 +430,7 @@ class ResearchQueries:
                 else connection.execute(
                     "SELECT COALESCE(MAX(rowid),0) FROM records WHERE workspace_id=?",
                     (context.principal.workspace_id,),
-                ).fetchone()[0]
+                ).one()[0]
             )
             clauses = ["workspace_id=?", "kind=?", "rowid>?", "rowid<=?"]
             parameters: list[str | int] = [
@@ -506,7 +506,7 @@ class ResearchQueries:
                 "SELECT next_sequence-1 AS watermark,controller_id,control_epoch "
                 "FROM workspaces WHERE id=?",
                 (context.principal.workspace_id,),
-            ).fetchone()
+            ).one()
             counts = connection.execute(
                 "SELECT kind,state,COUNT(*) AS count FROM records WHERE workspace_id=? "
                 "AND campaign_id=? GROUP BY kind,state",

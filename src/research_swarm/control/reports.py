@@ -179,7 +179,7 @@ def create_report(
     watermark = transaction.connection.execute(
         "SELECT next_sequence-1 FROM workspaces WHERE id=?",
         (transaction.workspace_id,),
-    ).fetchone()[0]
+    ).one()[0]
     selection = None
     if campaign.incumbent_promotion_id:
         selection = summarize(transaction.get("promotion", campaign.incumbent_promotion_id))

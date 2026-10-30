@@ -121,7 +121,7 @@ def provision_replacement(
                 authority = connection.execute(
                     "SELECT controller_id,control_epoch FROM workspaces WHERE id=?",
                     (runtime.identity.workspace_id,),
-                ).fetchone()
+                ).one()
             session_id, principal_id = new_id(), new_id()
             state = ReplacementProvisioningState(
                 description=description,
@@ -176,7 +176,7 @@ def provision_replacement(
             authority = connection.execute(
                 "SELECT controller_id,control_epoch FROM workspaces WHERE id=?",
                 (runtime.identity.workspace_id,),
-            ).fetchone()
+            ).one()
         if (
             live["state"] != "active"
             or WorkerData.model_validate(live["data"]) != worker

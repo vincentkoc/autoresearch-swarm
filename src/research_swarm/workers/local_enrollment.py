@@ -232,7 +232,7 @@ def ensure_local_enrollment(
             authority = connection.execute(
                 "SELECT controller_id,control_epoch FROM workspaces WHERE id=?",
                 (runtime.identity.workspace_id,),
-            ).fetchone()
+            ).one()
         if (
             row["state"] != "active"
             or registered.binding.controller_id != authority["controller_id"]

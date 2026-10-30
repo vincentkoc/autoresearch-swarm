@@ -149,8 +149,8 @@ class CredentialStore:
         issuer.require("auth.manage")
         with self.database.connect() as connection:
             changed = connection.execute(
-                "UPDATE credentials SET revoked=1 WHERE workspace_id=? AND id=?",
+                "UPDATE credentials SET revoked=1 WHERE workspace_id=? AND id=? RETURNING id",
                 (issuer.workspace_id, identifier),
             )
-            if changed.rowcount != 1:
+            if len(changed.fetchall()) != 1:
                 raise ResearchError(ErrorCode.NOT_FOUND, "Credential not found")

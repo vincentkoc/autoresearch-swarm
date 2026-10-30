@@ -313,7 +313,7 @@ def provision_worker(
             authority = connection.execute(
                 "SELECT controller_id,control_epoch FROM workspaces WHERE id=?",
                 (runtime.identity.workspace_id,),
-            ).fetchone()
+            ).one()
         expected = {
             "description": description.model_dump(mode="json"),
             "controller_url": url,
