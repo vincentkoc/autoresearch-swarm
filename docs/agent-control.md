@@ -75,8 +75,9 @@ and does not expose local source capture. Use a scoped credential for an agent.
 Revocation takes effect on the next operation, without operator-token fallback.
 
 The stdio server and CLI are clients of durable state. Closing them does not
-cancel an accepted campaign. This implementation currently queues trial graphs;
-the integrated worker execution service is still pending.
+cancel an accepted campaign. Trial graphs can execute through an explicitly
+enrolled `LocalWorker`. The automatic async campaign driver and its CLI entry
+point are still pending.
 
 Real subprocess tests exercise stdio discovery and tool calls, CLI JSON input,
 cross-transport replay, populated context/query output, conflict responses, scoped

@@ -22,7 +22,13 @@ class PreparedExecution(VersionedRecord):
     profile_digest: Digest
     resource_registry: str
     machine_claim_id: ID
+    working_directory: str | None = None
     _paths = field_validator("context_path", "executable", "resource_registry")(absolute_path)
+
+    @field_validator("working_directory")
+    @classmethod
+    def directory(cls, value: str | None) -> str | None:
+        return absolute_path(value) if value is not None else None
 
     def verify(self, dispatch: DispatchEnvelope, spec: ExperimentSpec) -> None:
         self.context.verify()
@@ -58,6 +64,8 @@ class PreparedExecution(VersionedRecord):
 
     def command(self, declared: NativeCommand) -> NativeCommand:
         """Resolve only the executable through the admitted profile; preserve stage arguments."""
+        if self.working_directory is not None and declared.cwd != self.working_directory:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Prepared directory differs")
         return NativeCommand.model_validate(
             declared.model_copy(update={"argv": (self.executable, *declared.argv[1:])})
         )

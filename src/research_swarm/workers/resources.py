@@ -207,6 +207,13 @@ class MachineResources:
 
     def verify_held(self, entry: JournalEntry, claim_id: str) -> MachineClaim:
         """Check a local launch binding without accepting network-provided closure claims."""
+        return self._claim(entry, claim_id, states={"held"})
+
+    def observe_claim(self, entry: JournalEntry, claim_id: str) -> MachineClaim:
+        """Recover held or quarantined custody without issuing launch authority."""
+        return self._claim(entry, claim_id, states={"held", "unknown"})
+
+    def _claim(self, entry: JournalEntry, claim_id: str, *, states: set[str]) -> MachineClaim:
         dispatch_digest = record_digest("research.dispatch", entry.dispatch.model_dump(mode="json"))
         with self._connect() as connection:
             row = connection.execute(
@@ -217,7 +224,7 @@ class MachineResources:
         claim = MachineClaim.model_validate_json(row["payload"])
         if claim.id != claim_id or claim.dispatch_digest != dispatch_digest:
             raise ResearchError(ErrorCode.STALE_FENCE, "Native launch reservation differs")
-        if row["state"] != "held":
+        if row["state"] not in states:
             raise ResearchError(
                 ErrorCode.RESOURCE_UNAVAILABLE, "Native launch reservation is not held"
             )

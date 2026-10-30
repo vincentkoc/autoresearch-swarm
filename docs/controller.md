@@ -26,6 +26,23 @@ Enrollment replacement requires explicit fencing. The current implementation
 resumes an existing session and rejects implicit replacement. Protected evaluator
 admission remains unavailable until its isolation profile is qualified.
 
+## Native observation publication
+
+`worker.publish_attempt` accepts verified artifact references from the enrolled
+worker principal. It checks the original dispatch, immutable experiment, current
+job attempt, profile, seed, input identities, timing contract, native closure, and
+log identities. A training process cannot use proposal authority to publish results.
+
+An accepted closed result settles the original reservation exactly once, records a
+descriptive RunResult, updates its Job and Trial, and resolves dependencies in the
+same transaction. A failed predecessor prevents its dependent stages from becoming
+ready. Uncertainty preserves both cost custody and trial concurrency. A valid late
+closure settles that same attempt; a changed accepted publication is a conflict.
+
+The original CPU project now completes train → evaluate through this worker path.
+Its native evaluation report does not grant scientific acceptance: the authenticated
+evaluation-request/receipt service and promotion policy are separate remaining work.
+
 ## Immutable project revisions
 
 Register a verified source artifact with `RegisterProject`. The controller checks

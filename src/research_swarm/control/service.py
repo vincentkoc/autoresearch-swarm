@@ -25,6 +25,7 @@ from research_swarm.control.models import (
     TrialData,
 )
 from research_swarm.control.preflight import verified_source
+from research_swarm.control.results import PublishAttempt, ResultControl
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
@@ -100,6 +101,7 @@ class ResearchService:
         self.database = database
         self.artifacts = artifacts
         self.workers = WorkerControl(database, dispatch_key) if dispatch_key is not None else None
+        self.results = ResultControl(database, artifacts)
 
     def enroll_worker(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         if self.workers is None:
@@ -114,6 +116,9 @@ class ResearchService:
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Worker authority is not configured"
             )
         return self.workers.claim(context, request)
+
+    def publish_attempt(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
+        return self.results.publish(context, request)
 
     def _execute(
         self,

@@ -15,6 +15,7 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
+from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -33,6 +34,13 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "worker.publish_attempt": CommandDefinition(
+        PublishAttempt,
+        "publish_attempt",
+        "worker.publish",
+        False,
+        "Publish native observation artifacts against the original admitted attempt.",
+    ),
     "worker.enroll": CommandDefinition(
         EnrollWorker,
         "enroll_worker",

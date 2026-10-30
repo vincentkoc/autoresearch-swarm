@@ -59,6 +59,7 @@ class DispatchVerifier:
         spec: ExperimentSpec,
         *,
         authority_now: Timestamp | None = None,
+        allow_expired_observation: bool = False,
     ) -> VerifiedDispatch:
         envelope = DispatchEnvelope.model_validate(envelope)
         spec = ExperimentSpec.model_validate(spec)
@@ -84,6 +85,9 @@ class DispatchVerifier:
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Dispatch and experiment differ"
             )
         now = authority_now or utc_now()
-        if min(envelope.expires_at, envelope.hard_deadline_at) <= now:
+        if (
+            not allow_expired_observation
+            and min(envelope.expires_at, envelope.hard_deadline_at) <= now
+        ):
             raise ResearchError(ErrorCode.STALE_FENCE, "Dispatch launch authority has expired")
         return VerifiedDispatch(envelope, spec)

@@ -35,6 +35,7 @@ class JournalEntry(VersionedRecord):
     spec: ExperimentSpec
     command: NativeCommand
     prepared: PreparedExecution | None = None
+    preparation_required: bool = False
     revision: Revision = 1
     state: JournalState = JournalState.RECEIVED
     supervisor_id: ID | None = None
@@ -132,6 +133,7 @@ class WorkerJournal:
         command: NativeCommand,
         *,
         prepared: PreparedExecution | None = None,
+        require_preparation: bool = False,
     ) -> JournalEntry:
         verified.spec.verify()
         command = NativeCommand.model_validate(command)
@@ -146,7 +148,11 @@ class WorkerJournal:
             prepared = PreparedExecution.model_validate(prepared)
             prepared.verify(verified.envelope, verified.spec)
         entry = JournalEntry(
-            dispatch=verified.envelope, spec=verified.spec, command=command, prepared=prepared
+            dispatch=verified.envelope,
+            spec=verified.spec,
+            command=command,
+            prepared=prepared,
+            preparation_required=require_preparation,
         )
         digest = record_digest(
             "research.worker-input",
@@ -155,6 +161,7 @@ class WorkerJournal:
                 "spec": entry.spec.model_dump(mode="json"),
                 "command": command.model_dump(mode="json"),
                 **({"prepared": prepared.model_dump(mode="json")} if prepared is not None else {}),
+                **({"preparation_required": True} if require_preparation else {}),
             },
         )
         with self._transaction() as connection:
@@ -214,11 +221,35 @@ class WorkerJournal:
                         "finding": "Cancelled or expired before launch",
                     }
                 )
+            if entry.preparation_required and entry.prepared is None:
+                raise ResearchError(
+                    ErrorCode.INVALID_TRANSITION, "Required workload preparation is incomplete"
+                )
             return entry.model_copy(
                 update={"state": JournalState.LAUNCHING, "supervisor_id": supervisor_id}
             )
 
         return self._change(attempt_id, "launch.claimed", claim)
+
+    def bind_prepared(self, attempt_id: str, prepared: PreparedExecution) -> JournalEntry:
+        prepared = PreparedExecution.model_validate(prepared)
+
+        def bind(entry: JournalEntry) -> JournalEntry:
+            if entry.prepared is not None:
+                if entry.prepared != prepared:
+                    raise ResearchError(
+                        ErrorCode.IDEMPOTENCY_CONFLICT, "Prepared execution changed"
+                    )
+                return entry
+            if entry.state != JournalState.RECEIVED or not entry.preparation_required:
+                raise ResearchError(
+                    ErrorCode.INVALID_TRANSITION, "Attempt cannot accept preparation"
+                )
+            prepared.verify(entry.dispatch, entry.spec)
+            prepared.command(entry.command)
+            return entry.model_copy(update={"prepared": prepared})
+
+        return self._change(attempt_id, "workload.prepared", bind)
 
     def settle_unstarted(self, attempt_id: str) -> JournalEntry:
         """Cancellation and expiry can close an unreleased grant even if preparation is damaged."""

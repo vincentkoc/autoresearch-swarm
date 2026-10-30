@@ -1,0 +1,379 @@
+"""An explicit local worker executes admitted jobs without owning research decisions."""
+
+from __future__ import annotations
+
+import hashlib
+import subprocess
+import sys
+import time
+from contextlib import suppress
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from filelock import FileLock
+
+from research_swarm.client import ResearchClient
+from research_swarm.control.models import TrialData
+from research_swarm.control.results import PublishAttempt
+from research_swarm.control.workers import AttemptData, ClaimJob, WorkerData
+from research_swarm.domain.canonical import record_digest, strict_json_loads
+from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.evidence import ArtifactRef
+from research_swarm.domain.types import new_id
+from research_swarm.projects.manifest import TimingContract
+from research_swarm.projects.native_files import SourceReader
+from research_swarm.projects.source import extract_bundle
+from research_swarm.projects.workload import (
+    WorkloadContext,
+    WorkloadInput,
+    read_report,
+    verify_outputs,
+)
+from research_swarm.runtime import private_state_directory, read_private, write_private
+from research_swarm.workers.authority import DispatchVerifier
+from research_swarm.workers.contracts import NativeCommand
+from research_swarm.workers.journal import JournalEntry, JournalState, WorkerJournal
+from research_swarm.workers.prepared import PreparedExecution
+from research_swarm.workers.resources import MachineResources, ResourceDemand
+from research_swarm.workers.supervisor import reconcile_outcome, spawn_supervisor
+
+
+class LocalWorker:
+    def __init__(
+        self,
+        client: ResearchClient,
+        worker: WorkerData,
+        *,
+        key: bytes,
+        root: Path,
+        machine_registry: Path,
+        executable: Path | None = None,
+        maximum_output_bytes: int = 256 * 1024 * 1024,
+    ) -> None:
+        self.client, self.worker = client, WorkerData.model_validate(worker)
+        self.root = root.absolute()
+        self.executable = (executable or Path(sys.executable)).absolute()
+        self.maximum_output_bytes = maximum_output_bytes
+        self.profile = next(
+            (profile for profile in worker.profiles if profile.name == "python-cpu"), None
+        )
+        if self.profile is None or self.profile.backend != "python":
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Local worker requires a Python CPU profile"
+            )
+        with private_state_directory(self.root):
+            self.journal = WorkerJournal(self.root / "journal.sqlite")
+            (self.root / "locks").mkdir(mode=0o700, exist_ok=True)
+        machine_registry = machine_registry.absolute()
+        with private_state_directory(machine_registry.parent):
+            self.resources = MachineResources(machine_registry)
+        capacities = {"cpu": self.profile.cpu_slots}
+        if self.profile.memory_bytes:
+            capacities["memory"] = self.profile.memory_bytes
+        if self.profile.scratch_bytes:
+            capacities["scratch"] = self.profile.scratch_bytes
+        self.resources.enroll(worker.binding, ResourceDemand(amounts=capacities))
+        self.verifier = DispatchVerifier(worker.binding, key)
+
+    def claim(self, job: dict[str, Any]) -> dict[str, Any]:
+        return dict(
+            self.client.command(
+                "worker.claim_job",
+                ClaimJob(
+                    worker_id=self.worker.binding.worker_id,
+                    session_id=self.worker.binding.worker_session_id,
+                    job_id=job["id"],
+                ),
+                idempotency_key="claim:" + self.worker.binding.worker_session_id + ":" + job["id"],
+                expected_revision=job["revision"],
+            )["result"]
+        )
+
+    def _download(self, reference: ArtifactRef, path: Path) -> None:
+        if path.exists():
+            digest, size = hashlib.sha256(), 0
+            with SourceReader(path.parent) as reader, reader.open(path.name) as stream:
+                while chunk := stream.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > reference.size_bytes:
+                        break
+                    digest.update(chunk)
+            if size != reference.size_bytes or "sha256:" + digest.hexdigest() != reference.digest:
+                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Cached worker input differs")
+            return
+        observed = self.client.download(reference.id, path)
+        if observed != reference:
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Downloaded worker input differs")
+
+    def _prepare(self, attempt: AttemptData, trial: TrialData) -> JournalEntry:
+        # Expired authenticated grants can be recorded as not started. The journal's
+        # native release gate still refuses expiry, including a race after verification.
+        verified = self.verifier.verify(
+            attempt.dispatch, trial.spec, allow_expired_observation=True
+        )
+        stage = next(stage for stage in trial.spec.stages if stage.id == attempt.dispatch.stage_id)
+        root = self.root / "work" / attempt.dispatch.attempt_id
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            received = self.journal.get(attempt.dispatch.attempt_id)
+        except ResearchError as error:
+            if error.code != ErrorCode.NOT_FOUND:
+                raise
+            received = self.journal.receive(
+                verified,
+                NativeCommand(
+                    argv=stage.argv,
+                    cwd=str(root / ("source-" + new_id())),
+                    timeout_ms=stage.timeout_ms,
+                ),
+                require_preparation=True,
+            )
+        received = self.journal.settle_unstarted(attempt.dispatch.attempt_id)
+        if received.state == JournalState.NOT_STARTED:
+            return received
+        if self.profile != attempt.profile or stage.argv[0] not in {
+            "python",
+            "python3",
+            str(self.executable),
+        }:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Local executable profile differs"
+            )
+        execution = Path(received.command.cwd)
+        source = root / "source.zip"
+        self._download(attempt.source_artifact, source)
+        marker = root / "prepared.json"
+        if marker.exists():
+            prepared = PreparedExecution.model_validate(
+                strict_json_loads(read_private(root, marker.name, limit=1024 * 1024))
+            )
+            prepared.verify(attempt.dispatch, trial.spec)
+            prepared.verify_context_file()
+            if prepared.working_directory is None:
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID, "Prepared directory is absent"
+                )
+            if execution != Path(prepared.working_directory):
+                raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Prepared directory changed")
+            self.resources.verify_held(
+                JournalEntry(
+                    dispatch=attempt.dispatch,
+                    spec=trial.spec,
+                    command=NativeCommand(
+                        argv=stage.argv, cwd=str(execution), timeout_ms=stage.timeout_ms
+                    ),
+                ),
+                prepared.machine_claim_id,
+            )
+        else:
+            amounts = {"cpu": stage.resources.cpu_slots}
+            if stage.resources.memory_bytes:
+                amounts["memory"] = stage.resources.memory_bytes
+            if stage.resources.scratch_bytes:
+                amounts["scratch"] = stage.resources.scratch_bytes
+            claim = self.resources.reserve(verified, ResourceDemand(amounts=amounts))
+            if execution.exists():
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID,
+                    "Interrupted materialization requires a new attempt",
+                )
+            extract_bundle(source, execution, expected_tree_digest=attempt.source_tree_digest)
+            inputs = root / "inputs"
+            inputs.mkdir(mode=0o700, exist_ok=True)
+            materialized = {}
+            for index, (name, reference) in enumerate(sorted(attempt.inputs.items())):
+                path = inputs / str(index)
+                self._download(reference, path)
+                materialized[name] = WorkloadInput(
+                    path=str(path), digest=reference.digest, size_bytes=reference.size_bytes
+                )
+            outputs = root / "outputs"
+            outputs.mkdir(mode=0o700, exist_ok=True)
+            timing = TimingContract.model_validate(trial.spec.extensions["timing"])
+            context = WorkloadContext(
+                trial_id=attempt.dispatch.trial_id,
+                attempt_id=attempt.dispatch.attempt_id,
+                stage_id=stage.id,
+                spec_digest=attempt.dispatch.spec_digest,
+                seed=trial.spec.seed,
+                time_budget_ms=timing.budget_ms,
+                inputs=materialized,
+                output_root=str(outputs),
+                report_path=str(root / "report.json"),
+            ).sealed()
+            write_private(root / "context.json", context.model_dump_json().encode("utf-8"))
+            prepared = PreparedExecution(
+                context=context,
+                context_path=str(root / "context.json"),
+                executable=str(self.executable),
+                profile_digest=attempt.profile.execution_fingerprint,
+                resource_registry=str(self.resources.path),
+                machine_claim_id=claim.id,
+                working_directory=str(execution),
+            )
+            write_private(marker, prepared.model_dump_json().encode("utf-8"))
+        return self.journal.bind_prepared(attempt.dispatch.attempt_id, prepared)
+
+    def execute(self, attempt_id: str) -> dict[str, Any]:
+        row = self.client.get("attempt", attempt_id)
+        attempt = AttemptData.model_validate(row["data"])
+        if attempt.dispatch.worker_id != self.worker.binding.worker_id:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Attempt belongs to another worker")
+        with FileLock(self.root / "locks" / (attempt.dispatch.attempt_id + ".lock")):
+            row = self.client.get("attempt", attempt_id)
+            attempt = AttemptData.model_validate(row["data"])
+            if attempt.publication_status == "accepted":
+                return row
+            trial = TrialData.model_validate(
+                self.client.get("trial", attempt.dispatch.trial_id)["data"]
+            )
+            try:
+                entry = self.journal.get(attempt_id)
+            except ResearchError as error:
+                if error.code != ErrorCode.NOT_FOUND:
+                    raise
+                entry = None
+            if entry is None or (entry.state == JournalState.RECEIVED and entry.prepared is None):
+                try:
+                    entry = self._prepare(attempt, trial)
+                except (OSError, ValueError, ResearchError) as error:
+                    if (
+                        isinstance(error, ResearchError)
+                        and error.code == ErrorCode.RESOURCE_UNAVAILABLE
+                    ):
+                        raise
+                    entry = self.journal.get(attempt_id)
+                    if entry.state != JournalState.RECEIVED:
+                        raise
+                    self.journal.request_cancel(attempt_id, entry.last_controller_sequence + 1)
+                    entry = self.journal.settle_unstarted(attempt_id)
+                    entry = self.journal.note_reconciliation(
+                        attempt_id, "Preparation failed: " + type(error).__name__
+                    )
+            if entry.dispatch != attempt.dispatch or entry.spec != trial.spec:
+                raise ResearchError(ErrorCode.STALE_FENCE, "Worker journal differs from admission")
+            process = (
+                spawn_supervisor(self.journal, attempt_id)
+                if entry.state == JournalState.RECEIVED
+                else None
+            )
+            expiry = datetime.fromisoformat(entry.dispatch.hard_deadline_at.replace("Z", "+00:00"))
+            wait_seconds = max(0, (expiry - datetime.now(UTC)).total_seconds()) + 10
+            until = time.monotonic() + wait_seconds
+            while entry.state not in {
+                JournalState.CLOSED,
+                JournalState.NOT_STARTED,
+                JournalState.UNKNOWN,
+            }:
+                if process is not None and process.poll() is not None:
+                    entry = reconcile_outcome(self.journal, attempt_id)
+                    if entry.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}:
+                        if entry.supervisor_id is None:
+                            self.journal.request_cancel(
+                                attempt_id, entry.last_controller_sequence + 1
+                            )
+                            entry = self.journal.settle_unstarted(attempt_id)
+                        else:
+                            entry = self.journal.unknown(
+                                attempt_id, entry.supervisor_id, "Supervisor exited without closure"
+                            )
+                    break
+                if time.monotonic() >= until:
+                    entry = reconcile_outcome(self.journal, attempt_id)
+                    if (
+                        entry.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}
+                        and entry.supervisor_id is not None
+                    ):
+                        entry = self.journal.unknown(
+                            attempt_id, entry.supervisor_id, "Native outcome is overdue"
+                        )
+                    break
+                time.sleep(0.025)
+                entry = self.journal.get(attempt_id)
+            if process is not None:
+                # Reap only the dedicated supervisor started by this worker invocation.
+                with suppress(subprocess.TimeoutExpired):
+                    process.wait(timeout=2)
+            entry = reconcile_outcome(self.journal, attempt_id)
+            if entry.state in {JournalState.CLOSED, JournalState.NOT_STARTED}:
+                try:
+                    self.resources.release(entry)
+                except ResearchError as error:
+                    if error.code != ErrorCode.NOT_FOUND or entry.native is not None:
+                        raise
+            else:
+                assert entry.prepared is not None
+                claim = self.resources.observe_claim(entry, entry.prepared.machine_claim_id)
+                self.resources.quarantine(claim, "Execution lacks native closure")
+            return self._publish(entry)
+
+    def _publish(self, entry: JournalEntry) -> dict[str, Any]:
+        attempt_id = entry.dispatch.attempt_id
+        root = self.root / "work" / attempt_id
+        journal_path = root / "observation.json"
+        write_private(journal_path, entry.model_dump_json().encode("utf-8"))
+        journal_digest = record_digest("research.worker-observation", entry.model_dump(mode="json"))
+        journal_artifact = self.client.upload_file(
+            journal_path, idempotency_key="journal:" + journal_digest
+        )
+        outputs: dict[str, ArtifactRef] = {}
+        logs: dict[str, ArtifactRef] = {}
+        report_artifact = None
+        finding = (
+            entry.finding if entry.state in {JournalState.UNKNOWN, JournalState.NOT_STARTED} else ""
+        )
+        if entry.outcome is not None:
+            for name in ("stdout", "stderr"):
+                logs[name] = self.client.upload_file(
+                    self.root / "executions" / attempt_id / "output" / name,
+                    idempotency_key=attempt_id + ":" + name,
+                )
+            if (
+                entry.outcome.reason == "exited"
+                and entry.outcome.exit_code == 0
+                and entry.outcome.closure.scope_closed
+            ):
+                assert entry.prepared is not None
+                stage = next(
+                    stage for stage in entry.spec.stages if stage.id == entry.dispatch.stage_id
+                )
+                try:
+                    report = read_report(entry.prepared.context, stage)
+                    verified = verify_outputs(
+                        entry.prepared.context, report, maximum_bytes=self.maximum_output_bytes
+                    )
+                except (ValueError, OSError) as error:
+                    finding = "Invalid workload report: " + type(error).__name__
+                else:
+                    report_artifact = self.client.upload_file(
+                        Path(entry.prepared.context.report_path),
+                        idempotency_key=attempt_id + ":report",
+                    )
+                    for output in verified:
+                        reference = self.client.upload_file(
+                            Path(entry.prepared.context.output_root) / output.output.path,
+                            idempotency_key=attempt_id + ":output:" + output.output.name,
+                        )
+                        if (reference.digest, reference.size_bytes) != (
+                            output.digest,
+                            output.size_bytes,
+                        ):
+                            raise ResearchError(
+                                ErrorCode.ARTIFACT_UNVERIFIED, "Output changed during publication"
+                            )
+                        outputs[output.output.name] = reference
+        publication = PublishAttempt(
+            attempt_id=attempt_id,
+            journal_artifact=journal_artifact,
+            report_artifact=report_artifact,
+            outputs=outputs,
+            logs=logs,
+            finding=finding,
+        )
+        digest = record_digest("research.attempt-publication", publication.model_dump(mode="json"))
+        return dict(
+            self.client.command(
+                "worker.publish_attempt", publication, idempotency_key="publish:" + digest
+            )["result"]
+        )

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Execute registered CPU stage graphs through durable preparation, native supervision, and verified artifact publication.
+- Accept worker observations against their original grants, settle each attempt once, and advance stage dependencies.
+- Preserve uncertain execution, retry interrupted publication without relaunch, and distinguish unstarted work from failed execution.
 - Enroll explicit worker sessions and atomically reserve ready jobs, attempt budgets, and dispatch intents.
 - Enforce worker authority, engine requirements, dependency completion, and campaign/worker concurrency at admission.
 - Bind sealed workload contexts, declared interpreters, and live machine claims to native supervisor release.

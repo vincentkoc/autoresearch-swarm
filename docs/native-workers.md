@@ -1,7 +1,7 @@
 # Native worker execution
 
-The core includes a native supervisor and worker journal. Controller scheduling,
-resource admission, and the remote worker service are separate integration work.
+The core includes a native supervisor, worker journal, and explicit `LocalWorker`.
+The async campaign driver and remote worker enrollment remain integration work.
 These primitives do not authorize enrollment or execution on another machine.
 
 ## Machine resource admission
@@ -27,6 +27,12 @@ quotas, discover unrelated device owners, or police workers outside the registry
 Physical device qualification and operator allowances remain necessary. The worker
 service must connect this admission step to dispatch before launching research code.
 
+`LocalWorker` performs that connection for enrolled Python CPU profiles. It accepts
+an authenticated client, the registered worker identity, its dispatch verification
+key, a private work directory, and the host's shared resource registry. The worker
+resolves `python` and `python3` to its explicitly configured interpreter.
+Other engine adapters must qualify their own execution profiles.
+
 `PreparedExecution` connects a sealed workload context, its exact file contents,
 the profile's absolute executable, and a machine claim to a journal dispatch.
 The journal includes this preparation in its immutable retry identity. The
@@ -39,6 +45,28 @@ been lost. Other preparation failures do not cross the native start barrier.
 The lower-level native test primitive can still run without a prepared workload;
 the integrated project worker must supply one. A real supervisor subprocess test
 trains the CPU example through this binding and releases its recorded capacity.
+
+Preparation ownership enters the journal before source materialization or native
+reservation. Such an entry requires an immutable preparation binding before launch.
+If preparation fails, the worker records an authenticated unstarted outcome and
+releases an existing native claim. It never infers no-launch from a missing PID.
+An interrupted extraction requires a new attempt; its partial files are retained
+as task-owned working material until cleanup.
+
+Each stage receives fresh source extracted from the immutable candidate bundle.
+Inputs are downloaded by their recorded digest and size. The worker uploads bounded
+stdout/stderr, its native observation, the workload report, and verified named outputs.
+It releases native capacity from the journal before publishing completion.
+The controller independently checks publication identity and artifact availability,
+then settles budgets and resolves dependencies in one transaction.
+
+Preparation failure and cancellation before release are unstarted work, including
+a held native child that never passed the barrier. They consume no launched-attempt
+count. A held child's observed supervision time still consumes execution time.
+Unknown execution keeps its reservation and campaign slot. A later original closure
+can settle it without repeating execution. Storage or transport errors during upload
+leave publication retryable; they do not convert successful execution into a scientific
+failure. Reports remain descriptive until accepted evaluator receipts support them.
 
 ## Authority and durable launch
 

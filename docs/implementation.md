@@ -10,12 +10,12 @@ not implicitly supported.
 | Exact budget arithmetic | Implemented foundation | Exact arithmetic, uncertainty, settlement, overshoot tests pass | Hierarchical accounting pending |
 | Evaluator receipts | Validator implemented | Identity, seed, provenance, and panel tests pass | Authenticated transport pending |
 | Artifact lifecycle | Local verified catalog, generations, retention, quotas, recovery | Corruption, interrupted commit, duplicate upload, retain/delete race, native reader crash tests | Artifact tests pass on Linux/macOS/Windows with patched FileLock; hosted stores pending |
-| Local worker and supervision | Authenticated dispatch, durable journal, native barrier, independent supervisor, bounded output implemented | Real cancellation, launch race, deadline, transport loss, publication recovery tests | Linux/macOS/Windows CI passes; full worker service integration pending |
+| Local worker and supervision | Authenticated dispatch, durable preparation/journal, native barrier, independent supervisor, bounded output, registered CPU stage execution | Real cancellation, launch race, deadline, transport loss, publication recovery, complete stage graph | Native foundations pass Linux/macOS/Windows CI; integrated pipeline matrix pending |
 | Machine resource admission | Shared native registry, atomic reservations, quarantine, closure-bound release | Independent-process contention, cross-controller rejection, restart, stale closure, duplicate release tests | Synthetic pool proof; physical device qualification pending |
-| Project manifests and source isolation | Source bundles, mutation boundary, TOML manifest and immutable resolution implemented | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation, protected dependency/protocol tests | Linux/macOS/Windows CI passed; original-workload qualification pending |
-| Workload protocol and original CPU project | Sealed file context, bounded report/output verification, real training and separate evaluator | Immutable source execution, two injected seeds, checkpoint identity, improvement against uniform model | macOS local proof; cross-platform workload CI pending |
-| API, SDK, CLI, MCP | HTTP, local/remote Python SDK, async methods, JSON CLI, stdio MCP, private runtime | Real loopback HTTP and agent subprocesses, shared replay, bounded transfer/context, revocation, runtime restart | Cross-platform transport CI pending |
-| Controller commands | Project revisions, campaign activation, candidate validation, atomic trial graphs | Concurrent replay, frozen baseline, mutation boundary, transaction rollback, trial-limit tests | Worker result and transport integration pending |
+| Project manifests and source isolation | Source bundles, mutation boundary, TOML manifest and immutable resolution implemented | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation, protected dependency/protocol tests | Linux/macOS/Windows CI passed, including the original CPU workload |
+| Workload protocol and original CPU project | Sealed file context, bounded report/output verification, real training and separate evaluator | Immutable source execution, two injected seeds, checkpoint identity, improvement against uniform model | Workload CI passes on Linux/macOS/Windows; integrated controller pipeline matrix pending |
+| API, SDK, CLI, MCP | HTTP, local/remote Python SDK, async methods, JSON CLI, stdio MCP, private runtime | Real loopback HTTP and agent subprocesses, shared replay, bounded transfer/context, revocation, runtime restart | Linux/macOS/Windows transport CI passes |
+| Controller commands | Project revisions, campaign activation, candidate validation, atomic trial graphs, worker admission and result settlement | Concurrent replay, frozen baseline, mutation boundary, atomic claims, stage progression, uncertainty, late closure | Local CPU execution passes; evaluator/promotion service pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Pending | Pending | Equal-budget research pending |
 | Statistical gates and exposure | Pending | Pending | Workload variance pending |
@@ -31,9 +31,10 @@ not implicitly supported.
 
 The foundation suite has 53 tests. Artifact, source, and manifest tests extend it to
 116, qualified on Linux/macOS/Windows and Python 3.11–3.13. Native supervision,
-journal, resource, workload, controller, and SDK tests extend the local suite to 193 passing tests, including
+journal, resource, workload, controller, and SDK tests extend the suite to 212 passing local tests, including
 real process, deadline, race, and recovery coverage. This does not
-establish complete worker admission, API, provider, or scientific behavior.
+establish provider or scientific behavior. The integrated CPU worker adds eleven
+local execution/recovery scenarios; native qualification is tracked separately.
 
 The design defines C01–C42. Unit coverage alone does not qualify their complete
 transport, process, or provider behavior.
@@ -49,7 +50,7 @@ transport, process, or provider behavior.
 - **C09** — Workflow times out after dispatch. Pending end-to-end evidence.
 - **C10** — Cancellation is requested for an offline worker. Pending end-to-end evidence.
 - **C11** — Worker reconnects after controller restart. Pending end-to-end evidence.
-- **C12** — Artifact upload succeeds but result commit fails. Pending end-to-end evidence.
+- **C12** — Artifact upload succeeds but result commit fails. Local CPU pipeline recovers publication without re-execution or duplicate settlement; remote-provider proof pending.
 - **C13** — Required artifact is corrupt or absent. Pending end-to-end evidence.
 - **C14** — Candidate changes a protected evaluator dependency. Pending end-to-end evidence.
 - **C15** — Crashed run has no metric. Pending end-to-end evidence.
