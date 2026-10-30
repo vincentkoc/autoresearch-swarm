@@ -140,6 +140,7 @@ class FundingLedger:
         transaction.event(
             "campaign.funded", row, {"parent_campaign_id": funding.parent_campaign_id}
         )
+        transaction.event("funding.child_opened", parent, {"child_campaign_id": identifier})
         return row
 
     @staticmethod
@@ -276,6 +277,11 @@ class FundingLedger:
         transaction.event(
             "funding.projected", receipt, {"projection_revision": changed["revision"]}
         )
+        transaction.event(
+            "funding.child_changed",
+            transaction.get("campaign", funding.parent_campaign_id),
+            {"child_campaign_id": funding.child_campaign_id, "change_id": receipt_id},
+        )
 
     @staticmethod
     def require_children_closed(transaction: Transaction, parent_id: str) -> None:
@@ -353,4 +359,9 @@ class FundingLedger:
             parent_id=funding.parent_campaign_id,
         )
         transaction.event("campaign.funding_settled", settled, {"final_report_id": report_id})
+        transaction.event(
+            "funding.child_closed",
+            transaction.get("campaign", funding.parent_campaign_id),
+            {"child_campaign_id": child_id, "settlement_id": settled["id"]},
+        )
         return settled

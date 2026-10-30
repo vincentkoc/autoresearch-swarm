@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Persist event/timer waits with exact planning watermarks and destination-bound wakeups in the domain transaction; recover commit-to-notification crashes without losing conditions.
+- Add API-only async wait polling and at-least-once delivery, preserve acknowledgments separately from evidence consumption, and wake parent campaigns when child allocations change or close.
+- Prevent stale rejected preparations from poisoning a later valid turn, and preserve old wait destinations when orchestration ownership is fenced.
+
 - Persist single-command orchestration turns with dedicated control/evaluator routes, deterministic ordinals, exact action keys, and authoritative acknowledgment receipts.
 - Recover accepted or rejected actions across controller gaps without replanning; enforce driver fencing inside target transactions while preserving original acknowledgments and owned read-pin cleanup.
 - Protect reserved action keys and physical artifact staging from bare driver calls, and provide an API-only synchronous/async turn driver for future provider adapters.

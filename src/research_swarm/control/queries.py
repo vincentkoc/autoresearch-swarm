@@ -18,6 +18,10 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
+    "orchestration_wait",
+    "wait_readiness",
+    "wakeup_delivery",
+    "wakeup_acknowledgment",
     "orchestration_binding",
     "drive_turn",
     "drive_receipt",
@@ -82,7 +86,13 @@ def summarize(row: JsonObject) -> JsonObject:
         key: row[key] for key in ("id", "kind", "revision", "state", "campaign_id", "parent_id")
     }
     data = row["data"]
-    if row["kind"] == "orchestration_binding":
+    if row["kind"] in {
+        "orchestration_binding",
+        "orchestration_wait",
+        "wait_readiness",
+        "wakeup_delivery",
+        "wakeup_acknowledgment",
+    }:
         result["data"] = data
     elif row["kind"] == "drive_turn":
         result["data"] = {

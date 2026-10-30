@@ -299,6 +299,9 @@ class Transaction:
             "INSERT INTO outbox(event_id,workspace_id,sequence) VALUES (?,?,?)",
             (event.id, self.workspace_id, sequence),
         )
+        from research_swarm.state.waits import consider_event
+
+        consider_event(self, event)
         return event
 
 

@@ -48,6 +48,11 @@ from research_swarm.control.search_models import (
     RespondToProposal,
 )
 from research_swarm.control.service import ResearchService
+from research_swarm.control.wait_models import (
+    AcknowledgeWakeup,
+    OrchestrationWaitTarget,
+    RecordOrchestrationWait,
+)
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
@@ -76,6 +81,29 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "orchestration.record_wait": CommandDefinition(
+        RecordOrchestrationWait,
+        "record_orchestration_wait",
+        "orchestration.drive",
+        True,
+        "Persist event and timer conditions without losing events committed during planning.",
+        additional_scopes=("read",),
+    ),
+    "orchestration.reconcile_wait": CommandDefinition(
+        OrchestrationWaitTarget,
+        "reconcile_orchestration_wait",
+        "orchestration.drive",
+        False,
+        "Reconcile timer or event readiness without a final acknowledgment for pending conditions.",
+        additional_scopes=("read",),
+    ),
+    "orchestration.acknowledge_wakeup": CommandDefinition(
+        AcknowledgeWakeup,
+        "acknowledge_orchestration_wakeup",
+        "orchestration.drive",
+        True,
+        "Acknowledge destination delivery without consuming a wait or research evidence.",
+    ),
     "orchestration.bind": CommandDefinition(
         BindOrchestration,
         "bind_orchestration",

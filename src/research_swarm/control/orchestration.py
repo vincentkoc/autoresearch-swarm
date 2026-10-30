@@ -26,6 +26,7 @@ from research_swarm.domain.orchestration import (
 )
 from research_swarm.domain.types import utc_now
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.waits import consume_ready_wait, fence_wait
 
 CONTROL_OPERATIONS = frozenset(
     {
@@ -240,6 +241,7 @@ class OrchestrationControl:
                 raise ResearchError(
                     ErrorCode.AUTHORIZATION_DENIED, "Drive action targets another campaign"
                 )
+            consume_ready_wait(transaction, binding, intent.planning_watermark)
             if transaction.connection.execute(
                 "SELECT 1 FROM commands WHERE workspace_id=? AND actor_id=? AND idempotency_key=?",
                 (transaction.workspace_id, owner.actor_id, action.idempotency_key),
@@ -283,6 +285,7 @@ class OrchestrationControl:
                     update={
                         "pending_turn_id": identifier,
                         "next_ordinal": intent.ordinal + 1,
+                        "active_wait_id": None,
                     }
                 ).model_dump(mode="json"),
             )
@@ -465,6 +468,7 @@ class OrchestrationControl:
             transaction.event(
                 "orchestration.fenced", updated, {"reason": intent.reason, "epoch": binding.epoch}
             )
+            fence_wait(transaction, binding)
             return updated
 
         return self.database.execute(

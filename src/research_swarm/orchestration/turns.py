@@ -28,7 +28,11 @@ class DurableTurnDriver:
         self.epoch, self.configuration_digest = epoch, configuration_digest
 
     def advance_turn(
-        self, ordinal: int, plan: Callable[[], DriveAction], *, planning_watermark: int = 0
+        self,
+        ordinal: int,
+        plan: Callable[[], DriveAction],
+        *,
+        planning_watermark: int | None = None,
     ) -> JsonObject:
         row = self.client.get("orchestration_binding", self.campaign_id)
         binding = OrchestrationBinding.model_validate(row["data"])
@@ -48,18 +52,33 @@ class DurableTurnDriver:
                 raise ResearchError(
                     ErrorCode.RESOURCE_UNAVAILABLE, "Recover the existing drive ordinal first"
                 ) from None
+            if binding.active_wait_id is not None:
+                wait = self.client.get("orchestration_wait", binding.active_wait_id)
+                if wait["state"] != "ready":
+                    raise ResearchError(
+                        ErrorCode.RESOURCE_UNAVAILABLE, "Recover the wait condition first"
+                    ) from None
             request = PrepareDriveTurn(
                 campaign_id=self.campaign_id,
                 epoch=self.epoch,
                 ordinal=ordinal,
                 configuration_digest=self.configuration_digest,
-                planning_watermark=planning_watermark,
+                planning_watermark=int(self.client.context(self.campaign_id)["watermark"])
+                if planning_watermark is None
+                else planning_watermark,
                 action=plan(),
             )
             saved = self.client.command(
                 "orchestration.prepare_turn",
                 request,
-                idempotency_key=record_digest("research.drive-prepare-v1", {"turn_id": identifier}),
+                idempotency_key=record_digest(
+                    "research.drive-prepare-v2",
+                    {
+                        "turn_id": identifier,
+                        "expected_revision": row["revision"],
+                        "intent": request.model_dump(mode="json"),
+                    },
+                ),
                 expected_revision=row["revision"],
             )["result"]
         turn = DriveTurn.model_validate(saved["data"])
@@ -81,7 +100,11 @@ class DurableTurnDriver:
         )
 
     async def advance_turn_async(
-        self, ordinal: int, plan: Callable[[], DriveAction], *, planning_watermark: int = 0
+        self,
+        ordinal: int,
+        plan: Callable[[], DriveAction],
+        *,
+        planning_watermark: int | None = None,
     ) -> JsonObject:
         return await asyncio.to_thread(
             self.advance_turn, ordinal, plan, planning_watermark=planning_watermark

@@ -59,6 +59,7 @@ from research_swarm.control.orchestration_models import (
     FenceOrchestration,
     PrepareDriveTurn,
 )
+from research_swarm.control.orchestration_waits import OrchestrationWaitControl
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
     AssessPromotion,
@@ -79,6 +80,11 @@ from research_swarm.control.search_models import (
 )
 from research_swarm.control.search_observations import ObservationControl
 from research_swarm.control.search_selection import SelectionControl
+from research_swarm.control.wait_models import (
+    AcknowledgeWakeup,
+    OrchestrationWaitTarget,
+    RecordOrchestrationWait,
+)
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -186,6 +192,7 @@ class ResearchService:
         self.campaigns = CampaignControl(database)
         self.children = ChildControl(database, self._create_campaign, self._validate_contract)
         self.orchestration = OrchestrationControl(database, self._dispatch_drive)
+        self.orchestration_waits = OrchestrationWaitControl(database)
         self.worker_lifecycle = WorkerLifecycle(database)
 
     def _dispatch_drive(
@@ -197,6 +204,21 @@ class ResearchService:
 
     def bind_orchestration(self, context: CommandContext, intent: BindOrchestration) -> JsonObject:
         return self.orchestration.bind(context, intent)
+
+    def record_orchestration_wait(
+        self, context: CommandContext, intent: RecordOrchestrationWait
+    ) -> JsonObject:
+        return self.orchestration_waits.record(context, intent)
+
+    def reconcile_orchestration_wait(
+        self, context: CommandContext, intent: OrchestrationWaitTarget
+    ) -> JsonObject:
+        return self.orchestration_waits.reconcile(context, intent)
+
+    def acknowledge_orchestration_wakeup(
+        self, context: CommandContext, intent: AcknowledgeWakeup
+    ) -> JsonObject:
+        return self.orchestration_waits.acknowledge(context, intent)
 
     def prepare_drive_turn(self, context: CommandContext, intent: PrepareDriveTurn) -> JsonObject:
         return self.orchestration.prepare(context, intent)

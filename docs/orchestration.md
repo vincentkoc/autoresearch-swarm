@@ -6,9 +6,9 @@ Wrapping that method in a provider retry could perform different research after
 an accepted reply is lost. Use a durable turn as the retry boundary instead.
 
 The current implementation supplies initial ownership, one saved command per
-turn, transaction-time fencing, and acknowledgment recovery. It does not yet
-implement provider Workflows, durable wait delivery, or checkpoint ownership
-transfer. An adapter label is descriptive metadata, not a qualification claim.
+turn, transaction-time fencing, acknowledgment recovery, and durable waits with
+destination-bound wakeups. Provider Workflows and checkpoint ownership transfer
+are separate work. An adapter label is descriptive metadata, not qualification.
 
 ## Bind dedicated principals
 
@@ -128,7 +128,79 @@ proof that an in-flight RPC or native process stopped. Reopen the runner and
 recover the same ordinal. Planning callbacks must not perform LLM calls,
 filesystem mutations, or experiment execution; those effects have their own
 durable request and worker protocols. The initial turn runner does not schedule
-timers or automatically invoke the next ordinal.
+timers or automatically invoke the next ordinal. Use the wait runner below when
+the planner needs new evidence before preparing another action.
+
+## Persist a wait before sleeping
+
+`orchestration.record_wait` records a stable wait ID, configuration digest,
+binding epoch, and condition under the current binding revision. The caller is
+the destination actor; an operator cannot silently choose another recipient.
+Only one action or wait owns the binding at a time. The condition contains:
+
+- `observed_watermark`: the event position actually inspected by the planner.
+- `event_types`: up to 32 exact domain event names; empty means any domain event
+  in this campaign. Orchestration bookkeeping cannot wake itself.
+- `wake_at`: an optional absolute UTC timestamp, preserved across restarts.
+
+Registration checks already committed events after the supplied watermark in
+the same transaction. Matching events that commit later create readiness and a
+pending delivery in their own domain transaction. This closes the gap between
+reading state and registering a wait. Parent campaigns receive
+`funding.child_opened`, `funding.child_changed`, and `funding.child_closed` events
+when descendant accounting changes their immediate allocation. Zero-valued
+child closure still emits an event. Other campaign events do not implicitly
+subscribe the parent to every descendant's history.
+
+~~~python
+from research_swarm.control.wait_models import RecordOrchestrationWait
+from research_swarm.domain.orchestration_waits import WaitCondition
+from research_swarm.orchestration.waits import DurableWaitDriver
+
+waiting = control_client.command(
+    "orchestration.record_wait",
+    RecordOrchestrationWait(
+        wait_id=wait_id,
+        campaign_id=campaign_id,
+        epoch=1,
+        configuration_digest=configuration_digest,
+        condition=WaitCondition(
+            observed_watermark=planning_watermark,
+            event_types=(),
+            wake_at=next_check_at,
+        ),
+    ),
+    idempotency_key=wait_command_key,
+    expected_revision=binding_revision,
+)["result"]
+
+waits = DurableWaitDriver(control_client, campaign_id, epoch=1, actor_id=control_actor_id)
+outcome = await waits.wait_ready(wait_id, timeout_seconds=30)
+~~~
+
+`orchestration.reconcile_wait` discovers a due timer after restart. A condition
+that is still pending returns a retryable error without permanently caching a
+rejection under the reconciliation key. Timers do not run inside a disconnected
+database: a local runner or provider timer must call reconciliation. The async
+runner uses bounded monotonic polling; a polling timeout leaves the durable wait
+intact.
+
+`DurableWaitDriver.deliver_once(callback)` sends a bounded batch for its exact
+campaign, epoch, and actor. The callback must durably accept the stable delivery
+ID before returning. A lost reply can deliver the same ID again. Deduplicate at
+the receiver; acknowledgment records delivery, not exactly-once transport.
+Other routes' pending messages cannot starve this destination's batch.
+
+Acknowledging a wakeup does not consume research evidence or advance a cursor.
+After rereading state, preparation of the next action (or a replacement wait)
+must supply a watermark covering the readiness record. Consumption is atomic
+with that preparation. A stale rejected preparation does not poison the next
+valid attempt at the same ordinal. A fence supersedes the wait and preserves its
+original destination and pending notification; it cannot redirect old work to a
+new actor.
+
+Query `orchestration_wait`, `wait_readiness`, `wakeup_delivery`, and
+`wakeup_acknowledgment` to inspect conditions and delivery independently.
 
 ## Fence ownership
 
@@ -156,6 +228,8 @@ not appear in these records.
 Local tests cover independent connections, real HTTP recovery, separate native
 evaluation credentials, source-pinned proposal admission, preflight refusal,
 fencing between preflight and commit, owned-pin cleanup, reserved-key collisions,
-and unchanged staging bytes after denied HTTP mutations. Temporal replay,
-Cloudflare execution, durable wakeup delivery, and ownership transfer require
-their own implementation and qualification.
+and unchanged staging bytes after denied HTTP mutations. Wait tests include a
+controller process exiting immediately after commit, reopening the runtime,
+receiver acknowledgment loss, persisted timer recovery, parent-child wakeups,
+and rollback when notification storage fails. Temporal replay, Cloudflare
+execution, and ownership transfer require their own qualification.

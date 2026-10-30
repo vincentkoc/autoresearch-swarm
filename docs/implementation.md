@@ -54,7 +54,7 @@ not implicitly supported.
 | Hierarchical allocation ledger | Immutable grants, bounded lineage, live ancestor accounting, deficit admission guard, projection receipts and terminal settlement | Independent SQLite races, uncertainty, committed overshoot, sibling blocking, recursive release, replay/reopen, rollback and exact decimals | Public child lifecycle and real CPU child execution locally verified |
 | Nested campaigns and policy benchmark | Funded child API, inherited contracts, bounded depth and admission counters, final settlement reports | HTTP creation, CLI cancellation, real CPU descendants, counter/pending-promise conflicts, confirmation rollback, UNKNOWN closure and completion rollback | Local funded recursion verified; policy benchmark and held-out comparison pending |
 | Temporal | Pending | Pending | Real server pending |
-| Durable orchestration turns | Initial bindings, dedicated routes, exact single-action turns, transaction fences, acknowledgment reconciliation and API-only runner | Independent runner races, HTTP/runtime recovery, real bound evaluation/admission, preflight uncertainty, key collisions, staging guards and owned-pin cleanup | Local turn conformance; durable waits, ownership transfer and provider execution pending |
+| Durable orchestration turns and waits | Initial bindings, dedicated routes, exact actions, transaction fences, durable event/timer conditions and destination-specific deliveries | Independent runner races, HTTP/runtime recovery, bound evaluation/admission, key collisions, staging guards, actual controller exit, duplicate notification, timer recovery and parent-child wakeups | Local turn/wait conformance; ownership transfer and provider execution pending |
 | Cloudflare | Pending | Pending | Hosted deployment pending |
 | Actual reward-driven policy learning | Pending | Pending | Training/evaluation pending |
 | Optional UI | Pending | Pending | Browser workflow pending |
@@ -76,7 +76,7 @@ transport, process, or provider behavior.
 - **C02** — Reuse an idempotency key with changed payload. Pending end-to-end evidence.
 - **C03** — Two workers claim one exclusive device. Pending end-to-end evidence.
 - **C04** — Two campaigns reserve the final available budget. Pending end-to-end evidence.
-- **C05** — Controller crashes after state commit but before notification. Pending end-to-end evidence.
+- **C05** — A controller subprocess exits immediately after a committed report wakes a registered wait. Reopening delivers the saved notification; a lost receiver reply redelivers the same ID and creates one acknowledgment. Readiness remains separate from evidence consumption. Local process and API proof; hosted delivery remains separate.
 - **C06** — Result arrives twice. Pending end-to-end evidence.
 - **C07** — Old worker session publishes after a new fence. Pending end-to-end evidence.
 - **C08** — Lease expires while the child still runs. Pending end-to-end evidence.

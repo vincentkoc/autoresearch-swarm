@@ -11,6 +11,9 @@ from research_swarm.domain.orchestration import DriveTurn, OrchestrationBinding,
 from research_swarm.state.database import Transaction
 
 DRIVER_COMMANDS = {
+    "orchestration.record_wait",
+    "orchestration.reconcile_wait",
+    "orchestration.acknowledge_wakeup",
     "orchestration.prepare_turn",
     "orchestration.execute_turn",
     "orchestration.reconcile_turn",
