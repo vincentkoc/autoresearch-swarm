@@ -13,6 +13,9 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 
 MAX_SAMPLE_SPAN_NS = 50_000_000
 MAX_SAMPLE_UNCERTAINTY_NS = 100_000_000
+NATIVE_CLOCK_PROFILES = frozenset(
+    {"linux-boottime-v1", "darwin-mach-continuous-v1", "windows-qpc-unbiased-v1"}
+)
 
 
 @dataclass(frozen=True)

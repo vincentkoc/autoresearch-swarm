@@ -182,6 +182,62 @@ guarantee. Native closure remains independently observed.
 Clock samples retain continuous, awake, and wall readings plus read uncertainty.
 Their continuity check distinguishes suspension, counter reversal, and wall-clock
 steps. These are prerequisites for remote calibration. They do not authenticate
-controller time or grant remote launch authority. Signed time challenges,
-origin-bound calibration, and wiring through every journal release gate remain
-separate work.
+controller time or grant remote launch authority. The protocol below supplies
+authenticated time evidence. Controller integration, live supervisor-origin
+qualification, and wiring through every journal release gate remain separate work.
+
+## Signed authority-time evidence
+
+`SignedClockReply` covers a fresh challenge nonce, the full worker binding,
+controller clock epoch, authority timestamp in integer milliseconds, clock
+profile, and `ClockPolicy`. Its signature domain is `research.worker-clock`.
+`SignedAssignmentTime` uses the separate `research.assignment-clock` domain and
+binds that epoch and policy to the exact existing signed assignment. Existing
+assignment signatures and their canonical fixtures do not change.
+
+The time-binding verifier also authenticates the original assignment. This is a
+static check: it deliberately permits expired observations and uses the declared
+issue time only while checking signature and structure. It does not establish
+current launch authority.
+
+`ClockSampler` creates a process-scoped origin ID and pins its native counter
+profile. Each `begin()` generates a fresh nonce and records the send sample.
+Completing that challenge records the receive sample once. Invalid completion
+consumes the challenge; retry requires a new nonce. Exact completion replay
+returns the original estimate and cannot reset its age. A changed process or
+counter profile rejects new sampling. The origin ID is not a process-liveness
+capability for a supervisor; that handshake remains required before remote launch.
+
+Let `A` be sampled authority time, `R` the full worker roundtrip, `e` elapsed
+worker time since receipt, `g` timestamp/read uncertainty, and `rho` the admitted
+relative drift bound. Integer arithmetic computes:
+
+~~~text
+lower = A - g + floor(e * (1 - rho))
+upper = A + g + ceil((R + e) * (1 + rho))
+~~~
+
+The ratio assumption is `1-rho <= controller_elapsed/worker_elapsed <= 1+rho`.
+It is not a claim that each clock has that individual accuracy. The default is
+an explicit operating assumption, not measured hardware qualification. No
+symmetric-network assumption or estimated server-processing subtraction is used.
+
+The estimate rejects unsupported profiles, excessive roundtrip, wide read
+samples, stale age, excess interval width, counter reversal, suspension, and wall
+steps. Assignment deadlines require matching worker, clock epoch, assignment
+digest, and policy. The lower bound must reach issue time; the upper bound must
+remain strictly before expiry. Deadlines beyond the admitted horizon are rejected.
+
+The absolute cap divides remaining allowance by the upper rate bound and rounds
+down. It includes the admitted maximum read uncertainty for future checks. Launch
+is additionally capped by sample-age expiry. Repeated computation cannot reset
+the receive anchor, and intersecting refreshed caps can only tighten them.
+Intersections require the same assignment, authority epoch, local origin, and
+counter profile. A native release consumer must still check a fresh interval,
+current authority, cancellation, and its live origin; a cap alone grants nothing.
+
+These records and algorithms are implemented and tested as protocol primitives.
+There is no public time endpoint or automatic remote launch yet. The controller
+must use one qualified time source for both replies and assignment issuance,
+and the supervisor must consume these bounds at every release gate before that
+capability is advertised.

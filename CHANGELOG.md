@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Define separately signed controller-time replies and exact-assignment clock bindings without changing existing assignment signatures.
+- Bound time estimates by full roundtrip delay, relative clock-rate assumptions, sample age, and measured read uncertainty; derive conservative absolute caps.
+- Bind one-use clock challenges to a live sampling origin and preserve their original anchors on replay.
 - Count host suspension in native execution and cleanup deadlines using explicit Linux, macOS, and Windows clock profiles.
 - Preserve an absolute supervisor cutoff through preparation and the release barrier; expired allowance cannot become a fresh positive timeout.
 - Detect suspend, wall-clock changes, and counter reversal in clock samples for future remote authority-time qualification.
