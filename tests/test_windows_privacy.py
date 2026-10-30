@@ -64,14 +64,26 @@ def test_private_directory_requires_propagating_owner_and_system(
     root = tmp_path / "incomplete-acl"
     with private_directory(root):
         pass
+    if defect == "inheritance":
+        subprocess.run(
+            ["icacls", str(root), "/remove:g", "*" + current_user_sid()],
+            check=True,
+            capture_output=True,
+        )
     arguments = (
-        ["/grant:r", "*" + current_user_sid() + ":(F)"]
+        ["/grant", "*" + current_user_sid() + ":(F)"]
         if defect == "inheritance"
         else ["/remove:g", "*S-1-5-18"]
     )
     subprocess.run(["icacls", str(root), *arguments], check=True, capture_output=True)
-    with pytest.raises(ResearchError, match="full control"), private_directory(root):
-        pass
+    try:
+        with private_directory(root):
+            pass
+    except ResearchError as error:
+        assert "full control" in str(error)
+    else:
+        observed = subprocess.run(["icacls", str(root)], check=True, capture_output=True)
+        pytest.fail("Incomplete ACL was accepted: " + observed.stdout.decode(errors="replace"))
 
 
 def test_runtime_rejects_broad_token_before_database_mutation(tmp_path: Path) -> None:
