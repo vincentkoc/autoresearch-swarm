@@ -27,6 +27,9 @@ RecordKind = Literal[
     "attempt",
     "run_result",
     "worker",
+    "worker_admission",
+    "worker_presence",
+    "attempt_control",
     "worker_upload",
     "evaluation_request",
     "evaluation_receipt",
@@ -58,7 +61,9 @@ def summarize(row: JsonObject) -> JsonObject:
         key: row[key] for key in ("id", "kind", "revision", "state", "campaign_id", "parent_id")
     }
     data = row["data"]
-    if row["kind"] == "candidate":
+    if row["kind"] in {"worker_admission", "worker_presence", "attempt_control"}:
+        result["data"] = data
+    elif row["kind"] == "candidate":
         result["data"] = {
             "hypothesis": data["hypothesis"][:1024],
             "parent_ids": data["parent_ids"],

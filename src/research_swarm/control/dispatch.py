@@ -24,6 +24,11 @@ from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
+from research_swarm.control.worker_lifecycle import (
+    RequestAttemptCancellation,
+    SetWorkerAdmission,
+    WorkerHeartbeat,
+)
 from research_swarm.control.worker_outputs import BeginWorkerUpload, WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.workers import ClaimJob, EnrollWorker
@@ -45,6 +50,27 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "worker.heartbeat": CommandDefinition(
+        WorkerHeartbeat,
+        "worker_heartbeat",
+        "worker.publish",
+        False,
+        "Record presence and control acknowledgments without renewing execution authority.",
+    ),
+    "worker.set_admission": CommandDefinition(
+        SetWorkerAdmission,
+        "set_worker_admission",
+        "worker.manage",
+        True,
+        "Change fresh admission using its own revision; existing grants remain valid.",
+    ),
+    "attempt.request_cancel": CommandDefinition(
+        RequestAttemptCancellation,
+        "request_attempt_cancel",
+        "campaign.manage",
+        True,
+        "Request cancellation for one attempt without claiming closure or refunding resources.",
+    ),
     "worker.begin_upload": CommandDefinition(
         BeginWorkerUpload,
         "begin_worker_upload",

@@ -10,6 +10,7 @@ from pydantic import Field, ValidationError
 
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.queries import RecordCursor, summarize
+from research_swarm.control.worker_state import admission_open, worker_state
 from research_swarm.control.workers import AttemptData, WorkerData, worker_authority
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -21,7 +22,7 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 class WorkerQuery(VersionedRecord):
     worker_id: ID
     session_id: ID
-    kind: Literal["pending", "offers"]
+    kind: Literal["pending", "offers", "controls"]
     limit: int = Field(default=25, strict=True, ge=1, le=100)
     cursor: str | None = Field(default=None, max_length=2048)
 
@@ -29,11 +30,13 @@ class WorkerQuery(VersionedRecord):
 class WorkerRead(VersionedRecord):
     worker_id: ID
     session_id: ID
-    kind: Literal["worker", "attempt", "trial"]
+    kind: Literal["worker", "attempt", "trial", "worker_admission", "worker_presence"]
     id: ID
 
 
 def eligible_offer(transaction: Transaction, worker: WorkerData, row: JsonObject) -> bool:
+    if not admission_open(transaction, worker.binding):
+        return False
     job = JobData.model_validate(row["data"])
     trial_row = transaction.get("trial", job.trial_id)
     trial = TrialData.model_validate(trial_row["data"])
@@ -84,9 +87,11 @@ class WorkerQueries:
             connection.execute("BEGIN")
             transaction = Transaction(connection, context)
             worker = worker_authority(transaction, request.worker_id, request.session_id)
-            if request.kind == "worker":
+            if request.kind in {"worker", "worker_admission", "worker_presence"}:
                 if request.id != request.worker_id:
                     raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker identity differs")
+                if request.kind == "worker_admission" or request.kind == "worker_presence":
+                    return worker_state(transaction, worker.binding, request.kind)
             elif request.kind == "attempt":
                 try:
                     row = transaction.get("attempt", request.id)
@@ -166,16 +171,26 @@ class WorkerQueries:
                     raise ResearchError(
                         ErrorCode.AUTHORIZATION_DENIED, "Worker cursor scope differs"
                     )
-            kind = "attempt" if request.kind == "pending" else "job"
-            predicate = (
-                "AND json_extract(payload,'$.dispatch.worker_id')=? "
-                "AND json_extract(payload,'$.dispatch.worker_session_id')=? "
-                "AND json_extract(payload,'$.dispatch.control_epoch')=? "
-                "AND json_extract(payload,'$.dispatch.controller_id')=? "
-                "AND json_extract(payload,'$.publication_status')='pending'"
-                if request.kind == "pending"
-                else "AND state='ready'"
-            )
+            if request.kind == "offers" and not admission_open(transaction, worker.binding):
+                return {"items": [], "next_cursor": None, "scanned": 0}
+            kind = {"pending": "attempt", "offers": "job", "controls": "attempt_control"}[
+                request.kind
+            ]
+            if request.kind == "offers":
+                predicate = "AND state='ready'"
+            else:
+                source = "dispatch" if request.kind == "pending" else "binding"
+                predicate = (
+                    f"AND json_extract(payload,'$.{source}.worker_id')=? "
+                    f"AND json_extract(payload,'$.{source}.worker_session_id')=? "
+                    f"AND json_extract(payload,'$.{source}.control_epoch')=? "
+                    f"AND json_extract(payload,'$.{source}.controller_id')=? "
+                )
+                predicate += (
+                    "AND json_extract(payload,'$.publication_status')='pending'"
+                    if request.kind == "pending"
+                    else "AND state='requested'"
+                )
             parameters = (
                 [
                     request.worker_id,
@@ -183,7 +198,7 @@ class WorkerQueries:
                     worker.binding.control_epoch,
                     worker.binding.controller_id,
                 ]
-                if request.kind == "pending"
+                if request.kind != "offers"
                 else []
             )
             rows = connection.execute(

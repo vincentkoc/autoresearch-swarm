@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add independent worker presence and admission records, sequenced heartbeats, and transactional drain control without changing existing grants.
+- Persist attempt-scoped cancellation with bounded worker control delivery; distinguish request, journal acknowledgment, and accepted native closure.
+- Preserve successful completion racing cancellation, keep UNKNOWN reservations unresolved, and expose the controls through the shared API/SDK/CLI/MCP catalog.
+
 - Execute registered Python environments through frozen, fingerprinted launch adapters inside the attempt's native deadline and resource claim.
 - Apply environment-contract admission before reservation, require exclusive accelerator slots, and share MPS/MLX physical device and unified-memory pools.
 - Pin registrations in local and HTTP worker enrollment, verify exact demands before native release, and recover publication without reopening worker launch files.

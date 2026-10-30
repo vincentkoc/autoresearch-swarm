@@ -11,6 +11,7 @@ from pydantic import Field, model_validator
 from research_swarm.control.authority_clock import AuthorityTime, process_authority_clock
 from research_swarm.control.confirmation_runtime import claim_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
+from research_swarm.control.worker_state import admission_open
 from research_swarm.domain.assignments import (
     AssignmentAuthority,
     AssignmentPayload,
@@ -287,6 +288,8 @@ class WorkerControl:
     def claim(self, context: CommandContext, request: ClaimJob) -> JsonObject:
         def claim(transaction: Transaction) -> JsonObject:
             worker = worker_authority(transaction, request.worker_id, request.session_id)
+            if not admission_open(transaction, worker.binding):
+                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Worker admission is draining")
             row = transaction.get("job", request.job_id)
             if context.expected_revision != row["revision"]:
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Job revision changed")

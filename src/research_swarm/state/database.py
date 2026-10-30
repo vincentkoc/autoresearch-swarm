@@ -61,6 +61,13 @@ CREATE INDEX IF NOT EXISTS records_worker_trial ON records(
 ) WHERE kind='attempt';
 CREATE INDEX IF NOT EXISTS records_ready_jobs ON records(workspace_id)
 WHERE kind='job' AND state='ready';
+CREATE INDEX IF NOT EXISTS records_worker_controls ON records(
+    workspace_id,
+    json_extract(payload,'$.binding.worker_id'),
+    json_extract(payload,'$.binding.worker_session_id'),
+    json_extract(payload,'$.binding.control_epoch'),
+    json_extract(payload,'$.binding.controller_id')
+) WHERE kind='attempt_control' AND state='requested';
 CREATE TABLE IF NOT EXISTS commands (
     workspace_id TEXT NOT NULL REFERENCES workspaces(id),
     actor_id TEXT NOT NULL,

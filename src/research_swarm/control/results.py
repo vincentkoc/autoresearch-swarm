@@ -17,13 +17,14 @@ from research_swarm.control.worker_outputs import (
     evidence_receipt,
     owned_upload,
 )
+from research_swarm.control.worker_state import settle_cancellation
 from research_swarm.control.workers import AttemptData, worker_authority
 from research_swarm.domain.artifacts import ArtifactRecord, ArtifactRetention, StoredBlob
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef, RunResult
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import ID, Name, VersionedRecord
+from research_swarm.domain.types import ID, Name, VersionedRecord, utc_now
 from research_swarm.projects.manifest import TimingContract
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
@@ -428,6 +429,7 @@ class ResultControl:
                 campaign_id=row["campaign_id"],
                 parent_id=row["id"],
             )
+        settle_cancellation(transaction, row["id"], state, utc_now())
         updated_job = transaction.update(
             "job",
             job_row["id"],

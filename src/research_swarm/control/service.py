@@ -47,6 +47,12 @@ from research_swarm.control.promotions import (
 )
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
+from research_swarm.control.worker_lifecycle import (
+    RequestAttemptCancellation,
+    SetWorkerAdmission,
+    WorkerHeartbeat,
+    WorkerLifecycle,
+)
 from research_swarm.control.worker_outputs import (
     BeginWorkerUpload,
     WorkerOutputs,
@@ -146,6 +152,20 @@ class ResearchService:
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
+        self.worker_lifecycle = WorkerLifecycle(database)
+
+    def worker_heartbeat(self, context: CommandContext, request: WorkerHeartbeat) -> JsonObject:
+        return self.worker_lifecycle.heartbeat(context, request)
+
+    def set_worker_admission(
+        self, context: CommandContext, request: SetWorkerAdmission
+    ) -> JsonObject:
+        return self.worker_lifecycle.set_admission(context, request)
+
+    def request_attempt_cancel(
+        self, context: CommandContext, request: RequestAttemptCancellation
+    ) -> JsonObject:
+        return self.worker_lifecycle.request_cancel(context, request)
 
     def pause_campaign(self, context: CommandContext, request: PauseCampaign) -> JsonObject:
         return self.campaigns.pause(context, request)
