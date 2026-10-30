@@ -44,6 +44,8 @@ Run a second ordinary workload with [the synthetic pose project](examples/synthe
 including historical receipt import and fresh authorized replay.
 Run the [empirical policy benchmark](examples/policy_benchmark/README.md) to compare
 funded greedy/portfolio campaigns and timed no-op confirmation panels.
+Adopt a supplied pinned upstream checkout with the [learning-rate study adapter](docs/upstream.md);
+source/contract adoption is CPU-tested, while native CUDA parity remains unqualified.
 See [local runs](docs/local-runs.md) for resume, budgets, and agent control.
 See [remote workers](docs/remote-workers.md) for explicit CPU enrollment, pinned
 HTTP connections, and persistent asynchronous execution.

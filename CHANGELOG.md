@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add original glue to adopt an exact, locally supplied Karpathy autoresearch revision without distributing upstream code; freeze data, dependency and kernel identities and restrict mutations to four learning-rate literals.
+- Export non-executable tensor checkpoints for an independent frozen-reference scorer, with CPU adoption/contract tests and explicit native CUDA/parity qualification limits.
+
 - Qualify controller-process restart during a live native workload, preserving its original assignment, deadline and custody through explicit late-result reconciliation.
 - Extend end-to-end proof for post-access scoring timeouts, exhausted-budget restart, unavailable isolation admission, revoked-session publication and retained artifacts after campaign completion; reconcile the contract ledger with existing native and transport evidence.
 
