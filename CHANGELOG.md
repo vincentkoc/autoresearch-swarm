@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Qualify Python Durable Object runtime primitives in local workerd: nested transaction rollback, durable rejection acknowledgments, duplicate contention, process restart and synchronous Ed25519 FFI verified against the native cryptography library.
+- Add isolated, locked Cloudflare tooling and an opt-in native fixture without changing core dependencies or claiming the full hosted command/storage deployment is complete.
+
 - Add original glue to adopt an exact, locally supplied Karpathy autoresearch revision without distributing upstream code; freeze data, dependency and kernel identities and restrict mutations to four learning-rate literals.
 - Export non-executable tensor checkpoints for an independent frozen-reference scorer, with CPU adoption/contract tests and explicit native CUDA/parity qualification limits.
 

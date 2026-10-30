@@ -1,0 +1,17 @@
+{
+  "name": "autoresearch-swarm-cloudflare",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "python3 build.py && esbuild crypto.js --bundle --format=esm --platform=browser --outfile=.generated/crypto.mjs",
+    "test:crypto": "node --test crypto.test.mjs"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "wrangler": "4.156.0"
+  }
+}

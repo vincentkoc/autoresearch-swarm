@@ -1,0 +1,15 @@
+{
+  "name": "research-swarm-local-qualification",
+  "main": ".generated/entry.py",
+  "base_dir": ".generated",
+  "workers_dev": false,
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["python_workers"],
+  "find_additional_modules": true,
+  "rules": [{ "type": "ESModule", "globs": ["**/*.mjs"], "fallthrough": true }],
+  "durable_objects": {
+    "bindings": [{ "name": "QUALIFICATION", "class_name": "Qualification" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Qualification"] }],
+  "dev": { "ip": "127.0.0.1" }
+}
