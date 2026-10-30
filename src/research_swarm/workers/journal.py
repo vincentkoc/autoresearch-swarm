@@ -14,6 +14,7 @@ from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
 from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord, utc_now
+from research_swarm.state.identity import initialize_identity
 from research_swarm.workers.authority import VerifiedDispatch
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, NativeOutcome
 from research_swarm.workers.prepared import PreparedExecution
@@ -84,6 +85,7 @@ class WorkerJournal:
                 raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported worker journal")
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(_SCHEMA)
+            self.identity = initialize_identity(connection)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

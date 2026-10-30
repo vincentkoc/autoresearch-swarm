@@ -28,6 +28,8 @@ worker-specific identity to prevent accidental cross-worker equivalence. This
 fingerprint does not prove thermal equivalence or kernel resource isolation.
 
 Changing the profile, registry, or controller epoch requires explicit recovery.
+Initialized enrollment also pins the journal and machine registry instance IDs.
+A missing or replaced database cannot silently reset execution history or capacity.
 Missing state and revoked credentials are not silently recreated. This helper
 does not install frameworks, rotate credentials, or enroll remote machines.
 

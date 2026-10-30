@@ -26,11 +26,14 @@ from research_swarm.runtime import (
     read_private,
     write_private,
 )
+from research_swarm.state.identity import read_identity
 from research_swarm.workers.local import LocalWorker
 
 
 class EnrollmentState(VersionedRecord):
     initialized: bool = False
+    journal_identity: ID | None = None
+    registry_identity: ID | None = None
     worker_id: ID
     session_id: ID
     worker_principal_id: ID
@@ -174,6 +177,16 @@ def ensure_local_enrollment(
             token=state.evaluator_token,
         )
         client = ResearchClient(LocalTransport(runtime, lambda: operator))
+        if state.initialized and (
+            state.journal_identity is None
+            or state.registry_identity is None
+            or read_identity(root / "execution" / "journal.sqlite") != state.journal_identity
+            or read_identity(registry) != state.registry_identity
+        ):
+            raise ResearchError(
+                ErrorCode.EXECUTION_UNKNOWN,
+                "Native storage identity changed; explicit recovery is required",
+            )
         if not state.initialized:
             client.command(
                 "worker.enroll",
@@ -219,8 +232,19 @@ def ensure_local_enrollment(
             root=root / "execution",
             machine_registry=registry,
         )
+        if state.initialized and (
+            worker.journal.identity != state.journal_identity
+            or worker.resources.identity != state.registry_identity
+        ):
+            raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Native storage changed during resume")
         if not state.initialized:
-            state = state.model_copy(update={"initialized": True})
+            state = state.model_copy(
+                update={
+                    "initialized": True,
+                    "journal_identity": worker.journal.identity,
+                    "registry_identity": worker.resources.identity,
+                }
+            )
             write_private(path, canonical_bytes(state.model_dump(mode="json")))
         return LocalEnrollment(
             worker=worker, evaluator=evaluator, evaluator_id=state.evaluator_principal_id

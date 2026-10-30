@@ -13,6 +13,7 @@ from pydantic import Field, model_validator
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, Name, Revision, VersionedRecord, new_id
+from research_swarm.state.identity import initialize_identity
 from research_swarm.workers.authority import VerifiedDispatch, WorkerBinding
 from research_swarm.workers.journal import JournalEntry, JournalState
 
@@ -80,6 +81,7 @@ class MachineResources:
                 raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported machine registry")
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(_SCHEMA)
+            self.identity = initialize_identity(connection)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

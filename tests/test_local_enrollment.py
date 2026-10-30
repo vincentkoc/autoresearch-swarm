@@ -13,7 +13,9 @@ from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import LocalRuntime, read_private
 from research_swarm.workers import local_enrollment
+from research_swarm.workers.journal import WorkerJournal
 from research_swarm.workers.local_enrollment import EnrollmentState, ensure_local_enrollment
+from research_swarm.workers.resources import MachineResources
 
 
 def stored(runtime: LocalRuntime) -> EnrollmentState:
@@ -76,7 +78,29 @@ def test_interrupted_credential_install_resumes_persisted_secret(
     assert runtime.credentials.resolve(pending.worker_token).id == pending.worker_principal_id
     monkeypatch.setattr(CredentialStore, "install", install)
     ensure_local_enrollment(LocalRuntime.open(runtime.root), machine_registry=registry)
-    assert stored(runtime) == pending.model_copy(update={"initialized": True})
+    resumed = stored(runtime)
+    assert resumed.journal_identity is not None and resumed.registry_identity is not None
+    assert resumed.model_dump(
+        exclude={"initialized", "journal_identity", "registry_identity"}
+    ) == pending.model_dump(exclude={"initialized", "journal_identity", "registry_identity"})
+
+
+@pytest.mark.parametrize("kind", ["journal", "registry"])
+@pytest.mark.parametrize("replace", [False, True])
+def test_missing_or_replaced_native_storage_requires_recovery(
+    tmp_path: Path, kind: str, replace: bool
+) -> None:
+    runtime = LocalRuntime.open(tmp_path / "runtime")
+    registry = tmp_path / "machine" / "resources.sqlite"
+    enrollment = ensure_local_enrollment(runtime, machine_registry=registry)
+    path = enrollment.worker.journal.path if kind == "journal" else registry
+    path.unlink()
+    if replace:
+        (WorkerJournal if kind == "journal" else MachineResources)(path)
+    with pytest.raises(ResearchError) as failure:
+        ensure_local_enrollment(runtime, machine_registry=registry)
+    assert failure.value.code == ErrorCode.EXECUTION_UNKNOWN
+    assert path.exists() is replace
 
 
 @pytest.mark.parametrize("damage", ["revoked", "missing", "epoch", "enrollment"])
