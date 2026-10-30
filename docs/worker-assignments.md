@@ -42,8 +42,8 @@ includes it in duplicate-delivery identity. Preparation must match its input
 digests and execution profile. Restart checks the same assignment again; result
 publication must preserve it. A signed enrollment cannot fall back to HMAC.
 
-Local execution uses the controller host's clock. Restricted remote enrollment,
-polling, clock qualification, and remote execution remain pending. Signatures
+Local execution uses the controller host's clock. Remote enrollment provisioning,
+clock qualification, and remote execution remain pending. Signatures
 alone do not qualify a remote worker or prove native process closure.
 
 ## Scoped discovery and recovery
@@ -76,6 +76,28 @@ evaluation authorization. They do not reserve capacity or budget. Claim the job
 with the offered revision and preserve the command key through uncertain delivery.
 The atomic claim can reject an offer that became unavailable.
 
-The same views are available through HTTP, Python/async SDKs, and MCP. Restricted
-artifact transfer and a remote worker driver remain pending; these query endpoints
-alone do not make the worker runnable on another host.
+The same views are available through HTTP, Python/async SDKs, and MCP. Scoped
+output publication and a remote worker driver remain pending; these query
+endpoints alone do not make the worker runnable on another host.
+
+## Attempt-bound inputs
+
+`worker.inputs` permits metadata and content access to the exact source archive
+and named input references in an admitted signed attempt. The request identifies
+the worker, session, attempt, and artifact. Project membership or knowledge of an
+artifact ID does not grant access to other project data.
+
+Input acquisition requires a pending attempt and an unexpired launch grant.
+This restriction applies to acquiring bytes; closure evidence publication has a
+separate authority contract and must remain possible after the deadline.
+
+The controller rechecks assignment authority and the exact reference in the same
+transaction that creates a reader pin. The stream uses the pinned storage
+generation. Each new HTTP request resolves its credential and enrollment again.
+An already admitted stream can finish after revocation; its exact pin is released
+when the stream closes or fails, without requiring new enrollment authority.
+
+Use `worker_input(WorkerArtifactRead)` for metadata and
+`worker_download(request, destination)` for verified bytes. The destination must
+not exist. Both SDK transports enforce declared size and digest; incomplete new
+files are removed. MCP exposes metadata through `research_worker_input`.

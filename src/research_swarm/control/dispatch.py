@@ -23,6 +23,7 @@ from research_swarm.control.promotions import AssessPromotion, CommitPromotion, 
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
+from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -242,6 +243,10 @@ def capabilities() -> JsonObject:
                 "worker.get": WorkerRead.model_json_schema(),
                 "worker.list": WorkerQuery.model_json_schema(),
             },
+        },
+        "worker_inputs": {
+            "scope": "worker.inputs",
+            "request_schema": WorkerArtifactRead.model_json_schema(),
         },
         "execution": "registered_worker_required",
         "evaluation": "authenticated_receipts",

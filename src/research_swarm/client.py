@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import ipaddress
 import ssl
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal, Protocol
@@ -18,6 +18,7 @@ from pydantic import TypeAdapter
 from research_swarm.control.commands import RegisterProject
 from research_swarm.control.dispatch import capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
+from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerArtifacts
 from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.acknowledgments import (
     CommandAccepted,
@@ -42,6 +43,30 @@ MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 RequestMode = Literal["query", "command", "upload_part"]
 
 
+def write_download(
+    reference: ArtifactRef, chunks: Iterable[bytes], destination: Path
+) -> ArtifactRef:
+    digest, size, created = hashlib.sha256(), 0, False
+    try:
+        with destination.open("xb") as output:
+            created = True
+            for block in chunks:
+                size += len(block)
+                if size > reference.size_bytes:
+                    raise ResearchError(
+                        ErrorCode.ARTIFACT_UNVERIFIED, "Artifact exceeds its declared size"
+                    )
+                digest.update(block)
+                output.write(block)
+        if size != reference.size_bytes or "sha256:" + digest.hexdigest() != reference.digest:
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact download digest mismatch")
+    except BaseException:
+        if created:
+            destination.unlink(missing_ok=True)
+        raise
+    return reference
+
+
 class ClientTransport(Protocol):
     def command(
         self, operation: str, payload: JsonObject, key: str, revision: int | None
@@ -52,6 +77,7 @@ class ClientTransport(Protocol):
     def append_upload(self, identifier: str, offset: int, content: bytes) -> None: ...
     def finish_upload(self, identifier: str, key: str) -> ArtifactRef: ...
     def download(self, identifier: str, destination: Path) -> ArtifactRef: ...
+    def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef: ...
     def close(self) -> None: ...
 
 
@@ -79,6 +105,12 @@ class LocalTransport:
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
         context = self._context()
+        if operation == "worker.input":
+            return (
+                WorkerArtifacts(self.runtime.database, self.runtime.artifacts)
+                .input_metadata(context, WorkerArtifactRead.model_validate(payload))
+                .model_dump(mode="json")
+            )
         if operation == "worker.get":
             return WorkerQueries(self.runtime.database).get(
                 context, WorkerRead.model_validate(payload)
@@ -137,6 +169,13 @@ class LocalTransport:
         reference = self.runtime.artifacts.get(context, identifier).reference
         self.runtime.artifacts.fetch(context, reference, destination)
         return reference
+
+    def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef:
+        context = self._context()
+        artifacts = WorkerArtifacts(self.runtime.database, self.runtime.artifacts)
+        reference = artifacts.input_metadata(context, request)
+        with artifacts.input_reader(context, request) as source:
+            return write_download(reference, iter(lambda: source.read(64 * 1024), b""), destination)
 
     def close(self) -> None:
         pass
@@ -260,7 +299,7 @@ class HTTPTransport:
         )
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
-        if operation in {"worker.get", "worker.list"}:
+        if operation in {"worker.get", "worker.list", "worker.input"}:
             return self._request("POST", "/v1/" + operation.replace(".", "/"), json=payload)
         if operation == "capabilities":
             return self._request("GET", "/v1/capabilities")
@@ -315,35 +354,20 @@ class HTTPTransport:
     def download(self, identifier: str, destination: Path) -> ArtifactRef:
         identifier = TypeAdapter(ID).validate_python(identifier)
         record = ArtifactRecord.model_validate(self._request("GET", f"/v1/artifacts/{identifier}"))
-        digest = hashlib.sha256()
-        size = 0
-        created = False
-        try:
-            with self.http.stream("GET", f"/v1/artifacts/{identifier}/content") as response:
-                if response.status_code != 200:
-                    raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact download failed")
-                with destination.open("xb") as output:
-                    created = True
-                    for block in response.iter_bytes(64 * 1024):
-                        size += len(block)
-                        if size > record.reference.size_bytes:
-                            raise ResearchError(
-                                ErrorCode.ARTIFACT_UNVERIFIED, "Artifact exceeds its declared size"
-                            )
-                        digest.update(block)
-                        output.write(block)
-            if (
-                size != record.reference.size_bytes
-                or "sha256:" + digest.hexdigest() != record.reference.digest
-            ):
-                raise ResearchError(
-                    ErrorCode.ARTIFACT_UNVERIFIED, "Artifact download digest mismatch"
-                )
-        except BaseException:
-            if created:
-                destination.unlink(missing_ok=True)
-            raise
-        return record.reference
+        with self.http.stream("GET", f"/v1/artifacts/{identifier}/content") as response:
+            if response.status_code != 200:
+                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact download failed")
+            return write_download(record.reference, response.iter_bytes(64 * 1024), destination)
+
+    def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef:
+        payload = WorkerArtifactRead.model_validate(request).model_dump(mode="json")
+        reference = ArtifactRef.model_validate(
+            self._request("POST", "/v1/worker/input", json=payload)
+        )
+        with self.http.stream("POST", "/v1/worker/input/content", json=payload) as response:
+            if response.status_code != 200:
+                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Worker input download failed")
+            return write_download(reference, response.iter_bytes(64 * 1024), destination)
 
     def close(self) -> None:
         self.http.close()
@@ -393,6 +417,14 @@ class ResearchClient:
 
     def worker_list(self, request: WorkerQuery) -> JsonObject:
         return self.transport.query("worker.list", request.model_dump(mode="json"))
+
+    def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef:
+        return self.transport.worker_download(request, destination)
+
+    def worker_input(self, request: WorkerArtifactRead) -> ArtifactRef:
+        return ArtifactRef.model_validate(
+            self.transport.query("worker.input", request.model_dump(mode="json"))
+        )
 
     def context(self, campaign_id: str, *, limit: int = 10) -> JsonObject:
         return self.transport.query("context", {"campaign_id": campaign_id, "limit": limit})
@@ -532,6 +564,12 @@ class AsyncResearchClient:
 
     async def worker_list(self, request: WorkerQuery) -> JsonObject:
         return await asyncio.to_thread(self.client.worker_list, request)
+
+    async def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef:
+        return await asyncio.to_thread(self.client.worker_download, request, destination)
+
+    async def worker_input(self, request: WorkerArtifactRead) -> ArtifactRef:
+        return await asyncio.to_thread(self.client.worker_input, request)
 
     async def budget(self, campaign_id: str) -> JsonObject:
         return await asyncio.to_thread(self.client.budget, campaign_id)

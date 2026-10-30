@@ -13,6 +13,7 @@ from pydantic import Field, JsonValue, ValidationError
 from research_swarm.client import ResearchClient
 from research_swarm.control.dispatch import COMMANDS, CommandDefinition
 from research_swarm.control.queries import RecordKind, RecordQuery, summarize
+from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -163,6 +164,11 @@ def make_mcp(
     def worker_get(request: WorkerRead) -> ToolCall:
         """Read this worker's enrollment or assigned records. Large detail uses the HTTP API."""
         return tool_result(lambda: client.worker_get(request))
+
+    @server.tool(name="research_worker_input", annotations=read_only, structured_output=True)
+    def worker_input(request: WorkerArtifactRead) -> ToolCall:
+        """Read the exact metadata of an authorized input without workspace read access."""
+        return tool_result(lambda: client.worker_input(request).model_dump(mode="json"))
 
     @server.tool(name="research_get_budget", annotations=read_only, structured_output=True)
     def get_budget(campaign_id: ID) -> ToolCall:

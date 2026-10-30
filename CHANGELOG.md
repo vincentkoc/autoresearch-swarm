@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Authorize exact attempt inputs and retain their storage generation in one transaction without granting workspace read access.
+- Stream assigned inputs through HTTP and local/async SDKs with digest and size verification, credential rechecks, and pin cleanup after revocation or failure.
 - Restrict enrolled workers to explicit project sets and enforce that scope before job budget reservation.
 - Add bounded worker-owned assignment recovery and eligible-job discovery through HTTP, SDK, async SDK, and MCP without workspace-wide read authority.
 - Preserve durable accepted/rejected command acknowledgments across local and HTTP replay, including rejection command IDs.

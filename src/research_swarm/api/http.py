@@ -2,7 +2,8 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
-from typing import Annotated, Any
+from contextlib import AbstractContextManager
+from typing import Annotated, Any, BinaryIO
 
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,9 +15,11 @@ from research_swarm.control.auth import CredentialStore
 from research_swarm.control.dispatch import COMMANDS, capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
 from research_swarm.control.service import ResearchService
+from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerArtifacts
 from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import new_id
 from research_swarm.state.artifacts import BeginUpload
@@ -53,6 +56,39 @@ class ArtifactResponse(StreamingResponse):
             except asyncio.CancelledError:
                 await closing
                 raise
+
+
+async def artifact_response(
+    reader: AbstractContextManager[BinaryIO], reference: ArtifactRef
+) -> ArtifactResponse:
+    opening = asyncio.create_task(asyncio.to_thread(reader.__enter__))
+    try:
+        source = await asyncio.shield(opening)
+    except asyncio.CancelledError:
+        try:
+            await opening
+        finally:
+            await asyncio.to_thread(reader.__exit__, None, None, None)
+        raise
+
+    async def content() -> AsyncIterator[bytes]:
+        while block := await asyncio.to_thread(source.read, 64 * 1024):
+            yield block
+
+    def close_reader() -> None:
+        reader.__exit__(None, None, None)
+
+    return ArtifactResponse(
+        content(),
+        close=close_reader,
+        media_type=reference.media_type,
+        headers={
+            "Content-Length": str(reference.size_bytes),
+            "ETag": '"' + reference.digest + '"',
+            "Content-Disposition": 'attachment; filename="' + reference.id + '"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 async def read_body(request: Request, limit: int) -> bytes:
@@ -101,6 +137,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     )
     queries = ResearchQueries(service.database)
     workers = WorkerQueries(service.database)
+    worker_artifacts = WorkerArtifacts(service.database, service.artifacts)
 
     @app.exception_handler(ResearchError)
     async def domain_error(request: Request, error: ResearchError) -> JSONResponse:
@@ -147,6 +184,10 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
 
     async def worker_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
         actor.require("worker.query")
+        return CommandContext(principal=actor, idempotency_key=new_id())
+
+    async def input_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
+        actor.require("worker.inputs")
         return CommandContext(principal=actor, idempotency_key=new_id())
 
     async def write_context(
@@ -221,6 +262,22 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     ) -> JsonObject:
         parsed = WorkerQuery.model_validate(await read_json(request))
         return await asyncio.to_thread(workers.list, context, parsed)
+
+    @app.post("/v1/worker/input")
+    async def worker_input(
+        request: Request, context: Annotated[CommandContext, Depends(input_context)]
+    ) -> JsonObject:
+        parsed = WorkerArtifactRead.model_validate(await read_json(request))
+        reference = await asyncio.to_thread(worker_artifacts.input_metadata, context, parsed)
+        return reference.model_dump(mode="json")
+
+    @app.post("/v1/worker/input/content")
+    async def worker_input_content(
+        request: Request, context: Annotated[CommandContext, Depends(input_context)]
+    ) -> StreamingResponse:
+        parsed = WorkerArtifactRead.model_validate(await read_json(request))
+        reference = await asyncio.to_thread(worker_artifacts.input_metadata, context, parsed)
+        return await artifact_response(worker_artifacts.input_reader(context, parsed), reference)
 
     @app.post("/v1/query")
     async def query(
@@ -335,34 +392,8 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     ) -> StreamingResponse:
         record = await asyncio.to_thread(service.artifacts.get, context, identifier)
 
-        reader = service.artifacts.reader(context, record.reference)
-        opening = asyncio.create_task(asyncio.to_thread(reader.__enter__))
-        try:
-            source = await asyncio.shield(opening)
-        except asyncio.CancelledError:
-            try:
-                await opening
-            finally:
-                await asyncio.to_thread(reader.__exit__, None, None, None)
-            raise
-
-        async def content() -> AsyncIterator[bytes]:
-            while block := await asyncio.to_thread(source.read, 64 * 1024):
-                yield block
-
-        def close_reader() -> None:
-            reader.__exit__(None, None, None)
-
-        return ArtifactResponse(
-            content(),
-            close=close_reader,
-            media_type=record.reference.media_type,
-            headers={
-                "Content-Length": str(record.reference.size_bytes),
-                "ETag": '"' + record.reference.digest + '"',
-                "Content-Disposition": 'attachment; filename="' + record.reference.id + '"',
-                "X-Content-Type-Options": "nosniff",
-            },
+        return await artifact_response(
+            service.artifacts.reader(context, record.reference), record.reference
         )
 
     # Add command-model definitions to the generated document, without a second validator.
@@ -371,7 +402,12 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     for definition in COMMANDS.values():
         for name, schema in definition.request.model_json_schema().get("$defs", {}).items():
             components[name] = openapi_references(schema)
-    for path, model in (("/v1/worker/get", WorkerRead), ("/v1/worker/list", WorkerQuery)):
+    for path, model in (
+        ("/v1/worker/get", WorkerRead),
+        ("/v1/worker/list", WorkerQuery),
+        ("/v1/worker/input", WorkerArtifactRead),
+        ("/v1/worker/input/content", WorkerArtifactRead),
+    ):
         schema = model.model_json_schema()
         generated["paths"][path]["post"]["requestBody"] = {
             "required": True,

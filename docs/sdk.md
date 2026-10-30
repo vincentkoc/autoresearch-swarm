@@ -60,6 +60,11 @@ The client methods include `command`, `capabilities`, `get`, `list`, `context`,
 query contract. They also have async equivalents. A worker credential can use
 these views without obtaining generic workspace read access.
 
+`worker_input(WorkerArtifactRead)` returns authorized input metadata.
+`worker_download(request, destination)` downloads and verifies those bytes through
+`worker.inputs` authority. Both have async equivalents. They cannot fetch
+arbitrary project artifacts or replace an existing destination.
+
 Every command requires an explicit idempotency key. Keep it with the request when
 retrying after an uncertain response. Async cancellation or closing a client does
 not cancel an accepted campaign or prove that native execution stopped.

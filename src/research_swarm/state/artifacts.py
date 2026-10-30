@@ -7,7 +7,7 @@ the lifetime of a physical object.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -440,11 +440,27 @@ class ArtifactService:
     @contextmanager
     def pinned(self, context: CommandContext, reference: ArtifactRef) -> Iterator[ArtifactRecord]:
         """Hold bytes through verification and a subsequent evidence-acceptance transaction."""
-        context.principal.require("read")
+        with self.pinned_authorized(
+            context, reference, scope="read", authorize=lambda t, r: None
+        ) as record:
+            yield record
+
+    @contextmanager
+    def pinned_authorized(
+        self,
+        context: CommandContext,
+        reference: ArtifactRef,
+        *,
+        scope: str,
+        authorize: Callable[[Transaction, ArtifactRef], None],
+    ) -> Iterator[ArtifactRecord]:
+        """Internal control-plane hook: authorize exact bytes in the pin transaction."""
+        context.principal.require(scope)
         pin_id = new_id()
 
         def pin(transaction: Transaction) -> JsonObject:
-            ArtifactCatalog.available(transaction, reference)
+            authorize(transaction, reference)
+            record = ArtifactCatalog.available(transaction, reference)
             session = transaction.connection.execute(
                 "SELECT state FROM records WHERE workspace_id=? "
                 "AND kind='artifact_read_session' AND id=?",
@@ -459,7 +475,7 @@ class ArtifactService:
                 )
             elif session["state"] != "active":
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Reader session is closed")
-            return ArtifactCatalog.retain(
+            retained = ArtifactCatalog.retain(
                 transaction,
                 ArtifactRetention(
                     artifact_id=reference.id,
@@ -469,27 +485,28 @@ class ArtifactService:
                 ),
                 reader_session_id=self.reader_session_id,
             )
+            return {"retention": retained, "artifact": record.model_dump(mode="json")}
 
         response = self.database.execute(
             self._internal(context, "pin:" + pin_id),
             "artifact.pin",
             {"reference": reference.model_dump(mode="json")},
-            "read",
+            scope,
             pin,
         )
         try:
-            record = self.get(context, reference.id)
+            record = ArtifactRecord.model_validate(response["result"]["artifact"])
             self.store.verify(context.principal.workspace_id, self._blob(record))
             yield record
         finally:
             self.database.execute(
                 self._internal(context, "unpin:" + pin_id),
                 "artifact.unpin",
-                {"reference_id": response["result"]["id"]},
-                "read",
+                {"reference_id": response["result"]["retention"]["id"]},
+                scope,
                 lambda transaction: ArtifactCatalog.release(
                     transaction,
-                    response["result"]["id"],
+                    response["result"]["retention"]["id"],
                     owner_release=("artifact_read", pin_id),
                 ),
             )
@@ -543,6 +560,21 @@ class ArtifactService:
     def reader(self, context: CommandContext, reference: ArtifactRef) -> Iterator[BinaryIO]:
         with (
             self.pinned(context, reference) as record,
+            self.store.reader(context.principal.workspace_id, self._blob(record)) as source,
+        ):
+            yield source
+
+    @contextmanager
+    def reader_authorized(
+        self,
+        context: CommandContext,
+        reference: ArtifactRef,
+        *,
+        scope: str,
+        authorize: Callable[[Transaction, ArtifactRef], None],
+    ) -> Iterator[BinaryIO]:
+        with (
+            self.pinned_authorized(context, reference, scope=scope, authorize=authorize) as record,
             self.store.reader(context.principal.workspace_id, self._blob(record)) as source,
         ):
             yield source

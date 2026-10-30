@@ -63,6 +63,13 @@ Campaign context reads its evidence and event watermark in one transaction.
 session. Generic record, context, and event endpoints still require `read`.
 See [scoped worker discovery](worker-assignments.md#scoped-discovery-and-recovery).
 
+`POST /v1/worker/input` returns an assigned input's `ArtifactRef` and
+`POST /v1/worker/input/content` streams its verified bytes. Both accept
+`WorkerArtifactRead`, require `worker.inputs`, and remain read-only requests.
+Authorization binds the exact active assignment and is rechecked when retaining
+the storage generation. Generic artifact endpoints still require workspace read
+authority. See [attempt-bound inputs](worker-assignments.md#attempt-bound-inputs).
+
 Event streams recheck credentials between polling batches. Events remain durable
 when a client disconnects. The current store retains the complete event stream.
 
