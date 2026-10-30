@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Persist promotion assessments before atomic incumbent selection, with explicit observed baseline adoption.
+- Compare actual training and evaluator profiles, preserve conflicting assessments, and retain rejected candidates.
+- Append evidence corrections without rewriting receipts and suspend affected incumbent eligibility.
+- Recover a suspended incumbent through explicitly authorized baseline assessment using fresh evidence.
 - Add a fixed paired sign gate with exact probabilities, practical-effect checks, and explicit incomplete-panel outcomes.
 - Reject infeasible confirmation panels and verify the gate through exhaustive synthetic null signs.
 - Authorize evaluation inputs, seeds, panels, and evaluator identities before worker admission.

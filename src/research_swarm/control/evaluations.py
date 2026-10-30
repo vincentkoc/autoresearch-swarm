@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import Field
 
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
+from research_swarm.control.validity import EvidenceReference, invalidated
 from research_swarm.control.workers import AttemptData
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
@@ -365,6 +366,17 @@ class EvaluationControl:
                             "evaluation_receipt", authorized["data"]["receipt_id"]
                         )["state"]
                 states.append(status)
+            if item.current_attempt_id and invalidated(
+                transaction, EvidenceReference(kind="run_result", id=item.current_attempt_id)
+            ):
+                states.append("invalid")
+            if item.evaluation_request_id:
+                authorized = transaction.get("evaluation_request", item.evaluation_request_id)
+                prior_receipt = authorized["data"]["receipt_id"]
+                if prior_receipt and invalidated(
+                    transaction, EvidenceReference(kind="evaluation_receipt", id=prior_receipt)
+                ):
+                    states.append("invalid")
         status = (
             "invalid"
             if "invalid" in states

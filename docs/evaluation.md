@@ -64,3 +64,39 @@ Exact rational strings preserve probabilities and summaries without JSON integer
 The caller must establish eligibility, pairing, independence, and exposure rules.
 Matching seed numbers alone does not establish these assumptions. The pure gate
 does not change an incumbent or authorize reuse of a confirmation panel.
+
+## Assessment and selection
+
+`promotion.assess` takes a candidate receipt and the expected incumbent revision.
+It records its decision before any incumbent change. The first eligible receipt
+can establish an observed baseline. Baseline adoption does not claim improvement.
+
+In observed mode, the comparison uses the incumbent's selected receipt. Callers
+cannot choose a weaker historical comparator. A replacement must exceed the
+campaign's practical-effect threshold. A paired-confirmation campaign cannot use
+this observed replacement path.
+
+`promotion.commit` takes the persisted decision ID. It rechecks eligibility and
+the incumbent revision in one transaction. A competing promotion causes a conflict
+and leaves the original assessment available for inspection.
+
+Comparisons include the declared protocol, data, evaluator, metric schema, stage
+contracts, timing rules, and actual execution fingerprint of every stage. Matching
+evaluator hardware cannot hide different training hardware. The current selection
+service requires one scoring stage. Multiple scoring stages need an explicit aggregation policy.
+
+## Corrections
+
+`evidence.invalidate` requires separate correction authority. It records the target
+and reason, preserving the original run result or receipt. Dependent assessments
+become affected. An affected incumbent remains identifiable, with eligibility
+suspended and an incremented incumbent revision.
+
+Corrections appear in queries and events. Assessment and commit check their effective
+eligibility, even when the original receipt says valid. The service never silently
+restores an ancestor. A new selection requires fresh eligible evidence and explicit authority.
+
+Use `promotion.reinitialize` to assess a replacement after suspension. This command
+requires its own scope and a trial submitted after the correction. Then use
+`promotion.commit` with that assessment. Recovery binds the suspended incumbent
+revision and establishes an observed baseline without claiming improvement.

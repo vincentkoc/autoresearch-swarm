@@ -30,6 +30,12 @@ from research_swarm.control.models import (
     TrialData,
 )
 from research_swarm.control.preflight import verified_source
+from research_swarm.control.promotions import (
+    AssessPromotion,
+    CommitPromotion,
+    InvalidateEvidence,
+    PromotionControl,
+)
 from research_swarm.control.results import PublishAttempt, ResultControl
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.domain.artifacts import ArtifactRetention
@@ -108,6 +114,23 @@ class ResearchService:
         self.workers = WorkerControl(database, dispatch_key) if dispatch_key is not None else None
         self.results = ResultControl(database, artifacts)
         self.evaluations = EvaluationControl(database, artifacts)
+        self.promotions = PromotionControl(database)
+
+    def assess_promotion(self, context: CommandContext, request: AssessPromotion) -> JsonObject:
+        return self.promotions.assess(context, request)
+
+    def reinitialize_baseline(
+        self, context: CommandContext, request: AssessPromotion
+    ) -> JsonObject:
+        return self.promotions.reinitialize(context, request)
+
+    def commit_promotion(self, context: CommandContext, request: CommitPromotion) -> JsonObject:
+        return self.promotions.commit(context, request)
+
+    def invalidate_evidence(
+        self, context: CommandContext, request: InvalidateEvidence
+    ) -> JsonObject:
+        return self.promotions.invalidate(context, request)
 
     def enroll_worker(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         if self.workers is None:

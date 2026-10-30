@@ -16,6 +16,7 @@ from research_swarm.control.commands import (
     ValidateCandidate,
 )
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
+from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
 from research_swarm.control.workers import ClaimJob, EnrollWorker
@@ -36,6 +37,34 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "promotion.reinitialize": CommandDefinition(
+        AssessPromotion,
+        "reinitialize_baseline",
+        "promotion.reinitialize",
+        False,
+        "Assess a fresh observed baseline after evidence correction suspended the incumbent.",
+    ),
+    "promotion.assess": CommandDefinition(
+        AssessPromotion,
+        "assess_promotion",
+        "promotion.assess",
+        False,
+        "Assess eligible evidence against the incumbent without changing it.",
+    ),
+    "promotion.commit": CommandDefinition(
+        CommitPromotion,
+        "commit_promotion",
+        "promotion.commit",
+        False,
+        "Recheck a persisted assessment and atomically select the incumbent.",
+    ),
+    "evidence.invalidate": CommandDefinition(
+        InvalidateEvidence,
+        "invalidate_evidence",
+        "evidence.invalidate",
+        False,
+        "Append an evidence correction and suspend affected incumbent eligibility.",
+    ),
     "evaluation.authorize": CommandDefinition(
         AuthorizeEvaluation,
         "authorize_evaluation",

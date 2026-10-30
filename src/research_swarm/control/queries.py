@@ -30,6 +30,7 @@ RecordKind = Literal[
     "evaluation_request",
     "evaluation_receipt",
     "promotion",
+    "evidence_correction",
     "report",
 ]
 
@@ -79,6 +80,8 @@ def summarize(row: JsonObject) -> JsonObject:
             )
         }
         result["data"]["primary_metric"] = data["contract"]["primary_metric"]
+        result["data"]["incumbent_eligibility"] = data.get("incumbent_eligibility", "eligible")
+        result["data"]["incumbent_evidence_level"] = data.get("incumbent_evidence_level")
     elif row["kind"] == "job":
         result["data"] = {
             "stage_id": data["stage"]["id"],
@@ -145,6 +148,14 @@ def summarize(row: JsonObject) -> JsonObject:
             "panel_digest": receipt["panel_digest"],
             "execution_fingerprint": receipt["execution_fingerprint"],
         }
+    elif row["kind"] == "promotion":
+        result["data"] = {
+            "decision": data["decision"],
+            "comparison_digest": data["comparison_digest"],
+            "evidence_level": data["evidence_level"],
+        }
+    elif row["kind"] == "evidence_correction":
+        result["data"] = {"target": data["target"], "reason": data["reason"][:1024]}
     else:
         result["data"] = {"detail_available": True}
     return result

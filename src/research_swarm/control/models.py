@@ -94,6 +94,11 @@ class CampaignData(VersionedRecord):
     sealed_at: Timestamp | None = None
     incumbent_candidate_id: ID | None = None
     incumbent_revision: Revision = 0
+    incumbent_promotion_id: ID | None = None
+    incumbent_evaluation_id: ID | None = None
+    incumbent_evidence_level: Literal["observed", "confirmed"] | None = None
+    incumbent_eligibility: Literal["eligible", "suspended"] = "eligible"
+    incumbent_suspension_id: ID | None = None
     stopping_reason: str | None = None
     final_report_id: ID | None = None
     parent_campaign_id: ID | None = None

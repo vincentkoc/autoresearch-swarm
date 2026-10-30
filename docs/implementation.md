@@ -17,7 +17,7 @@ not implicitly supported.
 | API, SDK, CLI, MCP | HTTP, local/remote Python SDK, async methods, JSON CLI, stdio MCP, private runtime | Real loopback HTTP and agent subprocesses, shared replay, bounded transfer/context, revocation, runtime restart | Linux/macOS/Windows transport CI passes |
 | Controller commands | Project revisions, campaign activation, candidate validation, atomic trial graphs, worker admission, result settlement, evaluation authority | Concurrent replay, frozen baseline, mutation boundary, atomic claims, stage progression, uncertainty, late closure | Local CPU execution and evaluation pass; promotion service pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
-| Search policies and atomic promotion | Pending | Pending | Equal-budget research pending |
+| Search policies and atomic promotion | Observed assessment, atomic selection, append-only correction implemented; search pending | Real CPU evidence, concurrent incumbent CAS, rejected control, training-profile mismatch, invalidation before/after commit | Paired plan integration and equal-budget research pending |
 | Statistical gates and exposure | Pure fixed paired sign gate implemented; exposure service pending | Exact null-sign enumeration, direction symmetry, incomplete panels, practical threshold, numeric extremes | Independence and workload variance pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
 | Nested campaigns and policy benchmark | Pending | Pending | Held-out comparison pending |
@@ -55,7 +55,7 @@ transport, process, or provider behavior.
 - **C14** — Candidate changes a protected evaluator dependency. Pending end-to-end evidence.
 - **C15** — Crashed run has no metric. Pending end-to-end evidence.
 - **C16** — Candidate and comparator use different forbidden protocols. Pending end-to-end evidence.
-- **C17** — Two promotions reference the same incumbent revision. Pending end-to-end evidence.
+- **C17** — Two promotions reference the same incumbent revision. Local concurrent commands select one incumbent and preserve the conflicting assessment.
 - **C18** — Child campaigns reserve concurrently. Pending end-to-end evidence.
 - **C19** — Child finishes and releases unused budget. Pending end-to-end evidence.
 - **C20** — Policy receives a duplicate observation. Pending end-to-end evidence.
@@ -76,7 +76,7 @@ transport, process, or provider behavior.
 - **C35** — A training worker fabricates an evaluation ID. Local pipeline rejects worker publication and substitution of a training attempt.
 - **C36** — Two controllers enroll the same exclusive device. Pending end-to-end evidence.
 - **C37** — Concurrent policy computations use one state revision. Pending end-to-end evidence.
-- **C38** — Previously promoted evidence is invalidated. Pending end-to-end evidence.
+- **C38** — Previously promoted evidence is invalidated. Local correction preserves the receipt and suspends the incumbent without selecting an ancestor.
 - **C39** — Events arrive while a client recovers from a cursor gap. Pending end-to-end evidence.
 - **C40** — Retained artifacts outlive a completed job. Pending end-to-end evidence.
 - **C41** — A child budget settles after repeated notifications. Pending end-to-end evidence.
