@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restrict enrolled workers to explicit project sets and enforce that scope before job budget reservation.
+- Add bounded worker-owned assignment recovery and eligible-job discovery through HTTP, SDK, async SDK, and MCP without workspace-wide read authority.
 - Preserve durable accepted/rejected command acknowledgments across local and HTTP replay, including rejection command IDs.
 - Distinguish uncertain mutation delivery from domain rejection and query transport failure; require exact replay after lost acknowledgments.
 - Require HTTPS outside explicit loopback, verify custom-CA hostnames, and reject malformed command replies before treating them as success.

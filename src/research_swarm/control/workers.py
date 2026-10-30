@@ -45,11 +45,14 @@ class EnrollWorker(VersionedRecord):
     name: Name
     profiles: tuple[EngineCapabilities, ...] = Field(min_length=1, max_length=32)
     max_concurrency: int = Field(default=1, strict=True, ge=1, le=1024)
+    project_ids: tuple[ID, ...] | None = Field(default=None, min_length=1, max_length=128)
 
     @model_validator(mode="after")
     def distinct_profiles(self) -> EnrollWorker:
         if len({profile.name for profile in self.profiles}) != len(self.profiles):
             raise ValueError("Worker profiles must be unique")
+        if self.project_ids is not None and len(set(self.project_ids)) != len(self.project_ids):
+            raise ValueError("Worker projects must be unique")
         return self
 
 
@@ -60,6 +63,7 @@ class WorkerData(VersionedRecord):
     profiles: tuple[EngineCapabilities, ...]
     max_concurrency: int
     assignment_authority: AssignmentAuthority | None = None
+    project_ids: tuple[ID, ...] | None = None
     enrolled_at: Timestamp = Field(default_factory=utc_now)
 
     @model_validator(mode="after")
@@ -132,6 +136,14 @@ class WorkerControl:
 
     def enroll(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         def enroll(transaction: Transaction) -> JsonObject:
+            if request.project_ids is not None:
+                if self._assignment_key is None:
+                    raise ResearchError(
+                        ErrorCode.CAPABILITY_UNAVAILABLE,
+                        "Scoped workers require signed assignment authority",
+                    )
+                for identifier in request.project_ids:
+                    transaction.get("project", identifier)
             existing = transaction.connection.execute(
                 "SELECT id FROM records WHERE workspace_id=? AND kind='worker' AND id=?",
                 (transaction.workspace_id, request.worker_id),
@@ -159,6 +171,7 @@ class WorkerControl:
                     name=request.name,
                     profiles=request.profiles,
                     max_concurrency=request.max_concurrency,
+                    project_ids=request.project_ids,
                     assignment_authority=(
                         AssignmentSigner(binding, self._assignment_key).authority
                         if self._assignment_key is not None
@@ -187,6 +200,10 @@ class WorkerControl:
             campaign = CampaignData.model_validate(campaign_row["data"])
             trial_row = transaction.get("trial", job.trial_id)
             trial = TrialData.model_validate(trial_row["data"])
+            if worker.project_ids is not None and trial.spec.project_id not in worker.project_ids:
+                raise ResearchError(
+                    ErrorCode.AUTHORIZATION_DENIED, "Project is outside worker scope"
+                )
             if campaign_row["state"] != "running" and not (
                 campaign_row["state"] == "pausing" and trial_row["state"] == "running"
             ):

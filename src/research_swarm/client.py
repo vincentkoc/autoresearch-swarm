@@ -18,6 +18,7 @@ from pydantic import TypeAdapter
 from research_swarm.control.commands import RegisterProject
 from research_swarm.control.dispatch import capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
+from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.acknowledgments import (
     CommandAccepted,
     CommandRejected,
@@ -78,6 +79,14 @@ class LocalTransport:
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
         context = self._context()
+        if operation == "worker.get":
+            return WorkerQueries(self.runtime.database).get(
+                context, WorkerRead.model_validate(payload)
+            )
+        if operation == "worker.list":
+            return WorkerQueries(self.runtime.database).list(
+                context, WorkerQuery.model_validate(payload)
+            )
         context.principal.require("read")
         if operation == "capabilities":
             return capabilities()
@@ -251,6 +260,8 @@ class HTTPTransport:
         )
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
+        if operation in {"worker.get", "worker.list"}:
+            return self._request("POST", "/v1/" + operation.replace(".", "/"), json=payload)
         if operation == "capabilities":
             return self._request("GET", "/v1/capabilities")
         if operation == "get":
@@ -376,6 +387,12 @@ class ResearchClient:
 
     def list(self, request: RecordQuery) -> JsonObject:
         return self.transport.query("list", request.model_dump(mode="json"))
+
+    def worker_get(self, request: WorkerRead) -> JsonObject:
+        return self.transport.query("worker.get", request.model_dump(mode="json"))
+
+    def worker_list(self, request: WorkerQuery) -> JsonObject:
+        return self.transport.query("worker.list", request.model_dump(mode="json"))
 
     def context(self, campaign_id: str, *, limit: int = 10) -> JsonObject:
         return self.transport.query("context", {"campaign_id": campaign_id, "limit": limit})
@@ -509,6 +526,12 @@ class AsyncResearchClient:
 
     async def list(self, request: RecordQuery) -> JsonObject:
         return await asyncio.to_thread(self.client.list, request)
+
+    async def worker_get(self, request: WorkerRead) -> JsonObject:
+        return await asyncio.to_thread(self.client.worker_get, request)
+
+    async def worker_list(self, request: WorkerQuery) -> JsonObject:
+        return await asyncio.to_thread(self.client.worker_list, request)
 
     async def budget(self, campaign_id: str) -> JsonObject:
         return await asyncio.to_thread(self.client.budget, campaign_id)

@@ -117,6 +117,11 @@ class LocalWorker:
     def _verify(
         self, attempt: AttemptData, trial: TrialData
     ) -> VerifiedDispatch | VerifiedAssignment:
+        if (
+            self.worker.project_ids is not None
+            and trial.spec.project_id not in self.worker.project_ids
+        ):
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Project is outside worker scope")
         if self.assignment_verifier is not None:
             if attempt.signed_assignment is None:
                 raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Signed assignment is required")

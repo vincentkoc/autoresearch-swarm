@@ -114,6 +114,7 @@ def summarize(row: JsonObject) -> JsonObject:
             "binding": data["binding"],
             "profiles": [profile["name"] for profile in data["profiles"]],
             "max_concurrency": data["max_concurrency"],
+            "project_ids": data.get("project_ids"),
         }
     elif row["kind"] == "attempt":
         result["data"] = {

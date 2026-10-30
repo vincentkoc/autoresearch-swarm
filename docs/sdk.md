@@ -56,6 +56,10 @@ The client methods include `command`, `capabilities`, `get`, `list`, `context`,
 `budget`, `events`, `upload_file`, `capture_project`, `register_project`, and
 `download`. `RecordQuery` supplies bounded filters and cursors for `list`.
 
+`worker_list(WorkerQuery)` and `worker_get(WorkerRead)` expose the narrower worker
+query contract. They also have async equivalents. A worker credential can use
+these views without obtaining generic workspace read access.
+
 Every command requires an explicit idempotency key. Keep it with the request when
 retrying after an uncertain response. Async cancellation or closing a client does
 not cancel an accepted campaign or prove that native execution stopped.

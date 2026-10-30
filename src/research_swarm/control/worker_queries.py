@@ -1,0 +1,218 @@
+"""Bounded worker views expose eligible offers and the caller's own assignments."""
+
+from __future__ import annotations
+
+import base64
+import binascii
+from typing import Literal
+
+from pydantic import Field, ValidationError
+
+from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
+from research_swarm.control.queries import RecordCursor, summarize
+from research_swarm.control.workers import AttemptData, WorkerData, worker_authority
+from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
+from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.types import ID, VersionedRecord
+from research_swarm.state.database import Database, JsonObject, Transaction
+
+
+class WorkerQuery(VersionedRecord):
+    worker_id: ID
+    session_id: ID
+    kind: Literal["pending", "offers"]
+    limit: int = Field(default=25, strict=True, ge=1, le=100)
+    cursor: str | None = Field(default=None, max_length=2048)
+
+
+class WorkerRead(VersionedRecord):
+    worker_id: ID
+    session_id: ID
+    kind: Literal["worker", "attempt", "trial"]
+    id: ID
+
+
+def eligible_offer(transaction: Transaction, worker: WorkerData, row: JsonObject) -> bool:
+    job = JobData.model_validate(row["data"])
+    trial_row = transaction.get("trial", job.trial_id)
+    trial = TrialData.model_validate(trial_row["data"])
+    if worker.project_ids is not None and trial.spec.project_id not in worker.project_ids:
+        return False
+    campaign_row = transaction.get("campaign", row["campaign_id"])
+    if campaign_row["state"] != "running" and not (
+        campaign_row["state"] == "pausing" and trial_row["state"] == "running"
+    ):
+        return False
+    if trial.execution_outcome != "pending":
+        return False
+    campaign = CampaignData.model_validate(campaign_row["data"])
+    project = ProjectRevisionData.model_validate(
+        transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
+    )
+    if project.resolved.manifest.evaluation.measurement_trust == "protected":
+        return False
+    if job.stage.kind == "evaluate" and job.evaluation_request_id is None:
+        return False
+    profile = next(
+        (p for p in worker.profiles if p.name == job.stage.resources.engine_profile), None
+    )
+    if profile is None:
+        return False
+    try:
+        profile.require(job.stage.resources, project.resolved.manifest.environment.network_policy)
+    except ResearchError as error:
+        if error.code != ErrorCode.CAPABILITY_UNAVAILABLE:
+            raise
+        return False
+    return True
+
+
+class WorkerQueries:
+    def __init__(self, database: Database) -> None:
+        self.database = database
+
+    def get(self, context: CommandContext, request: WorkerRead) -> JsonObject:
+        context.principal.require("worker.query")
+        request = WorkerRead.model_validate(request)
+        with self.database.connect() as connection:
+            connection.execute("BEGIN")
+            transaction = Transaction(connection, context)
+            worker = worker_authority(transaction, request.worker_id, request.session_id)
+            if request.kind == "worker":
+                if request.id != request.worker_id:
+                    raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker identity differs")
+            elif request.kind == "attempt":
+                try:
+                    row = transaction.get("attempt", request.id)
+                except ResearchError as error:
+                    if error.code != ErrorCode.NOT_FOUND:
+                        raise
+                    raise ResearchError(
+                        ErrorCode.AUTHORIZATION_DENIED, "Record is not assigned to worker"
+                    ) from error
+                dispatch = AttemptData.model_validate(row["data"]).dispatch
+                if (
+                    dispatch.worker_id != request.worker_id
+                    or dispatch.worker_session_id != request.session_id
+                    or dispatch.controller_id != worker.binding.controller_id
+                    or dispatch.control_epoch != worker.binding.control_epoch
+                ):
+                    raise ResearchError(
+                        ErrorCode.AUTHORIZATION_DENIED, "Record is not assigned to worker"
+                    )
+                return row
+            else:
+                owned = connection.execute(
+                    "SELECT id FROM records WHERE workspace_id=? AND kind='attempt' "
+                    "AND json_extract(payload,'$.dispatch.worker_id')=? "
+                    "AND json_extract(payload,'$.dispatch.worker_session_id')=? "
+                    "AND json_extract(payload,'$.dispatch.control_epoch')=? "
+                    "AND json_extract(payload,'$.dispatch.controller_id')=? "
+                    "AND json_extract(payload,'$.dispatch.trial_id')=? LIMIT 1",
+                    (
+                        transaction.workspace_id,
+                        request.worker_id,
+                        request.session_id,
+                        worker.binding.control_epoch,
+                        worker.binding.controller_id,
+                        request.id,
+                    ),
+                ).fetchone()
+                if owned is None:
+                    raise ResearchError(
+                        ErrorCode.AUTHORIZATION_DENIED, "Record is not assigned to worker"
+                    )
+            return transaction.get(request.kind, request.id)
+
+    def list(self, context: CommandContext, request: WorkerQuery) -> JsonObject:
+        context.principal.require("worker.query")
+        request = WorkerQuery.model_validate(request)
+        with self.database.connect() as connection:
+            connection.execute("BEGIN")
+            transaction = Transaction(connection, context)
+            worker = worker_authority(transaction, request.worker_id, request.session_id)
+            scope = record_digest(
+                "research.worker-page",
+                {
+                    "binding": worker.binding.model_dump(mode="json"),
+                    "kind": request.kind,
+                    "actor_id": context.principal.id,
+                },
+            )
+            if request.cursor is None:
+                through = connection.execute(
+                    "SELECT COALESCE(MAX(rowid),0) FROM records WHERE workspace_id=?",
+                    (transaction.workspace_id,),
+                ).fetchone()[0]
+                cursor = RecordCursor(scope_digest=scope, after=0, through=through)
+            else:
+                try:
+                    cursor = RecordCursor.model_validate(
+                        strict_json_loads(
+                            base64.b64decode(request.cursor, altchars=b"-_", validate=True)
+                        )
+                    )
+                except (ValueError, binascii.Error, ValidationError) as error:
+                    raise ResearchError(
+                        ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid worker cursor"
+                    ) from error
+                if cursor.scope_digest != scope or cursor.after > cursor.through:
+                    raise ResearchError(
+                        ErrorCode.AUTHORIZATION_DENIED, "Worker cursor scope differs"
+                    )
+            kind = "attempt" if request.kind == "pending" else "job"
+            predicate = (
+                "AND json_extract(payload,'$.dispatch.worker_id')=? "
+                "AND json_extract(payload,'$.dispatch.worker_session_id')=? "
+                "AND json_extract(payload,'$.dispatch.control_epoch')=? "
+                "AND json_extract(payload,'$.dispatch.controller_id')=? "
+                "AND json_extract(payload,'$.publication_status')='pending'"
+                if request.kind == "pending"
+                else "AND state='ready'"
+            )
+            parameters = (
+                [
+                    request.worker_id,
+                    request.session_id,
+                    worker.binding.control_epoch,
+                    worker.binding.controller_id,
+                ]
+                if request.kind == "pending"
+                else []
+            )
+            rows = connection.execute(
+                "SELECT rowid,id FROM records WHERE workspace_id=? AND kind=? "
+                "AND rowid>? AND rowid<=? " + predicate + " ORDER BY rowid LIMIT ?",
+                (
+                    transaction.workspace_id,
+                    kind,
+                    cursor.after,
+                    cursor.through,
+                    *parameters,
+                    request.limit + 1,
+                ),
+            ).fetchall()
+            more, scanned = len(rows) > request.limit, rows[: request.limit]
+            items = []
+            for item in scanned:
+                row = transaction.get(kind, item["id"])
+                if request.kind == "offers" and not eligible_offer(transaction, worker, row):
+                    continue
+                if request.kind == "pending":
+                    attempt = AttemptData.model_validate(row["data"])
+                    if attempt.dispatch.controller_id != worker.binding.controller_id:
+                        continue
+                items.append(summarize(row))
+            next_cursor = (
+                base64.urlsafe_b64encode(
+                    canonical_bytes(
+                        cursor.model_copy(update={"after": scanned[-1]["rowid"]}).model_dump(
+                            mode="json"
+                        )
+                    )
+                ).decode("ascii")
+                if more
+                else None
+            )
+            return {"items": items, "next_cursor": next_cursor, "scanned": len(scanned)}

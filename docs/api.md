@@ -57,6 +57,12 @@ so later insertions do not extend an in-progress page sequence. Record state is
 read at each page request. This is not a historical snapshot across pages.
 Campaign context reads its evidence and event watermark in one transaction.
 
+`POST /v1/worker/list` accepts `WorkerQuery` and `POST /v1/worker/get` accepts
+`WorkerRead`. These read-only operations require `worker.query`, not workspace
+`read`. Both bind the request to the authenticated worker principal and current
+session. Generic record, context, and event endpoints still require `read`.
+See [scoped worker discovery](worker-assignments.md#scoped-discovery-and-recovery).
+
 Event streams recheck credentials between polling batches. Events remain durable
 when a client disconnects. The current store retains the complete event stream.
 

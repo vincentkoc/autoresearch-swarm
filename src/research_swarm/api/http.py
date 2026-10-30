@@ -14,6 +14,7 @@ from research_swarm.control.auth import CredentialStore
 from research_swarm.control.dispatch import COMMANDS, capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
 from research_swarm.control.service import ResearchService
+from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, Principal
@@ -99,6 +100,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         title="Autoresearch Swarm", version="1.0", docs_url=None, redoc_url=None, openapi_url=None
     )
     queries = ResearchQueries(service.database)
+    workers = WorkerQueries(service.database)
 
     @app.exception_handler(ResearchError)
     async def domain_error(request: Request, error: ResearchError) -> JSONResponse:
@@ -141,6 +143,10 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
 
     async def transfer_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
         actor.require("artifact.upload")
+        return CommandContext(principal=actor, idempotency_key=new_id())
+
+    async def worker_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
+        actor.require("worker.query")
         return CommandContext(principal=actor, idempotency_key=new_id())
 
     async def write_context(
@@ -201,6 +207,20 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         kind: RecordKind, identifier: str, context: Annotated[CommandContext, Depends(read_context)]
     ) -> JsonObject:
         return await asyncio.to_thread(queries.get, context, kind, identifier)
+
+    @app.post("/v1/worker/get")
+    async def worker_get(
+        request: Request, context: Annotated[CommandContext, Depends(worker_context)]
+    ) -> JsonObject:
+        parsed = WorkerRead.model_validate(await read_json(request))
+        return await asyncio.to_thread(workers.get, context, parsed)
+
+    @app.post("/v1/worker/list")
+    async def worker_list(
+        request: Request, context: Annotated[CommandContext, Depends(worker_context)]
+    ) -> JsonObject:
+        parsed = WorkerQuery.model_validate(await read_json(request))
+        return await asyncio.to_thread(workers.list, context, parsed)
 
     @app.post("/v1/query")
     async def query(
@@ -351,6 +371,20 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     for definition in COMMANDS.values():
         for name, schema in definition.request.model_json_schema().get("$defs", {}).items():
             components[name] = openapi_references(schema)
+    for path, model in (("/v1/worker/get", WorkerRead), ("/v1/worker/list", WorkerQuery)):
+        schema = model.model_json_schema()
+        generated["paths"][path]["post"]["requestBody"] = {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": openapi_references(
+                        {key: value for key, value in schema.items() if key != "$defs"}
+                    )
+                }
+            },
+        }
+        for name, definition in schema.get("$defs", {}).items():
+            components[name] = openapi_references(definition)
     generated["components"]["securitySchemes"] = {
         "BearerAuth": {"type": "http", "scheme": "bearer"}
     }

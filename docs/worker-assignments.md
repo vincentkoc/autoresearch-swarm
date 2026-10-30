@@ -45,3 +45,37 @@ publication must preserve it. A signed enrollment cannot fall back to HMAC.
 Local execution uses the controller host's clock. Restricted remote enrollment,
 polling, clock qualification, and remote execution remain pending. Signatures
 alone do not qualify a remote worker or prove native process closure.
+
+## Scoped discovery and recovery
+
+`worker.enroll` accepts an optional nonempty `project_ids` tuple. It verifies these
+projects and requires signing authority. Admission checks this restriction before
+reserving budget, even when the caller submits a job ID without obtaining an
+offer. `None` preserves the unrestricted legacy/local behavior; an explicit empty
+list is invalid. Enrollment is immutable, so changing this scope requires an
+explicit replacement workflow.
+
+The `worker.query` scope permits two bounded operations without workspace `read`:
+
+- `worker_list(WorkerQuery)` lists eligible `offers` or the worker's `pending`
+  assignments. It checks actor, workspace, controller, epoch, and session.
+- `worker_get(WorkerRead)` returns that enrollment or an attempt/trial assigned to
+  that exact authority. It cannot read another worker's assignments.
+
+Pages scan at most `limit` records and return a continuation cursor when more
+remain. A filtered page can be empty and still have a cursor. Follow the cursor
+until it is absent. The insertion boundary is fixed, while eligibility and record
+state are current at each page read. Begin a fresh scan to discover later work.
+The cursor binds the actor, enrollment, and query kind.
+Worker/session and pending-state indexes keep empty polls and failed ownership
+lookups from scanning completed attempt history. A SQLite operation-count test
+covers 2,000 completed attempts.
+
+Offers respect project scope, campaign admission, engine capabilities, and
+evaluation authorization. They do not reserve capacity or budget. Claim the job
+with the offered revision and preserve the command key through uncertain delivery.
+The atomic claim can reject an offer that became unavailable.
+
+The same views are available through HTTP, Python/async SDKs, and MCP. Restricted
+artifact transfer and a remote worker driver remain pending; these query endpoints
+alone do not make the worker runnable on another host.

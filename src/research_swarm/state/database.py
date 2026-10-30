@@ -38,6 +38,25 @@ CREATE TABLE IF NOT EXISTS records (
 );
 CREATE INDEX IF NOT EXISTS records_campaign
 ON records(workspace_id, kind, campaign_id, state);
+CREATE INDEX IF NOT EXISTS records_workspace ON records(workspace_id);
+CREATE INDEX IF NOT EXISTS records_worker_pending ON records(
+    workspace_id,
+    json_extract(payload,'$.dispatch.worker_id'),
+    json_extract(payload,'$.dispatch.worker_session_id'),
+    json_extract(payload,'$.dispatch.control_epoch'),
+    json_extract(payload,'$.dispatch.controller_id'),
+    json_extract(payload,'$.publication_status')
+) WHERE kind='attempt';
+CREATE INDEX IF NOT EXISTS records_worker_trial ON records(
+    workspace_id,
+    json_extract(payload,'$.dispatch.worker_id'),
+    json_extract(payload,'$.dispatch.worker_session_id'),
+    json_extract(payload,'$.dispatch.control_epoch'),
+    json_extract(payload,'$.dispatch.controller_id'),
+    json_extract(payload,'$.dispatch.trial_id')
+) WHERE kind='attempt';
+CREATE INDEX IF NOT EXISTS records_ready_jobs ON records(workspace_id)
+WHERE kind='job' AND state='ready';
 CREATE TABLE IF NOT EXISTS commands (
     workspace_id TEXT NOT NULL REFERENCES workspaces(id),
     actor_id TEXT NOT NULL,

@@ -23,6 +23,7 @@ from research_swarm.control.promotions import AssessPromotion, CommitPromotion, 
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
+from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
@@ -235,6 +236,13 @@ def capabilities() -> JsonObject:
             for operation, definition in COMMANDS.items()
         },
         "queries": ["get", "list", "context", "budget", "events"],
+        "worker_queries": {
+            "scope": "worker.query",
+            "operations": {
+                "worker.get": WorkerRead.model_json_schema(),
+                "worker.list": WorkerQuery.model_json_schema(),
+            },
+        },
         "execution": "registered_worker_required",
         "evaluation": "authenticated_receipts",
         "drivers": {"local": "explicit_worker", "temporal": "pending", "cloudflare": "pending"},

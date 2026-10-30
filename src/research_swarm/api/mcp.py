@@ -13,6 +13,7 @@ from pydantic import Field, JsonValue, ValidationError
 from research_swarm.client import ResearchClient
 from research_swarm.control.dispatch import COMMANDS, CommandDefinition
 from research_swarm.control.queries import RecordKind, RecordQuery, summarize
+from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Name, Revision, VersionedRecord
@@ -152,6 +153,16 @@ def make_mcp(
     def get_record(kind: RecordKind, identifier: ID, detail: bool = False) -> ToolCall:
         """Read one record, summarized by default. Large detail requires the HTTP API."""
         return tool_result(lambda: client.get(kind, identifier), compact=not detail)
+
+    @server.tool(name="research_worker_query", annotations=read_only, structured_output=True)
+    def worker_query(request: WorkerQuery) -> ToolCall:
+        """Read this worker's pending assignments or eligible job offers."""
+        return tool_result(lambda: client.worker_list(request), compact=False)
+
+    @server.tool(name="research_worker_get", annotations=read_only, structured_output=True)
+    def worker_get(request: WorkerRead) -> ToolCall:
+        """Read this worker's enrollment or assigned records. Large detail uses the HTTP API."""
+        return tool_result(lambda: client.worker_get(request))
 
     @server.tool(name="research_get_budget", annotations=read_only, structured_output=True)
     def get_budget(campaign_id: ID) -> ToolCall:
