@@ -288,6 +288,13 @@ class TestSearchObservations:
         uncertain = observe(pipeline, trial)["result"]
         assert uncertain["data"]["facts"]["outcome"] == "execution_unknown"
         assert uncertain["data"]["facts"]["metric"] is None
+        from research_swarm.orchestration.search import SearchDriver
+        from research_swarm.search.greedy import GreedyConfiguration
+
+        waiting = SearchDriver(
+            pipeline.client, pipeline.campaign["id"], GreedyConfiguration(proposer_id=new_id())
+        ).advance()
+        assert waiting.state == "awaiting_execution" and waiting.actions == ()
         before = pipeline.client.budget(pipeline.campaign["id"])
         with pytest.raises(ResearchError) as blocked:
             resolve(pipeline, uncertain)

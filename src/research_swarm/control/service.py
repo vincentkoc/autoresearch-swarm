@@ -40,7 +40,12 @@ from research_swarm.control.models import (
     ProjectRevisionData,
     TrialData,
 )
-from research_swarm.control.observation_models import ObserveTrial, ResolveTrialObservation
+from research_swarm.control.observation_models import (
+    AbandonObservationSelection,
+    ObserveTrial,
+    ResolveTrialObservation,
+    SelectTrialObservation,
+)
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
     AssessPromotion,
@@ -60,6 +65,7 @@ from research_swarm.control.search_models import (
     RespondToProposal,
 )
 from research_swarm.control.search_observations import ObservationControl
+from research_swarm.control.search_selection import SelectionControl
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -150,6 +156,7 @@ class ResearchService:
         self.worker_turnover = WorkerTurnover(database, assignment_key)
         self.proposals = ProposalControl(database)
         self.search_observations = ObservationControl(database)
+        self.search_selection = SelectionControl(database)
         self.search_admission = SearchAdmission(database, artifacts, self._submit_trial)
         self.results = ResultControl(database, artifacts)
         self.reconciliation = ReconciliationControl(database, self.results)
@@ -172,6 +179,16 @@ class ResearchService:
         self, context: CommandContext, request: ReconcileAttempt
     ) -> JsonObject:
         return self.closures.reconcile(context, request)
+
+    def abandon_search_selection(
+        self, context: CommandContext, request: AbandonObservationSelection
+    ) -> JsonObject:
+        return self.search_observations.abandon(context, request)
+
+    def select_search_observation(
+        self, context: CommandContext, request: SelectTrialObservation
+    ) -> JsonObject:
+        return self.search_selection.select(context, request)
 
     def observe_search_trial(self, context: CommandContext, request: ObserveTrial) -> JsonObject:
         return self.search_observations.observe(context, request)

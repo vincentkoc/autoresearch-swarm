@@ -6,6 +6,7 @@ import hashlib
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from filelock import FileLock
 from pydantic import Field, field_validator
@@ -47,6 +48,9 @@ class RunOptions(VersionedRecord):
     max_trials: int = Field(default=10, strict=True, ge=1, le=100_000)
     parallelism: int = Field(default=1, strict=True, ge=1, le=1024)
     input_artifacts: dict[Name, ArtifactRef] = Field(default_factory=dict)
+    search_policy: Literal["external", "greedy"] = Field(
+        default="external", exclude_if=lambda value: value == "external"
+    )
 
     _manifest = field_validator("manifest_path")(portable_path)
 
@@ -170,9 +174,11 @@ def _submit(plan: RunPlan, commands: CommandIntents) -> RunPlan:
             name=manifest.project.name,
             primary_metric=metric,
             search=SearchConfiguration(
-                policy="external",
-                version="external-v1",
-                max_parallel_trials=plan.options.parallelism,
+                policy=plan.options.search_policy,
+                version=plan.options.search_policy + "-v1",
+                max_parallel_trials=1
+                if plan.options.search_policy == "greedy"
+                else plan.options.parallelism,
             ),
             stopping=StoppingRule(max_trials=plan.options.max_trials),
             limits=(
@@ -187,6 +193,17 @@ def _submit(plan: RunPlan, commands: CommandIntents) -> RunPlan:
                     limit=sum(stage.timeout_ms + NATIVE_CLEANUP_MS for stage in manifest.stages)
                     * plan.options.max_trials,
                 ),
+            )
+            + (
+                (
+                    BudgetLimit(
+                        dimension="proposal_requests",
+                        unit="count",
+                        limit=plan.options.max_trials - 1,
+                    ),
+                )
+                if plan.options.search_policy == "greedy"
+                else ()
             ),
             input_artifacts=plan.options.input_artifacts,
         ),

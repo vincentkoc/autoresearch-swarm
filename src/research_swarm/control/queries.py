@@ -374,6 +374,8 @@ class ResearchQueries:
         }
 
     def context(self, context: CommandContext, campaign_id: str, *, limit: int = 10) -> JsonObject:
+        from research_swarm.control.campaigns import target_met
+
         context.principal.require("read")
         if type(limit) is not int or not 1 <= limit <= 50:
             raise ResearchError(
@@ -423,6 +425,7 @@ class ResearchQueries:
                 (context.principal.workspace_id, campaign_id),
             ).fetchall()
             accounts = [BudgetAccount.model_validate_json(row["payload"]) for row in budgets]
+            stopping_status = {"target_met": target_met(transaction, campaign_id, data)}
             connection.commit()
         return {
             "schema_version": "1.0",
@@ -446,6 +449,7 @@ class ResearchQueries:
             "recent_evidence": evidence,
             "search_state": search,
             "pending_proposals": requests,
+            "stopping_status": stopping_status,
             "budget": [
                 {**account.model_dump(mode="json"), "available": str(account.available)}
                 for account in accounts

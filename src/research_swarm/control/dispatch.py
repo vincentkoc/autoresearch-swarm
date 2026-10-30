@@ -19,7 +19,12 @@ from research_swarm.control.commands import (
 )
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
-from research_swarm.control.observation_models import ObserveTrial, ResolveTrialObservation
+from research_swarm.control.observation_models import (
+    AbandonObservationSelection,
+    ObserveTrial,
+    ResolveTrialObservation,
+    SelectTrialObservation,
+)
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
@@ -60,6 +65,20 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "search.abandon_selection": CommandDefinition(
+        AbandonObservationSelection,
+        "abandon_search_selection",
+        "search.manage",
+        True,
+        "Resolve a pinned trial using fresh closed non-scientific evidence and an explicit reason.",
+    ),
+    "search.select_observation": CommandDefinition(
+        SelectTrialObservation,
+        "select_search_observation",
+        "search.manage",
+        True,
+        "Pin the original observation and comparator before independent selection effects.",
+    ),
     "search.observe_trial": CommandDefinition(
         ObserveTrial,
         "observe_search_trial",

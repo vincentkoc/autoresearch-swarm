@@ -69,6 +69,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--primary-metric")
     run.add_argument("--seed", type=int, default=0)
     run.add_argument("--max-trials", type=int, default=10)
+    run.add_argument("--search-policy", choices=("external", "greedy"), default="external")
     run.add_argument("--cpu-slots", type=int, default=1)
     run.add_argument("--machine-registry", type=Path)
     run.add_argument("--registration", type=Path, help="Private registered execution environment")
@@ -135,6 +136,17 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--manifest", default="research.toml")
         item.add_argument("--source-revision")
         item.add_argument("--key", required=True)
+    search = commands.add_parser("search", help="Plan or advance a bounded greedy research loop")
+    search_actions = search.add_subparsers(dest="search_action", required=True)
+    for action in ("plan", "advance"):
+        item = search_actions.add_parser(action)
+        item.add_argument("campaign_id")
+        item.add_argument("--proposer", required=True)
+        item.add_argument("--baseline-trial")
+        item.add_argument("--first-seed", type=int, default=0)
+        item.add_argument("--instructions")
+        if action == "advance":
+            item.add_argument("--max-steps", type=int, default=32)
     proposal = commands.add_parser("proposal")
     proposal_actions = proposal.add_subparsers(dest="proposal_action", required=True)
     proposal_get = proposal_actions.add_parser("get", help="Read one assigned research request")
@@ -205,6 +217,7 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
             primary_metric=args.primary_metric,
             seed=args.seed,
             max_trials=args.max_trials,
+            search_policy=args.search_policy,
             parallelism=args.cpu_slots,
             input_artifacts=_request(args.inputs_file) if args.inputs_file else {},
         )
@@ -219,6 +232,23 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 registration=read_registration(args.registration) if args.registration else None,
             )
         ).model_dump(mode="json")
+    if args.action == "search":
+        from research_swarm.orchestration.search import SearchDriver
+        from research_swarm.search.greedy import GreedyConfiguration
+
+        config = GreedyConfiguration(
+            proposer_id=args.proposer,
+            baseline_trial_id=args.baseline_trial,
+            first_seed=args.first_seed,
+            **({"instructions": args.instructions} if args.instructions is not None else {}),
+        )
+        driver = SearchDriver(client, args.campaign_id, config)
+        result = (
+            driver.plan()
+            if args.search_action == "plan"
+            else driver.advance(max_steps=args.max_steps)
+        )
+        return result.model_dump(mode="json")
     if args.action == "proposal":
         from research_swarm.control.search_models import ProposalRead
 
@@ -466,6 +496,18 @@ def main(argv: list[str] | None = None) -> int:
             result = _execute(client, args)
             print(canonical_bytes(result).decode("utf-8"))
             if args.action in {"worker", "run"} and result["state"] in {"blocked", "needs_review"}:
+                return 3
+            if (
+                args.action == "search"
+                and args.search_action == "advance"
+                and result["state"]
+                in {
+                    "needs_review",
+                    "contended",
+                    "delivery_uncertain",
+                    "transport_unavailable",
+                }
+            ):
                 return 3
         return 0
     except ResearchError as error:

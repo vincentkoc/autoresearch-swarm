@@ -12,7 +12,7 @@ from research_swarm.control.commands import CompleteCampaign, PauseCampaign
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.workers import EngineCapabilities
-from research_swarm.domain.canonical import content_digest
+from research_swarm.domain.canonical import canonical_bytes, content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.orchestration.bootstrap import RunOptions, prepare_run
 from tests.test_cli_mcp import cli
@@ -249,3 +249,60 @@ def test_run_cli_executes_baseline_and_returns_agent_context_without_promotion(
             )
         terminal = cli(state, *arguments)
         assert terminal["state"] == "terminal" and terminal["driver"]["executed_attempt_count"] == 0
+
+
+def test_legacy_run_options_keep_original_command_identity() -> None:
+    legacy = (
+        b'{"input_artifacts":{},"manifest_path":"research.toml","max_trials":10,'
+        b'"parallelism":1,"primary_metric":null,"schema_version":"1.0",'
+        b'"seed":0,"source_revision":null}'
+    )
+    assert canonical_bytes(RunOptions().model_dump(mode="json")) == legacy
+    assert canonical_bytes(RunOptions(search_policy="external").model_dump(mode="json")) == legacy
+    assert RunOptions.model_validate_json(legacy).search_policy == "external"
+
+
+def test_cli_greedy_bootstrap_plans_without_effects_then_advances_baseline(
+    tmp_path: Path, source: Path
+) -> None:
+    state, registry = tmp_path / "state", tmp_path / "machine" / "resources.sqlite"
+    started = cli(
+        state,
+        "run",
+        str(source),
+        "--key",
+        "greedy-run",
+        "--machine-registry",
+        str(registry),
+        "--max-trials",
+        "2",
+        "--search-policy",
+        "greedy",
+    )
+    identity = cli(state, "init")
+    actor = identity["operator_id"]
+    with ResearchClient.local(state) as client:
+        campaign = client.get("campaign", started["campaign_id"])
+        assert campaign["data"]["contract"]["search"]["policy"] == "greedy"
+    arguments = (
+        started["campaign_id"],
+        "--proposer",
+        actor,
+        "--baseline-trial",
+        started["trial_id"],
+    )
+    planned = cli(state, "search", "plan", *arguments)
+    assert planned["operation"] == "promotion.assess"
+    with ResearchClient.local(state) as client:
+        assert client.get("campaign", started["campaign_id"]) == campaign
+        assert client.list(RecordQuery(kind="promotion"))["items"] == []
+    advanced = cli(state, "search", "advance", *arguments)
+    assert advanced["state"] == "awaiting_proposal"
+    assert [item["operation"] for item in advanced["actions"]] == [
+        "promotion.assess",
+        "promotion.commit",
+        "search.request_proposal",
+    ]
+    recovered = cli(state, "search", "advance", *arguments)
+    assert recovered["evidence_ids"] == advanced["evidence_ids"]
+    assert recovered["actions"] == []

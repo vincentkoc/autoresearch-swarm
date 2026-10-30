@@ -45,7 +45,7 @@ not implicitly supported.
 | External proposal evidence | Assigned requests, immutable responses, explicit cancellation, request budgets, search revisions, bounded context | Real CPU incumbent, concurrent requests, late responses, restart, scope and artifact checks, CLI/MCP/HTTP replay | Local evidence layer and explicit atomic admission; automatic policy execution pending |
 | Atomic proposal admission | Shared candidate validation, source deduplication, composed scopes, transactional trial graph and policy state | Real CPU execution/evaluation, competing controllers, rollback, protected mutation, retained stale output, replay after source cleanup failure | Local explicit admission and observation resolution; repeating policy driver pending |
 | Durable research observations | Typed trial evidence, immutable comparison context, independent selection, atomic consumption and policy progress | Real CPU wins/losses, exit failure, cancellation, no-start, UNKNOWN, correction, restart, consumption race, complete paired panel | Local policy resolution; repeating driver and physical/provider qualification pending |
-| Search policies and atomic promotion | Observed/paired assessment, atomic selection, correction, explicit baseline recovery; search pending | Real CPU evidence, incumbent CAS, rejected control, profile mismatch, invalidation before/after commit | Equal-budget research-policy comparison pending |
+| Search policies and atomic promotion | Pure greedy planner, bounded local/HTTP driver, immutable observation pins, explicit correction abandonment, observed/paired selection | Real CPU loop, actual CLI bootstrap, lost replies at every search boundary, cross-principal races, pause/target/budget stops and failed-panel handling | Greedy locally verified; portfolio and policy-learning qualification pending |
 | Statistical gates and exposure | Fixed paired sign gate, sealed plans, exposure accounting, complete-panel assessment | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release, actual paired CPU control | Independent workload variance and held-out generalization pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
 | Nested campaigns and policy benchmark | Pending | Pending | Held-out comparison pending |
@@ -86,8 +86,8 @@ transport, process, or provider behavior.
 - **C17** — Two promotions reference the same incumbent revision. Local concurrent commands select one incumbent and preserve the conflicting assessment.
 - **C18** — Child campaigns reserve concurrently. Pending end-to-end evidence.
 - **C19** — Child finishes and releases unused budget. Pending end-to-end evidence.
-- **C20** — Equivalent trial evidence/context returns the same observation identity. Exact resolution replay and independent-connection CAS races consume one observation and advance policy once.
-- **C21** — A recorded external proposal response survives controller reopening before candidate publication; exact replay preserves one response and its reported usage. Automatic policy consumption remains pending.
+- **C20** — Equivalent evidence/context yields one observation identity. Independent principals race each greedy boundary with one admitted trial, one policy consumption, and one incumbent advance. Immutable pins recover the assessment-to-promotion-to-resolution gaps.
+- **C21** — Recorded external responses survive reopening and preserve reported usage. The greedy driver recovers lost command replies at proposal, admission, observation, pin, assessment, commit, and resolution boundaries. Provider response loss before durable recording remains separate.
 - **C22** — Seed changes between declared replicates. Pending end-to-end evidence.
 - **C23** — Evaluation returns an incomplete panel. Local pipeline records incomplete evidence and does not make it rankable.
 - **C24** — Protected evaluation times out after access. Pending end-to-end evidence.
@@ -103,8 +103,8 @@ transport, process, or provider behavior.
 - **C34** — Locally verified: exact ordinary publication, submission, and reconciliation acknowledgments replay after epoch change; ordinary replay does not reopen artifacts. Concurrent same-key acceptance wins over subsequent mutable preflight failure.
 - **C35** — A training worker fabricates an evaluation ID. Local pipeline rejects worker publication and substitution of a training attempt.
 - **C36** — Two controllers enroll the same exclusive device. Pending end-to-end evidence.
-- **C37** — Concurrent proposal admissions use search-state CAS: one transaction creates work, while the losing external response remains durable. Full observation/state-transition consumption remains pending.
-- **C38** — Previously promoted evidence is invalidated. Local correction preserves the receipt and suspends the incumbent without selecting an ancestor.
+- **C37** — Cross-principal search CAS admits one trial and consumes one observation; losing responses and equivalent assessments remain evidence. Greedy resolves accepted selections after restart without duplicating incumbent movement.
+- **C38** — Corrections preserve evidence and suspend affected selection. Explicit abandonment of a selected trial records fresh closed evidence or verified pinned-comparator corrections, preserves original pins/metrics, and releases only the policy slot.
 - **C39** — Events arrive while a client recovers from a cursor gap. Pending end-to-end evidence.
 - **C40** — Retained artifacts outlive a completed job. Pending end-to-end evidence.
 - **C41** — A child budget settles after repeated notifications. Pending end-to-end evidence.

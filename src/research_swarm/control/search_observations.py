@@ -7,12 +7,16 @@ from uuid import NAMESPACE_URL, uuid5
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.models import CampaignData, JobData, TrialData
 from research_swarm.control.observation_models import (
+    AbandonObservationSelection,
     ObservationConsumption,
+    ObservationSelection,
     ObserveTrial,
     ResolveTrialObservation,
+    SelectionAbandonment,
     TrialFacts,
     TrialObservation,
     TrialResolution,
+    observation_selection_id,
 )
 from research_swarm.control.promotions import PromotionAssessment
 from research_swarm.control.proposals import search_state, write_search_state
@@ -127,6 +131,24 @@ def trial_facts(transaction: Transaction, row: JsonObject, campaign: CampaignDat
     )
 
 
+def comparator_corrections(
+    transaction: Transaction, selection: ObservationSelection
+) -> tuple[EvidenceReference, ...]:
+    if selection.comparator_evaluation_id is None:
+        return ()
+    receipt = transaction.get("evaluation_receipt", selection.comparator_evaluation_id)
+    request = transaction.get("evaluation_request", receipt["data"]["receipt"]["request_id"])
+    trial = TrialData.model_validate(
+        transaction.get("trial", request["data"]["request"]["trial_id"])["data"]
+    )
+    references = [EvidenceReference(kind="evaluation_receipt", id=receipt["id"])]
+    for identifier in trial.job_ids:
+        job = JobData.model_validate(transaction.get("job", identifier)["data"])
+        if job.current_attempt_id:
+            references.append(EvidenceReference(kind="run_result", id=job.current_attempt_id))
+    return tuple(reference for reference in references if invalidated(transaction, reference))
+
+
 class ObservationControl:
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -198,6 +220,24 @@ class ObservationControl:
         )
 
     def resolve(self, context: CommandContext, intent: ResolveTrialObservation) -> JsonObject:
+        return self._resolve(context, intent)
+
+    def abandon(self, context: CommandContext, intent: AbandonObservationSelection) -> JsonObject:
+        resolution = ResolveTrialObservation(
+            campaign_id=intent.campaign_id,
+            observation_id=intent.observation_id,
+            expected_controller_id=intent.expected_controller_id,
+            expected_control_epoch=intent.expected_control_epoch,
+        )
+        return self._resolve(context, resolution, abandonment=intent)
+
+    def _resolve(
+        self,
+        context: CommandContext,
+        intent: ResolveTrialObservation,
+        *,
+        abandonment: AbandonObservationSelection | None = None,
+    ) -> JsonObject:
         def consume(transaction: Transaction) -> JsonObject:
             if authority(transaction) != (
                 intent.expected_controller_id,
@@ -221,6 +261,59 @@ class ObservationControl:
                 raise ResearchError(
                     ErrorCode.INVALID_TRANSITION, "Observation does not own an active policy trial"
                 )
+            pin_id = observation_selection_id(
+                transaction.workspace_id, intent.campaign_id, facts.trial_id
+            )
+            abandoned = None
+            try:
+                pinned = transaction.get("policy_transition", pin_id)
+            except ResearchError as error:
+                if error.code != ErrorCode.NOT_FOUND:
+                    raise
+                if abandonment is not None:
+                    raise ResearchError(
+                        ErrorCode.INVALID_TRANSITION, "Trial has no pinned selection to abandon"
+                    ) from None
+            else:
+                selection = ObservationSelection.model_validate(pinned["data"])
+                original = transaction.get("search_observation", selection.observation_id)
+                if selection.observation_digest != record_digest(
+                    "research.selected-observation", original["data"]
+                ):
+                    raise ResearchError(
+                        ErrorCode.STALE_FENCE, "Pinned observation identity changed"
+                    )
+                if abandonment is None:
+                    if selection.observation_id != intent.observation_id:
+                        raise ResearchError(
+                            ErrorCode.IDEMPOTENCY_CONFLICT,
+                            "Resolution differs from the pinned observation",
+                        )
+                else:
+                    corrections = comparator_corrections(transaction, selection)
+                    comparator_invalidated = bool(corrections)
+                    if (
+                        abandonment.selection_id != pin_id
+                        or facts.outcome == "execution_unknown"
+                        or (facts.outcome == "measurement" and not comparator_invalidated)
+                        or (
+                            selection.observation_id == intent.observation_id
+                            and not comparator_invalidated
+                        )
+                    ):
+                        raise ResearchError(
+                            ErrorCode.COMPARISON_INELIGIBLE,
+                            "Abandonment requires corrected trial or comparator evidence",
+                        )
+                    abandoned = SelectionAbandonment(
+                        selection_id=pin_id,
+                        original_observation_id=selection.observation_id,
+                        basis="comparator_invalidated"
+                        if comparator_invalidated
+                        else "trial_evidence_changed",
+                        invalidated_dependencies=corrections,
+                        reason=abandonment.reason,
+                    )
             current = trial_facts(transaction, transaction.get("trial", facts.trial_id), campaign)
             if (
                 record_digest("research.trial-facts", current.model_dump(mode="json"))
@@ -237,7 +330,7 @@ class ObservationControl:
                     ErrorCode.EXECUTION_UNKNOWN, "Unresolved execution retains its policy slot"
                 )
             outcome = "non_scientific"
-            if facts.outcome == "measurement":
+            if facts.outcome == "measurement" and abandoned is None:
                 outcome = self._selection(transaction, campaign, observation, intent.decision_id)
             elif intent.decision_id is not None:
                 raise ResearchError(
@@ -258,6 +351,7 @@ class ObservationControl:
             )
             transition_id = new_id()
             resolution = TrialResolution(
+                abandonment=abandoned,
                 campaign_id=intent.campaign_id,
                 trial_id=facts.trial_id,
                 ordered_observation_ids=(intent.observation_id,),
@@ -297,13 +391,11 @@ class ObservationControl:
             )
             return {"transition": transition, "consumption": consumed, "search": updated}
 
-        return self.database.execute(
-            context,
-            "search.resolve_trial",
-            intent.model_dump(mode="json"),
-            "search.manage",
-            consume,
+        operation = (
+            "search.abandon_selection" if abandonment is not None else "search.resolve_trial"
         )
+        payload = (abandonment or intent).model_dump(mode="json")
+        return self.database.execute(context, operation, payload, "search.manage", consume)
 
     @staticmethod
     def _selection(

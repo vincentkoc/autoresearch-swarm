@@ -77,8 +77,28 @@ class ResolveTrialObservation(VersionedRecord):
     expected_control_epoch: Revision
 
 
+class AbandonObservationSelection(VersionedRecord):
+    campaign_id: ID
+    observation_id: ID
+    selection_id: ID
+    reason: str = Field(min_length=1, max_length=2048)
+    expected_controller_id: ID
+    expected_control_epoch: Revision
+
+
+class SelectionAbandonment(VersionedRecord):
+    selection_id: ID
+    original_observation_id: ID
+    basis: Literal["trial_evidence_changed", "comparator_invalidated"]
+    invalidated_dependencies: tuple[EvidenceReference, ...] = Field(default=(), max_length=1024)
+    reason: str = Field(min_length=1, max_length=2048)
+
+
 class TrialResolution(VersionedRecord):
     transition_kind: Literal["trial_resolution"] = "trial_resolution"
+    abandonment: SelectionAbandonment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     campaign_id: ID
     trial_id: ID
     ordered_observation_ids: tuple[ID, ...] = Field(min_length=1, max_length=1)
@@ -96,3 +116,43 @@ class ObservationConsumption(VersionedRecord):
     transition_id: ID
     policy_revision: Revision
     ordinal: Revision
+
+
+class SelectTrialObservation(VersionedRecord):
+    campaign_id: ID
+    observation_id: ID
+    expected_controller_id: ID
+    expected_control_epoch: Revision
+
+
+class ObservationSelection(VersionedRecord):
+    transition_kind: Literal["observation_selected"] = "observation_selected"
+    campaign_id: ID
+    trial_id: ID
+    observation_id: ID
+    observation_digest: Digest
+    facts_digest: Digest
+    incumbent_revision: Revision
+    comparator_id: ID | None
+    comparator_evaluation_id: ID | None
+    policy_version: str
+    before_revision: Revision
+    after_revision: Revision
+    committed_by: ID
+    committed_at: Timestamp
+
+
+def observation_selection_id(workspace_id: str, campaign_id: str, trial_id: str) -> str:
+    from uuid import NAMESPACE_URL, uuid5
+
+    from research_swarm.domain.canonical import record_digest
+
+    identity = record_digest(
+        "research.observation-selection-identity",
+        {
+            "workspace_id": workspace_id,
+            "campaign_id": campaign_id,
+            "trial_id": trial_id,
+        },
+    )
+    return str(uuid5(NAMESPACE_URL, "research-swarm:observation-selection:" + identity))

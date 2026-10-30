@@ -299,3 +299,83 @@ The corresponding tools are `research_search_observe_trial` and
 the existing bounded record queries. Campaign context includes recent observation
 and transition summaries. A repeating deterministic search driver is the next
 layer over these commands; external agents can already run this explicit loop.
+
+
+## Advance a greedy research loop
+
+Create a sealed greedy campaign with the optional bootstrap policy:
+
+~~~sh
+research run examples/cpu_bigram --key greedy-run --search-policy greedy --max-trials 10
+research search plan CAMPAIGN_ID --proposer AGENT_ID --baseline-trial BASELINE_TRIAL_ID
+research search advance CAMPAIGN_ID --proposer AGENT_ID --baseline-trial BASELINE_TRIAL_ID
+~~~
+
+`run` executes the baseline. `search plan` only reads state. `search advance`
+performs at most 32 commands by default (maximum 128), returns JSON, and can be
+invoked again after interruption. Use the same options after a restart. Existing
+`run` invocations retain the external policy and original bootstrap identity.
+Greedy campaigns declare a proposal-request allowance of `max_trials - 1`.
+
+The driver assesses an explicitly selected baseline, requests a proposal from
+its assigned agent, admits a durable response, observes the completed trial,
+and advances independent selection. External agents still use `proposal get`,
+`search.respond`, source capture/upload, or the corresponding SDK/MCP tools.
+The driver does not call an LLM provider or supply an agent's response.
+
+Workers and authorized evaluators execute separately. Run the local worker
+between advances, or supply independent scoped workers and evaluator control.
+Closing the CLI does not cancel native work. The driver performs no process
+launch, worker claim, or evaluator publication.
+
+The Python interface works with both local and HTTP clients:
+
+~~~python
+from research_swarm.orchestration.search import SearchDriver
+from research_swarm.search.greedy import GreedyConfiguration
+
+driver = SearchDriver(client, campaign_id, GreedyConfiguration(
+    proposer_id=agent_id,
+    baseline_trial_id=baseline_trial_id,
+    first_seed=100,
+))
+next_action = driver.plan()
+progress = driver.advance(max_steps=32)
+# Async callers can await driver.advance_async(max_steps=32).
+~~~
+
+The planner is pure: the same snapshot and configuration produce the same
+command and key. Reads are bounded; an incomplete evidence scan returns
+`needs_review`. A lost response returns `delivery_uncertain`; the next invocation
+reads accepted state before deciding what to do. Independent principals may
+create equivalent assessments, but revision checks, deterministic observation
+identities, and incumbent selection prevent duplicate work or policy progress.
+
+Before assessment, `search.select_observation` pins the exact observation and
+original comparator in an immutable policy transition. It requires current
+controller/epoch, search revision, and `search.manage` authority. A later
+observation against a newly promoted incumbent cannot replace that pin. Restart
+between assessment, promotion, and resolution retains the original comparison.
+
+Pause stops fresh search actions. A previously committed decision may finish
+policy bookkeeping while paused. `target_reached` means the declared target is
+met by the current eligible incumbent; paired targets use the selected replica
+mean. `budget_exhausted` identifies the trial/request/resource allowance that
+blocks more work. These results do not automatically complete the campaign.
+UNKNOWN execution keeps its slot and returns `awaiting_execution`.
+
+Paired campaigns wait for an explicitly sealed confirmation panel. Pending
+realizations keep waiting; a settled failed panel is assessed as ineligible.
+After a completed panel, the driver stops before requesting research that would
+require a second panel. It never substitutes an exploratory score for paired
+confirmation or creates extra protected exposures.
+
+Corrections can invalidate a pin's trial or comparator. The driver stops for
+review. An authorized caller can use `search.abandon_selection` with the pin ID,
+current observation, reason, current controller/epoch, and search revision.
+The controller requires closed non-scientific trial evidence, or independently
+verified corrections to the pinned comparator. Comparator correction may leave
+the candidate's measurement valid; that measurement stays recorded. Abandonment
+appends its evidence and reason, consumes the observation, and releases only
+the policy slot. It does not promote, rebase, move the incumbent, or settle
+physical resource/budget custody.

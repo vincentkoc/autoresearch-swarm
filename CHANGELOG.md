@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a pure greedy planner and bounded local/HTTP search driver, with read-only planning, restart-safe advancement, independent worker/evaluator execution, and CLI bootstrap selection.
+- Pin observations before selection, preserve original comparison context across promotion, and recover lost acknowledgments and competing principals without duplicate trial admission or policy progress.
+- Respect pause, declared metric targets, budgets, UNKNOWN custody, and fixed confirmation-panel limits; record settled panel failures instead of waiting indefinitely.
+- Add explicit correction abandonment that preserves original pins and measurements, records affected comparator evidence, and releases only the policy slot.
+
 - Record immutable typed research observations from accepted trial/evaluator evidence, preserving comparison context and separating cancellation, failure, incomplete evidence, and execution uncertainty from scores.
 - Resolve policy trials atomically after an independent promotion, rejection, complete paired-panel assessment, or closed non-scientific outcome; preserve observation consumption and exact search-state revisions.
 - Recheck corrected evidence before resolution, retain UNKNOWN policy slots, and recover the gap between promotion and policy progress without repeating selection.
