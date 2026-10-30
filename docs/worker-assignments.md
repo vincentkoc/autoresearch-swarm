@@ -27,7 +27,21 @@ primitive to establish clock agreement with a remote controller.
 assignment. It grants no new launch authority. The journal and native release gate
 must still enforce the original deadlines and prevent repeat execution.
 
-This is an implemented contract primitive. Persistent controller keys, remote
-enrollment, restricted polling, clock qualification, and remote execution are
-pending. The existing local worker continues to use its HMAC dispatch path.
-Signatures alone do not qualify a remote worker or prove native process closure.
+Local runtimes persist a separate private `assignment.key` and pin its public key
+ID in `identity.json`. Restart does not replace a missing or changed key. An older
+runtime without signed enrollments creates this key once. Existing HMAC
+enrollments keep their original authority; new enrollments use signatures.
+
+Admission signs and stores the assignment in the same transaction as its attempt,
+budget reservation, and dispatch event. A changed or absent signing key rolls back
+admission. Command replay returns the original signature and grant.
+
+The native worker verifies the signature and all presented assignment fields
+before journal admission. The journal persists the full signed assignment and
+includes it in duplicate-delivery identity. Preparation must match its input
+digests and execution profile. Restart checks the same assignment again; result
+publication must preserve it. A signed enrollment cannot fall back to HMAC.
+
+Local execution uses the controller host's clock. Restricted remote enrollment,
+polling, clock qualification, and remote execution remain pending. Signatures
+alone do not qualify a remote worker or prove native process closure.

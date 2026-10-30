@@ -8,8 +8,9 @@ from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
+from research_swarm.domain.assignments import SignedAssignment
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
@@ -18,6 +19,7 @@ from research_swarm.state.identity import initialize_identity
 from research_swarm.workers.authority import VerifiedDispatch
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, NativeOutcome
 from research_swarm.workers.prepared import PreparedExecution
+from research_swarm.workers.signatures import VerifiedAssignment
 
 
 class JournalState(StrEnum):
@@ -35,6 +37,7 @@ class JournalEntry(VersionedRecord):
     dispatch: DispatchEnvelope
     spec: ExperimentSpec
     command: NativeCommand
+    signed_assignment: SignedAssignment | None = None
     prepared: PreparedExecution | None = None
     preparation_required: bool = False
     revision: Revision = 1
@@ -47,6 +50,24 @@ class JournalEntry(VersionedRecord):
     outcome: NativeOutcome | None = None
     last_controller_sequence: Revision = 0
     finding: str = ""
+
+    @model_validator(mode="after")
+    def assignment_matches(self) -> JournalEntry:
+        if self.signed_assignment is None:
+            return self
+        payload = self.signed_assignment.payload
+        if payload.dispatch != self.dispatch or payload.spec != self.spec:
+            raise ValueError("Journal differs from its signed assignment")
+        if self.prepared is not None and (
+            self.prepared.profile_digest != payload.profile.execution_fingerprint
+            or {
+                name: (value.digest, value.size_bytes)
+                for name, value in self.prepared.context.inputs.items()
+            }
+            != {name: (value.digest, value.size_bytes) for name, value in payload.inputs.items()}
+        ):
+            raise ValueError("Prepared inputs or profile differ from signed assignment")
+        return self
 
 
 class JournalEvent(VersionedRecord):
@@ -131,12 +152,14 @@ class WorkerJournal:
 
     def receive(
         self,
-        verified: VerifiedDispatch,
+        verified: VerifiedDispatch | VerifiedAssignment,
         command: NativeCommand,
         *,
         prepared: PreparedExecution | None = None,
         require_preparation: bool = False,
     ) -> JournalEntry:
+        signed = verified.assignment if isinstance(verified, VerifiedAssignment) else None
+        verified = verified.dispatch if isinstance(verified, VerifiedAssignment) else verified
         verified.spec.verify()
         command = NativeCommand.model_validate(command)
         stage = next(
@@ -155,6 +178,7 @@ class WorkerJournal:
             command=command,
             prepared=prepared,
             preparation_required=require_preparation,
+            signed_assignment=signed,
         )
         digest = record_digest(
             "research.worker-input",
@@ -164,6 +188,7 @@ class WorkerJournal:
                 "command": command.model_dump(mode="json"),
                 **({"prepared": prepared.model_dump(mode="json")} if prepared is not None else {}),
                 **({"preparation_required": True} if require_preparation else {}),
+                **({"signed_assignment": signed.model_dump(mode="json")} if signed else {}),
             },
         )
         with self._transaction() as connection:

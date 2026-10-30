@@ -24,7 +24,7 @@ from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
-from research_swarm.runtime import LocalRuntime, read_private
+from research_swarm.runtime import LocalRuntime
 from research_swarm.workers.journal import JournalState
 from research_swarm.workers.local import LocalWorker
 from research_swarm.workers.supervisor import run_attempt
@@ -149,7 +149,6 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     worker = LocalWorker(
         worker_client,
         WorkerData.model_validate(enrolled["data"]),
-        key=read_private(runtime.root, "dispatch.key", limit=32),
         root=tmp_path / "worker",
         machine_registry=tmp_path / "machine" / "resources.sqlite",
     )
@@ -199,7 +198,6 @@ def test_delivery_restart_recovers_prepared_identity_without_reexecution(
     restarted = LocalWorker(
         pipeline.worker.client,
         pipeline.worker.worker,
-        key=read_private(pipeline.runtime.root, "dispatch.key", limit=32),
         root=pipeline.worker.root,
         machine_registry=pipeline.worker.resources.path,
     )

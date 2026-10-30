@@ -10,6 +10,11 @@ from pydantic import Field, model_validator
 
 from research_swarm.control.confirmation_runtime import claim_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
+from research_swarm.domain.assignments import (
+    AssignmentAuthority,
+    AssignmentPayload,
+    SignedAssignment,
+)
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.experiments import DispatchEnvelope
@@ -28,6 +33,7 @@ from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
 from research_swarm.workers.authority import WorkerBinding, authorize_dispatch
+from research_swarm.workers.signatures import AssignmentSigner
 
 NATIVE_CLEANUP_MS = 5000
 
@@ -53,7 +59,17 @@ class WorkerData(VersionedRecord):
     name: Name
     profiles: tuple[EngineCapabilities, ...]
     max_concurrency: int
+    assignment_authority: AssignmentAuthority | None = None
     enrolled_at: Timestamp = Field(default_factory=utc_now)
+
+    @model_validator(mode="after")
+    def matching_authority(self) -> WorkerData:
+        if (
+            self.assignment_authority is not None
+            and self.assignment_authority.binding != self.binding
+        ):
+            raise ValueError("Worker signing authority differs from enrollment")
+        return self
 
 
 class ClaimJob(VersionedRecord):
@@ -69,6 +85,7 @@ class AttemptData(VersionedRecord):
     source_artifact: ArtifactRef
     source_tree_digest: Digest
     evaluation_request_id: ID | None = None
+    signed_assignment: SignedAssignment | None = None
     outcome_artifact: ArtifactRef | None = None
     report_artifact: ArtifactRef | None = None
     result_digest: Digest | None = None
@@ -102,11 +119,16 @@ def worker_authority(transaction: Transaction, worker_id: str, session_id: str) 
 
 
 class WorkerControl:
-    def __init__(self, database: Database, dispatch_key: bytes) -> None:
+    def __init__(
+        self, database: Database, dispatch_key: bytes, assignment_key: bytes | None = None
+    ) -> None:
         if len(dispatch_key) < 32:
             raise ValueError("Worker control requires at least 256 bits of dispatch authority")
         self.database = database
         self.dispatch_key = dispatch_key
+        if assignment_key is not None and len(assignment_key) != 32:
+            raise ValueError("Assignment signing requires a 32-byte Ed25519 key")
+        self._assignment_key = assignment_key
 
     def enroll(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         def enroll(transaction: Transaction) -> JsonObject:
@@ -137,6 +159,11 @@ class WorkerControl:
                     name=request.name,
                     profiles=request.profiles,
                     max_concurrency=request.max_concurrency,
+                    assignment_authority=(
+                        AssignmentSigner(binding, self._assignment_key).authority
+                        if self._assignment_key is not None
+                        else None
+                    ),
                 ).model_dump(mode="json"),
                 state="active",
             )
@@ -275,6 +302,30 @@ class WorkerControl:
             candidate = transaction.get("candidate", trial.candidate_id)["data"]
             source = ArtifactRef.model_validate(candidate["source_artifact"])
             ArtifactCatalog.available(transaction, source)
+            signed_assignment = None
+            if worker.assignment_authority is not None:
+                if self._assignment_key is None:
+                    raise ResearchError(
+                        ErrorCode.CAPABILITY_UNAVAILABLE, "Assignment signing authority is absent"
+                    )
+                signer = AssignmentSigner(worker.binding, self._assignment_key)
+                if signer.authority != worker.assignment_authority:
+                    raise ResearchError(
+                        ErrorCode.STALE_FENCE, "Assignment signing authority changed"
+                    )
+                signed_assignment = signer.sign(
+                    AssignmentPayload(
+                        dispatch=envelope,
+                        spec=trial.spec,
+                        profile=profile,
+                        inputs=inputs,
+                        source_artifact=source,
+                        source_tree_digest=trial.spec.source.tree_digest,
+                        evaluation_request_id=job.evaluation_request_id,
+                        network_policy=project.resolved.manifest.environment.network_policy,
+                        issued_at=now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                    )
+                )
             attempt = transaction.insert(
                 "attempt",
                 attempt_id,
@@ -285,6 +336,7 @@ class WorkerControl:
                     source_artifact=source,
                     source_tree_digest=trial.spec.source.tree_digest,
                     evaluation_request_id=job.evaluation_request_id,
+                    signed_assignment=signed_assignment,
                 ).model_dump(mode="json"),
                 state="reserved",
                 campaign_id=row["campaign_id"],

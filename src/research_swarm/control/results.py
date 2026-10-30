@@ -111,6 +111,7 @@ class ResultControl:
         if (
             journal.dispatch != attempt.dispatch
             or journal.spec != trial.spec
+            or journal.signed_assignment != attempt.signed_assignment
             or job.current_attempt_id != request.attempt_id
             or journal.command.argv != job.stage.argv
             or journal.command.timeout_ms > job.stage.timeout_ms

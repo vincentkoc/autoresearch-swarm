@@ -228,7 +228,11 @@ def ensure_local_enrollment(
         worker = LocalWorker(
             worker_client,
             registered,
-            key=read_private(runtime.root, "dispatch.key", limit=32),
+            key=(
+                read_private(runtime.root, "dispatch.key", limit=32)
+                if registered.assignment_authority is None
+                else None
+            ),
             root=root / "execution",
             machine_registry=registry,
         )

@@ -116,13 +116,24 @@ def input_sources(
 
 class ResearchService:
     def __init__(
-        self, database: Database, artifacts: ArtifactService, *, dispatch_key: bytes | None = None
+        self,
+        database: Database,
+        artifacts: ArtifactService,
+        *,
+        dispatch_key: bytes | None = None,
+        assignment_key: bytes | None = None,
     ) -> None:
         if database.path.resolve() != artifacts.database.path.resolve():
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
         self.artifacts = artifacts
-        self.workers = WorkerControl(database, dispatch_key) if dispatch_key is not None else None
+        if assignment_key is not None and dispatch_key is None:
+            raise ValueError("Assignment signing requires worker control")
+        self.workers = (
+            WorkerControl(database, dispatch_key, assignment_key)
+            if dispatch_key is not None
+            else None
+        )
         self.results = ResultControl(database, artifacts)
         self.evaluations = EvaluationControl(database, artifacts)
         self.promotions = PromotionControl(database)

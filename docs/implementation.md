@@ -20,7 +20,7 @@ not implicitly supported.
 | Local enrollment | Persisted worker/evaluator identities, resumable provisioning, host registry ownership | Concurrent startup, partial installation, revocation, missing state, changed epoch/profile, cross-controller rejection | Local tests pass; current native matrix pending |
 | Local async driver | Parallel stage delivery, durable command intents, native recovery, independent receipt completion, CLI | Lost acknowledgment, restart, cancellation ownership, same-batch capacity recovery, uncertain execution, real parallel stages | Local CPU tests pass; native matrix pending |
 | One-command local run | Frozen source, replayable bootstrap, automatic worker/evaluator enrollment, external-agent baseline and context | Every creation/upload acknowledgment boundary, missing checkout, corrupt archive, same-key contention, option conflict, pause preservation, real CLI resume | Local tests pass; native matrix pending |
-| Signed assignment contract | Complete payload signing and public-only verification implemented | Fixed canonical/signature fixture, separate verifier process, tampering, identity and deadline tests | Transport integration and clock qualification pending |
+| Signed assignment authority | Complete payload signing, pinned durable keys, atomic admission, public-only native execution, journal preservation | Canonical fixture, separate verifier process, tampering, rollback, restart, missing/replaced keys, legacy migration | Local CPU execution passes; remote clock and transport qualification pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Observed/paired assessment, atomic selection, correction, explicit baseline recovery; search pending | Real CPU evidence, incumbent CAS, rejected control, profile mismatch, invalidation before/after commit | Equal-budget research-policy comparison pending |
 | Statistical gates and exposure | Fixed paired sign gate, sealed plans, exposure accounting, complete-panel assessment | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release, actual paired CPU control | Independent workload variance and held-out generalization pending |
@@ -34,12 +34,12 @@ not implicitly supported.
 
 ## Contract scenarios
 
-The foundation suite has 53 tests. Artifact, source, and manifest tests extend it to
-116, qualified on Linux/macOS/Windows and Python 3.11–3.13. Native supervision,
-journal, resource, workload, controller, and SDK tests extend the suite to 212 passing local tests, including
-real process, deadline, race, and recovery coverage. This does not
-establish provider or scientific behavior. The integrated CPU worker adds eleven
-local execution/recovery scenarios; native qualification is tracked separately.
+The suite covers schemas, artifacts, source, manifests, budgets, native supervision,
+journals, resources, workloads, controller commands, evaluation, selection, and
+SDK transports. It includes real process, deadline, race, and restart scenarios.
+CI targets Linux, macOS, and Windows with Python 3.11–3.13. Results qualify the
+tested revision and platform; local success does not establish provider or
+scientific behavior. Native qualification is tracked separately.
 
 The design defines C01–C42. Unit coverage alone does not qualify their complete
 transport, process, or provider behavior.

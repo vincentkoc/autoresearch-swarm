@@ -181,7 +181,8 @@ def test_empty_command_key_is_rejected_locally(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "missing", ["identity.json", "dispatch.key", "operator.token", "research.sqlite"]
+    "missing",
+    ["identity.json", "dispatch.key", "assignment.key", "operator.token", "research.sqlite"],
 )
 def test_damaged_runtime_is_not_replaced(tmp_path: Path, missing: str) -> None:
     root = tmp_path / "damaged-runtime"

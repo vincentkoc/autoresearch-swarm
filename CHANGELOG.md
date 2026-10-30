@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Persist a separate controller signing key and pin its identity; reject lost or replaced authority during restart.
+- Sign admitted assignments transactionally, execute new local enrollments with public-only verification, and preserve the full signed grant through native journals and result publication.
 - Define complete Ed25519-signed worker assignments with public-only verification, enrollment fencing, and canonical interoperability fixtures.
 - Add `research run` to freeze a project, create an external-agent campaign, and execute its baseline through the local driver.
 - Persist source and bootstrap identity across interrupted uploads and commands, without recapturing changed or missing checkouts.

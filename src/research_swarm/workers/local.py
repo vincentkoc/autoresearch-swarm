@@ -20,7 +20,7 @@ from research_swarm.control.workers import AttemptData, ClaimJob, WorkerData
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.types import new_id
+from research_swarm.domain.types import new_id, utc_now
 from research_swarm.projects.manifest import TimingContract
 from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.source import extract_bundle
@@ -31,11 +31,12 @@ from research_swarm.projects.workload import (
     verify_outputs,
 )
 from research_swarm.runtime import private_state_directory, read_private, write_private
-from research_swarm.workers.authority import DispatchVerifier
+from research_swarm.workers.authority import DispatchVerifier, VerifiedDispatch
 from research_swarm.workers.contracts import NativeCommand
 from research_swarm.workers.journal import JournalEntry, JournalState, WorkerJournal
 from research_swarm.workers.prepared import PreparedExecution
 from research_swarm.workers.resources import MachineResources, ResourceDemand
+from research_swarm.workers.signatures import AssignmentVerifier, VerifiedAssignment
 from research_swarm.workers.supervisor import reconcile_outcome, spawn_supervisor
 
 
@@ -45,13 +46,21 @@ class LocalWorker:
         client: ResearchClient,
         worker: WorkerData,
         *,
-        key: bytes,
+        key: bytes | None = None,
         root: Path,
         machine_registry: Path,
         executable: Path | None = None,
         maximum_output_bytes: int = 256 * 1024 * 1024,
     ) -> None:
         self.client, self.worker = client, WorkerData.model_validate(worker)
+        self.assignment_verifier = (
+            AssignmentVerifier(worker.assignment_authority)
+            if worker.assignment_authority is not None
+            else None
+        )
+        self.verifier = DispatchVerifier(worker.binding, key) if key is not None else None
+        if self.assignment_verifier is None and self.verifier is None:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker verification key is absent")
         self.root = root.absolute()
         self.executable = (executable or Path(sys.executable)).absolute()
         self.maximum_output_bytes = maximum_output_bytes
@@ -74,7 +83,6 @@ class LocalWorker:
         if self.profile.scratch_bytes:
             capacities["scratch"] = self.profile.scratch_bytes
         self.resources.enroll(worker.binding, ResourceDemand(amounts=capacities))
-        self.verifier = DispatchVerifier(worker.binding, key)
 
     def claim(self, job: dict[str, Any]) -> dict[str, Any]:
         return dict(
@@ -106,12 +114,44 @@ class LocalWorker:
         if observed != reference:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Downloaded worker input differs")
 
+    def _verify(
+        self, attempt: AttemptData, trial: TrialData
+    ) -> VerifiedDispatch | VerifiedAssignment:
+        if self.assignment_verifier is not None:
+            if attempt.signed_assignment is None:
+                raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Signed assignment is required")
+            verified = self.assignment_verifier.verify(
+                attempt.signed_assignment, authority_now=utc_now(), allow_expired_observation=True
+            )
+            payload = verified.assignment.payload
+            if (
+                payload.dispatch != attempt.dispatch
+                or payload.spec != trial.spec
+                or payload.profile != attempt.profile
+                or payload.inputs != attempt.inputs
+                or payload.source_artifact != attempt.source_artifact
+                or payload.source_tree_digest != attempt.source_tree_digest
+                or payload.evaluation_request_id != attempt.evaluation_request_id
+            ):
+                raise ResearchError(
+                    ErrorCode.AUTHORIZATION_DENIED, "Assignment presentation differs"
+                )
+            if payload.network_policy != "inherit":
+                raise ResearchError(
+                    ErrorCode.CAPABILITY_UNAVAILABLE, "Network isolation is unavailable"
+                )
+            return verified
+        if attempt.signed_assignment is not None:
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Assignment public key is not pinned"
+            )
+        assert self.verifier is not None
+        return self.verifier.verify(attempt.dispatch, trial.spec, allow_expired_observation=True)
+
     def _prepare(self, attempt: AttemptData, trial: TrialData) -> JournalEntry:
         # Expired authenticated grants can be recorded as not started. The journal's
         # native release gate still refuses expiry, including a race after verification.
-        verified = self.verifier.verify(
-            attempt.dispatch, trial.spec, allow_expired_observation=True
-        )
+        verified = self._verify(attempt, trial)
         stage = next(stage for stage in trial.spec.stages if stage.id == attempt.dispatch.stage_id)
         root = self.root / "work" / attempt.dispatch.attempt_id
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -172,7 +212,8 @@ class LocalWorker:
                 amounts["memory"] = stage.resources.memory_bytes
             if stage.resources.scratch_bytes:
                 amounts["scratch"] = stage.resources.scratch_bytes
-            claim = self.resources.reserve(verified, ResourceDemand(amounts=amounts))
+            dispatch = verified.dispatch if isinstance(verified, VerifiedAssignment) else verified
+            claim = self.resources.reserve(dispatch, ResourceDemand(amounts=amounts))
             if execution.exists():
                 raise ResearchError(
                     ErrorCode.PROJECT_CONTRACT_INVALID,
@@ -228,6 +269,7 @@ class LocalWorker:
             trial = TrialData.model_validate(
                 self.client.get("trial", attempt.dispatch.trial_id)["data"]
             )
+            self._verify(attempt, trial)
             try:
                 entry = self.journal.get(attempt_id)
             except ResearchError as error:
@@ -251,7 +293,11 @@ class LocalWorker:
                     entry = self.journal.note_reconciliation(
                         attempt_id, "Preparation failed: " + type(error).__name__
                     )
-            if entry.dispatch != attempt.dispatch or entry.spec != trial.spec:
+            if (
+                entry.dispatch != attempt.dispatch
+                or entry.spec != trial.spec
+                or entry.signed_assignment != attempt.signed_assignment
+            ):
                 raise ResearchError(ErrorCode.STALE_FENCE, "Worker journal differs from admission")
             process = (
                 spawn_supervisor(self.journal, attempt_id)
