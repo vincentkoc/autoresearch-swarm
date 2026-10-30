@@ -27,7 +27,7 @@ class DurableTurnDriver:
         self.client, self.campaign_id = client, campaign_id
         self.epoch, self.configuration_digest = epoch, configuration_digest
 
-    def advance_turn(
+    def prepare_turn(
         self,
         ordinal: int,
         plan: Callable[[], DriveAction],
@@ -91,11 +91,23 @@ class DurableTurnDriver:
             raise ResearchError(
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Saved turn differs from driver configuration"
             )
+        return saved
+
+    def advance_turn(
+        self,
+        ordinal: int,
+        plan: Callable[[], DriveAction],
+        *,
+        planning_watermark: int | None = None,
+    ) -> JsonObject:
+        saved = self.prepare_turn(ordinal, plan, planning_watermark=planning_watermark)
         return dict(
             self.client.command(
                 "orchestration.execute_turn",
-                DriveTurnTarget(turn_id=identifier),
-                idempotency_key=record_digest("research.drive-execute-v1", {"turn_id": identifier}),
+                DriveTurnTarget(turn_id=saved["id"]),
+                idempotency_key=record_digest(
+                    "research.drive-execute-v1", {"turn_id": saved["id"]}
+                ),
             )["result"]
         )
 

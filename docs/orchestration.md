@@ -8,8 +8,9 @@ an accepted reply is lost. Use a durable turn as the retry boundary instead.
 The current implementation supplies initial ownership, one saved command per
 turn, transaction-time fencing, acknowledgment recovery, and durable waits with
 destination-bound wakeups. A paused campaign can transfer to fresh driver
-principals through a verified same-workspace checkpoint. Provider Workflows
-remain separate work. An adapter label is descriptive metadata, not qualification.
+principals through a verified same-workspace checkpoint. The optional
+[Temporal adapter](temporal.md) delivers these saved intents using real Workflows
+and Activities. An adapter label alone is descriptive metadata, not qualification.
 
 ## Bind dedicated principals
 
@@ -260,8 +261,8 @@ fencing between preflight and commit, owned-pin cleanup, reserved-key collisions
 and unchanged staging bytes after denied HTTP mutations. Wait tests include a
 controller process exiting immediately after commit, reopening the runtime,
 receiver acknowledgment loss, persisted timer recovery, parent-child wakeups,
-and rollback when notification storage fails. Temporal replay and Cloudflare
-execution require their own qualification.
+and rollback when notification storage fails. Temporal's real-server qualification
+is described separately; Cloudflare execution remains pending.
 Closure tests also cover a delayed original dispatch, competing operators,
 controller reopen, real HTTP recovery, accepted/rejected acknowledgment gaps,
 and atomic rollback if storing the closure event fails.

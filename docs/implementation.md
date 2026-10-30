@@ -53,7 +53,7 @@ not implicitly supported.
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
 | Hierarchical allocation ledger | Immutable grants, bounded lineage, live ancestor accounting, deficit admission guard, projection receipts and terminal settlement | Independent SQLite races, uncertainty, committed overshoot, sibling blocking, recursive release, replay/reopen, rollback and exact decimals | Public child lifecycle and real CPU child execution locally verified |
 | Nested campaigns and policy benchmark | Funded child API, inherited contracts, bounded depth and admission counters, final settlement reports | HTTP creation, CLI cancellation, real CPU descendants, counter/pending-promise conflicts, confirmation rollback, UNKNOWN closure and completion rollback | Local funded recursion verified; policy benchmark and held-out comparison pending |
-| Temporal | Pending | Pending | Real server pending |
+| Temporal | Optional epoch Workflows, frozen Activity references, signal bridge, bounded continuation and checkpoint startup | Real HTTP lost replies, timeout overlap, worker/server restart, duplicate signals, snapshot recovery, native CPU cancellation boundary and history replay | Temporal Python 1.35.0 / CLI 1.9.1 / server 1.32.0 locally verified on macOS; Cloud deployment remains separate |
 | Event recovery | Explicit logical floor, frozen authorized views, bounded content chunks, retained catch-up pins, terminal cleanup and schema migration | Concurrent writers/openers, rollback, real HTTP/SSE gaps, CLI/MCP replay, revocation, expiry/clock rollback and integrity failures | Local SQLite and transport proof; provider storage qualification remains separate |
 | Durable orchestration turns and waits | Bindings, dedicated routes, exact actions, transaction fences, durable conditions, destination-specific deliveries and verified ownership transfer | Runner/transfer races, HTTP recovery, bound evaluation/admission, actual controller exit, duplicate notification, timer recovery, parent-child wakeups, retained-artifact checks and successor startup | Local turn/wait/transfer conformance; provider execution pending |
 | Cloudflare | Pending | Pending | Hosted deployment pending |
@@ -81,7 +81,7 @@ transport, process, or provider behavior.
 - **C06** — Result arrives twice. Pending end-to-end evidence.
 - **C07** — Old worker session publishes after a new fence. Pending end-to-end evidence.
 - **C08** — Lease expires while the child still runs. Pending end-to-end evidence.
-- **C09** — A saved single-command turn recovers the original target acknowledgment after a controller/receipt gap without invoking its planner again. Native attempts remain independently owned. Provider Workflow timeout/retry qualification remains pending.
+- **C09** — A saved single-command turn recovers the original target acknowledgment without invoking its planner again. Real Temporal Activities repeat the exact turn after a lost reply or timeout overlapping the original call, with one domain effect. Native attempts remain independently owned.
 - **C10** — Cancellation is requested for an offline worker. Pending end-to-end evidence.
 - **C11** — Worker reconnects after controller restart. Pending end-to-end evidence.
 - **C12** — Artifact upload succeeds but result commit fails. Local CPU pipeline recovers publication without re-execution or duplicate settlement; remote-provider proof pending.

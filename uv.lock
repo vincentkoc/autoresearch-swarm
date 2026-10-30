@@ -86,6 +86,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "temporalio" },
     { name = "types-psutil" },
 ]
 
@@ -101,7 +102,7 @@ requires-dist = [
     { name = "psutil", specifier = ">=6,<8" },
     { name = "pydantic", specifier = ">=2.12,<3" },
     { name = "rfc8785", specifier = ">=0.1.4,<1" },
-    { name = "temporalio", marker = "extra == 'temporal'", specifier = ">=1.9,<2" },
+    { name = "temporalio", marker = "extra == 'temporal'", specifier = ">=1.35,<2" },
     { name = "torch", marker = "extra == 'torch'", specifier = ">=2.6" },
     { name = "uvicorn", specifier = ">=0.34,<1" },
 ]
@@ -115,6 +116,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.25,<2" },
     { name = "pytest-cov", specifier = ">=6,<8" },
     { name = "ruff", specifier = ">=0.11,<1" },
+    { name = "temporalio", specifier = ">=1.35,<2" },
     { name = "types-psutil", specifier = ">=7.2.2.20260906" },
 ]
 

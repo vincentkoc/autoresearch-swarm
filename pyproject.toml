@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-temporal = ["temporalio>=1.9,<2"]
+temporal = ["temporalio>=1.35,<2"]
 mlx = ["mlx>=0.30"]
 torch = ["torch>=2.6"]
 s3 = ["boto3>=1.35,<2"]
@@ -37,6 +37,7 @@ dev = [
   "ruff>=0.11,<1",
   "mypy>=1.15,<2",
   "types-psutil>=7.2.2.20260906",
+  "temporalio>=1.35,<2",
 ]
 
 [project.urls]

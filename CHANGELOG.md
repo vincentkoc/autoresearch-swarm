@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an optional Temporal delivery adapter with one Workflow per campaign epoch, frozen turn/wait Activity inputs, signal-assisted polling, and bounded history continuation.
+- Keep agent planning and native execution outside provider retries; recover transferred startup from stable snapshot intents and preserve running CPU work when a Workflow is canceled.
+- Sanitize recorded failures, reject foreign Workflow references and conflicting duplicate startup, and qualify real server/worker restart, timeout retries, and history replay in an opt-in suite and dedicated CI job.
+
 - Transfer paused campaigns to fresh driver principals through an immutable verified checkpoint, preserving scientific identities, worker authority, queued work, and child funding.
 - Reconcile original target acknowledgments or record distinct absent-ack closure before advancing the driver epoch; require each successor to acknowledge checkpoint recovery before issuing turns or waits.
 - Bound checkpoint manifests by canonical byte size and entry count, verify required retained artifacts, and refuse unresolved native or retiring-evaluator work without partial ownership changes.
