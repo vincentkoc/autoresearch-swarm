@@ -27,6 +27,19 @@ quotas, discover unrelated device owners, or police workers outside the registry
 Physical device qualification and operator allowances remain necessary. The worker
 service must connect this admission step to dispatch before launching research code.
 
+`PreparedExecution` connects a sealed workload context, its exact file contents,
+the profile's absolute executable, and a machine claim to a journal dispatch.
+The journal includes this preparation in its immutable retry identity. The
+supervisor checks the claim before launch and again while the native process is
+held. It injects `RESEARCH_CONTEXT` and preserves the declared stage arguments.
+The controller environment does not supply additional credentials.
+
+Cancellation or expiry can settle an unstarted grant even if its context file has
+been lost. Other preparation failures do not cross the native start barrier.
+The lower-level native test primitive can still run without a prepared workload;
+the integrated project worker must supply one. A real supervisor subprocess test
+trains the CPU example through this binding and releases its recorded capacity.
+
 ## Authority and durable launch
 
 `DispatchVerifier` authenticates a dispatch with an enrolled worker key. The v1

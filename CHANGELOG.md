@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bind sealed workload contexts, declared interpreters, and live machine claims to native supervisor release.
+- Settle cancelled or expired unstarted grants even when their prepared context is missing.
 - Add a JSON CLI and typed stdio MCP tools over the shared command and query service.
 - Verify replay, structured errors, bounded summaries, and credential revocation through real agent subprocesses.
 - Add local and HTTP Python clients, async convenience methods, and durable private runtime initialization.

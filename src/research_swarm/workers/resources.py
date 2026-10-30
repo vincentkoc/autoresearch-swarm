@@ -205,6 +205,24 @@ class MachineResources:
                 (finding, claim.attempt_id),
             )
 
+    def verify_held(self, entry: JournalEntry, claim_id: str) -> MachineClaim:
+        """Check a local launch binding without accepting network-provided closure claims."""
+        dispatch_digest = record_digest("research.dispatch", entry.dispatch.model_dump(mode="json"))
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT payload,state FROM claims WHERE attempt_id=?", (entry.dispatch.attempt_id,)
+            ).fetchone()
+        if row is None:
+            raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Native launch has no reservation")
+        claim = MachineClaim.model_validate_json(row["payload"])
+        if claim.id != claim_id or claim.dispatch_digest != dispatch_digest:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Native launch reservation differs")
+        if row["state"] != "held":
+            raise ResearchError(
+                ErrorCode.RESOURCE_UNAVAILABLE, "Native launch reservation is not held"
+            )
+        return claim
+
     def release(self, entry: JournalEntry) -> None:
         """The trusted local worker supplies its journal receipt, never a network boolean."""
         entry = JournalEntry.model_validate(entry)

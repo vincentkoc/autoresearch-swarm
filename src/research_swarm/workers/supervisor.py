@@ -46,7 +46,20 @@ def _save_outcome(root: Path, outcome: NativeOutcome) -> None:
 
 
 def run_attempt(journal: WorkerJournal, attempt_id: str) -> JournalEntry:
-    journal.get(attempt_id).spec.verify()
+    received = journal.settle_unstarted(attempt_id)
+    if received.state == JournalState.NOT_STARTED:
+        return received
+    received.spec.verify()
+    environment = base_environment()
+    resources = None
+    if received.prepared is not None:
+        from research_swarm.workers.resources import MachineResources
+
+        received.prepared.verify(received.dispatch, received.spec)
+        received.prepared.verify_context_file()
+        resources = MachineResources(Path(received.prepared.resource_registry))
+        resources.verify_held(received, received.prepared.machine_claim_id)
+        environment["RESEARCH_CONTEXT"] = received.prepared.context_path
     supervisor_id = new_id()
     entry = journal.claim_launch(attempt_id, supervisor_id)
     if entry.state == JournalState.NOT_STARTED:
@@ -58,9 +71,13 @@ def run_attempt(journal: WorkerJournal, attempt_id: str) -> JournalEntry:
     command = entry.command.model_copy(
         update={"timeout_ms": min(entry.command.timeout_ms, max(1, remaining_ms))}
     )
+    if entry.prepared is not None:
+        command = entry.prepared.command(command)
 
     def held(native: NativeIdentity) -> bool:
         journal.held(attempt_id, supervisor_id, native)
+        if resources is not None and entry.prepared is not None:
+            resources.verify_held(entry, entry.prepared.machine_claim_id)
         return journal.authorize_release(attempt_id, supervisor_id)
 
     def released(_: str) -> None:
@@ -73,6 +90,7 @@ def run_attempt(journal: WorkerJournal, attempt_id: str) -> JournalEntry:
             on_held=held,
             on_released=released,
             cancelled=lambda: journal.get(attempt_id).cancel_requested,
+            environment=environment,
         )
         _save_outcome(root, outcome)
         return journal.record_outcome(attempt_id, supervisor_id, outcome)

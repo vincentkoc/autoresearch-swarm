@@ -16,6 +16,7 @@ from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
 from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord, utc_now
 from research_swarm.workers.authority import VerifiedDispatch
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, NativeOutcome
+from research_swarm.workers.prepared import PreparedExecution
 
 
 class JournalState(StrEnum):
@@ -33,6 +34,7 @@ class JournalEntry(VersionedRecord):
     dispatch: DispatchEnvelope
     spec: ExperimentSpec
     command: NativeCommand
+    prepared: PreparedExecution | None = None
     revision: Revision = 1
     state: JournalState = JournalState.RECEIVED
     supervisor_id: ID | None = None
@@ -124,7 +126,13 @@ class WorkerJournal:
             (entry.dispatch.attempt_id, event_type, entry.model_dump_json()),
         )
 
-    def receive(self, verified: VerifiedDispatch, command: NativeCommand) -> JournalEntry:
+    def receive(
+        self,
+        verified: VerifiedDispatch,
+        command: NativeCommand,
+        *,
+        prepared: PreparedExecution | None = None,
+    ) -> JournalEntry:
         verified.spec.verify()
         command = NativeCommand.model_validate(command)
         stage = next(
@@ -134,13 +142,19 @@ class WorkerJournal:
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED, "Invocation exceeds its stage grant"
             )
-        entry = JournalEntry(dispatch=verified.envelope, spec=verified.spec, command=command)
+        if prepared is not None:
+            prepared = PreparedExecution.model_validate(prepared)
+            prepared.verify(verified.envelope, verified.spec)
+        entry = JournalEntry(
+            dispatch=verified.envelope, spec=verified.spec, command=command, prepared=prepared
+        )
         digest = record_digest(
             "research.worker-input",
             {
                 "dispatch": entry.dispatch.model_dump(mode="json"),
                 "spec": entry.spec.model_dump(mode="json"),
                 "command": command.model_dump(mode="json"),
+                **({"prepared": prepared.model_dump(mode="json")} if prepared is not None else {}),
             },
         )
         with self._transaction() as connection:
@@ -205,6 +219,24 @@ class WorkerJournal:
             )
 
         return self._change(attempt_id, "launch.claimed", claim)
+
+    def settle_unstarted(self, attempt_id: str) -> JournalEntry:
+        """Cancellation and expiry can close an unreleased grant even if preparation is damaged."""
+
+        def settle(entry: JournalEntry) -> JournalEntry:
+            if entry.state == JournalState.RECEIVED and (
+                entry.cancel_requested
+                or min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
+            ):
+                return entry.model_copy(
+                    update={
+                        "state": JournalState.NOT_STARTED,
+                        "finding": "Cancelled or expired before launch",
+                    }
+                )
+            return entry
+
+        return self._change(attempt_id, "launch.settled_unstarted", settle)
 
     @staticmethod
     def _owner(entry: JournalEntry, supervisor_id: str) -> None:

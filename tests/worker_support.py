@@ -23,10 +23,12 @@ from research_swarm.workers.contracts import NativeCommand
 
 
 def dispatch(
-    tmp_path: Path, code: str = "print('workload')"
+    tmp_path: Path, code: str = "print('workload')", *, stage: StageSpec | None = None
 ) -> tuple[VerifiedDispatch, NativeCommand]:
     digest = content_digest(b"synthetic")
-    stage = StageSpec(id="train", kind="train", argv=(sys.executable, "-c", code), timeout_ms=4000)
+    stage = stage or StageSpec(
+        id="train", kind="train", argv=(sys.executable, "-c", code), timeout_ms=4000
+    )
     spec = ExperimentSpec(
         workspace_id=new_id(),
         project_id=new_id(),
@@ -72,5 +74,7 @@ def dispatch(
     key = b"synthetic-test-authority-key-32-bytes"
     envelope = authorize_dispatch(envelope, key)
     verified = DispatchVerifier(binding, key).verify(envelope, spec)
-    command = NativeCommand(argv=stage.argv, cwd=str(tmp_path), timeout_ms=4000, grace_ms=100)
+    command = NativeCommand(
+        argv=stage.argv, cwd=str(tmp_path), timeout_ms=stage.timeout_ms, grace_ms=100
+    )
     return verified, command
