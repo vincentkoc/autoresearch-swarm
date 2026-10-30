@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add optional CPU, PyTorch CUDA/ROCm/MPS, and MLX Metal environment probes without importing or installing frameworks in the controller.
+- Register selected interpreters and authorized environment contracts privately, verify observed drift, and expose JSON CLI discovery, probe, registration, and verification commands.
+- Separate physical device identity from framework profiles and label environment observations independently from lock, workload, and scientific qualification.
 - Add an outbound scoped HTTP worker driver and `research worker start`, with persistent polling, bounded backoff, and a one-pass drain mode.
 - Recover durable command intents and native journals before new admission, refill available slots asynchronously, and preserve worker ownership through cancelled HTTP calls and native drains.
 - Fence new execution behind observed uncertainty, retain claims accepted during an in-flight failure, and reconcile late publication independently of slower active attempts.

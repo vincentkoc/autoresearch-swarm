@@ -36,6 +36,8 @@ Run the original CPU example with `uv run research run examples/cpu_bigram`.
 See [local runs](docs/local-runs.md) for resume, budgets, and agent control.
 See [remote workers](docs/remote-workers.md) for explicit CPU enrollment, pinned
 HTTP connections, and persistent asynchronous execution.
+See [engine profiles](docs/engines.md) for bounded CPU, PyTorch, and MLX environment
+probes and explicit private registrations. Accelerator worker qualification remains separate.
 
 See the [implementation ledger](docs/implementation.md) for qualification status,
 the [design](docs/design.md) for the complete contract, and

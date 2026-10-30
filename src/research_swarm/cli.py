@@ -30,6 +30,35 @@ def parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765)
     commands.add_parser("mcp", help="Expose typed agent tools over stdio")
     commands.add_parser("capabilities")
+    engine = commands.add_parser("engine", help="Inspect and register local execution environments")
+    engines = engine.add_subparsers(dest="engine_action", required=True)
+    engines.add_parser("list")
+    for operation in ("probe", "register"):
+        entry = engines.add_parser(operation)
+        entry.add_argument("profile")
+        entry.add_argument("--python", type=Path)
+        entry.add_argument("--device-index", type=int, default=0)
+        entry.add_argument("--probe-dir", type=Path)
+    probe = engines.choices["probe"]
+    probe.add_argument("--timeout-ms", type=int, default=15000)
+    registration = engines.choices["register"]
+    registration.add_argument("--file", type=Path, required=True)
+    registration.add_argument("--environment-contract", action="append", required=True)
+    registration.add_argument("--cpu-slots", type=int, default=1)
+    registration.add_argument("--memory-bytes", type=int, default=0)
+    registration.add_argument("--scratch-bytes", type=int, default=0)
+    registration.add_argument(
+        "--precision",
+        choices=("project_declared", "fp32", "fp16", "bf16"),
+        default="project_declared",
+    )
+    registration.add_argument(
+        "--compilation",
+        choices=("project_declared", "eager", "cold", "warm"),
+        default="project_declared",
+    )
+    verification = engines.add_parser("verify")
+    verification.add_argument("--file", type=Path, required=True)
     run = commands.add_parser(
         "run", help="Freeze a project, execute its baseline, and expose agent control"
     )
@@ -242,7 +271,55 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    result: Any
     try:
+        if args.action == "engine":
+            if args.controller or args.token_file or args.state_dir:
+                raise ValueError(
+                    "Engine registration is a local operation without controller state"
+                )
+            from research_swarm.engines import ENGINE_DEFINITIONS, probe_engine
+            from research_swarm.engines.registration import (
+                ExecutionPolicy,
+                read_registration,
+                register_environment,
+                verify_registration,
+            )
+
+            if args.engine_action == "list":
+                result = {"profiles": [item.model_dump(mode="json") for item in ENGINE_DEFINITIONS]}
+            elif args.engine_action == "probe":
+                observation = probe_engine(
+                    args.profile,
+                    executable=args.python,
+                    device_index=args.device_index,
+                    timeout_ms=args.timeout_ms,
+                    probe_directory=args.probe_dir,
+                )
+                print(canonical_bytes(observation.model_dump(mode="json")).decode("utf-8"))
+                return 0 if observation.status == "available" else 3
+            else:
+                if args.engine_action == "register":
+                    registered = register_environment(
+                        args.file,
+                        profile=args.profile,
+                        executable=args.python,
+                        device_index=args.device_index,
+                        probe_directory=args.probe_dir,
+                        cpu_slots=args.cpu_slots,
+                        memory_bytes=args.memory_bytes,
+                        scratch_bytes=args.scratch_bytes,
+                        environment_contracts=tuple(args.environment_contract),
+                        policy=ExecutionPolicy(
+                            precision=args.precision, compilation=args.compilation
+                        ),
+                    )
+                else:
+                    registered = read_registration(args.file)
+                    verify_registration(registered)
+                result = registered.public_description()
+            print(canonical_bytes(result).decode("utf-8"))
+            return 0
         if args.action == "worker" and args.worker_action in {"describe", "connect", "start"}:
             from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
 
