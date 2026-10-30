@@ -537,3 +537,12 @@ stops at the authoritative target, exhausted allowance, or lifecycle boundary.
 Review-required evidence is never automatically abandoned. The driver neither
 calls an LLM nor starts a worker: external agents, `EvaluationDriver`, and
 independent workers continue to use their own scoped credentials.
+
+The native portfolio integration test runs two registered HTTP CPU workers with
+one shared two-slot resource registry and a separate evaluator principal. A
+workload-created gate keeps candidate A alive while B completes, is evaluated,
+and promotes. Candidate C then starts from B before A is released. The test
+checks original native identities, independent receipts, source digests,
+ancestry, single attempts, policy consumption, final closure, and restored
+capacity. Gates precede active training; this demonstrates asynchronous native
+workload overlap, not concurrent training throughput or physical fleet scaling.

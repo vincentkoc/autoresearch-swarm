@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Qualify asynchronous portfolio progress with two registered HTTP CPU workers sharing native capacity: a third candidate enters its workload while the original candidate remains alive, after an independently evaluated sibling promotes.
+- Verify original process identity, distinct source lineage, separate evaluator authority, accepted closure, exact attempt counts, and restored shared capacity in the native integration test.
+
 - Advance sealed portfolios through the shared API and CLI without a generation barrier; refill free slots while unresolved siblings retain their own custody.
 - Recover the durable selection owner, preserve old-parent trial ancestry, and cancel superseded pending proposals without erasing late responses or consumed request costs.
 - Bound plural evidence reads, recheck controller/search revisions, and keep greedy command identities stable through shared pure planning primitives.

@@ -38,6 +38,7 @@ class Pipeline:
     worker: LocalWorker
     campaign: dict[str, Any]
     trial: dict[str, Any]
+    source: Path
 
     def ready(self) -> dict[str, Any]:
         return self.client.list(
@@ -55,7 +56,13 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     campaign_options = {"limits": LIMITS, **(options if isinstance(options, dict) else {})}
     learning_rate = campaign_options.pop("source_learning_rate", None)
     finish_delay = campaign_options.pop("source_finish_delay", None)
-    if parallel_stage or learning_rate is not None or finish_delay is not None:
+    train_timeout = campaign_options.pop("source_train_timeout_ms", None)
+    if (
+        parallel_stage
+        or learning_rate is not None
+        or finish_delay is not None
+        or train_timeout is not None
+    ):
         copied = tmp_path / "parallel-source"
         shutil.copytree(source, copied)
         source = copied
@@ -79,6 +86,14 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
         manifest.write_text(
             manifest.read_text(encoding="utf-8") + '\n[[stages]]\nid = "probe"\nkind = "smoke"\n'
             'argv = ["python", "-c", "raise SystemExit(1)"]\ntimeout_ms = 1000\n',
+            encoding="utf-8",
+        )
+    if train_timeout is not None:
+        manifest = source / "research.toml"
+        content = manifest.read_text(encoding="utf-8")
+        assert content.count("timeout_ms = 10000") == 2
+        manifest.write_text(
+            content.replace("timeout_ms = 10000", f"timeout_ms = {train_timeout}", 1),
             encoding="utf-8",
         )
     registered = client.register_project(source, idempotency_key="source")["result"]
@@ -160,7 +175,7 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
         root=tmp_path / "worker",
         machine_registry=tmp_path / "machine" / "resources.sqlite",
     )
-    return Pipeline(client, runtime, worker, campaign, submitted)
+    return Pipeline(client, runtime, worker, campaign, submitted, source)
 
 
 def test_registered_local_worker_executes_stage_graph_and_settles_each_attempt(
