@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Authorize evaluation inputs, seeds, panels, and evaluator identities before worker admission.
+- Derive authenticated receipts from accepted native reports and preserve incomplete or invalid evidence.
+- Advertise supplementary command scopes and publish bounded controller metadata through resumable artifact storage.
 - Execute registered CPU stage graphs through durable preparation, native supervision, and verified artifact publication.
 - Accept worker observations against their original grants, settle each attempt once, and advance stage dependencies.
 - Preserve uncertain execution, retry interrupted publication without relaunch, and distinguish unstarted work from failed execution.

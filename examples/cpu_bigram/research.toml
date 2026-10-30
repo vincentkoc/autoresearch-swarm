@@ -24,6 +24,7 @@ manifest_path = "dataset.json"
 protected_paths = ["common.py", "evaluate.py"]
 comparison_class = "cpu-bigram-synthetic-v1"
 measurement_trust = "authenticated"
+expected_members = ["synthetic-validation-v1"]
 
 [[evaluation.metrics]]
 name = "val_bpb"

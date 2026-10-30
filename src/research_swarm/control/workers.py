@@ -98,6 +98,7 @@ class AttemptData(VersionedRecord):
     inputs: dict[Name, ArtifactRef]
     source_artifact: ArtifactRef
     source_tree_digest: Digest
+    evaluation_request_id: ID | None = None
     outcome_artifact: ArtifactRef | None = None
     report_artifact: ArtifactRef | None = None
     result_digest: Digest | None = None
@@ -310,6 +311,7 @@ class WorkerControl:
                     inputs=inputs,
                     source_artifact=source,
                     source_tree_digest=trial.spec.source.tree_digest,
+                    evaluation_request_id=job.evaluation_request_id,
                 ).model_dump(mode="json"),
                 state="reserved",
                 campaign_id=row["campaign_id"],

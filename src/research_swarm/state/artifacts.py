@@ -18,6 +18,7 @@ from research_swarm.domain.artifacts import (
     StoredBlob,
     UploadSpec,
 )
+from research_swarm.domain.canonical import content_digest, record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
@@ -368,6 +369,51 @@ class ArtifactService:
     def get(self, context: CommandContext, artifact_id: str) -> ArtifactRecord:
         row = self.database.read_record(context, "artifact", artifact_id)
         return ArtifactRecord.model_validate(row["data"])
+
+    def publish_bytes(
+        self,
+        context: CommandContext,
+        content: bytes,
+        *,
+        purpose: str,
+        media_type: str = "application/json",
+    ) -> ArtifactRef:
+        """Publish bounded controller-generated metadata through the ordinary upload lifecycle."""
+        if len(content) > 1024 * 1024:
+            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Inline artifact exceeds 1 MiB")
+        key = record_digest(
+            "research.inline-transfer",
+            {
+                "parent_key": context.idempotency_key,
+                "purpose": purpose,
+            },
+        ).removeprefix("sha256:")
+        begin = self._internal(context, "inline-begin:" + key)
+        finish = self._internal(context, "inline-finish:" + key)
+        upload = self.begin_upload(
+            begin,
+            BeginUpload(
+                digest=content_digest(content),
+                size_bytes=len(content),
+                media_type=media_type,
+            ),
+        )["result"]
+        status = self.upload_status(context, upload["id"])
+        if status["state"] == "pending" and not status["transfer"]["published"]:
+            offset = status["transfer"]["received_bytes"]
+            if offset < len(content):
+                try:
+                    self.upload_part(context, upload["id"], offset, content[offset:])
+                except ResearchError as error:
+                    if error.code not in {ErrorCode.NOT_FOUND, ErrorCode.INVALID_TRANSITION}:
+                        raise
+                    current = self.upload_status(context, upload["id"])
+                    if current["state"] not in {"finalized", "cleanup"} and not (
+                        current["state"] == "pending" and current["transfer"]["published"]
+                    ):
+                        raise
+        row = self.finalize_upload(finish, upload["id"])["result"]
+        return ArtifactRecord.model_validate(row["data"]).reference
 
     def retain(self, context: CommandContext, retention: ArtifactRetention) -> JsonObject:
         if retention.owner_kind.startswith("artifact_"):

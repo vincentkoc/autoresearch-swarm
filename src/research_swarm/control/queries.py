@@ -119,6 +119,32 @@ def summarize(row: JsonObject) -> JsonObject:
             "finding": data["finding"],
             "execution_fingerprint": data["profile"]["execution_fingerprint"],
         }
+    elif row["kind"] == "evaluation_request":
+        request = data["request"]
+        result["data"] = {
+            "job_id": data["job_id"],
+            "receipt_id": data["receipt_id"],
+            "candidate_id": request["candidate_id"],
+            "evaluator_id": request["evaluator_id"],
+            "expected_seed": request["expected_seed"],
+            "panel_digest": request["panel_digest"],
+            "expected_member_count": len(request["expected_members"]),
+            "exposure_class": request["exposure_class"],
+            "measurement_trust": request["measurement_trust"],
+        }
+    elif row["kind"] == "evaluation_receipt":
+        receipt = data["receipt"]
+        result["data"] = {
+            "request_id": receipt["request_id"],
+            "attempt_id": data["attempt_id"],
+            "metrics": receipt["metrics"][:50],
+            "metric_count": len(receipt["metrics"]),
+            "validity": receipt["validity"],
+            "findings": receipt["findings"][:20],
+            "observed_seed": receipt["observed_seed"],
+            "panel_digest": receipt["panel_digest"],
+            "execution_fingerprint": receipt["execution_fingerprint"],
+        }
     else:
         result["data"] = {"detail_available": True}
     return result

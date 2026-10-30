@@ -15,6 +15,7 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
+from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
 from research_swarm.control.workers import ClaimJob, EnrollWorker
@@ -31,9 +32,26 @@ class CommandDefinition:
     scope: str
     expected_revision: bool
     description: str
+    additional_scopes: tuple[str, ...] = ()
 
 
 COMMANDS = {
+    "evaluation.authorize": CommandDefinition(
+        AuthorizeEvaluation,
+        "authorize_evaluation",
+        "evaluation.request",
+        True,
+        "Authorize an evaluator, input set, seed, and panel before evaluation executes.",
+        ("read", "artifact.upload"),
+    ),
+    "evaluation.complete": CommandDefinition(
+        CompleteEvaluation,
+        "complete_evaluation",
+        "evaluation.publish",
+        False,
+        "Record an evaluator receipt from the authorized native report, without supplied metrics.",
+        ("read",),
+    ),
     "worker.publish_attempt": CommandDefinition(
         PublishAttempt,
         "publish_attempt",
@@ -121,6 +139,8 @@ def dispatch_command(
     if definition is None:
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Unknown research command")
     context.principal.require(definition.scope)
+    for scope in definition.additional_scopes:
+        context.principal.require(scope)
     try:
         request = definition.request.model_validate(payload)
     except ValidationError as error:
@@ -140,12 +160,14 @@ def capabilities() -> JsonObject:
             operation: {
                 "description": definition.description,
                 "scope": definition.scope,
+                "required_scopes": [definition.scope, *definition.additional_scopes],
                 "expected_revision": definition.expected_revision,
                 "request_schema": definition.request.model_json_schema(),
             }
             for operation, definition in COMMANDS.items()
         },
         "queries": ["get", "list", "context", "budget", "events"],
-        "execution": "worker_integration_pending",
-        "drivers": {"local": "control_only", "temporal": "pending", "cloudflare": "pending"},
+        "execution": "registered_worker_required",
+        "evaluation": "authenticated_receipts",
+        "drivers": {"local": "explicit_worker", "temporal": "pending", "cloudflare": "pending"},
     }

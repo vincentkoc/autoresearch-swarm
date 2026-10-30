@@ -11,7 +11,7 @@ from pydantic import Field, field_validator, model_validator
 
 from research_swarm.domain.canonical import content_digest, record_digest
 from research_swarm.domain.experiments import MetricDefinition, StageSpec, validate_stage_graph
-from research_swarm.domain.types import Digest, Milliseconds, Name, VersionedRecord
+from research_swarm.domain.types import Digest, Milliseconds, Name, StringSet, VersionedRecord
 from research_swarm.projects.source import (
     MutationPolicy,
     SourceManifest,
@@ -62,6 +62,7 @@ class EvaluatorContract(VersionedRecord):
     metrics: tuple[MetricDefinition, ...] = Field(min_length=1)
     comparison_class: Name
     measurement_trust: Literal["self_reported", "authenticated", "protected"] = "authenticated"
+    expected_members: StringSet | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @field_validator("protected_paths")
     @classmethod

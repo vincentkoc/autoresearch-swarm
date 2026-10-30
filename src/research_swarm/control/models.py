@@ -136,4 +136,5 @@ class JobData(VersionedRecord):
     input_sources: dict[Name, ID] = Field(default_factory=dict)
     inputs: dict[Name, ArtifactRef] = Field(default_factory=dict)
     current_attempt_id: ID | None = None
+    evaluation_request_id: ID | None = None
     outputs: dict[Name, ArtifactRef] = Field(default_factory=dict)

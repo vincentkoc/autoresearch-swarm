@@ -14,6 +14,11 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
+from research_swarm.control.evaluations import (
+    AuthorizeEvaluation,
+    CompleteEvaluation,
+    EvaluationControl,
+)
 from research_swarm.control.models import (
     CampaignContract,
     CampaignData,
@@ -102,6 +107,7 @@ class ResearchService:
         self.artifacts = artifacts
         self.workers = WorkerControl(database, dispatch_key) if dispatch_key is not None else None
         self.results = ResultControl(database, artifacts)
+        self.evaluations = EvaluationControl(database, artifacts)
 
     def enroll_worker(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         if self.workers is None:
@@ -119,6 +125,16 @@ class ResearchService:
 
     def publish_attempt(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         return self.results.publish(context, request)
+
+    def authorize_evaluation(
+        self, context: CommandContext, request: AuthorizeEvaluation
+    ) -> JsonObject:
+        return self.evaluations.authorize(context, request)
+
+    def complete_evaluation(
+        self, context: CommandContext, request: CompleteEvaluation
+    ) -> JsonObject:
+        return self.evaluations.complete(context, request)
 
     def _execute(
         self,
