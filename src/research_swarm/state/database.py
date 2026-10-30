@@ -375,9 +375,16 @@ class Database:
                 if previous is not None:
                     response = previous
                 else:
+                    from research_swarm.state.drive_guard import require_reserved_command_key
+
+                    require_reserved_command_key(Transaction(connection, context), request_digest)
                     connection.execute("SAVEPOINT domain_operation")
                     try:
-                        result = handler(Transaction(connection, context))
+                        from research_swarm.state.drive_guard import require_drive_authority
+
+                        transaction = Transaction(connection, context)
+                        require_drive_authority(transaction, operation, payload, request_digest)
+                        result = handler(transaction)
                         response = {
                             "command_id": context.command_id,
                             "disposition": "accepted",

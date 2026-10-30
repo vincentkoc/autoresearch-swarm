@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Persist single-command orchestration turns with dedicated control/evaluator routes, deterministic ordinals, exact action keys, and authoritative acknowledgment receipts.
+- Recover accepted or rejected actions across controller gaps without replanning; enforce driver fencing inside target transactions while preserving original acknowledgments and owned read-pin cleanup.
+- Protect reserved action keys and physical artifact staging from bare driver calls, and provide an API-only synchronous/async turn driver for future provider adapters.
+
 - Add agent-accessible child creation, unstarted-child cancellation, and replayable funding settlement through the shared API, SDK, CLI, and MCP command registry.
 - Inherit the parent's frozen project, evaluator, data inputs, promotion contract, and stopping constraints; enforce bounded depth, cumulative child/trial counters, and pending-proposal allowance across descendants.
 - Close allocations atomically with final reports, preserve funds while native work remains unknown, and expose bounded funding context without double-counting descendant costs.

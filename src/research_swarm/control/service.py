@@ -52,6 +52,13 @@ from research_swarm.control.observation_models import (
     ResolveTrialObservation,
     SelectTrialObservation,
 )
+from research_swarm.control.orchestration import OrchestrationControl
+from research_swarm.control.orchestration_models import (
+    BindOrchestration,
+    DriveTurnTarget,
+    FenceOrchestration,
+    PrepareDriveTurn,
+)
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
     AssessPromotion,
@@ -178,7 +185,32 @@ class ResearchService:
         self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
         self.children = ChildControl(database, self._create_campaign, self._validate_contract)
+        self.orchestration = OrchestrationControl(database, self._dispatch_drive)
         self.worker_lifecycle = WorkerLifecycle(database)
+
+    def _dispatch_drive(
+        self, context: CommandContext, operation: str, payload: JsonObject
+    ) -> JsonObject:
+        from research_swarm.control.dispatch import dispatch_command
+
+        return dispatch_command(self, context, operation, payload)
+
+    def bind_orchestration(self, context: CommandContext, intent: BindOrchestration) -> JsonObject:
+        return self.orchestration.bind(context, intent)
+
+    def prepare_drive_turn(self, context: CommandContext, intent: PrepareDriveTurn) -> JsonObject:
+        return self.orchestration.prepare(context, intent)
+
+    def execute_drive_turn(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
+        return self.orchestration.execute(context, intent)
+
+    def reconcile_drive_turn(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
+        return self.orchestration.reconcile(context, intent)
+
+    def fence_orchestration(
+        self, context: CommandContext, intent: FenceOrchestration
+    ) -> JsonObject:
+        return self.orchestration.fence(context, intent)
 
     def create_child_campaign(
         self, context: CommandContext, request: CreateChildCampaign

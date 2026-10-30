@@ -30,6 +30,12 @@ from research_swarm.control.observation_models import (
     ResolveTrialObservation,
     SelectTrialObservation,
 )
+from research_swarm.control.orchestration_models import (
+    BindOrchestration,
+    DriveTurnTarget,
+    FenceOrchestration,
+    PrepareDriveTurn,
+)
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
@@ -70,6 +76,41 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "orchestration.bind": CommandDefinition(
+        BindOrchestration,
+        "bind_orchestration",
+        "orchestration.manage",
+        True,
+        "Assign dedicated driver actors without changing native worker authority.",
+    ),
+    "orchestration.prepare_turn": CommandDefinition(
+        PrepareDriveTurn,
+        "prepare_drive_turn",
+        "orchestration.drive",
+        True,
+        "Persist one exact action and ordinal before any delivery.",
+    ),
+    "orchestration.execute_turn": CommandDefinition(
+        DriveTurnTarget,
+        "execute_drive_turn",
+        "orchestration.drive",
+        False,
+        "Execute or recover the original saved action under its authenticated route.",
+    ),
+    "orchestration.reconcile_turn": CommandDefinition(
+        DriveTurnTarget,
+        "reconcile_drive_turn",
+        "orchestration.drive",
+        False,
+        "Close a turn only from its authoritative target command acknowledgment.",
+    ),
+    "orchestration.fence": CommandDefinition(
+        FenceOrchestration,
+        "fence_orchestration",
+        "orchestration.manage",
+        True,
+        "Stop new driver effects while preserving native work and prior acknowledgments.",
+    ),
     "search.abandon_selection": CommandDefinition(
         AbandonObservationSelection,
         "abandon_search_selection",

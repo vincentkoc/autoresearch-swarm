@@ -21,7 +21,7 @@ from research_swarm.domain.artifacts import (
 from research_swarm.domain.canonical import content_digest, record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.identity import CommandContext, artifact_context
 from research_swarm.domain.types import (
     ByteCount,
     Digest,
@@ -153,12 +153,27 @@ class ArtifactService:
         return upload
 
     @staticmethod
-    def _internal(context: CommandContext, key: str) -> CommandContext:
-        return CommandContext(principal=context.principal, idempotency_key=key)
+    def _internal(
+        context: CommandContext,
+        key: str,
+        operation: str,
+        payload: JsonObject,
+        *,
+        cleanup_pin_id: str | None = None,
+    ) -> CommandContext:
+        return artifact_context(context, key, operation, payload, cleanup_pin_id=cleanup_pin_id)
 
     @staticmethod
     def _blob(record: ArtifactRecord) -> StoredBlob:
         return StoredBlob(reference=record.reference, generation=record.storage_generation)
+
+    def _storage_authority(self, context: CommandContext, upload_id: str) -> None:
+        from research_swarm.state.drive_guard import require_storage_authority
+
+        with self.database.connect() as connection:
+            connection.execute("BEGIN")
+            require_storage_authority(Transaction(connection, context), upload_id)
+            connection.commit()
 
     def create_upload_in(self, transaction: Transaction, request: BeginUpload) -> JsonObject:
         """Create quota-accounted upload state inside the caller's authorized transaction."""
@@ -205,6 +220,7 @@ class ArtifactService:
         with self.store.upload_guard(context.principal.workspace_id, response["result"]["id"]):
             row = self.database.read_record(context, "upload", response["result"]["id"])
             if row["state"] == "pending":
+                self._storage_authority(context, response["result"]["id"])
                 self.store.begin(self._upload_owner(context, row))
         return response
 
@@ -224,6 +240,7 @@ class ArtifactService:
         upload = self._upload_owner(context, row)
         if row["state"] != "pending":
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload is not pending")
+        self._storage_authority(context, upload_id)
         return self.store.append(upload, offset, content)
 
     def upload_status(self, context: CommandContext, upload_id: str) -> JsonObject:
@@ -309,6 +326,7 @@ class ArtifactService:
         if row["state"] in {"aborted", "aborting"}:
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload was aborted")
         if row["state"] == "pending":
+            self._storage_authority(context, upload_id)
             blob = self.store.finalize(upload)
         else:
             blob = StoredBlob(reference=upload.reference(), generation=upload.id)
@@ -346,7 +364,12 @@ class ArtifactService:
             return updated
 
         self.database.execute(
-            self._internal(context, f"upload-{after}:{upload_id}"),
+            self._internal(
+                context,
+                f"upload-{after}:{upload_id}",
+                "artifact.finish_upload",
+                {"upload_id": upload_id, "state": after},
+            ),
             "artifact.finish_upload",
             {"upload_id": upload_id, "state": after},
             "artifact.upload",
@@ -417,15 +440,15 @@ class ArtifactService:
                 "purpose": purpose,
             },
         ).removeprefix("sha256:")
-        begin = self._internal(context, "inline-begin:" + key)
-        finish = self._internal(context, "inline-finish:" + key)
+        request = BeginUpload(
+            digest=content_digest(content), size_bytes=len(content), media_type=media_type
+        )
+        begin = self._internal(
+            context, "inline-begin:" + key, "artifact.begin_upload", request.model_dump(mode="json")
+        )
         upload = self.begin_upload(
             begin,
-            BeginUpload(
-                digest=content_digest(content),
-                size_bytes=len(content),
-                media_type=media_type,
-            ),
+            request,
         )["result"]
         status = self.upload_status(context, upload["id"])
         if status["state"] == "pending" and not status["transfer"]["published"]:
@@ -441,6 +464,9 @@ class ArtifactService:
                         current["state"] == "pending" and current["transfer"]["published"]
                     ):
                         raise
+        finish = self._internal(
+            context, "inline-finish:" + key, "artifact.finalize_upload", {"upload_id": upload["id"]}
+        )
         row = self.finalize_upload(finish, upload["id"])["result"]
         return ArtifactRecord.model_validate(row["data"]).reference
 
@@ -517,7 +543,12 @@ class ArtifactService:
             return {"retention": retained, "artifact": record.model_dump(mode="json")}
 
         response = self.database.execute(
-            self._internal(context, "pin:" + pin_id),
+            self._internal(
+                context,
+                "pin:" + pin_id,
+                "artifact.pin",
+                {"reference": reference.model_dump(mode="json")},
+            ),
             "artifact.pin",
             {"reference": reference.model_dump(mode="json")},
             scope,
@@ -529,7 +560,13 @@ class ArtifactService:
             yield record
         finally:
             self.database.execute(
-                self._internal(context, "unpin:" + pin_id),
+                self._internal(
+                    context,
+                    "unpin:" + pin_id,
+                    "artifact.unpin",
+                    {"reference_id": response["result"]["retention"]["id"]},
+                    cleanup_pin_id=pin_id,
+                ),
                 "artifact.unpin",
                 {"reference_id": response["result"]["retention"]["id"]},
                 scope,
@@ -679,7 +716,12 @@ class ArtifactService:
             return updated
 
         self.database.execute(
-            self._internal(context, "finish-delete:" + str(record.deletion_id)),
+            self._internal(
+                context,
+                "finish-delete:" + str(record.deletion_id),
+                "artifact.finish_deletion",
+                {"record": record.model_dump(mode="json")},
+            ),
             "artifact.finish_deletion",
             {"record": record.model_dump(mode="json")},
             "artifact.delete",

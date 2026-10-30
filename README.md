@@ -31,6 +31,8 @@ See [agent control](docs/agent-control.md), the [Python SDK](docs/sdk.md), and
 the [HTTP API](docs/api.md) for their contracts.
 See [evaluation authority](docs/evaluation.md) for the boundary between measurements and receipts.
 See [campaign control](docs/campaigns.md) for pause, completion, and evidence reports.
+See [durable orchestration](docs/orchestration.md) for saved action retries and
+dedicated driver ownership without changing worker custody.
 
 Run the original CPU example with `uv run research run examples/cpu_bigram`.
 See [local runs](docs/local-runs.md) for resume, budgets, and agent control.

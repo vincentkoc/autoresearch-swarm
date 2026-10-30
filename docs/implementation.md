@@ -54,6 +54,7 @@ not implicitly supported.
 | Hierarchical allocation ledger | Immutable grants, bounded lineage, live ancestor accounting, deficit admission guard, projection receipts and terminal settlement | Independent SQLite races, uncertainty, committed overshoot, sibling blocking, recursive release, replay/reopen, rollback and exact decimals | Public child lifecycle and real CPU child execution locally verified |
 | Nested campaigns and policy benchmark | Funded child API, inherited contracts, bounded depth and admission counters, final settlement reports | HTTP creation, CLI cancellation, real CPU descendants, counter/pending-promise conflicts, confirmation rollback, UNKNOWN closure and completion rollback | Local funded recursion verified; policy benchmark and held-out comparison pending |
 | Temporal | Pending | Pending | Real server pending |
+| Durable orchestration turns | Initial bindings, dedicated routes, exact single-action turns, transaction fences, acknowledgment reconciliation and API-only runner | Independent runner races, HTTP/runtime recovery, real bound evaluation/admission, preflight uncertainty, key collisions, staging guards and owned-pin cleanup | Local turn conformance; durable waits, ownership transfer and provider execution pending |
 | Cloudflare | Pending | Pending | Hosted deployment pending |
 | Actual reward-driven policy learning | Pending | Pending | Training/evaluation pending |
 | Optional UI | Pending | Pending | Browser workflow pending |
@@ -79,7 +80,7 @@ transport, process, or provider behavior.
 - **C06** — Result arrives twice. Pending end-to-end evidence.
 - **C07** — Old worker session publishes after a new fence. Pending end-to-end evidence.
 - **C08** — Lease expires while the child still runs. Pending end-to-end evidence.
-- **C09** — Workflow times out after dispatch. Pending end-to-end evidence.
+- **C09** — A saved single-command turn recovers the original target acknowledgment after a controller/receipt gap without invoking its planner again. Native attempts remain independently owned. Provider Workflow timeout/retry qualification remains pending.
 - **C10** — Cancellation is requested for an offline worker. Pending end-to-end evidence.
 - **C11** — Worker reconnects after controller restart. Pending end-to-end evidence.
 - **C12** — Artifact upload succeeds but result commit fails. Local CPU pipeline recovers publication without re-execution or duplicate settlement; remote-provider proof pending.
@@ -95,7 +96,7 @@ transport, process, or provider behavior.
 - **C22** — Seed changes between declared replicates. Pending end-to-end evidence.
 - **C23** — Evaluation returns an incomplete panel. Local pipeline records incomplete evidence and does not make it rankable.
 - **C24** — Protected evaluation times out after access. Pending end-to-end evidence.
-- **C25** — Adapter ownership changes. Pending end-to-end evidence.
+- **C25** — Dedicated driver principals are fenced inside domain write transactions; already accepted/rejected actions still reconcile, and no client-supplied fence can be omitted to gain direct write access. Initial binding/fencing is locally verified; reconciled checkpoint transfer to another adapter remains pending.
 - **C26** — Event cursor falls outside retained stream history. Pending end-to-end evidence.
 - **C27** — Worker lacks a required isolation feature. Pending end-to-end evidence.
 - **C28** — Process spawns a child and cancellation occurs. Pending end-to-end evidence.
