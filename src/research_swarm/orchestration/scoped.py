@@ -438,8 +438,15 @@ class ScopedWorkerDriver:
                         entry = self.worker.journal.get(identifier)
                         if (
                             result["state"]
-                            not in {"succeeded", "failed", "cancelled", "not_started"}
-                            or result["data"]["publication_status"] != "accepted"
+                            not in {
+                                "succeeded",
+                                "failed",
+                                "cancelled",
+                                "not_started",
+                                "closed_unaccepted",
+                            }
+                            or result["data"]["publication_status"]
+                            not in {"accepted", "closed_unaccepted"}
                             or entry.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}
                         ):
                             deferred[identifier] = ErrorCode.EXECUTION_UNKNOWN

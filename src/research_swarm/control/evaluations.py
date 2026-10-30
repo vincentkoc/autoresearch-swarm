@@ -157,6 +157,10 @@ class EvaluationControl:
                     ErrorCode.CAPABILITY_UNAVAILABLE,
                     "This evaluator trust profile is not qualified",
                 )
+            if trial.execution_outcome == "closed_unaccepted":
+                raise ResearchError(
+                    ErrorCode.COMPARISON_INELIGIBLE, "Trial was closed without acceptance"
+                )
             bound = bound_confirmation(transaction, trial)
             if intent.exposure_class == "confirmation" and bound is None:
                 raise ResearchError(
@@ -295,7 +299,9 @@ class EvaluationControl:
         trial_row = transaction.get("trial", request.trial_id)
         trial = TrialData.model_validate(trial_row["data"])
         if (
-            attempt_row["state"] != "succeeded"
+            trial.execution_outcome == "closed_unaccepted"
+            or attempt.publication_status != "accepted"
+            or attempt_row["state"] != "succeeded"
             or job_row["state"] != "succeeded"
             or job.current_attempt_id != intent.attempt_id
             or job.stage.kind != "evaluate"

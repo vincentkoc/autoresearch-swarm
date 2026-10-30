@@ -129,7 +129,9 @@ class TrialData(VersionedRecord):
     validation_id: ID
     spec: ExperimentSpec
     job_ids: tuple[ID, ...]
-    execution_outcome: Literal["pending", "succeeded", "failed", "cancelled", "unknown"] = "pending"
+    execution_outcome: Literal[
+        "pending", "succeeded", "failed", "cancelled", "unknown", "closed_unaccepted"
+    ] = "pending"
     evaluation_status: Literal["pending", "valid", "invalid", "incomplete"] = "pending"
     resource_status: Literal["unallocated", "active", "closed", "unknown"] = "unallocated"
     confirmation_plan_id: ID | None = None
@@ -137,6 +139,7 @@ class TrialData(VersionedRecord):
 
 
 class JobData(VersionedRecord):
+    stopping_reason: str | None = Field(default=None, exclude_if=lambda value: value is None)
     trial_id: ID
     stage: StageSpec
     predecessor_ids: tuple[ID, ...] = ()

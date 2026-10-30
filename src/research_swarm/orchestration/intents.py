@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -118,7 +119,9 @@ class CommandIntents:
         self._write(intent.model_copy(update={"state": "accepted"}))
         return reply
 
-    def recover(self) -> None:
+    def recover(
+        self, *, ignore_rejection: Callable[[CommandIntent, ResearchError], bool] | None = None
+    ) -> None:
         for path in sorted(self.root.glob("*.json")):
             if path.name == "identity.json":
                 continue
@@ -127,6 +130,8 @@ class CommandIntents:
                 try:
                     self._deliver(intent)
                 except ResearchError as error:
+                    if ignore_rejection is not None and ignore_rejection(intent, error):
+                        continue
                     if error.code not in {
                         ErrorCode.RESOURCE_UNAVAILABLE,
                         ErrorCode.REVISION_CONFLICT,

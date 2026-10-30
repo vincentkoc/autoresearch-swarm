@@ -189,6 +189,10 @@ class ResultControl:
         row = transaction.get("attempt", request.attempt_id)
         attempt = AttemptData.model_validate(row["data"])
         digest = record_digest("research.attempt-publication", request.model_dump(mode="json"))
+        if attempt.publication_status == "closed_unaccepted":
+            raise ResearchError(
+                ErrorCode.INVALID_TRANSITION, "Attempt was closed without acceptance"
+            )
         if attempt.publication_status == "accepted":
             if attempt.result_digest != digest:
                 raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Accepted observation changed")
@@ -261,7 +265,9 @@ class ResultControl:
                 data=trial.model_copy(
                     update={
                         "resource_status": "unknown",
-                        "execution_outcome": "unknown",
+                        "execution_outcome": "closed_unaccepted"
+                        if trial.execution_outcome == "closed_unaccepted"
+                        else "unknown",
                     }
                 ).model_dump(mode="json"),
             )
@@ -345,7 +351,34 @@ class ResultControl:
     @staticmethod
     def _advance_trial(transaction: Transaction, row: JsonObject, trial: TrialData) -> None:
         jobs = {identifier: transaction.get("job", identifier) for identifier in trial.job_ids}
-        pending = {identifier for identifier, job in jobs.items() if job["state"] == "blocked"}
+        withheld = trial.execution_outcome == "closed_unaccepted"
+        if withheld:
+            for identifier, job_row in jobs.items():
+                data = JobData.model_validate(job_row["data"])
+                if (
+                    job_row["state"] not in {"ready", "blocked"}
+                    or data.current_attempt_id is not None
+                ):
+                    continue
+                changed = transaction.update(
+                    "job",
+                    identifier,
+                    expected_revision=job_row["revision"],
+                    state="not_started",
+                    data=data.model_copy(
+                        update={"stopping_reason": "trial_closed_unaccepted"}
+                    ).model_dump(mode="json"),
+                )
+                jobs[identifier] = changed
+                release_unused_exposure(transaction, data)
+                transaction.event(
+                    "job.admission_stopped", changed, {"reason": "trial_closed_unaccepted"}
+                )
+        pending = (
+            set()
+            if withheld
+            else {identifier for identifier, job in jobs.items() if job["state"] == "blocked"}
+        )
         while pending:
             resolved = set()
             for identifier in sorted(pending):
@@ -375,10 +408,18 @@ class ResultControl:
                 break
             pending -= resolved
         states = {job["state"] for job in jobs.values()}
-        complete = states <= {"succeeded", "failed", "cancelled", "not_started"}
+        complete = states <= {
+            "succeeded",
+            "failed",
+            "cancelled",
+            "not_started",
+            "closed_unaccepted",
+        }
         unknown = "execution_unknown" in states
         execution = (
-            "succeeded"
+            "closed_unaccepted"
+            if withheld
+            else "succeeded"
             if states == {"succeeded"}
             else "failed"
             if complete

@@ -121,7 +121,7 @@ class CampaignControl:
                         ErrorCode.EXECUTION_UNKNOWN, "Campaign has uncertain execution"
                     )
                 if (
-                    item["state"] not in {"succeeded", "failed", "cancelled"}
+                    item["state"] not in {"succeeded", "failed", "cancelled", "closed_unaccepted"}
                     or trial.resource_status != "closed"
                 ):
                     raise ResearchError(

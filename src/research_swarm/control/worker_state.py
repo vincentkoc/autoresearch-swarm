@@ -33,7 +33,9 @@ class AttemptCancellation(CancellationDirective):
     requested_at: Timestamp
     acknowledged_at: Timestamp | None = None
     completed_at: Timestamp | None = None
-    attempt_outcome: Literal["succeeded", "failed", "cancelled", "not_started"] | None = None
+    attempt_outcome: (
+        Literal["succeeded", "failed", "cancelled", "not_started", "closed_unaccepted"] | None
+    ) = None
     resolution: Literal["cancelled", "not_started", "completed_without_cancellation"] | None = None
 
 
@@ -96,7 +98,12 @@ def admission_open(transaction: Transaction, binding: WorkerBinding) -> bool:
 
 
 def settle_cancellation(
-    transaction: Transaction, attempt_id: str, outcome: str, observed_at: str
+    transaction: Transaction,
+    attempt_id: str,
+    outcome: str,
+    observed_at: str,
+    *,
+    native_resolution: str | None = None,
 ) -> None:
     try:
         row = transaction.get("attempt_control", attempt_id)
@@ -105,13 +112,14 @@ def settle_cancellation(
             raise
         return
     data = AttemptCancellation.model_validate(row["data"])
+    disposition = native_resolution or outcome
     resolved = AttemptCancellation.model_validate(
         {
             **data.model_dump(mode="json"),
             "completed_at": observed_at,
             "attempt_outcome": outcome,
-            "resolution": outcome
-            if outcome in {"cancelled", "not_started"}
+            "resolution": disposition
+            if disposition in {"cancelled", "not_started"}
             else "completed_without_cancellation",
         }
     )

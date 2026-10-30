@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from research_swarm.control.campaigns import CampaignControl
+from research_swarm.control.closure import ClosureControl
 from research_swarm.control.commands import (
     CampaignTarget,
     CompleteCampaign,
@@ -150,6 +151,7 @@ class ResearchService:
         )
         self.results = ResultControl(database, artifacts)
         self.reconciliation = ReconciliationControl(database, self.results)
+        self.closures = ClosureControl(database, self.reconciliation)
         self.evaluations = EvaluationControl(database, artifacts)
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
@@ -163,6 +165,11 @@ class ResearchService:
 
     def reconcile_attempt(self, context: CommandContext, request: ReconcileAttempt) -> JsonObject:
         return self.reconciliation.reconcile(context, request)
+
+    def reconcile_attempt_closure(
+        self, context: CommandContext, request: ReconcileAttempt
+    ) -> JsonObject:
+        return self.closures.reconcile(context, request)
 
     def worker_heartbeat(self, context: CommandContext, request: WorkerHeartbeat) -> JsonObject:
         return self.worker_lifecycle.heartbeat(context, request)

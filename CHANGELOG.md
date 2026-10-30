@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add explicit native closure reconciliation with a final `closed_unaccepted` disposition, separate from execution acceptance and scientific eligibility.
+- Settle original costs and evaluation exposure despite unusable research outputs, stop undispatched successors, and preserve admitted sibling custody and terminal campaign history.
+- Keep nonacceptance sticky across sibling uncertainty and completion; resume local drivers without attempting forbidden evaluator receipts.
+
 - Add immutable quarantined attempt submissions and explicit operator reconciliation under current controller authority.
 - Validate ordinary and recovered observations through one contract, preserve original grants and digests, and settle costs once without issuing evaluator receipts.
 - Keep incomplete and invalid recovery evidence retained, separate operator permissions from worker credentials, and preserve exact acknowledgments across concurrent preflight failures and epoch changes.

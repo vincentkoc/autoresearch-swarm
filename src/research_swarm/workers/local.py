@@ -414,7 +414,7 @@ class LocalWorker:
         ):
             row = self._get("attempt", attempt_id)
             attempt = AttemptData.model_validate(row["data"])
-            if attempt.publication_status == "accepted":
+            if attempt.publication_status in {"accepted", "closed_unaccepted"}:
                 return row
             trial = TrialData.model_validate(self._get("trial", attempt.dispatch.trial_id)["data"])
             self._verify(attempt, trial)
@@ -562,6 +562,24 @@ class LocalWorker:
         )
 
     def _publish(self, entry: JournalEntry) -> dict[str, Any]:
+        try:
+            return self._publish_evidence(entry)
+        except ResearchError as error:
+            if error.code != ErrorCode.INVALID_TRANSITION or entry.state not in {
+                JournalState.CLOSED,
+                JournalState.NOT_STARTED,
+            }:
+                raise
+            row = self._get("attempt", entry.dispatch.attempt_id)
+            current = AttemptData.model_validate(row["data"])
+            if (
+                current.dispatch != entry.dispatch
+                or current.publication_status != "closed_unaccepted"
+            ):
+                raise
+            return row
+
+    def _publish_evidence(self, entry: JournalEntry) -> dict[str, Any]:
         attempt_id = entry.dispatch.attempt_id
         root = self.root / "work" / attempt_id
         journal_path = root / "observation.json"

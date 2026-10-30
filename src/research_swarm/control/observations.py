@@ -67,13 +67,24 @@ class ValidatedObservation:
     consumed: dict[str, Decimal]
 
 
-def validate_observation(
+@dataclass(frozen=True)
+class NativeObservation:
+    job_row: JsonObject
+    trial_row: JsonObject
+    job: JobData
+    trial: TrialData
+    not_started: bool
+    closed: bool
+    unknown: bool
+    consumed: dict[str, Decimal]
+
+
+def validate_native_observation(
     transaction: Transaction,
     request: PublishAttempt,
     journal: JournalEntry,
-    report: WorkloadReport | None,
     worker: WorkerData,
-) -> ValidatedObservation:
+) -> NativeObservation:
     attempt = AttemptData.model_validate(transaction.get("attempt", request.attempt_id)["data"])
     job_row = transaction.get("job", attempt.dispatch.job_id)
     job = JobData.model_validate(job_row["data"])
@@ -128,6 +139,25 @@ def validate_observation(
     unknown = journal.state == JournalState.UNKNOWN
     if not (not_started or closed or unknown):
         raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Observation lacks native closure")
+    consumed = {
+        "attempts": Decimal(0 if not_started else 1),
+        "execution_ms": Decimal(0 if outcome is None else outcome.elapsed_ms),
+    }
+    return NativeObservation(job_row, trial_row, job, trial, not_started, closed, unknown, consumed)
+
+
+def validate_observation(
+    transaction: Transaction,
+    request: PublishAttempt,
+    journal: JournalEntry,
+    report: WorkloadReport | None,
+    worker: WorkerData,
+) -> ValidatedObservation:
+    native = validate_native_observation(transaction, request, journal, worker)
+    job_row, trial_row, job, trial = native.job_row, native.trial_row, native.job, native.trial
+    not_started, closed, unknown = native.not_started, native.closed, native.unknown
+    attempt = AttemptData.model_validate(transaction.get("attempt", request.attempt_id)["data"])
+    outcome = journal.outcome
     if journal.prepared is not None:
         journal.prepared.verify(attempt.dispatch, trial.spec)
         if journal.prepared.profile_digest != attempt.profile.execution_fingerprint:
@@ -188,10 +218,6 @@ def validate_observation(
             else "failed"
         )
     )
-    consumed = {
-        "attempts": Decimal(0 if not_started else 1),
-        "execution_ms": Decimal(0 if outcome is None else outcome.elapsed_ms),
-    }
     return ValidatedObservation(
-        job_row, trial_row, job, trial, not_started, unknown, success, state, consumed
+        job_row, trial_row, job, trial, not_started, unknown, success, state, native.consumed
     )

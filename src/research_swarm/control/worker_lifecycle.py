@@ -119,7 +119,7 @@ class WorkerLifecycle:
                     "attempt_id": row["id"],
                     "control": existing,
                 }
-            if attempt.publication_status == "accepted":
+            if attempt.publication_status != "pending":
                 return {"disposition": "already_terminal", "attempt_id": row["id"], "control": None}
             data = AttemptCancellation(
                 binding=binding,

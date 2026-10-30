@@ -235,6 +235,10 @@ class ReconciliationControl:
         report: WorkloadReport | None,
     ) -> JsonObject:
         submission, worker, attempt = self._load(transaction, intent)
+        if attempt.publication_status == "closed_unaccepted":
+            raise ResearchError(
+                ErrorCode.INVALID_TRANSITION, "Attempt was closed without acceptance"
+            )
         if attempt.publication_status == "accepted":
             if attempt.result_digest != submission.publication_digest:
                 raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Accepted observation differs")

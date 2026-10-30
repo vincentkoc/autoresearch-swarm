@@ -260,8 +260,8 @@ A reconciled execution still needs its separately authorized evaluator receipt
 before scientific comparison or promotion. An UNKNOWN observation, changed job
 owner, invalid evidence, unavailable original session, or terminal campaign prevents
 this acceptance. Failed reconciliation retains the submission and existing budget
-uncertainty. There is no force-accept option. Closure-only resource settlement and
-terminal-campaign recovery need a separate disposition and are not exposed here.
+uncertainty. There is no force-accept option. Operational closure uses the separate
+`attempt.reconcile_closure` command described below.
 
 Fresh submissions continue to require valid original worker credentials. A current
 operator can reconcile evidence already submitted before that credential was
@@ -277,3 +277,56 @@ changed payloads on old keys conflict.
 `DispatchEnvelope.expires_at` remains a launch cutoff. It is not a result delivery
 lease. Epoch-change recovery is verified; an independent acceptance-lease policy
 must be specified and tested before claiming that separate qualification.
+
+
+## Operational closure without scientific acceptance
+
+`attempt.reconcile_closure` takes the same `ReconcileAttempt` payload, current
+attempt revision, and `attempt.reconcile` permission as scientific reconciliation.
+It validates original native ownership and closure, then records the final
+`closed_unaccepted` disposition. It does not create a `RunResult` or evaluator
+receipt. A later ordinary publication or scientific reconciliation cannot upgrade
+that attempt. New research requires an explicitly admitted new trial.
+
+This command pins and reads the journal, not the scientific report or model output
+blobs. A missing or malformed report must not make known process closure disappear.
+The journal must still match the original dispatch, specification, signed assignment,
+clock evidence, command, native identity, and current job ownership. UNKNOWN state,
+an unclosed scope, or unproven exit refuses settlement. The immutable `attempt_closure`
+receipt keeps the actual native exit/reason, original authority, original publication
+digest, measured consumption, and current operator authority. Successful native exit
+and scientific nonacceptance remain distinct facts.
+
+The transaction settles original execution reservations once. Launched scoring
+consumes its reserved evaluation exposure even when its output is unusable. Proven
+no-start releases that exposure; actual measured native time remains accounted for.
+The closed job exposes no output to successors. Undispatched jobs in its trial become
+`not_started`, with `trial_closed_unaccepted` as their stopping reason; only their
+unused exposure reservations are released.
+
+Already admitted siblings keep their reservations and native custody until their
+own evidence arrives. A sibling UNKNOWN report leaves resource state unknown. A
+later sibling completion can close resource state, but cannot erase the trial's
+`closed_unaccepted` outcome or incomplete evaluation status. Comparisons and promotion
+continue to reject the trial. Cancellation receipts record the closed-unaccepted
+attempt outcome while deriving cancellation resolution from the actual native proof.
+
+A fully settled closed-unaccepted trial can be included in ordinary campaign
+completion. Closure reconciliation also works against a campaign already marked
+terminal without changing its state, revision, incumbent, or original final report.
+New reports reflect the appended accounting and closure evidence. This does not yet
+add the separate operation of completing a campaign while resource uncertainty remains.
+
+Worker and local driver recovery recognize the new terminal attempt status. The
+local driver skips evaluator completion for a scientifically closed trial, including
+closure that races receipt delivery or a previously persisted receipt intent. It
+suppresses only the corresponding comparison-ineligibility rejection; credential,
+transport, and unrelated evaluation failures retain their existing handling. If
+operator closure wins during terminal evidence upload or publication, the worker
+returns that disposition only after rereading the exact original dispatch and
+confirming its local journal is terminal. An UNKNOWN local journal cannot borrow
+controller closure as native proof.
+
+Controller settlement never releases a native machine registry claim. That remains
+conditional on the worker's independently verified native closure. Other quarantined
+scientific artifacts retain their own evidence and storage lifecycle.

@@ -61,9 +61,17 @@ class AttemptState(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     EXECUTION_UNKNOWN = "execution_unknown"
+    CLOSED_UNACCEPTED = "closed_unaccepted"
 
 
-TERMINAL_ATTEMPTS = frozenset({AttemptState.SUCCEEDED, AttemptState.FAILED, AttemptState.CANCELLED})
+TERMINAL_ATTEMPTS = frozenset(
+    {
+        AttemptState.SUCCEEDED,
+        AttemptState.FAILED,
+        AttemptState.CANCELLED,
+        AttemptState.CLOSED_UNACCEPTED,
+    }
+)
 
 ATTEMPT_TRANSITIONS: dict[AttemptState, frozenset[AttemptState]] = {
     AttemptState.RESERVED: frozenset(
@@ -105,6 +113,7 @@ ATTEMPT_TRANSITIONS: dict[AttemptState, frozenset[AttemptState]] = {
     AttemptState.SUCCEEDED: frozenset(),
     AttemptState.FAILED: frozenset(),
     AttemptState.CANCELLED: frozenset(),
+    AttemptState.CLOSED_UNACCEPTED: frozenset(),
 }
 
 
@@ -119,6 +128,12 @@ def campaign_transition(current: CampaignState, target: CampaignState) -> None:
 def attempt_transition(
     current: AttemptState, target: AttemptState, *, reconciliation: bool = False
 ) -> None:
+    if (
+        reconciliation
+        and target == AttemptState.CLOSED_UNACCEPTED
+        and current not in TERMINAL_ATTEMPTS
+    ):
+        return
     if reconciliation and current == AttemptState.EXECUTION_UNKNOWN and target in TERMINAL_ATTEMPTS:
         return
     if target not in ATTEMPT_TRANSITIONS[current]:

@@ -17,7 +17,7 @@ from research_swarm.control.workers import AttemptData, ClaimJob
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord
-from research_swarm.orchestration.intents import CommandIntents
+from research_swarm.orchestration.intents import CommandIntent, CommandIntents
 from research_swarm.runtime import private_state_directory, read_private, write_private
 from research_swarm.state.database import JsonObject
 from research_swarm.workers.local_enrollment import LocalEnrollment
@@ -79,6 +79,22 @@ class LocalDriver:
                 raise ResearchError(ErrorCode.STALE_FENCE, "Driver identity is missing")
             write_private(path, canonical_bytes(identity))
 
+    def _closed_trial(self, trial_id: str) -> bool:
+        return bool(
+            self.controller.get("trial", trial_id)["data"]["execution_outcome"]
+            == "closed_unaccepted"
+        )
+
+    def _closed_receipt_rejection(self, intent: CommandIntent, error: ResearchError) -> bool:
+        if (
+            intent.route != "evaluator"
+            or intent.operation != "evaluation.complete"
+            or error.code != ErrorCode.COMPARISON_INELIGIBLE
+        ):
+            return False
+        request = self.controller.get("evaluation_request", intent.payload["request_id"])
+        return self._closed_trial(request["data"]["request"]["trial_id"])
+
     def _receipts(self, campaign_id: str, intents: CommandIntents) -> list[str]:
         findings = []
         for summary in self._records("job", campaign_id):
@@ -86,6 +102,8 @@ class LocalDriver:
                 continue
             row = self.controller.get("job", summary["id"])
             job = JobData.model_validate(row["data"])
+            if self._closed_trial(job.trial_id):
+                continue
             if job.evaluation_request_id is None or job.current_attempt_id is None:
                 findings.append("EVALUATION_INCOMPLETE:" + row["id"])
                 continue
@@ -95,14 +113,20 @@ class LocalDriver:
             if request["request"]["evaluator_id"] != self.enrollment.evaluator_id:
                 findings.append("AUTHORIZATION_DENIED:" + job.evaluation_request_id)
                 continue
-            intents.command(
-                "complete:" + job.evaluation_request_id,
-                "evaluator",
-                "evaluation.complete",
-                CompleteEvaluation(
-                    request_id=job.evaluation_request_id, attempt_id=job.current_attempt_id
-                ),
-            )
+            try:
+                intents.command(
+                    "complete:" + job.evaluation_request_id,
+                    "evaluator",
+                    "evaluation.complete",
+                    CompleteEvaluation(
+                        request_id=job.evaluation_request_id, attempt_id=job.current_attempt_id
+                    ),
+                )
+            except ResearchError as error:
+                if error.code != ErrorCode.COMPARISON_INELIGIBLE or not self._closed_trial(
+                    job.trial_id
+                ):
+                    raise
         return findings
 
     def _claim(self, summary: JsonObject, intents: CommandIntents) -> JsonObject | None:
@@ -159,7 +183,13 @@ class LocalDriver:
         for summary in self._records("attempt"):
             if summary["data"]["worker_id"] != self.worker.worker.binding.worker_id:
                 continue
-            if summary["state"] in {"succeeded", "failed", "cancelled", "not_started"}:
+            if summary["state"] in {
+                "succeeded",
+                "failed",
+                "cancelled",
+                "not_started",
+                "closed_unaccepted",
+            }:
                 continue
             row = self.controller.get("attempt", summary["id"])
             attempt = AttemptData.model_validate(row["data"])
@@ -215,7 +245,7 @@ class LocalDriver:
                     "evaluator": self.enrollment.evaluator,
                 },
             )
-            intents.recover()
+            intents.recover(ignore_rejection=self._closed_receipt_rejection)
             while True:
                 findings = set(self._receipts(campaign_id, intents))
                 campaign = self.controller.get("campaign", campaign_id)
@@ -267,7 +297,8 @@ class LocalDriver:
                         state = "terminal"
                     else:
                         pending = any(
-                            row["state"] not in {"succeeded", "failed", "cancelled"}
+                            row["state"]
+                            not in {"succeeded", "failed", "cancelled", "closed_unaccepted"}
                             for row in self._records("trial", campaign_id)
                         )
                         state = "blocked" if pending else "idle"

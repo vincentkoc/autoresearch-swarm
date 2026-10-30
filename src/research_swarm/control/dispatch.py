@@ -51,6 +51,13 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "attempt.reconcile_closure": CommandDefinition(
+        ReconcileAttempt,
+        "reconcile_attempt_closure",
+        "attempt.reconcile",
+        True,
+        "Settle proven native closure without accepting research or admitting successors.",
+    ),
     "worker.submit_evidence": CommandDefinition(
         PublishAttempt,
         "submit_attempt_evidence",

@@ -319,7 +319,8 @@ class WorkerControl:
                 ArtifactCatalog.available(transaction, reference)
             active = transaction.connection.execute(
                 "SELECT payload FROM records WHERE workspace_id=? AND kind='attempt' "
-                "AND state NOT IN ('succeeded','failed','cancelled','not_started')",
+                "AND state NOT IN "
+                "('succeeded','failed','cancelled','not_started','closed_unaccepted')",
                 (transaction.workspace_id,),
             ).fetchall()
             active_attempts = [AttemptData.model_validate_json(item["payload"]) for item in active]

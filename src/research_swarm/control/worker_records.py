@@ -52,5 +52,6 @@ class AttemptData(VersionedRecord):
     outcome_artifact: ArtifactRef | None = None
     report_artifact: ArtifactRef | None = None
     result_digest: Digest | None = None
-    publication_status: Literal["pending", "accepted"] = "pending"
+    publication_status: Literal["pending", "accepted", "closed_unaccepted"] = "pending"
+    closure_receipt_id: ID | None = Field(default=None, exclude_if=lambda value: value is None)
     finding: str = ""
