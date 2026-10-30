@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Complete service-layer SQL callback migration for artifact authorization, upload lifecycle, evaluation admission, result publication and late-evidence reconciliation.
+- Preserve replay-before-preflight, pinned evidence and commit-time revalidation; exercise real CPU stages and original late closure with native connection access forbidden and blob I/O checked outside transactions.
+
 - Move credential management, research/scoped-worker queries, proposal ownership, orchestration inspection and recovery reads onto storage callbacks without expanding caller permissions.
 - Preserve atomic credential installation, query snapshots and bounded worker-query scanning; add callback-only service tests covering ownership, revocation and snapshot expiry.
 

@@ -39,11 +39,19 @@ Credential installation keeps its lookup and conditional insert in one write;
 queries retain their ownership checks and pagination bounds in one snapshot.
 Worker query authority does not grant global research read access.
 
-Artifact and execution-evidence preflights still contain native connection paths.
-The complete hosted service remains unqualified until those paths, clock/key custody
-and artifact operations are adapted. A callback-only facade covers the migrated
-services. The [Cloudflare runtime fixture](../adapters/cloudflare/README.md) runs
-the shared command kernel and schema migrations through its actual SQL adapter.
+Artifact and execution-evidence preflights also use callback reads. Upload lifecycle
+guards, byte transfer, verification, source extraction and journal parsing remain
+outside those reads. Original evidence stays pinned through the final command;
+commit-time checks revalidate its ownership, generation, revision and policy.
+Finalize/cleanup preserve acknowledgment replay both before and inside the lifecycle
+guard. Successful publication remains acknowledged if subsequent cleanup fails.
+
+The complete hosted service remains unqualified until native clock initialization,
+key custody and artifact operations have provider implementations. Real local
+training/evaluation and late-result reconciliation tests forbid native connection
+access and check that blob I/O stays outside SQL callbacks. The
+[Cloudflare runtime fixture](../adapters/cloudflare/README.md) runs the shared command
+kernel and schema migrations through its actual SQL adapter.
 
 ## Worker admission
 

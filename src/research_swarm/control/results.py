@@ -37,6 +37,7 @@ from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
+from research_swarm.state.sql import SqlSession
 from research_swarm.workers.journal import JournalEntry
 
 
@@ -96,8 +97,8 @@ class ResultControl:
 
     def _publish_preflight(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         payload = request.model_dump(mode="json")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> tuple[AttemptData, WorkerData]:
             transaction = Transaction(connection, context)
             admitted = AttemptData.model_validate(
                 transaction.get("attempt", request.attempt_id)["data"]
@@ -107,6 +108,9 @@ class ResultControl:
                 admitted.dispatch.worker_id,
                 admitted.dispatch.worker_session_id,
             )
+            return admitted, worker
+
+        admitted, worker = self.database.store.read(read)
         with self.pin_evidence(
             context, request, admitted, worker, scope="worker.publish"
         ) as records:

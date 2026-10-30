@@ -26,6 +26,7 @@ from research_swarm.evaluation.eligibility import validate_receipt
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.sql import SqlSession
 
 
 class AuthorizeEvaluation(VersionedRecord):
@@ -86,8 +87,8 @@ class EvaluationControl:
         )
         if previous is not None:
             return previous
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> tuple[JobData, TrialData, dict[str, ArtifactRef]]:
             transaction = Transaction(connection, context)
             job_row = transaction.get("job", intent.job_id)
             job = JobData.model_validate(job_row["data"])
@@ -107,7 +108,9 @@ class EvaluationControl:
                 )
             inputs = evaluation_inputs(transaction, job)
             trial = TrialData.model_validate(transaction.get("trial", job.trial_id)["data"])
-            connection.commit()
+            return job, trial, inputs
+
+        job, trial, inputs = self.database.store.read(read)
         manifest_bytes = canonical_bytes(
             {
                 "schema_version": "1.0",

@@ -32,6 +32,7 @@ from research_swarm.domain.types import (
 )
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.process_identity import LocalProcessIdentity
+from research_swarm.state.sql import SqlSession
 from research_swarm.storage.base import BlobStore
 
 
@@ -176,10 +177,10 @@ class ArtifactService:
     def _storage_authority(self, context: CommandContext, upload_id: str) -> None:
         from research_swarm.state.drive_guard import require_storage_authority
 
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+        def read(connection: SqlSession) -> None:
             require_storage_authority(Transaction(connection, context), upload_id)
-            connection.commit()
+
+        self.database.store.read(read)
 
     def create_upload_in(self, transaction: Transaction, request: BeginUpload) -> JsonObject:
         """Create quota-accounted upload state inside the caller's authorized transaction."""

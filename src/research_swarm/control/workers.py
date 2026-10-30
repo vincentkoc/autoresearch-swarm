@@ -46,6 +46,7 @@ from research_swarm.domain.workers import EngineCapabilities as EngineCapabiliti
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
+from research_swarm.state.sql import SqlSession
 from research_swarm.workers.authority import WorkerBinding, authorize_dispatch
 from research_swarm.workers.clock_signatures import ClockSigner, ClockVerifier
 from research_swarm.workers.signatures import AssignmentSigner
@@ -148,8 +149,8 @@ class WorkerControl:
     def clock(self, context: CommandContext, request: ClockChallenge) -> SignedClockReply:
         context.principal.require("worker.query")
         request = ClockChallenge.model_validate(request)
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> SignedClockReply:
             worker = worker_authority(
                 Transaction(connection, context), request.worker_id, request.session_id
             )
@@ -169,6 +170,8 @@ class WorkerControl:
                     policy=observed.policy,
                 )
             )
+
+        return self.database.store.read(read)
 
     def input_time(self, worker: WorkerData, attempt: AttemptData) -> str:
         if worker.clock_mode == "local-utc-v1":

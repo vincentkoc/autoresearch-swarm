@@ -33,6 +33,7 @@ from research_swarm.state.drive_closures import (
     settle_acknowledged,
     target_acknowledgment,
 )
+from research_swarm.state.sql import SqlSession
 from research_swarm.state.waits import fence_wait, watermark
 
 
@@ -113,8 +114,7 @@ class OrchestrationTransferControl:
         )
 
         def prepare() -> JsonObject:
-            with self.database.connect() as connection:
-                connection.execute("BEGIN")
+            def read(connection: SqlSession) -> TransferView | None:
                 transaction = Transaction(connection, context)
                 if connection.execute(
                     "SELECT 1 FROM records WHERE workspace_id=? "
@@ -126,6 +126,9 @@ class OrchestrationTransferControl:
                     )
                 existing = previous_transfer(transaction, intent.transfer_id, digest)
                 view = None if existing else inspect_transfer(transaction, intent)
+                return view
+
+            view = self.database.store.read(read)
             with ExitStack() as pins:
                 if view is not None:
                     for reference in view.artifacts:

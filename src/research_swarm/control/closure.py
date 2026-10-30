@@ -65,11 +65,9 @@ class ClosureControl:
         )
 
     def _preflight(self, context: CommandContext, intent: ReconcileAttempt) -> JsonObject:
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
-            submission, worker, attempt = self.reconciliation._load(
-                Transaction(connection, context), intent
-            )
+        submission, worker, attempt = self.database.store.read(
+            lambda connection: self.reconciliation._load(Transaction(connection, context), intent)
+        )
         # Scientific artifacts may be damaged. Only original native evidence is
         # needed for this irreversible operational disposition.
         request = PublishAttempt(

@@ -99,9 +99,9 @@ class ReconciliationControl:
 
     def _submit_preflight(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         payload = request.model_dump(mode="json")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
-            worker, attempt = self._owner(Transaction(connection, context), request)
+        worker, attempt = self.database.store.read(
+            lambda connection: self._owner(Transaction(connection, context), request)
+        )
         with self.results.pin_evidence(context, request, attempt, worker, scope="worker.publish"):
             return self.database.execute(
                 context,
@@ -210,9 +210,9 @@ class ReconciliationControl:
 
     def _reconcile_preflight(self, context: CommandContext, intent: ReconcileAttempt) -> JsonObject:
         payload = intent.model_dump(mode="json")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
-            submission, worker, attempt = self._load(Transaction(connection, context), intent)
+        submission, worker, attempt = self.database.store.read(
+            lambda connection: self._load(Transaction(connection, context), intent)
+        )
         request = submission.publication
         with self.results.pin_evidence(
             context, request, attempt, worker, scope="attempt.reconcile"

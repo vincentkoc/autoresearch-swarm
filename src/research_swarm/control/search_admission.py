@@ -114,9 +114,9 @@ class SearchAdmission:
         operation, payload = "search.admit_response", intent.model_dump(mode="json")
 
         def preflight() -> JsonObject:
-            with self.database.connect() as connection:
-                connection.execute("BEGIN")
-                _, _, _, _, response = self._guard(Transaction(connection, context), intent)
+            response = self.database.store.read(
+                lambda connection: self._guard(Transaction(connection, context), intent)[4]
+            )
             source_context = (
                 verified_source(self.artifacts, context, response.request.source_artifact)
                 if response.request.source_artifact is not None

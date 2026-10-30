@@ -13,6 +13,7 @@ from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import ID, VersionedRecord, utc_now
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, Transaction
+from research_swarm.state.sql import SqlSession
 
 
 class WorkerAttemptTarget(VersionedRecord):
@@ -89,11 +90,13 @@ class WorkerArtifacts:
     def input_metadata(self, context: CommandContext, request: WorkerArtifactRead) -> ArtifactRef:
         context.principal.require("worker.inputs")
         request = WorkerArtifactRead.model_validate(request)
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> ArtifactRef:
             transaction = Transaction(connection, context)
             reference = input_reference(transaction, request, self.workers)
             return ArtifactCatalog.available(transaction, reference).reference
+
+        return self.database.store.read(read)
 
     @contextmanager
     def input_reader(

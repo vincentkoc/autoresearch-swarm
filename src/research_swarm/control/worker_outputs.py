@@ -24,6 +24,7 @@ from research_swarm.domain.types import ID, Name, VersionedRecord
 from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService, BeginUpload
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.sql import SqlSession
 
 logger = logging.getLogger(__name__)
 
@@ -161,8 +162,7 @@ class WorkerOutputs:
     def _check_owner(self, context: CommandContext, request: WorkerUploadTarget) -> None:
         # Check immutable ownership before creating a lock for a supplied identifier.
         # Current enrollment and mutable state are checked again inside the guard.
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+        def read(connection: SqlSession) -> None:
             transaction = Transaction(connection, context)
             data = WorkerUploadData.model_validate(
                 transaction.get("worker_upload", request.upload_id)["data"]
@@ -177,6 +177,8 @@ class WorkerOutputs:
                 raise ResearchError(
                     ErrorCode.AUTHORIZATION_DENIED, "Upload belongs to another authority"
                 )
+
+        self.database.store.read(read)
 
     def begin(self, context: CommandContext, request: BeginWorkerUpload) -> JsonObject:
         request = BeginWorkerUpload.model_validate(request)
@@ -219,9 +221,12 @@ class WorkerOutputs:
     def status(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
         context.principal.require("worker.outputs")
         request = WorkerUploadTarget.model_validate(request)
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> tuple[WorkerUploadData, JsonObject, UploadSpec]:
             _, data, row, upload, _ = owned_upload(Transaction(connection, context), request)
+            return data, row, upload
+
+        data, row, upload = self.database.store.read(read)
         progress = self.artifacts.store.progress(upload) if row["state"] == "pending" else None
         return {
             **row,
@@ -243,12 +248,15 @@ class WorkerOutputs:
     ) -> int:
         context.principal.require("worker.outputs")
         request = WorkerUploadTarget.model_validate(request)
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> UploadSpec:
             _, _, row, upload, attempt = owned_upload(Transaction(connection, context), request)
             require_pending(attempt)
             if row["state"] != "pending":
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload is not pending")
+            return upload
+
+        upload = self.database.store.read(read)
         self.artifacts.store.begin(upload)
         return self.artifacts.store.append(upload, offset, content)
 
@@ -272,13 +280,16 @@ class WorkerOutputs:
         context.principal.require("worker.outputs")
         request = WorkerUploadTarget.model_validate(request)
         payload = request.model_dump(mode="json")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> tuple[JsonObject, UploadSpec]:
             _, data, row, upload, attempt = owned_upload(Transaction(connection, context), request)
             if data.artifact is None:
                 require_pending(attempt)
             if row["state"] not in {"pending", "finalized", "cleanup"}:
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload cannot be finalized")
+            return row, upload
+
+        row, upload = self.database.store.read(read)
         if row["state"] == "pending":
             self.artifacts.store.begin(upload)
             blob = self.artifacts.store.finalize(upload)
@@ -344,8 +355,12 @@ class WorkerOutputs:
             )
             if previous is not None:
                 return previous
-            with self.database.connect() as connection:
+
+            def read(connection: SqlSession) -> tuple[JsonObject, UploadSpec]:
                 _, _, row, upload, _ = owned_upload(Transaction(connection, context), request)
+                return row, upload
+
+            row, upload = self.database.store.read(read)
             if row["state"] not in {"cleanup", "finalized"}:
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload is not published")
             self._cleanup(
@@ -372,8 +387,11 @@ class WorkerOutputs:
         upload: UploadSpec,
         blob: StoredBlob,
     ) -> None:
-        with self.database.connect() as connection:
+        def read(connection: SqlSession) -> tuple[WorkerUploadData, JsonObject]:
             _, data, row, _, _ = owned_upload(Transaction(connection, context), request)
+            return data, row
+
+        data, row = self.database.store.read(read)
         if row["state"] != "cleanup":
             return
         assert data.artifact is not None
