@@ -283,6 +283,41 @@ def test_failed_deadline_signal_does_not_erase_independent_closure(
     )
 
 
+def test_failed_cleanup_signal_still_observes_closure_and_drains_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from research_swarm.workers import supervision
+
+    prepare = supervision._prepare
+    released = []
+
+    def wrapped(command: NativeCommand, environment: dict[str, str]):
+        child = prepare(command, environment)
+        stop = child.stop
+
+        def terminate_then_fail(*, force: bool) -> None:
+            stop(force=True)
+            raise PermissionError("injected concurrent cleanup signal")
+
+        child.stop = terminate_then_fail
+        return child
+
+    monkeypatch.setattr(supervision, "_prepare", wrapped)
+    outcome = run_native(
+        command(tmp_path, "import time; time.sleep(60)"),
+        tmp_path / "out",
+        cancelled=lambda: bool(released),
+        on_released=released.append,
+    )
+    assert outcome.reason == "cancelled"
+    assert outcome.closure.scope_closed and outcome.exit_code is not None
+    assert outcome.stdout.eof and outcome.stderr.eof
+    assert any(
+        "Cleanup termination request failed: PermissionError" in item
+        for item in outcome.closure.findings
+    )
+
+
 def test_primary_exit_allows_bounded_native_accounting_settlement(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

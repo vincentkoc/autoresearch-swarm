@@ -249,9 +249,18 @@ def run_native(
         cleanup_deadline = cleanup_start + command.cleanup_ms / 1000
         force_at = cleanup_start + command.grace_ms / 1000
         forced = False
+
+        def request_stop(*, force: bool) -> None:
+            try:
+                child.stop(force=force)
+            except OSError as error:
+                findings.append(f"Cleanup termination request failed: {type(error).__name__}")
+                # A concurrent deadline signal can leave a zombie-only group.
+                # Continue independent closure observation, draining, and reaping.
+
         try:
             if not closure.scope_closed:
-                child.stop(force=False)
+                request_stop(force=False)
             while True:
                 child.active()  # Preserve observations of descendants before the leader exits.
                 progress = drain()
@@ -260,7 +269,7 @@ def run_native(
                     break
                 now = time.monotonic()
                 if not closure.scope_closed and now >= force_at and not forced:
-                    child.stop(force=True)
+                    request_stop(force=True)
                     forced = True
                 if now >= cleanup_deadline:
                     break

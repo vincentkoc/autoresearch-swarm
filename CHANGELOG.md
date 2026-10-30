@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Continue bounded native closure observation after a cleanup signal error instead of abandoning draining and reaping.
 - Seal complete paired confirmation plans and create all seed-bound candidate/comparator trials atomically.
 - Reserve evaluation exposure separately, retain uncertain access, and release only on positive no-access evidence.
 - Require planned stage fingerprints and evaluator authority before confirmation scoring can dispatch.
