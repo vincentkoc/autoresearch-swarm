@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Register immutable project revisions and seal campaign contracts with explicit input and budget rules.
+- Preserve candidate validation evidence and create complete trial job graphs atomically.
 - Replay committed command responses before transient preflight, with current authorization and atomic rechecks.
 - Allow bounded native job-accounting settlement after primary process exit.
 - Add a language-neutral workload context/report protocol with bounded artifact verification.

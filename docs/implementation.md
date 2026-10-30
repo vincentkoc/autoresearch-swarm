@@ -15,6 +15,7 @@ not implicitly supported.
 | Project manifests and source isolation | Source bundles, mutation boundary, TOML manifest and immutable resolution implemented | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation, protected dependency/protocol tests | Linux/macOS/Windows CI passed; original-workload qualification pending |
 | Workload protocol and original CPU project | Sealed file context, bounded report/output verification, real training and separate evaluator | Immutable source execution, two injected seeds, checkpoint identity, improvement against uniform model | macOS local proof; cross-platform workload CI pending |
 | API, SDK, CLI, MCP | Pending | Pending | Real transport pending |
+| Controller commands | Project revisions, campaign activation, candidate validation, atomic trial graphs | Concurrent replay, frozen baseline, mutation boundary, transaction rollback, trial-limit tests | Worker result and transport integration pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Pending | Pending | Equal-budget research pending |
 | Statistical gates and exposure | Pending | Pending | Workload variance pending |
