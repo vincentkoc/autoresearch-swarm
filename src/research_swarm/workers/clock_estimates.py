@@ -187,11 +187,26 @@ class ClockSampler:
         self.origin_session_id = new_id()
         self.origin_profile = self._clock.profile
         self._pid = os.getpid()
+        self._read_lock = threading.Lock()
+        self._last: ClockReading | None = None
+        self._invalid = False
 
     def read(self) -> ClockReading:
-        if os.getpid() != self._pid or self._clock.profile != self.origin_profile:
+        if os.getpid() != self._pid:
             raise ResearchError(ErrorCode.STALE_FENCE, "Clock sampling origin changed")
-        return self._clock.sample()
+        with self._read_lock:
+            if self._invalid or self._clock.profile != self.origin_profile:
+                self._invalid = True
+                raise ResearchError(ErrorCode.STALE_FENCE, "Clock sampling origin changed")
+            try:
+                now = self._clock.sample()
+                if self._last is not None:
+                    require_continuity(self._last, now)
+            except (OSError, ResearchError):
+                self._invalid = True
+                raise
+            self._last = now
+            return now
 
     def begin(self) -> PendingClockChallenge:
         binding = self.verifier.authority.binding

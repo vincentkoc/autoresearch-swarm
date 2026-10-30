@@ -22,7 +22,7 @@ from research_swarm.workers.clock_signatures import VerifiedAssignmentTime
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, NativeOutcome
 from research_swarm.workers.prepared import PreparedExecution
 from research_swarm.workers.signatures import VerifiedAssignment
-from research_swarm.workers.timed_launch import TimingEvidence, VerifiedTiming
+from research_swarm.workers.timed_launch import LiveTimingOrigin, TimingEvidence, VerifiedTiming
 
 
 class JournalState(StrEnum):
@@ -342,6 +342,109 @@ class WorkerJournal:
             return entry.model_copy(update={"timing": verified.evidence})
 
         return self._change(attempt_id, "clock.bound", bind)
+
+    @staticmethod
+    def _timed_authority(entry: JournalEntry, origin: LiveTimingOrigin) -> None:
+        if (
+            entry.clock_mode != "bounded-continuous-v1"
+            or entry.timing is None
+            or entry.assignment_time != origin.verified.timed.grant
+            or entry.signed_assignment != origin.verified.timed.assignment.assignment
+        ):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Live clock differs from journal admission")
+        origin.check(entry.timing)
+
+    def claim_timed_launch(
+        self,
+        attempt_id: str,
+        supervisor_id: str,
+        origin: LiveTimingOrigin,
+    ) -> JournalEntry:
+        def claim(entry: JournalEntry) -> JournalEntry:
+            if entry.state != JournalState.RECEIVED:
+                raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Attempt cannot be launched again")
+            self._timed_authority(entry, origin)
+            if entry.cancel_requested:
+                return entry.model_copy(
+                    update={
+                        "state": JournalState.NOT_STARTED,
+                        "finding": "Cancelled before timed launch",
+                    }
+                )
+            if entry.preparation_required and entry.prepared is None:
+                raise ResearchError(
+                    ErrorCode.INVALID_TRANSITION, "Required preparation is incomplete"
+                )
+            return entry.model_copy(
+                update={"state": JournalState.LAUNCHING, "supervisor_id": supervisor_id}
+            )
+
+        return self._change(attempt_id, "launch.claimed", claim)
+
+    def authorize_timed_release(
+        self,
+        attempt_id: str,
+        supervisor_id: str,
+        origin: LiveTimingOrigin,
+    ) -> JournalEntry:
+        def authorize(entry: JournalEntry) -> JournalEntry:
+            self._owner(entry, supervisor_id)
+            if entry.state != JournalState.HELD:
+                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Process is not held")
+            self._timed_authority(entry, origin)
+            if entry.cancel_requested:
+                return entry
+            return entry.model_copy(
+                update={"state": JournalState.RELEASING, "release_requested_at": utc_now()}
+            )
+
+        return self._change(attempt_id, "release.authorized", authorize)
+
+    def abort_unstarted_claim(
+        self,
+        attempt_id: str,
+        supervisor_id: str,
+        *,
+        timing_digest: str,
+    ) -> JournalEntry:
+        """Called only by the owning supervisor before attempting native process creation."""
+
+        def abort(entry: JournalEntry) -> JournalEntry:
+            if (
+                entry.clock_mode != "bounded-continuous-v1"
+                or entry.timing is None
+                or entry.timing.digest != timing_digest
+            ):
+                raise ResearchError(
+                    ErrorCode.STALE_FENCE, "Unstarted observation has another clock grant"
+                )
+            if (
+                entry.state == JournalState.RECEIVED
+                and entry.supervisor_id is None
+                and entry.native is None
+            ):
+                return entry.model_copy(
+                    update={
+                        "state": JournalState.NOT_STARTED,
+                        "supervisor_id": supervisor_id,
+                        "finding": "Owning supervisor observed no native process creation",
+                    }
+                )
+            self._owner(entry, supervisor_id)
+            if entry.state == JournalState.NOT_STARTED and entry.native is None:
+                return entry
+            if entry.state != JournalState.LAUNCHING or entry.native is not None:
+                raise ResearchError(
+                    ErrorCode.EXECUTION_UNKNOWN, "Native absence is not established"
+                )
+            return entry.model_copy(
+                update={
+                    "state": JournalState.NOT_STARTED,
+                    "finding": "Owning supervisor observed no native process creation",
+                }
+            )
+
+        return self._change(attempt_id, "launch.aborted_unstarted", abort)
 
     def bind_prepared(self, attempt_id: str, prepared: PreparedExecution) -> JournalEntry:
         prepared = PreparedExecution.model_validate(prepared)

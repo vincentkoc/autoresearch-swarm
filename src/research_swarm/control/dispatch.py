@@ -282,7 +282,7 @@ def capabilities() -> JsonObject:
             "default_mode": "local-utc-v1",
             "calibrated_mode": "bounded-continuous-v1",
             "time_evidence": "signed_process_epoch",
-            "calibrated_execution": "pending_native_admission",
+            "calibrated_execution": "live_origin_required",
         },
         "evaluation": "authenticated_receipts",
         "drivers": {"local": "explicit_worker", "temporal": "pending", "cloudflare": "pending"},

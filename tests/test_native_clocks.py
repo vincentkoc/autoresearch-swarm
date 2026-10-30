@@ -209,6 +209,41 @@ def test_watchdog_is_armed_before_release_can_block(
     require_closed(result.closure.identity.pid)
 
 
+def test_watchdog_closes_a_held_child_while_authorization_is_blocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from research_swarm.workers import supervision
+
+    prepare = supervision._prepare
+    stopped = threading.Event()
+
+    def tracked_child(*args: Any) -> Any:
+        child = prepare(*args)
+        stop = child.stop
+
+        def observed_stop(*, force: bool) -> None:
+            stop(force=force)
+            stopped.set()
+
+        monkeypatch.setattr(child, "stop", observed_stop)
+        return child
+
+    def blocked_authorization(_: object) -> bool:
+        assert stopped.wait(3), "Held process had no active deadline watchdog"
+        return True
+
+    monkeypatch.setattr(supervision, "_prepare", tracked_child)
+    result = run_native(
+        command(tmp_path, "raise SystemExit('must never run')", timeout_ms=300),
+        tmp_path / "output",
+        on_held=blocked_authorization,
+    )
+    assert result.reason == "not_started" and result.released_at is None
+    assert result.closure.scope_closed and stopped.is_set()
+    require_closed(result.closure.identity.pid)
+
+
 def test_missing_clock_leaves_unclaimed_journal_recoverable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

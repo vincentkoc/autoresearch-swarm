@@ -137,6 +137,7 @@ def run_native(
     cancelled: Callable[[], bool] = lambda: False,
     environment: dict[str, str] | None = None,
     hard_deadline_ns: int | None = None,
+    launch_deadline_ns: int | None = None,
 ) -> NativeOutcome:
     """Run on a dedicated supervisor thread/process, never on the controller event loop.
 
@@ -147,6 +148,10 @@ def run_native(
     command = NativeCommand.model_validate(command)
     if hard_deadline_ns is not None and (type(hard_deadline_ns) is not int or hard_deadline_ns < 0):
         raise ValueError("Absolute deadline requires nonnegative continuous-clock nanoseconds")
+    if launch_deadline_ns is not None and (
+        type(launch_deadline_ns) is not int or launch_deadline_ns < 0
+    ):
+        raise ValueError("Launch deadline requires nonnegative continuous-clock nanoseconds")
     env = base_environment() if environment is None else dict(environment)
     if any("\0" in key + value or "=" in key or not key for key, value in env.items()):
         raise ValueError("Environment entries must be NUL-free and have valid names")
@@ -156,6 +161,11 @@ def run_native(
     deadline = started + command.timeout_ms / 1000
     if hard_deadline_ns is not None:
         deadline = min(deadline, hard_deadline_ns / 1_000_000_000)
+    launch_deadline = (
+        deadline
+        if launch_deadline_ns is None
+        else min(deadline, launch_deadline_ns / 1_000_000_000)
+    )
     released_at = None
     reason: Literal[
         "exited",
@@ -200,7 +210,7 @@ def run_native(
 
         def stop_watchdog() -> None:
             watchdog_stop.set()
-            if watchdog is not None:
+            if watchdog is not None and watchdog.ident is not None:
                 # Join before reaping the leader or releasing native handles.
                 watchdog.join()
 
@@ -212,26 +222,30 @@ def run_native(
             return left or right
 
         try:
+            watchdog = threading.Thread(target=enforce_deadline, daemon=True)
+            watchdog.start()
             permitted = on_held(child.identity)
-            if permitted and not cancelled() and continuous_time() < deadline:
-                watchdog = threading.Thread(target=enforce_deadline, daemon=True)
-                watchdog.start()
-                if not deadline_hit.is_set() and not cancelled() and continuous_time() < deadline:
-                    released_at = utc_now()
-                    child.release()
-                    on_released(released_at)
-                    reason = "exited"
-                    while child.active():
-                        if cancelled():
-                            reason = "cancelled"
-                            break
-                        if continuous_time() >= deadline:
-                            reason = "deadline"
-                            break
-                        if not drain():
-                            time.sleep(0.01)
-                    if deadline_hit.is_set() or continuous_time() >= deadline:
+            if (
+                permitted
+                and not deadline_hit.is_set()
+                and not cancelled()
+                and continuous_time() < launch_deadline
+            ):
+                released_at = utc_now()
+                child.release()
+                on_released(released_at)
+                reason = "exited"
+                while child.active():
+                    if cancelled():
+                        reason = "cancelled"
+                        break
+                    if continuous_time() >= deadline:
                         reason = "deadline"
+                        break
+                    if not drain():
+                        time.sleep(0.01)
+                if deadline_hit.is_set() or continuous_time() >= deadline:
+                    reason = "deadline"
             closure = child.closure()
             if reason == "exited" and not closure.scope_closed:
                 # Native job accounting can lag a signaled primary process. Allow

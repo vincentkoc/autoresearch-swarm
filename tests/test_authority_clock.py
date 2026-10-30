@@ -327,7 +327,7 @@ def test_timing_evidence_cannot_be_stripped_to_local_mode(
         machine_registry=tmp_path / "machine" / "resources.sqlite",
     )
     attempt = AttemptData.model_validate(row["data"]).model_copy(update={"assignment_time": None})
-    with pytest.raises(ResearchError, match="does not yet admit calibrated"):
+    with pytest.raises(ResearchError, match="Signed timing authority is required"):
         local._verify(attempt, TrialData.model_validate(pipeline.trial["data"]))
     missing = WorkerArtifacts(pipeline.runtime.database, pipeline.runtime.artifacts)
     context = CommandContext(

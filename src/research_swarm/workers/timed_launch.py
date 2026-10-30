@@ -12,7 +12,7 @@ from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockChallenge, SignedAssignmentTime, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, Name, VersionedRecord
-from research_swarm.workers.clock_estimates import ClockEstimate, DeadlineCaps
+from research_swarm.workers.clock_estimates import ClockEstimate, ClockSampler, DeadlineCaps
 from research_swarm.workers.clock_signatures import ClockVerifier, VerifiedAssignmentTime
 from research_swarm.workers.clocks import ClockReading
 
@@ -112,6 +112,30 @@ class VerifiedTiming:
     timed: VerifiedAssignmentTime
     estimate: ClockEstimate
     evidence: TimingEvidence
+
+
+class LiveTimingOrigin:
+    """Live sampler ownership; a historical record cannot supply this gate."""
+
+    def __init__(self, sampler: ClockSampler, verified: VerifiedTiming) -> None:
+        self.sampler, self.verified = sampler, verified
+        if (
+            sampler.origin_session_id != verified.estimate.origin_session_id
+            or sampler.origin_profile != verified.estimate.origin_profile
+            or sampler.verifier.authority.binding != verified.timed.grant.payload.binding
+        ):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Clock evidence has another live origin")
+
+    def check(self, evidence: TimingEvidence) -> DeadlineCaps:
+        if evidence != self.verified.evidence:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Frozen clock evidence changed")
+        fresh = capture_timing(
+            self.verified.timed,
+            self.verified.estimate,
+            self.sampler.read(),
+            prior=evidence.caps.caps(),
+        )
+        return fresh.evidence.caps.caps()
 
 
 def capture_timing(

@@ -42,8 +42,9 @@ includes it in duplicate-delivery identity. Preparation must match its input
 digests and execution profile. Restart checks the same assignment again; result
 publication must preserve it. A signed enrollment cannot fall back to HMAC.
 
-Local execution uses the controller host's clock. Remote enrollment provisioning,
-clock qualification, and remote execution remain pending. Signatures
+Default local execution uses the controller host's clock. Explicit calibrated
+execution is described below. Remote enrollment provisioning and the persistent
+remote driver remain pending. Signatures
 alone do not qualify a remote worker or prove native process closure.
 
 ## Scoped discovery and recovery
@@ -77,7 +78,7 @@ with the offered revision and preserve the command key through uncertain deliver
 The atomic claim can reject an offer that became unavailable.
 
 The same views are available through HTTP, Python/async SDKs, and MCP. Independent
-remote provisioning, clock qualification, and a persistent remote driver remain
+remote provisioning, physical clock qualification, and a persistent remote driver remain
 pending; these endpoints alone do not qualify execution on another host.
 
 ## Attempt-bound inputs
@@ -241,9 +242,9 @@ current authority, cancellation, and its live origin; a cap alone grants nothing
 Enrollment freezes `clock_mode`. The default `local-utc-v1` preserves the existing
 local execution path. Opt-in `bounded-continuous-v1` requires pinned Ed25519
 assignment authority. A qualified enrollment cannot downgrade to local time by
-omitting its assignment's timing sidecar. The stock local worker explicitly
-rejects calibrated execution until its native release protocol consumes the
-clock estimates and proves its live origin.
+omitting its assignment's timing sidecar. The stock worker supports explicit
+calibrated enrollment through the live-origin native protocol described below.
+It does not infer calibrated mode from an HTTP connection.
 
 `POST /v1/worker/clock` accepts `ClockChallenge` under `worker.query`. It verifies
 the principal, current enrollment/session, mode, and pinned signing key before
@@ -283,8 +284,8 @@ frees a device, refunds an attempt, or permits a retry.
 
 Tests cover scoped HTTP/async queries, same-process runtime reopening, native fork
 rejection, independent-process epoch mismatch, immutable replay, input-pin races,
-and output recovery. Automatic remote execution remains unavailable until native
-journal/release integration and the live-origin handshake are qualified.
+and output recovery. The persistent remote driver and enrollment provisioning
+remain separate from this explicit execution protocol.
 
 ## Durable worker timing
 
@@ -307,21 +308,20 @@ shorten caps. Another process cannot transplant its counters onto an attached
 attempt. Historical verification rechecks the signatures and interval arithmetic
 at the recorded qualification time; it does not prove that origin is alive now.
 
-The legacy journal launch/release methods and stock supervisor refuse timed
-entries. Raw UTC cannot expire a timed entry through the local settlement path;
+The legacy journal launch/release methods and a supervisor without its private
+origin channel refuse timed entries. Raw UTC cannot expire a timed entry through the local settlement path;
 explicit cancellation can settle an entry that is still durably unreleased.
 Publication compares mode and timing sidecar with controller admission. When
 timing evidence is present, it rechecks that evidence without demanding a current
 clock sample. A timed not-started observation can therefore publish after clock
 failure. Missing or altered timing authority cannot downgrade to local mode.
 
-This durable layer is implemented. The private live-origin channel and calibrated
-native launch gates remain required before timed execution is enabled.
+This durable layer supplies the evidence consumed by the live-origin gates below.
 
 ## Private origin transport
 
 `OriginServer` and `SupervisorChannel` provide a bounded, authenticated local
-transport for the upcoming native admission gates. They do not themselves commit
+transport for the native admission gates. They do not themselves commit
 journal transitions or authorize a workload. A successful transport exchange must
 still be paired with a live sampler and an atomic journal decision.
 
@@ -357,5 +357,48 @@ closure or make a reservation refundable.
 Tests include a separate Python supervisor process, private bootstrap, partial
 frames, malformed/unauthenticated peers, close/accept races, reused nonces, changed
 reply bindings, cap extension, simulated suspend, and origin loss after claim.
-This transport is implemented; journal integration, actual parent-death/native
-release tests, and native Windows qualification remain separate.
+This transport is implemented. Its native integration is described below;
+platform qualification remains a separate claim.
+
+## Calibrated native execution
+
+After immutable preparation and machine-capacity reservation, `LocalWorker`
+requests a fresh signed time sample, stores `TimingEvidence`, and retains its
+actual `ClockSampler` in a `LiveTimingOrigin`. The sampler serializes readings and
+permanently invalidates itself after profile changes, read failures, suspend,
+counter reversal, or a wall step. Normal-looking later readings do not reset it.
+An already attached grant can only reuse that exact live origin. A new worker
+process cannot reconstruct launch authority from historical evidence.
+
+The dedicated supervisor receives a one-use private bootstrap and requests a
+claim. The origin checks the exact assignment and timing evidence inside the
+journal transaction, after acquiring SQLite's write lock. Only a fresh,
+uncancelled `RECEIVED` entry becomes `LAUNCHING`. The supervisor checks the
+acknowledged owner, journal revision, and frozen caps before creating a native
+child. A lost claim reply can be settled by that supervisor only while its own
+control path has not attempted native creation. This settlement prevents a late
+claim response from reopening the entry.
+
+The child remains held while its native identity is journaled. A second request
+checks the live origin, cancellation, ownership, and deadlines inside the release
+transaction. `RELEASING` is durable release intent. Immediately before release,
+the supervisor rechecks the absolute launch cap and cancellation. A reply delayed
+past the launch cap cannot create a fresh timeout. The independent hard-deadline
+watchdog starts before the held callback and remains effective after origin
+death. Deadline enforcement depends on OS scheduling; it is not a real-time or
+hostile-code isolation guarantee.
+
+Startup failures close the private listener. An entry still `RECEIVED` can be
+cancelled and settled as `NOT_STARTED`; a claimed entry needs its owning
+supervisor's native absence or closure evidence. Otherwise it remains unknown
+and its machine capacity is quarantined. The origin channel closes before result
+publication, and sanitized channel failure codes remain in the journal. Losing a
+release reply closes the held native scope without inferring that it ran.
+
+Local verification includes real scoped HTTP CPU execution, immutable replay,
+independent-connection lock delays at both gates, lost claim/release replies,
+startup failure before and after claim, cancellation while held, and actual
+origin-process termination before claim, while held, and after release. After
+release, the original deadline still terminates the owned workload. These tests
+qualify the tested native host and protocol; cross-host clock-rate assumptions,
+physical suspend, hosted services, and accelerator behavior need separate proof.

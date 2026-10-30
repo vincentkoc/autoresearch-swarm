@@ -287,6 +287,35 @@ def test_sampling_origin_cannot_change_counter_profile() -> None:
     assert pending.challenge.worker_id == clock.authority.binding.worker_id
 
 
+@pytest.mark.parametrize("fault", ["profile", "wall", "counter", "read"])
+def test_clock_origin_fault_is_sticky_after_the_clock_looks_normal_again(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    _, _, clock, _ = fixture()
+    origin = ClockSampler(clock.authority)
+    original = origin._clock
+    first = origin.read()
+    if fault == "profile":
+        origin._clock = replace(original, profile="unqualified")
+    else:
+
+        def broken_sample(_: object) -> ClockReading:
+            if fault == "read":
+                raise OSError("Synthetic clock read failure")
+            if fault == "wall":
+                return replace(first, wall_ns=first.wall_ns + 2_000_000_000)
+            return replace(first, continuous_ns=first.continuous_ns - 1)
+
+        monkeypatch.setattr(type(original), "sample", broken_sample)
+    with pytest.raises((OSError, ResearchError)):
+        origin.read()
+    monkeypatch.undo()
+    origin._clock = original
+    with pytest.raises(ResearchError, match="origin changed"):
+        origin.read()
+
+
 def test_concurrent_completion_preserves_one_receive_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

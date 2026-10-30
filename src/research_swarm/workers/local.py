@@ -6,7 +6,7 @@ import hashlib
 import subprocess
 import sys
 import time
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -35,12 +35,17 @@ from research_swarm.projects.workload import (
 )
 from research_swarm.runtime import private_state_directory, read_private, write_private
 from research_swarm.workers.authority import DispatchVerifier, VerifiedDispatch
+from research_swarm.workers.clock_estimates import ClockSampler
+from research_swarm.workers.clock_signatures import ClockVerifier, VerifiedAssignmentTime
+from research_swarm.workers.clocks import continuous_time
 from research_swarm.workers.contracts import NativeCommand
 from research_swarm.workers.journal import JournalEntry, JournalState, WorkerJournal
 from research_swarm.workers.prepared import PreparedExecution
 from research_swarm.workers.resources import MachineResources, ResourceDemand
 from research_swarm.workers.signatures import AssignmentVerifier, VerifiedAssignment
 from research_swarm.workers.supervisor import reconcile_outcome, spawn_supervisor
+from research_swarm.workers.timed_launch import LiveTimingOrigin, capture_timing, verify_timing
+from research_swarm.workers.timed_supervision import start_timed_supervisor
 
 
 class LocalWorker:
@@ -63,6 +68,10 @@ class LocalWorker:
             else None
         )
         self.verifier = DispatchVerifier(worker.binding, key) if key is not None else None
+        self.clock_sampler: ClockSampler | None = None
+        if worker.clock_mode == "bounded-continuous-v1":
+            assert worker.assignment_authority is not None
+            self.clock_sampler = ClockSampler(worker.assignment_authority)
         if self.assignment_verifier is None and self.verifier is None:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker verification key is absent")
         self.root = root.absolute()
@@ -144,12 +153,22 @@ class LocalWorker:
 
     def _verify(
         self, attempt: AttemptData, trial: TrialData
-    ) -> VerifiedDispatch | VerifiedAssignment:
-        if self.worker.clock_mode != "local-utc-v1" or attempt.assignment_time is not None:
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE,
-                "Local worker does not yet admit calibrated execution",
+    ) -> VerifiedDispatch | VerifiedAssignment | VerifiedAssignmentTime:
+        timed = None
+        if self.worker.clock_mode == "bounded-continuous-v1":
+            if (
+                attempt.assignment_time is None
+                or attempt.signed_assignment is None
+                or self.worker.assignment_authority is None
+            ):
+                raise ResearchError(
+                    ErrorCode.AUTHORIZATION_DENIED, "Signed timing authority is required"
+                )
+            timed = ClockVerifier(self.worker.assignment_authority).binding(
+                attempt.assignment_time, attempt.signed_assignment
             )
+        elif attempt.assignment_time is not None:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Assignment clock mode differs")
         if (
             self.worker.project_ids is not None
             and trial.spec.project_id not in self.worker.project_ids
@@ -158,8 +177,14 @@ class LocalWorker:
         if self.assignment_verifier is not None:
             if attempt.signed_assignment is None:
                 raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Signed assignment is required")
-            verified = self.assignment_verifier.verify(
-                attempt.signed_assignment, authority_now=utc_now(), allow_expired_observation=True
+            verified = (
+                timed.assignment
+                if timed is not None
+                else self.assignment_verifier.verify(
+                    attempt.signed_assignment,
+                    authority_now=utc_now(),
+                    allow_expired_observation=True,
+                )
             )
             payload = verified.assignment.payload
             if (
@@ -178,7 +203,7 @@ class LocalWorker:
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE, "Network isolation is unavailable"
                 )
-            return verified
+            return timed if timed is not None else verified
         if attempt.signed_assignment is not None:
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED, "Assignment public key is not pinned"
@@ -250,7 +275,10 @@ class LocalWorker:
                 amounts["memory"] = stage.resources.memory_bytes
             if stage.resources.scratch_bytes:
                 amounts["scratch"] = stage.resources.scratch_bytes
-            dispatch = verified.dispatch if isinstance(verified, VerifiedAssignment) else verified
+            plain = (
+                verified.assignment if isinstance(verified, VerifiedAssignmentTime) else verified
+            )
+            dispatch = plain.dispatch if isinstance(plain, VerifiedAssignment) else plain
             claim = self.resources.reserve(dispatch, ResourceDemand(amounts=amounts))
             if execution.exists():
                 raise ResearchError(
@@ -294,12 +322,38 @@ class LocalWorker:
             write_private(marker, prepared.model_dump_json().encode("utf-8"))
         return self.journal.bind_prepared(attempt.dispatch.attempt_id, prepared)
 
+    def _timed_origin(self, entry: JournalEntry) -> LiveTimingOrigin:
+        sampler = self.clock_sampler
+        if sampler is None or entry.signed_assignment is None or entry.assignment_time is None:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Live sampling origin is absent")
+        timed = sampler.verifier.binding(entry.assignment_time, entry.signed_assignment)
+        if entry.timing is None:
+            pending = sampler.begin()
+            estimate = pending.complete(self.client.worker_clock(pending.challenge))
+            verified = capture_timing(timed, estimate, sampler.read())
+            self.journal.bind_timing(entry.dispatch.attempt_id, verified)
+        else:
+            if entry.timing.caps.origin_session_id != sampler.origin_session_id:
+                raise ResearchError(
+                    ErrorCode.STALE_FENCE, "Original sampling origin is unavailable"
+                )
+            verified = verify_timing(
+                entry.timing,
+                sampler.verifier.authority,
+                entry.assignment_time,
+                entry.signed_assignment,
+            )
+        return LiveTimingOrigin(sampler, verified)
+
     def execute(self, attempt_id: str) -> dict[str, Any]:
         row = self._get("attempt", attempt_id)
         attempt = AttemptData.model_validate(row["data"])
         if attempt.dispatch.worker_id != self.worker.binding.worker_id:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Attempt belongs to another worker")
-        with FileLock(self.root / "locks" / (attempt.dispatch.attempt_id + ".lock")):
+        with (
+            FileLock(self.root / "locks" / (attempt.dispatch.attempt_id + ".lock")),
+            ExitStack() as lifecycle,
+        ):
             row = self._get("attempt", attempt_id)
             attempt = AttemptData.model_validate(row["data"])
             if attempt.publication_status == "accepted":
@@ -333,16 +387,45 @@ class LocalWorker:
                 entry.dispatch != attempt.dispatch
                 or entry.spec != trial.spec
                 or entry.signed_assignment != attempt.signed_assignment
+                or entry.assignment_time != attempt.assignment_time
+                or entry.clock_mode != self.worker.clock_mode
             ):
                 raise ResearchError(ErrorCode.STALE_FENCE, "Worker journal differs from admission")
-            process = (
-                spawn_supervisor(self.journal, attempt_id)
-                if entry.state == JournalState.RECEIVED
-                else None
-            )
-            expiry = datetime.fromisoformat(entry.dispatch.hard_deadline_at.replace("Z", "+00:00"))
-            wait_seconds = max(0, (expiry - datetime.now(UTC)).total_seconds()) + 10
-            until = time.monotonic() + wait_seconds
+            process = None
+            supervised = None
+            if entry.state == JournalState.RECEIVED:
+                if entry.clock_mode == "bounded-continuous-v1":
+                    try:
+                        origin = self._timed_origin(entry)
+                        supervised = start_timed_supervisor(self.journal, attempt_id, origin)
+                    except (OSError, ValueError, RuntimeError, ResearchError) as error:
+                        entry = self.journal.get(attempt_id)
+                        self.journal.request_cancel(attempt_id, entry.last_controller_sequence + 1)
+                        entry = self.journal.settle_unstarted(attempt_id)
+                        entry = self.journal.note_reconciliation(
+                            attempt_id, "Clock admission unavailable: " + type(error).__name__
+                        )
+                    else:
+                        lifecycle.callback(supervised.close)
+                        process = supervised.process
+                        entry = self.journal.get(attempt_id)
+                else:
+                    process = spawn_supervisor(self.journal, attempt_id)
+            if entry.clock_mode == "bounded-continuous-v1":
+                observation_clock = continuous_time
+                # A recovered origin cannot turn old counter values into new authority.
+                until = (
+                    int(entry.timing.caps.hard_ns) / 1_000_000_000 + 10
+                    if process is not None and entry.timing is not None
+                    else continuous_time() + 10
+                )
+            else:
+                observation_clock = time.monotonic
+                expiry = datetime.fromisoformat(
+                    entry.dispatch.hard_deadline_at.replace("Z", "+00:00")
+                )
+                wait_seconds = max(0, (expiry - datetime.now(UTC)).total_seconds()) + 10
+                until = time.monotonic() + wait_seconds
             while entry.state not in {
                 JournalState.CLOSED,
                 JournalState.NOT_STARTED,
@@ -361,7 +444,7 @@ class LocalWorker:
                                 attempt_id, entry.supervisor_id, "Supervisor exited without closure"
                             )
                     break
-                if time.monotonic() >= until:
+                if observation_clock() >= until:
                     entry = reconcile_outcome(self.journal, attempt_id)
                     if (
                         entry.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}
@@ -377,7 +460,15 @@ class LocalWorker:
                 # Reap only the dedicated supervisor started by this worker invocation.
                 with suppress(subprocess.TimeoutExpired):
                     process.wait(timeout=2)
+            lifecycle.pop_all().close()
             entry = reconcile_outcome(self.journal, attempt_id)
+            if supervised is not None and supervised.errors:
+                entry = self.journal.note_reconciliation(
+                    attempt_id,
+                    (entry.finding + "; " if entry.finding else "")
+                    + "Clock admission channel: "
+                    + ", ".join(supervised.errors),
+                )
             if entry.state in {JournalState.CLOSED, JournalState.NOT_STARTED}:
                 try:
                     self.resources.release(entry)

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Execute explicitly calibrated CPU assignments through a live private origin and atomic journal claim/release gates.
+- Recheck deadlines after journal lock waits and immediately before native release; keep the hard-deadline watchdog active while authorization is blocked.
+- Settle failures before launch without stranding capacity, retain uncertainty after a claimed launch, and preserve fixed deadlines when the origin process dies.
+- Invalidate worker sampling origins permanently after native clock faults and reject reconstructed origins for previously attached grants.
 - Add a private authenticated supervisor channel with one-use pipe bootstrap, fixed absolute deadlines, bounded frames, and claim/release sequencing.
 - Reject stale, mismatched, malformed, or extended permits and close accepted connections atomically with transport shutdown.
 - Persist signed timing sidecars and conservative deadline evidence in worker journals without changing legacy admission hashes.
@@ -9,7 +13,7 @@
 - Preserve timed not-started publication after clock failure while refusing any fallback through unqualified local launch gates.
 - Share one process-owned clock between scoped time samples, timed assignment issuance, and input-expiry checks.
 - Preserve clock invalidation across runtime reopening and reject inherited or mismatched epochs without resetting accepted grants or evidence.
-- Expose signed time queries through HTTP, SDK, async SDK, and MCP; keep calibrated enrollment explicit while native admission remains pending.
+- Expose signed time queries through HTTP, SDK, async SDK, and MCP; keep calibrated enrollment explicit.
 - Define separately signed controller-time replies and exact-assignment clock bindings without changing existing assignment signatures.
 - Bound time estimates by full roundtrip delay, relative clock-rate assumptions, sample age, and measured read uncertainty; derive conservative absolute caps.
 - Bind one-use clock challenges to a live sampling origin and preserve their original anchors on replay.
