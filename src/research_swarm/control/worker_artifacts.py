@@ -15,10 +15,13 @@ from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, Transaction
 
 
-class WorkerArtifactRead(VersionedRecord):
+class WorkerAttemptTarget(VersionedRecord):
     worker_id: ID
     session_id: ID
     attempt_id: ID
+
+
+class WorkerArtifactRead(WorkerAttemptTarget):
     artifact_id: ID
 
 

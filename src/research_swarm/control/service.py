@@ -47,6 +47,11 @@ from research_swarm.control.promotions import (
 )
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
+from research_swarm.control.worker_outputs import (
+    BeginWorkerUpload,
+    WorkerOutputs,
+    WorkerUploadTarget,
+)
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
@@ -127,6 +132,7 @@ class ResearchService:
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
         self.artifacts = artifacts
+        self.worker_outputs = WorkerOutputs(database, artifacts)
         if assignment_key is not None and dispatch_key is None:
             raise ValueError("Assignment signing requires worker control")
         self.workers = (
@@ -191,6 +197,21 @@ class ResearchService:
 
     def publish_attempt(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         return self.results.publish(context, request)
+
+    def begin_worker_upload(
+        self, context: CommandContext, request: BeginWorkerUpload
+    ) -> JsonObject:
+        return self.worker_outputs.begin(context, request)
+
+    def finalize_worker_upload(
+        self, context: CommandContext, request: WorkerUploadTarget
+    ) -> JsonObject:
+        return self.worker_outputs.finalize(context, request)
+
+    def cleanup_worker_upload(
+        self, context: CommandContext, request: WorkerUploadTarget
+    ) -> JsonObject:
+        return self.worker_outputs.cleanup(context, request)
 
     def authorize_evaluation(
         self, context: CommandContext, request: AuthorizeEvaluation

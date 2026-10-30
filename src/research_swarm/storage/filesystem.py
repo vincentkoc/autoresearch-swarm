@@ -123,6 +123,14 @@ class FilesystemBlobStore:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Invalid artifact lock")
         return FileLock(path, timeout=30)
 
+    @contextmanager
+    def upload_guard(self, workspace_id: str, upload_id: str) -> Iterator[None]:
+        """Serialize lifecycle decisions separately from each atomic byte operation."""
+        with self._lock(
+            self._workspace(workspace_id), "upload-" + _identifier.validate_python(upload_id)
+        ):
+            yield
+
     def begin(self, upload: UploadSpec) -> int:
         upload = UploadSpec.model_validate(upload)
         with self._lock(upload.workspace_id, upload.id):

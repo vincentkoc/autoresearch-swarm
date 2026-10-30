@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Publish scoped worker outputs with attempt, role, actor, and session provenance even when bytes deduplicate to another publisher's artifact.
+- Transfer required evidence retention atomically from upload receipts to accepted attempt observations without granting workspace read access.
+- Run project-scoped CPU workers through HTTP and preserve accepted publication acknowledgments after enrollment revocation.
+- Serialize upload lifecycle decisions with byte operations, preserve committed finalization across cleanup failures, and expose resumable duplicate cleanup.
 - Authorize exact attempt inputs and retain their storage generation in one transaction without granting workspace read access.
 - Stream assigned inputs through HTTP and local/async SDKs with digest and size verification, credential rechecks, and pin cleanup after revocation or failure.
 - Restrict enrolled workers to explicit project sets and enforce that scope before job budget reservation.

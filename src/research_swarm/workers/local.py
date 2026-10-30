@@ -9,13 +9,16 @@ import time
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from filelock import FileLock
 
 from research_swarm.client import ResearchClient
 from research_swarm.control.models import TrialData
 from research_swarm.control.results import PublishAttempt
+from research_swarm.control.worker_artifacts import WorkerArtifactRead
+from research_swarm.control.worker_outputs import OutputRole, WorkerOutputIntent
+from research_swarm.control.worker_queries import WorkerRead
 from research_swarm.control.workers import AttemptData, ClaimJob, WorkerData
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -53,6 +56,7 @@ class LocalWorker:
         maximum_output_bytes: int = 256 * 1024 * 1024,
     ) -> None:
         self.client, self.worker = client, WorkerData.model_validate(worker)
+        self.scoped = worker.project_ids is not None
         self.assignment_verifier = (
             AssignmentVerifier(worker.assignment_authority)
             if worker.assignment_authority is not None
@@ -98,7 +102,19 @@ class LocalWorker:
             )["result"]
         )
 
-    def _download(self, reference: ArtifactRef, path: Path) -> None:
+    def _get(self, kind: Literal["attempt", "trial"], identifier: str) -> dict[str, Any]:
+        if not self.scoped:
+            return self.client.get(kind, identifier)
+        return self.client.worker_get(
+            WorkerRead(
+                worker_id=self.worker.binding.worker_id,
+                session_id=self.worker.binding.worker_session_id,
+                kind=kind,
+                id=identifier,
+            )
+        )
+
+    def _download(self, attempt_id: str, reference: ArtifactRef, path: Path) -> None:
         if path.exists():
             digest, size = hashlib.sha256(), 0
             with SourceReader(path.parent) as reader, reader.open(path.name) as stream:
@@ -110,7 +126,19 @@ class LocalWorker:
             if size != reference.size_bytes or "sha256:" + digest.hexdigest() != reference.digest:
                 raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Cached worker input differs")
             return
-        observed = self.client.download(reference.id, path)
+        observed = (
+            self.client.worker_download(
+                WorkerArtifactRead(
+                    worker_id=self.worker.binding.worker_id,
+                    session_id=self.worker.binding.worker_session_id,
+                    attempt_id=attempt_id,
+                    artifact_id=reference.id,
+                ),
+                path,
+            )
+            if self.scoped
+            else self.client.download(reference.id, path)
+        )
         if observed != reference:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Downloaded worker input differs")
 
@@ -187,7 +215,7 @@ class LocalWorker:
             )
         execution = Path(received.command.cwd)
         source = root / "source.zip"
-        self._download(attempt.source_artifact, source)
+        self._download(attempt.dispatch.attempt_id, attempt.source_artifact, source)
         marker = root / "prepared.json"
         if marker.exists():
             prepared = PreparedExecution.model_validate(
@@ -230,7 +258,7 @@ class LocalWorker:
             materialized = {}
             for index, (name, reference) in enumerate(sorted(attempt.inputs.items())):
                 path = inputs / str(index)
-                self._download(reference, path)
+                self._download(attempt.dispatch.attempt_id, reference, path)
                 materialized[name] = WorkloadInput(
                     path=str(path), digest=reference.digest, size_bytes=reference.size_bytes
                 )
@@ -262,18 +290,16 @@ class LocalWorker:
         return self.journal.bind_prepared(attempt.dispatch.attempt_id, prepared)
 
     def execute(self, attempt_id: str) -> dict[str, Any]:
-        row = self.client.get("attempt", attempt_id)
+        row = self._get("attempt", attempt_id)
         attempt = AttemptData.model_validate(row["data"])
         if attempt.dispatch.worker_id != self.worker.binding.worker_id:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Attempt belongs to another worker")
         with FileLock(self.root / "locks" / (attempt.dispatch.attempt_id + ".lock")):
-            row = self.client.get("attempt", attempt_id)
+            row = self._get("attempt", attempt_id)
             attempt = AttemptData.model_validate(row["data"])
             if attempt.publication_status == "accepted":
                 return row
-            trial = TrialData.model_validate(
-                self.client.get("trial", attempt.dispatch.trial_id)["data"]
-            )
+            trial = TrialData.model_validate(self._get("trial", attempt.dispatch.trial_id)["data"])
             self._verify(attempt, trial)
             try:
                 entry = self.journal.get(attempt_id)
@@ -359,14 +385,37 @@ class LocalWorker:
                 self.resources.quarantine(claim, "Execution lacks native closure")
             return self._publish(entry)
 
+    def _upload(
+        self,
+        attempt_id: str,
+        role: OutputRole,
+        path: Path,
+        *,
+        idempotency_key: str,
+        output_name: str | None = None,
+    ) -> ArtifactRef:
+        if not self.scoped:
+            return self.client.upload_file(path, idempotency_key=idempotency_key)
+        return self.client.worker_upload_file(
+            WorkerOutputIntent(
+                worker_id=self.worker.binding.worker_id,
+                session_id=self.worker.binding.worker_session_id,
+                attempt_id=attempt_id,
+                role=role,
+                output_name=output_name,
+            ),
+            path,
+            idempotency_key=idempotency_key,
+        )
+
     def _publish(self, entry: JournalEntry) -> dict[str, Any]:
         attempt_id = entry.dispatch.attempt_id
         root = self.root / "work" / attempt_id
         journal_path = root / "observation.json"
         write_private(journal_path, entry.model_dump_json().encode("utf-8"))
         journal_digest = record_digest("research.worker-observation", entry.model_dump(mode="json"))
-        journal_artifact = self.client.upload_file(
-            journal_path, idempotency_key="journal:" + journal_digest
+        journal_artifact = self._upload(
+            attempt_id, "journal", journal_path, idempotency_key="journal:" + journal_digest
         )
         outputs: dict[str, ArtifactRef] = {}
         logs: dict[str, ArtifactRef] = {}
@@ -376,7 +425,9 @@ class LocalWorker:
         )
         if entry.outcome is not None:
             for name in ("stdout", "stderr"):
-                logs[name] = self.client.upload_file(
+                logs[name] = self._upload(
+                    attempt_id,
+                    "stdout" if name == "stdout" else "stderr",
                     self.root / "executions" / attempt_id / "output" / name,
                     idempotency_key=attempt_id + ":" + name,
                 )
@@ -397,14 +448,19 @@ class LocalWorker:
                 except (ValueError, OSError) as error:
                     finding = "Invalid workload report: " + type(error).__name__
                 else:
-                    report_artifact = self.client.upload_file(
+                    report_artifact = self._upload(
+                        attempt_id,
+                        "report",
                         Path(entry.prepared.context.report_path),
                         idempotency_key=attempt_id + ":report",
                     )
                     for output in verified:
-                        reference = self.client.upload_file(
+                        reference = self._upload(
+                            attempt_id,
+                            "output",
                             Path(entry.prepared.context.output_root) / output.output.path,
                             idempotency_key=attempt_id + ":output:" + output.output.name,
+                            output_name=output.output.name,
                         )
                         if (reference.digest, reference.size_bytes) != (
                             output.digest,

@@ -10,8 +10,15 @@ from pydantic import Field
 from research_swarm.control.campaigns import settle_pause
 from research_swarm.control.confirmation_runtime import release_unused_exposure, settle_exposure
 from research_swarm.control.models import JobData, TrialData
+from research_swarm.control.worker_outputs import (
+    OutputRole,
+    WorkerOutputIntent,
+    WorkerUploadTarget,
+    evidence_receipt,
+    owned_upload,
+)
 from research_swarm.control.workers import AttemptData, worker_authority
-from research_swarm.domain.artifacts import ArtifactRetention
+from research_swarm.domain.artifacts import ArtifactRecord, ArtifactRetention, StoredBlob
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef, RunResult
@@ -34,9 +41,66 @@ class PublishAttempt(VersionedRecord):
     finding: str = Field(default="", max_length=4096)
 
 
+def evidence_roles(request: PublishAttempt) -> list[tuple[OutputRole, str | None, ArtifactRef]]:
+    if set(request.logs) - {"stdout", "stderr"}:
+        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Unknown native log stream")
+    result: list[tuple[OutputRole, str | None, ArtifactRef]] = [
+        ("journal", None, request.journal_artifact)
+    ]
+    if request.report_artifact is not None:
+        result.append(("report", None, request.report_artifact))
+    result.extend(("output", name, ref) for name, ref in request.outputs.items())
+    for name in ("stdout", "stderr"):
+        if name in request.logs:
+            result.append(("stdout" if name == "stdout" else "stderr", None, request.logs[name]))
+    return result
+
+
+def output_intent(attempt: AttemptData, role: OutputRole, name: str | None) -> WorkerOutputIntent:
+    return WorkerOutputIntent(
+        worker_id=attempt.dispatch.worker_id,
+        session_id=attempt.dispatch.worker_session_id,
+        attempt_id=attempt.dispatch.attempt_id,
+        role=role,
+        output_name=name,
+    )
+
+
 class ResultControl:
     def __init__(self, database: Database, artifacts: ArtifactService) -> None:
         self.database, self.artifacts = database, artifacts
+
+    @staticmethod
+    def _settle_uploads(transaction: Transaction, attempt: AttemptData) -> None:
+        """Preserve every finalized observation under the closed attempt's lifecycle."""
+        rows = transaction.connection.execute(
+            "SELECT id FROM records WHERE workspace_id=? AND kind='worker_upload' "
+            "AND parent_id=? AND state='finalized'",
+            (transaction.workspace_id, attempt.dispatch.attempt_id),
+        )
+        for row in rows:
+            target = WorkerUploadTarget(
+                worker_id=attempt.dispatch.worker_id,
+                session_id=attempt.dispatch.worker_session_id,
+                attempt_id=attempt.dispatch.attempt_id,
+                upload_id=row["id"],
+            )
+            _, receipt, _, _, _ = owned_upload(transaction, target)
+            assert receipt.artifact is not None and receipt.retention_id is not None
+            ArtifactCatalog.retain(
+                transaction,
+                ArtifactRetention(
+                    artifact_id=receipt.artifact.id,
+                    owner_kind="attempt",
+                    owner_id=attempt.dispatch.attempt_id,
+                    purpose="evidence",
+                ),
+            )
+            ArtifactCatalog.release(
+                transaction,
+                receipt.retention_id,
+                owner_release=("worker_upload", receipt.upload_id),
+            )
 
     def publish(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         payload = request.model_dump(mode="json")
@@ -45,28 +109,42 @@ class ResultControl:
         )
         if previous is not None:
             return previous
-        initial = self.database.read_record(context, "attempt", request.attempt_id)
-        admitted = AttemptData.model_validate(initial["data"])
         # Reject another worker before opening any submitted evidence.
         with self.database.connect() as connection:
-            worker_authority(
-                Transaction(connection, context),
+            connection.execute("BEGIN")
+            transaction = Transaction(connection, context)
+            admitted = AttemptData.model_validate(
+                transaction.get("attempt", request.attempt_id)["data"]
+            )
+            worker = worker_authority(
+                transaction,
                 admitted.dispatch.worker_id,
                 admitted.dispatch.worker_session_id,
             )
+            scoped = worker.project_ids is not None
         with ExitStack() as pins:
-            references = [
-                request.journal_artifact,
-                *request.outputs.values(),
-                *request.logs.values(),
-            ]
-            if request.report_artifact is not None:
-                references.append(request.report_artifact)
-            for reference in references:
-                pins.enter_context(self.artifacts.pinned(context, reference))
-            journal = JournalEntry.model_validate(self._read(context, request.journal_artifact))
+            records: dict[str, ArtifactRecord] = {}
+            for role, name, reference in evidence_roles(request):
+                intent = output_intent(admitted, role, name)
+
+                def authorize(
+                    transaction: Transaction,
+                    reference: ArtifactRef,
+                    intent: WorkerOutputIntent = intent,
+                ) -> None:
+                    evidence_receipt(transaction, intent, reference)
+
+                manager = (
+                    self.artifacts.pinned_authorized(
+                        context, reference, scope="worker.publish", authorize=authorize
+                    )
+                    if scoped
+                    else self.artifacts.pinned(context, reference)
+                )
+                records[reference.id] = pins.enter_context(manager)
+            journal = JournalEntry.model_validate(self._read(records[request.journal_artifact.id]))
             report = (
-                WorkloadReport.model_validate(self._read(context, request.report_artifact))
+                WorkloadReport.model_validate(self._read(records[request.report_artifact.id]))
                 if request.report_artifact is not None
                 else None
             )
@@ -78,10 +156,14 @@ class ResultControl:
                 lambda transaction: self._accept(transaction, request, journal, report),
             )
 
-    def _read(self, context: CommandContext, reference: ArtifactRef) -> JsonObject:
+    def _read(self, record: ArtifactRecord) -> JsonObject:
+        reference = record.reference
         if reference.size_bytes > 1024 * 1024:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Observation exceeds its size bound")
-        with self.artifacts.reader(context, reference) as stream:
+        with self.artifacts.store.reader(
+            record.workspace_id,
+            StoredBlob(reference=reference, generation=record.storage_generation),
+        ) as stream:
             value = strict_json_loads(stream.read(1024 * 1024 + 1))
         if not isinstance(value, dict):
             raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Observation must be an object")
@@ -96,7 +178,7 @@ class ResultControl:
     ) -> JsonObject:
         row = transaction.get("attempt", request.attempt_id)
         attempt = AttemptData.model_validate(row["data"])
-        worker_authority(
+        worker = worker_authority(
             transaction, attempt.dispatch.worker_id, attempt.dispatch.worker_session_id
         )
         digest = record_digest("research.attempt-publication", request.model_dump(mode="json"))
@@ -185,12 +267,12 @@ class ResultControl:
                     raise ResearchError(
                         ErrorCode.ARTIFACT_UNVERIFIED, "Native log identity differs"
                     )
-        for reference in [
-            request.journal_artifact,
-            *request.outputs.values(),
-            *request.logs.values(),
-            *([request.report_artifact] if request.report_artifact else []),
-        ]:
+        for role, output_name, reference in evidence_roles(request):
+            receipt = (
+                evidence_receipt(transaction, output_intent(attempt, role, output_name), reference)
+                if worker.project_ids is not None
+                else None
+            )
             ArtifactCatalog.available(transaction, reference)
             ArtifactCatalog.retain(
                 transaction,
@@ -201,6 +283,13 @@ class ResultControl:
                     purpose="evidence",
                 ),
             )
+            if receipt is not None:
+                assert receipt.retention_id is not None
+                ArtifactCatalog.release(
+                    transaction,
+                    receipt.retention_id,
+                    owner_release=("worker_upload", receipt.upload_id),
+                )
         if unknown:
             for reservation_id in attempt.dispatch.reservation_ids:
                 BudgetLedger.mark_uncertain(transaction, reservation_id)
@@ -237,6 +326,8 @@ class ResultControl:
             )
             transaction.event("attempt.execution_unknown", updated, {})
             return updated
+        if worker.project_ids is not None:
+            self._settle_uploads(transaction, attempt)
         success = (
             closed
             and outcome is not None

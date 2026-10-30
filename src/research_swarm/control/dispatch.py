@@ -24,6 +24,7 @@ from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
+from research_swarm.control.worker_outputs import BeginWorkerUpload, WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -43,6 +44,27 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "worker.begin_upload": CommandDefinition(
+        BeginWorkerUpload,
+        "begin_worker_upload",
+        "worker.outputs",
+        False,
+        "Reserve attempt-bound output storage and preserve its upload provenance.",
+    ),
+    "worker.finalize_upload": CommandDefinition(
+        WorkerUploadTarget,
+        "finalize_worker_upload",
+        "worker.outputs",
+        False,
+        "Verify bytes and retain canonical output provenance without accepting execution results.",
+    ),
+    "worker.cleanup_upload": CommandDefinition(
+        WorkerUploadTarget,
+        "cleanup_worker_upload",
+        "worker.outputs",
+        False,
+        "Resume duplicate-generation cleanup without changing publication acknowledgment.",
+    ),
     "campaign.pause": CommandDefinition(
         PauseCampaign,
         "pause_campaign",
@@ -247,6 +269,11 @@ def capabilities() -> JsonObject:
         "worker_inputs": {
             "scope": "worker.inputs",
             "request_schema": WorkerArtifactRead.model_json_schema(),
+        },
+        "worker_outputs": {
+            "scope": "worker.outputs",
+            "request_schema": WorkerUploadTarget.model_json_schema(),
+            "publication_scope": "worker.publish",
         },
         "execution": "registered_worker_required",
         "evaluation": "authenticated_receipts",

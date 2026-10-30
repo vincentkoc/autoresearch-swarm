@@ -76,9 +76,9 @@ evaluation authorization. They do not reserve capacity or budget. Claim the job
 with the offered revision and preserve the command key through uncertain delivery.
 The atomic claim can reject an offer that became unavailable.
 
-The same views are available through HTTP, Python/async SDKs, and MCP. Scoped
-output publication and a remote worker driver remain pending; these query
-endpoints alone do not make the worker runnable on another host.
+The same views are available through HTTP, Python/async SDKs, and MCP. Independent
+remote provisioning, clock qualification, and a persistent remote driver remain
+pending; these endpoints alone do not qualify execution on another host.
 
 ## Attempt-bound inputs
 
@@ -101,3 +101,58 @@ Use `worker_input(WorkerArtifactRead)` for metadata and
 `worker_download(request, destination)` for verified bytes. The destination must
 not exist. Both SDK transports enforce declared size and digest; incomplete new
 files are removed. MCP exposes metadata through `research_worker_input`.
+
+## Attempt-bound outputs and observations
+
+`worker.outputs` permits uploads for one signed attempt owned by the current
+worker session. Each upload declares a role: `journal`, `report`, `stdout`,
+`stderr`, or a named `output` from the assigned stage. Undeclared outputs are
+rejected before storage is reserved. A launch deadline does not prevent uploading
+closure evidence. Revoked enrollment cannot create or continue new transfers.
+
+Use `worker_upload_file(WorkerOutputIntent, path, idempotency_key=...)` on either
+SDK transport. It shares the resumable file transfer algorithm with ordinary
+artifact uploads. `worker_output(WorkerUploadTarget)` returns transfer progress,
+the canonical artifact reference when finalized, and the current cleanup state.
+HTTP exposes bounded byte-range parts; MCP exposes metadata and the typed begin,
+finalize, and cleanup commands. Binary content stays on the HTTP/SDK path.
+
+Finalization stores an immutable receipt binding the full enrollment, attempt,
+role, optional output name, and canonical artifact reference. Content deduplication
+does not prove authorship: the artifact's first publisher may be another actor,
+and the canonical media type may differ from the upload request. The receipt
+preserves this worker's transfer proof separately. Empty stdout and stderr can
+share bytes while keeping distinct role receipts.
+
+Project-scoped publication requires these receipts before opening evidence. The
+controller rechecks ownership and provenance when pinning each storage generation,
+then again in the result transaction. That transaction retains attempt evidence
+before releasing the corresponding unpublished-upload pins. Unknown execution
+also preserves evidence and its uncertain resource accounting; a later closure
+may have a new journal receipt. Terminal acceptance transfers all finalized
+uploads, including duplicate and superseded observations, to the attempt's
+evidence lifecycle. It preserves their history without leaving orphan upload pins.
+Uploading evidence does not itself accept a result
+or create an authenticated evaluator receipt.
+
+Each upload has a lifecycle guard shared by append, finalize, and abort. State is
+rechecked under the guard; byte I/O holds no database transaction. Immutable
+ownership is checked before creating a guard, so rejected IDs create no files.
+An abort cannot
+release quota and then have a delayed append recreate staging. Finalization keeps
+the guard through verified catalog publication.
+
+The accepted finalize acknowledgment survives a duplicate-generation cleanup
+failure. The duplicate remains charged in `cleanup` state and can be retried with
+`worker.cleanup_upload` using its own stable command key. An operator can use the
+ordinary artifact abort lifecycle to remove a pending duplicate after worker
+revocation. This removes only that upload generation; canonical retained evidence
+remains available. Replaying an accepted finalize or result command returns its
+original acknowledgment even after enrollment revocation, provided the caller
+still has the required command scope. Credential revocation still denies access.
+
+The native CPU worker uses scoped queries, input downloads, uploads, and result
+publication when enrollment names explicit projects. A real loopback HTTP test
+runs training and an authorized evaluation, then completes its receipt under a
+different actor. This qualifies the local HTTP execution path, not remote clock
+agreement, persistent remote enrollment, accelerator execution, or a physical swarm.

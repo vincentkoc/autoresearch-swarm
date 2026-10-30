@@ -27,6 +27,7 @@ RecordKind = Literal[
     "attempt",
     "run_result",
     "worker",
+    "worker_upload",
     "evaluation_request",
     "evaluation_receipt",
     "promotion",

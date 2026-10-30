@@ -19,6 +19,11 @@ from research_swarm.control.commands import RegisterProject
 from research_swarm.control.dispatch import capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
 from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerArtifacts
+from research_swarm.control.worker_outputs import (
+    BeginWorkerUpload,
+    WorkerOutputIntent,
+    WorkerUploadTarget,
+)
 from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.acknowledgments import (
     CommandAccepted,
@@ -67,17 +72,21 @@ def write_download(
     return reference
 
 
-class ClientTransport(Protocol):
-    def command(
-        self, operation: str, payload: JsonObject, key: str, revision: int | None
-    ) -> JsonObject: ...
-    def query(self, operation: str, payload: JsonObject) -> JsonObject: ...
+class UploadSink(Protocol):
     def begin_upload(self, request: BeginUpload, key: str) -> JsonObject: ...
     def upload_status(self, identifier: str) -> JsonObject: ...
     def append_upload(self, identifier: str, offset: int, content: bytes) -> None: ...
     def finish_upload(self, identifier: str, key: str) -> ArtifactRef: ...
+
+
+class ClientTransport(UploadSink, Protocol):
+    def command(
+        self, operation: str, payload: JsonObject, key: str, revision: int | None
+    ) -> JsonObject: ...
+    def query(self, operation: str, payload: JsonObject) -> JsonObject: ...
     def download(self, identifier: str, destination: Path) -> ArtifactRef: ...
     def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef: ...
+    def worker_append(self, target: WorkerUploadTarget, offset: int, content: bytes) -> None: ...
     def close(self) -> None: ...
 
 
@@ -105,6 +114,10 @@ class LocalTransport:
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
         context = self._context()
+        if operation == "worker.output":
+            return self.runtime.service.worker_outputs.status(
+                context, WorkerUploadTarget.model_validate(payload)
+            )
         if operation == "worker.input":
             return (
                 WorkerArtifacts(self.runtime.database, self.runtime.artifacts)
@@ -159,6 +172,9 @@ class LocalTransport:
 
     def append_upload(self, identifier: str, offset: int, content: bytes) -> None:
         self.runtime.artifacts.upload_part(self._context(), identifier, offset, content)
+
+    def worker_append(self, target: WorkerUploadTarget, offset: int, content: bytes) -> None:
+        self.runtime.service.worker_outputs.append(self._context(), target, offset, content)
 
     def finish_upload(self, identifier: str, key: str) -> ArtifactRef:
         row = self.runtime.artifacts.finalize_upload(self._context(key), identifier)["result"]
@@ -299,7 +315,7 @@ class HTTPTransport:
         )
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
-        if operation in {"worker.get", "worker.list", "worker.input"}:
+        if operation in {"worker.get", "worker.list", "worker.input", "worker.output"}:
             return self._request("POST", "/v1/" + operation.replace(".", "/"), json=payload)
         if operation == "capabilities":
             return self._request("GET", "/v1/capabilities")
@@ -351,6 +367,15 @@ class HTTPTransport:
         )["result"]
         return ArtifactRecord.model_validate(row["data"]).reference
 
+    def worker_append(self, target: WorkerUploadTarget, offset: int, content: bytes) -> None:
+        self._request(
+            "PUT",
+            "/v1/worker/output/parts",
+            mode="upload_part",
+            params={**target.model_dump(exclude={"schema_version"}), "offset": offset},
+            content=content,
+        )
+
     def download(self, identifier: str, destination: Path) -> ArtifactRef:
         identifier = TypeAdapter(ID).validate_python(identifier)
         record = ArtifactRecord.model_validate(self._request("GET", f"/v1/artifacts/{identifier}"))
@@ -371,6 +396,79 @@ class HTTPTransport:
 
     def close(self) -> None:
         self.http.close()
+
+
+class WorkerUploadSink:
+    def __init__(self, transport: ClientTransport, intent: WorkerOutputIntent) -> None:
+        self.transport, self.intent = transport, intent
+
+    def target(self, identifier: str) -> WorkerUploadTarget:
+        return WorkerUploadTarget(
+            worker_id=self.intent.worker_id,
+            session_id=self.intent.session_id,
+            attempt_id=self.intent.attempt_id,
+            upload_id=identifier,
+        )
+
+    def begin_upload(self, request: BeginUpload, key: str) -> JsonObject:
+        payload = BeginWorkerUpload(
+            **self.intent.model_dump(exclude={"schema_version"}), content=request
+        )
+        return dict(
+            self.transport.command(
+                "worker.begin_upload", payload.model_dump(mode="json"), key, None
+            )["result"]
+        )
+
+    def upload_status(self, identifier: str) -> JsonObject:
+        return self.transport.query(
+            "worker.output", self.target(identifier).model_dump(mode="json")
+        )
+
+    def append_upload(self, identifier: str, offset: int, content: bytes) -> None:
+        self.transport.worker_append(self.target(identifier), offset, content)
+
+    def finish_upload(self, identifier: str, key: str) -> ArtifactRef:
+        result = self.transport.command(
+            "worker.finalize_upload", self.target(identifier).model_dump(mode="json"), key, None
+        )["result"]
+        return ArtifactRef.model_validate(result["artifact"])
+
+
+def upload_file(
+    sink: UploadSink, path: Path, *, idempotency_key: str, media_type: str
+) -> ArtifactRef:
+    digest = hashlib.sha256()
+    size = 0
+    with SourceReader(path.parent.resolve()) as reader, reader.open(path.name) as source:
+        while block := source.read(PART_BYTES):
+            digest.update(block)
+            size += len(block)
+        request = BeginUpload(
+            digest="sha256:" + digest.hexdigest(), size_bytes=size, media_type=media_type
+        )
+        key = record_digest("research.client-transfer", {"key": idempotency_key}).removeprefix(
+            "sha256:"
+        )
+        upload = sink.begin_upload(request, "begin:" + key)
+        status = sink.upload_status(upload["id"])
+        if status["state"] == "pending" and not status["transfer"]["published"]:
+            offset = status["transfer"]["received_bytes"]
+            source.seek(offset)
+            while block := source.read(PART_BYTES):
+                try:
+                    sink.append_upload(upload["id"], offset, block)
+                except ResearchError as error:
+                    if error.code not in {ErrorCode.NOT_FOUND, ErrorCode.INVALID_TRANSITION}:
+                        raise
+                    current = sink.upload_status(upload["id"])
+                    if current["state"] not in {"finalized", "cleanup"} and not (
+                        current["state"] == "pending" and current["transfer"]["published"]
+                    ):
+                        raise
+                    break
+                offset += len(block)
+    return sink.finish_upload(upload["id"], "finish:" + key)
 
 
 class ResearchClient:
@@ -426,6 +524,9 @@ class ResearchClient:
             self.transport.query("worker.input", request.model_dump(mode="json"))
         )
 
+    def worker_output(self, request: WorkerUploadTarget) -> JsonObject:
+        return self.transport.query("worker.output", request.model_dump(mode="json"))
+
     def context(self, campaign_id: str, *, limit: int = 10) -> JsonObject:
         return self.transport.query("context", {"campaign_id": campaign_id, "limit": limit})
 
@@ -438,37 +539,24 @@ class ResearchClient:
     def upload_file(
         self, path: Path, *, idempotency_key: str, media_type: str = "application/octet-stream"
     ) -> ArtifactRef:
-        digest = hashlib.sha256()
-        size = 0
-        with SourceReader(path.parent.resolve()) as reader, reader.open(path.name) as source:
-            while block := source.read(PART_BYTES):
-                digest.update(block)
-                size += len(block)
-            request = BeginUpload(
-                digest="sha256:" + digest.hexdigest(), size_bytes=size, media_type=media_type
-            )
-            key = record_digest("research.client-transfer", {"key": idempotency_key}).removeprefix(
-                "sha256:"
-            )
-            upload = self.transport.begin_upload(request, "begin:" + key)
-            status = self.transport.upload_status(upload["id"])
-            if status["state"] == "pending" and not status["transfer"]["published"]:
-                offset = status["transfer"]["received_bytes"]
-                source.seek(offset)
-                while block := source.read(PART_BYTES):
-                    try:
-                        self.transport.append_upload(upload["id"], offset, block)
-                    except ResearchError as error:
-                        if error.code not in {ErrorCode.NOT_FOUND, ErrorCode.INVALID_TRANSITION}:
-                            raise
-                        current = self.transport.upload_status(upload["id"])
-                        if current["state"] not in {"finalized", "cleanup"} and not (
-                            current["state"] == "pending" and current["transfer"]["published"]
-                        ):
-                            raise
-                        break
-                    offset += len(block)
-        return self.transport.finish_upload(upload["id"], "finish:" + key)
+        return upload_file(
+            self.transport, path, idempotency_key=idempotency_key, media_type=media_type
+        )
+
+    def worker_upload_file(
+        self,
+        intent: WorkerOutputIntent,
+        path: Path,
+        *,
+        idempotency_key: str,
+        media_type: str = "application/octet-stream",
+    ) -> ArtifactRef:
+        return upload_file(
+            WorkerUploadSink(self.transport, intent),
+            path,
+            idempotency_key=idempotency_key,
+            media_type=media_type,
+        )
 
     def capture_project(
         self,
@@ -571,6 +659,9 @@ class AsyncResearchClient:
     async def worker_input(self, request: WorkerArtifactRead) -> ArtifactRef:
         return await asyncio.to_thread(self.client.worker_input, request)
 
+    async def worker_output(self, request: WorkerUploadTarget) -> JsonObject:
+        return await asyncio.to_thread(self.client.worker_output, request)
+
     async def budget(self, campaign_id: str) -> JsonObject:
         return await asyncio.to_thread(self.client.budget, campaign_id)
 
@@ -582,6 +673,22 @@ class AsyncResearchClient:
     ) -> ArtifactRef:
         return await asyncio.to_thread(
             self.client.upload_file, path, idempotency_key=idempotency_key, media_type=media_type
+        )
+
+    async def worker_upload_file(
+        self,
+        intent: WorkerOutputIntent,
+        path: Path,
+        *,
+        idempotency_key: str,
+        media_type: str = "application/octet-stream",
+    ) -> ArtifactRef:
+        return await asyncio.to_thread(
+            self.client.worker_upload_file,
+            intent,
+            path,
+            idempotency_key=idempotency_key,
+            media_type=media_type,
         )
 
     async def capture_project(

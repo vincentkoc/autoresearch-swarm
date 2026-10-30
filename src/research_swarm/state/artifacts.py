@@ -154,55 +154,63 @@ class ArtifactService:
     def _blob(record: ArtifactRecord) -> StoredBlob:
         return StoredBlob(reference=record.reference, generation=record.storage_generation)
 
+    def create_upload_in(self, transaction: Transaction, request: BeginUpload) -> JsonObject:
+        """Create quota-accounted upload state inside the caller's authorized transaction."""
+        rows = transaction.connection.execute(
+            "SELECT kind,id FROM records WHERE workspace_id=? AND "
+            "((kind='upload' AND state IN ('pending','cleanup','aborting')) OR "
+            "(kind='artifact' AND state IN ('verified','deleting')))",
+            (transaction.workspace_id,),
+        ).fetchall()
+        occupied = 0
+        for item in rows:
+            data = transaction.get(item["kind"], item["id"])["data"]
+            occupied += (
+                data["size_bytes"] if item["kind"] == "upload" else data["reference"]["size_bytes"]
+            )
+        if occupied + request.size_bytes > self.storage_limit_bytes:
+            raise ResearchError(
+                ErrorCode.RESOURCE_UNAVAILABLE,
+                "Artifact storage capacity is exhausted",
+                details={"allocated_bytes": occupied, "limit_bytes": self.storage_limit_bytes},
+            )
+        upload = UploadSpec(
+            id=new_id(),
+            workspace_id=transaction.workspace_id,
+            actor_id=transaction.context.principal.id,
+            **request.model_dump(exclude={"schema_version"}),
+        )
+        row = transaction.insert(
+            "upload", upload.id, upload.model_dump(mode="json"), state="pending"
+        )
+        transaction.event("artifact.upload_started", row, {"size_bytes": upload.size_bytes})
+        return row
+
     def begin_upload(self, context: CommandContext, request: BeginUpload) -> JsonObject:
         request = BeginUpload.model_validate(request)
-
-        def create(transaction: Transaction) -> JsonObject:
-            rows = transaction.connection.execute(
-                "SELECT kind,id FROM records WHERE workspace_id=? AND "
-                "((kind='upload' AND state IN ('pending','cleanup','aborting')) OR "
-                "(kind='artifact' AND state IN ('verified','deleting')))",
-                (transaction.workspace_id,),
-            ).fetchall()
-            occupied = 0
-            for item in rows:
-                data = transaction.get(item["kind"], item["id"])["data"]
-                occupied += (
-                    data["size_bytes"]
-                    if item["kind"] == "upload"
-                    else data["reference"]["size_bytes"]
-                )
-            if occupied + request.size_bytes > self.storage_limit_bytes:
-                raise ResearchError(
-                    ErrorCode.RESOURCE_UNAVAILABLE,
-                    "Artifact storage capacity is exhausted",
-                    details={"allocated_bytes": occupied, "limit_bytes": self.storage_limit_bytes},
-                )
-            upload = UploadSpec(
-                id=new_id(),
-                workspace_id=transaction.workspace_id,
-                actor_id=context.principal.id,
-                **request.model_dump(exclude={"schema_version"}),
-            )
-            row = transaction.insert(
-                "upload", upload.id, upload.model_dump(mode="json"), state="pending"
-            )
-            transaction.event("artifact.upload_started", row, {"size_bytes": upload.size_bytes})
-            return row
 
         response = self.database.execute(
             context,
             "artifact.begin_upload",
             request.model_dump(mode="json"),
             "artifact.upload",
-            create,
+            lambda transaction: self.create_upload_in(transaction, request),
         )
-        row = self.database.read_record(context, "upload", response["result"]["id"])
-        if row["state"] == "pending":
-            self.store.begin(self._upload_owner(context, row))
+        with self.store.upload_guard(context.principal.workspace_id, response["result"]["id"]):
+            row = self.database.read_record(context, "upload", response["result"]["id"])
+            if row["state"] == "pending":
+                self.store.begin(self._upload_owner(context, row))
         return response
 
     def upload_part(
+        self, context: CommandContext, upload_id: str, offset: int, content: bytes
+    ) -> int:
+        context.principal.require("artifact.upload")
+        self._upload_owner(context, self.database.read_record(context, "upload", upload_id))
+        with self.store.upload_guard(context.principal.workspace_id, upload_id):
+            return self._upload_part(context, upload_id, offset, content)
+
+    def _upload_part(
         self, context: CommandContext, upload_id: str, offset: int, content: bytes
     ) -> int:
         context.principal.require("artifact.upload")
@@ -219,7 +227,76 @@ class ArtifactService:
         progress = self.store.progress(upload) if row["state"] == "pending" else None
         return {**row, "transfer": progress.model_dump(mode="json") if progress else None}
 
+    def publish_upload_in(
+        self, transaction: Transaction, upload_id: str, blob: StoredBlob
+    ) -> JsonObject:
+        """Publish a verified generation inside the caller's authorized transaction."""
+        current = transaction.get("upload", upload_id)
+        if current["state"] not in {"pending", "cleanup", "finalized"}:
+            raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload cannot be published")
+        existing = transaction.connection.execute(
+            "SELECT id FROM records WHERE workspace_id=? AND kind='artifact' AND id=?",
+            (transaction.workspace_id, blob.reference.id),
+        ).fetchone()
+        if existing is not None:
+            artifact_row = transaction.get("artifact", blob.reference.id)
+            artifact = ArtifactRecord.model_validate(artifact_row["data"])
+            if artifact.state == "deleting":
+                raise ResearchError(
+                    ErrorCode.RESOURCE_UNAVAILABLE, "Artifact deletion is incomplete"
+                )
+            if artifact.state == "deleted":
+                if current["state"] != "pending":
+                    raise ResearchError(
+                        ErrorCode.ARTIFACT_UNVERIFIED, "Published artifact was deleted"
+                    )
+                artifact = ArtifactRecord(
+                    reference=blob.reference,
+                    storage_generation=blob.generation,
+                    workspace_id=transaction.workspace_id,
+                    published_by=transaction.context.principal.id,
+                    verified_at=utc_now(),
+                )
+                artifact_row = transaction.update(
+                    "artifact",
+                    artifact.reference.id,
+                    expected_revision=artifact_row["revision"],
+                    data=artifact.model_dump(mode="json"),
+                    state="verified",
+                )
+        else:
+            artifact = ArtifactRecord(
+                reference=blob.reference,
+                storage_generation=blob.generation,
+                workspace_id=transaction.workspace_id,
+                published_by=transaction.context.principal.id,
+                verified_at=utc_now(),
+            )
+            artifact_row = transaction.insert(
+                "artifact",
+                artifact.reference.id,
+                artifact.model_dump(mode="json"),
+                state="verified",
+            )
+        if current["state"] == "pending":
+            state = "finalized" if artifact.storage_generation == blob.generation else "cleanup"
+            current = transaction.update(
+                "upload",
+                upload_id,
+                expected_revision=current["revision"],
+                data=current["data"],
+                state=state,
+            )
+            transaction.event("artifact.verified", artifact_row, {"upload_id": upload_id})
+        return artifact_row
+
     def finalize_upload(self, context: CommandContext, upload_id: str) -> JsonObject:
+        context.principal.require("artifact.upload")
+        self._upload_owner(context, self.database.read_record(context, "upload", upload_id))
+        with self.store.upload_guard(context.principal.workspace_id, upload_id):
+            return self._finalize_upload(context, upload_id)
+
+    def _finalize_upload(self, context: CommandContext, upload_id: str) -> JsonObject:
         context.principal.require("artifact.upload")
         row = self.database.read_record(context, "upload", upload_id)
         upload = self._upload_owner(context, row)
@@ -230,72 +307,12 @@ class ArtifactService:
         else:
             blob = StoredBlob(reference=upload.reference(), generation=upload.id)
 
-        def publish(transaction: Transaction) -> JsonObject:
-            current = transaction.get("upload", upload_id)
-            if current["state"] not in {"pending", "cleanup", "finalized"}:
-                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload cannot be published")
-            existing = transaction.connection.execute(
-                "SELECT id FROM records WHERE workspace_id=? AND kind='artifact' AND id=?",
-                (transaction.workspace_id, blob.reference.id),
-            ).fetchone()
-            if existing is not None:
-                artifact_row = transaction.get("artifact", blob.reference.id)
-                artifact = ArtifactRecord.model_validate(artifact_row["data"])
-                if artifact.state == "deleting":
-                    raise ResearchError(
-                        ErrorCode.RESOURCE_UNAVAILABLE, "Artifact deletion is incomplete"
-                    )
-                if artifact.state == "deleted":
-                    if current["state"] != "pending":
-                        raise ResearchError(
-                            ErrorCode.ARTIFACT_UNVERIFIED, "Published artifact was deleted"
-                        )
-                    artifact = ArtifactRecord(
-                        reference=blob.reference,
-                        storage_generation=blob.generation,
-                        workspace_id=transaction.workspace_id,
-                        published_by=context.principal.id,
-                        verified_at=utc_now(),
-                    )
-                    artifact_row = transaction.update(
-                        "artifact",
-                        artifact.reference.id,
-                        expected_revision=artifact_row["revision"],
-                        data=artifact.model_dump(mode="json"),
-                        state="verified",
-                    )
-            else:
-                artifact = ArtifactRecord(
-                    reference=blob.reference,
-                    storage_generation=blob.generation,
-                    workspace_id=transaction.workspace_id,
-                    published_by=context.principal.id,
-                    verified_at=utc_now(),
-                )
-                artifact_row = transaction.insert(
-                    "artifact",
-                    artifact.reference.id,
-                    artifact.model_dump(mode="json"),
-                    state="verified",
-                )
-            if current["state"] == "pending":
-                state = "finalized" if artifact.storage_generation == blob.generation else "cleanup"
-                current = transaction.update(
-                    "upload",
-                    upload_id,
-                    expected_revision=current["revision"],
-                    data=current["data"],
-                    state=state,
-                )
-                transaction.event("artifact.verified", artifact_row, {"upload_id": upload_id})
-            return artifact_row
-
         response = self.database.execute(
             context,
             "artifact.finalize_upload",
             {"upload_id": upload_id},
             "artifact.upload",
-            publish,
+            lambda transaction: self.publish_upload_in(transaction, upload_id, blob),
         )
         current = self.database.read_record(context, "upload", upload_id)
         if current["state"] == "cleanup":
@@ -331,6 +348,12 @@ class ArtifactService:
         )
 
     def abort_upload(self, context: CommandContext, upload_id: str) -> JsonObject:
+        context.principal.require("artifact.upload")
+        self._upload_owner(context, self.database.read_record(context, "upload", upload_id))
+        with self.store.upload_guard(context.principal.workspace_id, upload_id):
+            return self._abort_upload(context, upload_id)
+
+    def _abort_upload(self, context: CommandContext, upload_id: str) -> JsonObject:
         def abort(transaction: Transaction) -> JsonObject:
             row = transaction.get("upload", upload_id)
             self._upload_owner(context, row)

@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS records (
 CREATE INDEX IF NOT EXISTS records_campaign
 ON records(workspace_id, kind, campaign_id, state);
 CREATE INDEX IF NOT EXISTS records_workspace ON records(workspace_id);
+CREATE INDEX IF NOT EXISTS records_worker_evidence ON records(
+    workspace_id,parent_id,json_extract(payload,'$.role'),
+    json_extract(payload,'$.output_name'),json_extract(payload,'$.artifact.id')
+) WHERE kind='worker_upload' AND state='finalized';
 CREATE INDEX IF NOT EXISTS records_worker_pending ON records(
     workspace_id,
     json_extract(payload,'$.dispatch.worker_id'),

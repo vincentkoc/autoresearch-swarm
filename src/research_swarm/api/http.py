@@ -16,6 +16,7 @@ from research_swarm.control.dispatch import COMMANDS, capabilities, dispatch_com
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
 from research_swarm.control.service import ResearchService
 from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerArtifacts
+from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -190,6 +191,10 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         actor.require("worker.inputs")
         return CommandContext(principal=actor, idempotency_key=new_id())
 
+    async def output_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
+        actor.require("worker.outputs")
+        return CommandContext(principal=actor, idempotency_key=new_id())
+
     async def write_context(
         actor: Annotated[Principal, Depends(principal)],
         idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -278,6 +283,32 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         parsed = WorkerArtifactRead.model_validate(await read_json(request))
         reference = await asyncio.to_thread(worker_artifacts.input_metadata, context, parsed)
         return await artifact_response(worker_artifacts.input_reader(context, parsed), reference)
+
+    @app.post("/v1/worker/output")
+    async def worker_output(
+        request: Request, context: Annotated[CommandContext, Depends(output_context)]
+    ) -> JsonObject:
+        parsed = WorkerUploadTarget.model_validate(await read_json(request))
+        return await asyncio.to_thread(service.worker_outputs.status, context, parsed)
+
+    @app.put("/v1/worker/output/parts")
+    async def worker_output_part(
+        request: Request,
+        context: Annotated[CommandContext, Depends(output_context)],
+        worker_id: str,
+        session_id: str,
+        attempt_id: str,
+        upload_id: str,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> JsonObject:
+        target = WorkerUploadTarget(
+            worker_id=worker_id, session_id=session_id, attempt_id=attempt_id, upload_id=upload_id
+        )
+        content = await read_body(request, MAX_PART_BYTES)
+        size = await asyncio.to_thread(
+            service.worker_outputs.append, context, target, offset, content
+        )
+        return {"offset": size}
 
     @app.post("/v1/query")
     async def query(
@@ -407,6 +438,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         ("/v1/worker/list", WorkerQuery),
         ("/v1/worker/input", WorkerArtifactRead),
         ("/v1/worker/input/content", WorkerArtifactRead),
+        ("/v1/worker/output", WorkerUploadTarget),
     ):
         schema = model.model_json_schema()
         generated["paths"][path]["post"]["requestBody"] = {
