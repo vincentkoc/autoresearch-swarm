@@ -11,6 +11,7 @@ from pathlib import Path
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
+from research_swarm.workers.clocks import native_clock
 from research_swarm.workers.contracts import NativeIdentity, NativeOutcome
 from research_swarm.workers.journal import JournalEntry, JournalState, WorkerJournal
 from research_swarm.workers.supervision import base_environment, run_native
@@ -60,17 +61,19 @@ def run_attempt(journal: WorkerJournal, attempt_id: str) -> JournalEntry:
         resources = MachineResources(Path(received.prepared.resource_registry))
         resources.verify_held(received, received.prepared.machine_claim_id)
         environment["RESEARCH_CONTEXT"] = received.prepared.context_path
+    hard_deadline = datetime.fromisoformat(
+        received.dispatch.hard_deadline_at.replace("Z", "+00:00")
+    )
+    anchor_ns = native_clock().continuous_ns()
+    remaining_ms = max(0, int((hard_deadline - datetime.now(UTC)).total_seconds() * 1000))
+    # Freeze the local UTC conversion once; preparation and release consume this cap.
+    hard_deadline_ns = anchor_ns + remaining_ms * 1_000_000
     supervisor_id = new_id()
     entry = journal.claim_launch(attempt_id, supervisor_id)
     if entry.state == JournalState.NOT_STARTED:
         return entry
     root = _attempt_root(journal, attempt_id)
-    hard_deadline = datetime.fromisoformat(entry.dispatch.hard_deadline_at.replace("Z", "+00:00"))
-    remaining_ms = max(0, int((hard_deadline - datetime.now(UTC)).total_seconds() * 1000))
-    # A fresh monotonic timer enforces this bound independently of wall-clock changes.
-    command = entry.command.model_copy(
-        update={"timeout_ms": min(entry.command.timeout_ms, max(1, remaining_ms))}
-    )
+    command = entry.command
     if entry.prepared is not None:
         command = entry.prepared.command(command)
 
@@ -91,6 +94,7 @@ def run_attempt(journal: WorkerJournal, attempt_id: str) -> JournalEntry:
             on_released=released,
             cancelled=lambda: journal.get(attempt_id).cancel_requested,
             environment=environment,
+            hard_deadline_ns=hard_deadline_ns,
         )
         _save_outcome(root, outcome)
         return journal.record_outcome(attempt_id, supervisor_id, outcome)

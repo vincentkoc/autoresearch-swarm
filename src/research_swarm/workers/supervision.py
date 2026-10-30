@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import BinaryIO, Literal, Protocol
 
 from research_swarm.domain.types import utc_now
+from research_swarm.workers.clocks import continuous_time
 from research_swarm.workers.contracts import (
     CapturedOutput,
     NativeCommand,
@@ -91,11 +92,11 @@ class _Capture:
     def drain(self, child: NativeChild, stream: BinaryIO) -> bool:
         progress = False
         # Bound each turn so flooding one stream cannot starve cancellation or the other stream.
-        until = time.monotonic() + 0.008
+        until = continuous_time() + 0.008
         for _ in range(1024):
             if self.eof:
                 break
-            if time.monotonic() >= until:
+            if continuous_time() >= until:
                 break
             block = child.read(stream, 64 * 1024)
             if block is None:
@@ -135,6 +136,7 @@ def run_native(
     on_released: Callable[[str], None] = lambda _: None,
     cancelled: Callable[[], bool] = lambda: False,
     environment: dict[str, str] | None = None,
+    hard_deadline_ns: int | None = None,
 ) -> NativeOutcome:
     """Run on a dedicated supervisor thread/process, never on the controller event loop.
 
@@ -143,13 +145,17 @@ def run_native(
     This function never signals a process from a deserialized identity.
     """
     command = NativeCommand.model_validate(command)
+    if hard_deadline_ns is not None and (type(hard_deadline_ns) is not int or hard_deadline_ns < 0):
+        raise ValueError("Absolute deadline requires nonnegative continuous-clock nanoseconds")
     env = base_environment() if environment is None else dict(environment)
     if any("\0" in key + value or "=" in key or not key for key, value in env.items()):
         raise ValueError("Environment entries must be NUL-free and have valid names")
     output_dir.mkdir(mode=0o700)
     prepared_at = utc_now()
-    started = time.monotonic()
+    started = continuous_time()
     deadline = started + command.timeout_ms / 1000
+    if hard_deadline_ns is not None:
+        deadline = min(deadline, hard_deadline_ns / 1_000_000_000)
     released_at = None
     reason: Literal[
         "exited",
@@ -179,12 +185,18 @@ def run_native(
         watchdog: threading.Thread | None = None
 
         def enforce_deadline() -> None:
-            if not watchdog_stop.wait(max(0, deadline - time.monotonic())):
-                deadline_hit.set()
-                try:
-                    child.stop(force=True)
-                except OSError as error:
-                    watchdog_errors.append(type(error).__name__)
+            # Condition waits may pause during suspend. Recheck the absolute
+            # suspend-inclusive cap after each short wait instead of refunding it.
+            while not watchdog_stop.is_set():
+                remaining = deadline - continuous_time()
+                if remaining <= 0:
+                    deadline_hit.set()
+                    try:
+                        child.stop(force=True)
+                    except OSError as error:
+                        watchdog_errors.append(type(error).__name__)
+                    return
+                watchdog_stop.wait(min(remaining, 0.05))
 
         def stop_watchdog() -> None:
             watchdog_stop.set()
@@ -201,37 +213,38 @@ def run_native(
 
         try:
             permitted = on_held(child.identity)
-            if permitted and not cancelled() and time.monotonic() < deadline:
-                released_at = utc_now()
-                child.release()
+            if permitted and not cancelled() and continuous_time() < deadline:
                 watchdog = threading.Thread(target=enforce_deadline, daemon=True)
                 watchdog.start()
-                on_released(released_at)
-                reason = "exited"
-                while child.active():
-                    if cancelled():
-                        reason = "cancelled"
-                        break
-                    if time.monotonic() >= deadline:
+                if not deadline_hit.is_set() and not cancelled() and continuous_time() < deadline:
+                    released_at = utc_now()
+                    child.release()
+                    on_released(released_at)
+                    reason = "exited"
+                    while child.active():
+                        if cancelled():
+                            reason = "cancelled"
+                            break
+                        if continuous_time() >= deadline:
+                            reason = "deadline"
+                            break
+                        if not drain():
+                            time.sleep(0.01)
+                    if deadline_hit.is_set() or continuous_time() >= deadline:
                         reason = "deadline"
-                        break
-                    if not drain():
-                        time.sleep(0.01)
-                if deadline_hit.is_set() or time.monotonic() >= deadline:
-                    reason = "deadline"
             closure = child.closure()
             if reason == "exited" and not closure.scope_closed:
                 # Native job accounting can lag a signaled primary process. Allow
                 # bounded closure/drain progress before classifying surviving work.
-                settle_until = min(deadline, time.monotonic() + command.grace_ms / 1000)
-                while not closure.scope_closed and time.monotonic() < settle_until:
+                settle_until = min(deadline, continuous_time() + command.grace_ms / 1000)
+                while not closure.scope_closed and continuous_time() < settle_until:
                     if cancelled():
                         reason = "cancelled"
                         break
                     drain()
                     time.sleep(0.01)
                     closure = child.closure()
-                if deadline_hit.is_set() or time.monotonic() >= deadline:
+                if deadline_hit.is_set() or continuous_time() >= deadline:
                     reason = "deadline"
             if reason == "exited" and not closure.scope_closed:
                 reason = "descendants_remaining"
@@ -245,7 +258,7 @@ def run_native(
             )
 
         # Retain the native handle until both closure and pipe draining are resolved.
-        cleanup_start = time.monotonic()
+        cleanup_start = continuous_time()
         cleanup_deadline = cleanup_start + command.cleanup_ms / 1000
         force_at = cleanup_start + command.grace_ms / 1000
         forced = False
@@ -267,7 +280,7 @@ def run_native(
                 closure = child.closure()
                 if closure.scope_closed and stdout.eof and stderr.eof:
                     break
-                now = time.monotonic()
+                now = continuous_time()
                 if not closure.scope_closed and now >= force_at and not forced:
                     request_stop(force=True)
                     forced = True
@@ -297,7 +310,7 @@ def run_native(
             prepared_at=prepared_at,
             released_at=released_at,
             finished_at=utc_now(),
-            elapsed_ms=int((time.monotonic() - started) * 1000),
+            elapsed_ms=int((continuous_time() - started) * 1000),
             closure=closure,
             stdout=stdout.finish(),
             stderr=stderr.finish(),

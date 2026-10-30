@@ -156,3 +156,32 @@ publication when enrollment names explicit projects. A real loopback HTTP test
 runs training and an authorized evaluation, then completes its receipt under a
 different actor. This qualifies the local HTTP execution path, not remote clock
 agreement, persistent remote enrollment, accelerator execution, or a physical swarm.
+
+## Native deadline clocks
+
+Execution and cleanup use a suspend-inclusive elapsed clock. Linux uses
+`CLOCK_BOOTTIME`; its paired awake clock is `CLOCK_MONOTONIC`. Python documents
+the distinction in its [clock constants](https://docs.python.org/3.11/library/time.html#time.CLOCK_BOOTTIME).
+macOS uses `mach_continuous_time` and `mach_absolute_time` with integer timebase
+conversion, following [Apple's native declarations](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/mach_time.h).
+Windows uses [QueryPerformanceCounter](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps),
+which includes sleep, paired with [QueryUnbiasedInterruptTime](https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-queryunbiasedinterrupttime),
+which excludes it. Missing primitives are an explicit capability failure.
+
+The supervisor freezes its local UTC-to-elapsed conversion once and passes the
+absolute cap into native execution. Preparing a held process or delaying release
+cannot restart that allowance. The effective deadline is the earlier of the
+stage timeout and the absolute cap. An expired cap never becomes a one-millisecond
+positive allowance.
+
+The watchdog checks the absolute cap after bounded waits, including after resume
+from suspension. Userspace cannot terminate a process while the host is asleep;
+it requests termination when execution resumes. This is not a realtime scheduling
+guarantee. Native closure remains independently observed.
+
+Clock samples retain continuous, awake, and wall readings plus read uncertainty.
+Their continuity check distinguishes suspension, counter reversal, and wall-clock
+steps. These are prerequisites for remote calibration. They do not authenticate
+controller time or grant remote launch authority. Signed time challenges,
+origin-bound calibration, and wiring through every journal release gate remain
+separate work.

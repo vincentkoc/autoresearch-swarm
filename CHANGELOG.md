@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Count host suspension in native execution and cleanup deadlines using explicit Linux, macOS, and Windows clock profiles.
+- Preserve an absolute supervisor cutoff through preparation and the release barrier; expired allowance cannot become a fresh positive timeout.
+- Detect suspend, wall-clock changes, and counter reversal in clock samples for future remote authority-time qualification.
 - Publish scoped worker outputs with attempt, role, actor, and session provenance even when bytes deduplicate to another publisher's artifact.
 - Transfer required evidence retention atomically from upload receipts to accepted attempt observations without granting workspace read access.
 - Run project-scoped CPU workers through HTTP and preserve accepted publication acknowledgments after enrollment revocation.
