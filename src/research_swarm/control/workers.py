@@ -4,25 +4,28 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Literal
 
 from pydantic import Field, model_validator
 
 from research_swarm.control.authority_clock import AuthorityTime, process_authority_clock
 from research_swarm.control.confirmation_runtime import claim_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
+from research_swarm.control.worker_records import (
+    AttemptData as AttemptData,
+)
+from research_swarm.control.worker_records import (
+    WorkerData as WorkerData,
+)
+from research_swarm.control.worker_sessions import archive_session
 from research_swarm.control.worker_state import admission_open
 from research_swarm.domain.assignments import (
-    AssignmentAuthority,
     AssignmentPayload,
-    SignedAssignment,
 )
 from research_swarm.domain.clocks import (
     AssignmentTimePayload,
     ClockChallenge,
     ClockMode,
     ClockReplyPayload,
-    SignedAssignmentTime,
     SignedClockReply,
     timed_assignment_digest,
 )
@@ -34,7 +37,6 @@ from research_swarm.domain.types import (
     ID,
     Digest,
     Name,
-    Timestamp,
     VersionedRecord,
     new_id,
     utc_now,
@@ -77,52 +79,10 @@ class EnrollWorker(VersionedRecord):
         return self
 
 
-class WorkerData(VersionedRecord):
-    binding: WorkerBinding
-    principal_id: ID
-    name: Name
-    profiles: tuple[EngineCapabilities, ...]
-    max_concurrency: int
-    assignment_authority: AssignmentAuthority | None = None
-    project_ids: tuple[ID, ...] | None = None
-    clock_mode: ClockMode = "local-utc-v1"
-    environment_contracts: tuple[Digest, ...] | None = Field(
-        default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
-    )
-    enrolled_at: Timestamp = Field(default_factory=utc_now)
-
-    @model_validator(mode="after")
-    def matching_authority(self) -> WorkerData:
-        if self.clock_mode == "bounded-continuous-v1" and self.assignment_authority is None:
-            raise ValueError("Calibrated workers require signed assignment authority")
-        if (
-            self.assignment_authority is not None
-            and self.assignment_authority.binding != self.binding
-        ):
-            raise ValueError("Worker signing authority differs from enrollment")
-        return self
-
-
 class ClaimJob(VersionedRecord):
     worker_id: ID
     session_id: ID
     job_id: ID
-
-
-class AttemptData(VersionedRecord):
-    dispatch: DispatchEnvelope
-    profile: EngineCapabilities
-    inputs: dict[Name, ArtifactRef]
-    source_artifact: ArtifactRef
-    source_tree_digest: Digest
-    evaluation_request_id: ID | None = None
-    signed_assignment: SignedAssignment | None = None
-    assignment_time: SignedAssignmentTime | None = None
-    outcome_artifact: ArtifactRef | None = None
-    report_artifact: ArtifactRef | None = None
-    result_digest: Digest | None = None
-    publication_status: Literal["pending", "accepted"] = "pending"
-    finding: str = ""
 
 
 def authority(transaction: Transaction) -> tuple[str, int]:
@@ -276,6 +236,7 @@ class WorkerControl:
                 ).model_dump(mode="json"),
                 state="active",
             )
+            archive_session(transaction, WorkerData.model_validate(worker["data"]))
             transaction.event("worker.enrolled", worker, {"session_id": request.session_id})
             return worker
 

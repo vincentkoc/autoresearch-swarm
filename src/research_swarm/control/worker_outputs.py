@@ -7,7 +7,8 @@ from typing import Literal
 
 from pydantic import model_validator
 
-from research_swarm.control.worker_artifacts import WorkerAttemptTarget, assigned_attempt
+from research_swarm.control.worker_artifacts import WorkerAttemptTarget
+from research_swarm.control.worker_sessions import historical_attempt_owner
 from research_swarm.control.workers import AttemptData
 from research_swarm.domain.artifacts import (
     ArtifactRecord,
@@ -65,7 +66,7 @@ def require_pending(attempt: AttemptData) -> None:
 def owned_upload(
     transaction: Transaction, request: WorkerUploadTarget
 ) -> tuple[JsonObject, WorkerUploadData, JsonObject, UploadSpec, AttemptData]:
-    worker, attempt = assigned_attempt(
+    worker, attempt = historical_attempt_owner(
         transaction, request.worker_id, request.session_id, request.attempt_id
     )
     receipt = transaction.get("worker_upload", request.upload_id)
@@ -148,7 +149,7 @@ class WorkerOutputs:
         request = BeginWorkerUpload.model_validate(request)
 
         def begin(transaction: Transaction) -> JsonObject:
-            worker, attempt = assigned_attempt(
+            worker, attempt = historical_attempt_owner(
                 transaction, request.worker_id, request.session_id, request.attempt_id
             )
             require_pending(attempt)

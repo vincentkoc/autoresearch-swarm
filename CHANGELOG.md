@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve immutable worker session records at enrollment and expose explicit historical session and pending-attempt reads.
+- Let the authenticated original session finish scoped evidence transfers after an epoch change while current inputs, launch, and scientific publication remain fenced.
+- Preserve legacy session reads without implicit migration and reject reused session IDs or unavailable historical authority.
+
 - Poll scoped worker controls independently of experiment execution, with dedicated control threads and durable sequenced heartbeat replay.
 - Apply offline cancellation before native receipt, gate fresh launch on completed synchronization, and keep controls flowing while owned work drains.
 - Preserve one bounded heartbeat state file across restart and acknowledge control receipts only after the controller accepts their exact heartbeat.

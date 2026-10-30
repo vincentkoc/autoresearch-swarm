@@ -175,3 +175,37 @@ Tests use HTTP, separate controller/driver/supervisor processes, real native
 cancellation, interrupted heartbeat acknowledgment, and bounded paging. Physical
 remote-host deployment remains a separate qualification. The controller API alone
 still does not prove receipt: inspect acknowledgment and accepted closure separately.
+
+
+## Original session evidence ownership
+
+Enrollment records the complete original `WorkerData` as a `worker_session`,
+including its principal, full binding, engine profiles, and assignment public
+authority. That identity cannot be reused for different enrollment data. Existing
+legacy enrollments remain readable as virtual revision-zero session records; a
+read does not migrate them. Future replacement must archive the original before
+changing the current worker row.
+
+Workers with `worker.query` can explicitly read their own `worker_session` and
+`historical_attempt`, and page `historical_pending`. These operations authenticate
+the original principal and complete original binding. They do not require that
+the old session is still the current execution authority. Their cursors retain
+the same workspace, actor, binding, and query-kind isolation as current views.
+
+Attempt-bound output begin, append, finalization, cleanup, and receipt checks use
+that historical ownership. A valid original worker can preserve journals, logs,
+and declared outputs after an epoch change or execution fence. A replacement
+principal cannot borrow the old session or its upload receipts. Credential
+revocation remains authoritative. An unavailable archived session, or explicit
+revocation of the matching current session, denies fresh historical access.
+
+Offers, claims, input acquisition, clock samples, ordinary heartbeats, and normal
+result publication continue to require current authority. Transporting evidence
+therefore does not settle budget, create a scientific observation, advance stages,
+or select an incumbent. Accepted native closure can release its worker-owned
+machine claim independently; the controller reservation remains pending until
+an authorized reconciliation proves the appropriate disposition.
+
+This slice exposes evidence recovery primitives. Public fencing/replacement,
+quarantine submission, reconciliation, and a recovery-only worker reopening path
+follow separately; it does not silently reconnect an old worker for execution.

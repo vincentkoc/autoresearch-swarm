@@ -10,6 +10,7 @@ from pydantic import Field, ValidationError
 
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.queries import RecordCursor, summarize
+from research_swarm.control.worker_sessions import historical_attempt_owner, historical_session
 from research_swarm.control.worker_state import admission_open, worker_state
 from research_swarm.control.workers import AttemptData, WorkerData, worker_authority
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
@@ -22,7 +23,7 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 class WorkerQuery(VersionedRecord):
     worker_id: ID
     session_id: ID
-    kind: Literal["pending", "offers", "controls"]
+    kind: Literal["pending", "offers", "controls", "historical_pending"]
     limit: int = Field(default=25, strict=True, ge=1, le=100)
     cursor: str | None = Field(default=None, max_length=2048)
 
@@ -30,7 +31,15 @@ class WorkerQuery(VersionedRecord):
 class WorkerRead(VersionedRecord):
     worker_id: ID
     session_id: ID
-    kind: Literal["worker", "attempt", "trial", "worker_admission", "worker_presence"]
+    kind: Literal[
+        "worker",
+        "attempt",
+        "trial",
+        "worker_admission",
+        "worker_presence",
+        "worker_session",
+        "historical_attempt",
+    ]
     id: ID
 
 
@@ -86,6 +95,19 @@ class WorkerQueries:
         with self.database.connect() as connection:
             connection.execute("BEGIN")
             transaction = Transaction(connection, context)
+            if request.kind == "worker_session":
+                if request.id != request.session_id:
+                    raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Session identity differs")
+                return historical_session(transaction, request.worker_id, request.session_id)
+            if request.kind == "historical_attempt":
+                historical_attempt_owner(
+                    transaction,
+                    request.worker_id,
+                    request.session_id,
+                    request.id,
+                    require_signed=False,
+                )
+                return transaction.get("attempt", request.id)
             worker = worker_authority(transaction, request.worker_id, request.session_id)
             if request.kind in {"worker", "worker_admission", "worker_presence"}:
                 if request.id != request.worker_id:
@@ -141,7 +163,13 @@ class WorkerQueries:
         with self.database.connect() as connection:
             connection.execute("BEGIN")
             transaction = Transaction(connection, context)
-            worker = worker_authority(transaction, request.worker_id, request.session_id)
+            worker = (
+                WorkerData.model_validate(
+                    historical_session(transaction, request.worker_id, request.session_id)["data"]
+                )
+                if request.kind == "historical_pending"
+                else worker_authority(transaction, request.worker_id, request.session_id)
+            )
             scope = record_digest(
                 "research.worker-page",
                 {
@@ -173,13 +201,18 @@ class WorkerQueries:
                     )
             if request.kind == "offers" and not admission_open(transaction, worker.binding):
                 return {"items": [], "next_cursor": None, "scanned": 0}
-            kind = {"pending": "attempt", "offers": "job", "controls": "attempt_control"}[
-                request.kind
-            ]
+            kind = {
+                "pending": "attempt",
+                "historical_pending": "attempt",
+                "offers": "job",
+                "controls": "attempt_control",
+            }[request.kind]
             if request.kind == "offers":
                 predicate = "AND state='ready'"
             else:
-                source = "dispatch" if request.kind == "pending" else "binding"
+                source = (
+                    "dispatch" if request.kind in {"pending", "historical_pending"} else "binding"
+                )
                 predicate = (
                     f"AND json_extract(payload,'$.{source}.worker_id')=? "
                     f"AND json_extract(payload,'$.{source}.worker_session_id')=? "
@@ -188,7 +221,7 @@ class WorkerQueries:
                 )
                 predicate += (
                     "AND json_extract(payload,'$.publication_status')='pending'"
-                    if request.kind == "pending"
+                    if request.kind in {"pending", "historical_pending"}
                     else "AND state='requested'"
                 )
             parameters = (

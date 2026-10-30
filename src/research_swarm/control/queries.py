@@ -27,6 +27,7 @@ RecordKind = Literal[
     "attempt",
     "run_result",
     "worker",
+    "worker_session",
     "worker_admission",
     "worker_presence",
     "attempt_control",
@@ -114,7 +115,7 @@ def summarize(row: JsonObject) -> JsonObject:
             "changed_paths": data["changed_paths"][:50],
             "changed_path_count": len(data["changed_paths"]),
         }
-    elif row["kind"] == "worker":
+    elif row["kind"] in {"worker", "worker_session"}:
         result["data"] = {
             "name": data["name"],
             "binding": data["binding"],
