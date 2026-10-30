@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a frozen cross-language canonical corpus covering Unicode, numbers, decimal strings, ordering, optional fields, and domain separation.
+- Independently verify Python hashes and synthetic Ed25519 assignment signatures in Node, reject tampering, and require this conformance check in the supported-platform CI matrix.
+
 - Add explicit scientific completion with immutable reviewed obligations, preserving UNKNOWN custody and child funding while freezing the final research report.
 - Reconcile original late evidence without launching successor work or reopening selection; keep operational-only closure distinct from accepted scientific results.
 - Close resources separately after all original obligations settle, with atomic child-funding settlement, replayable receipts, and current operational context through HTTP, SDK, CLI, and MCP.

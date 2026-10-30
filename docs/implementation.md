@@ -5,7 +5,7 @@ not implicitly supported.
 
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|
-| Domain schemas and JCS hashing | Implemented foundation | Golden/validation tests pass | Cross-language pending |
+| Domain schemas and JCS hashing | Implemented foundation | Frozen Python/JavaScript byte-and-hash corpus, invalid Unicode/float rejection, independent Ed25519 verification and tamper rejection | Local cross-language proof; CI requires Node 22 across the platform matrix; full second-runtime authority remains separate |
 | SQLite transactions, events, outbox | Transaction substrate implemented | Restart, independent connections, rollback, watermark tests pass | Foundation CI passes on Linux, macOS, Windows, Python 3.11–3.13 |
 | Exact budget arithmetic | Implemented foundation and hierarchical accounting | Exact arithmetic, uncertainty, settlement, overshoot and recursive allocation tests pass | Real CPU child execution locally verified |
 | Evaluator receipts | Pre-execution authorization and authenticated completion implemented | Scoped credentials, exact attempts, replay, incomplete panels, invalid metrics | Local CPU pipeline passes; statistical promotion remains separate |
@@ -116,4 +116,4 @@ transport, process, or provider behavior.
 - **C39** — Independent writers commit during snapshot capture and between pages. Frozen records and budgets remain at the original watermark; subsequent events appear strictly after it. A retention pin prevents pruning the catch-up interval until explicit release or terminal expiry. Local SQLite and transport proof.
 - **C40** — Retained artifacts outlive a completed job. Pending end-to-end evidence.
 - **C41** — Exact completion replay and repeated explicit settlement with new delivery keys through a reopened runtime return one immutable receipt without changing ancestor consumption or release again. Local CPU and independent-connection proof; provider delivery remains separate.
-- **C42** — Python and another implementation hash edge-case fixtures. Pending end-to-end evidence.
+- **C42** — Production Python and an independent ECMAScript process match 17 frozen edge-case payloads, exact canonical bytes, SHA-256 content digests, and domain-separated record digests. Node also verifies the Python assignment signature and rejects mutation. Local proof; this does not qualify a second worker or domain authority.
