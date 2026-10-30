@@ -111,3 +111,28 @@ class ProposalCancellation(VersionedRecord):
 
 class ProposalRead(VersionedRecord):
     request_id: ID
+
+
+class AdmitProposalResponse(VersionedRecord):
+    campaign_id: ID
+    request_id: ID
+    expected_incumbent_revision: Revision
+    expected_controller_id: ID
+    expected_control_epoch: Revision
+
+
+class ProposalAdmission(VersionedRecord):
+    transition_kind: Literal["proposal_admission"] = "proposal_admission"
+    campaign_id: ID
+    request_id: ID
+    response_digest: Digest
+    policy_version: Name
+    before_revision: Revision
+    after_revision: Revision
+    outcome: Literal["admitted", "invalid", "duplicate", "agent_failed"]
+    candidate_id: ID | None = None
+    validation_id: ID | None = None
+    trial_id: ID | None = None
+    finding: str = Field(default="", max_length=8192)
+    committed_by: ID
+    committed_at: Timestamp

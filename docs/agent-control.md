@@ -114,8 +114,9 @@ The protocol is:
 4. Deliver the returned request ID to that agent. The assigned principal reads
    it using `proposal.get` and answers using `search.respond`, both under
    `proposal.respond` authority.
-5. Keep the response as durable research evidence. Candidate admission,
-   validation, trial execution, and promotion remain separate operations.
+5. Keep the response as durable research evidence. A controller can then admit
+   it atomically through `search.admit_response`; execution, evaluation, and
+   promotion retain their own authority.
 
 ~~~python
 from research_swarm.control.search_models import ProposalRead, RespondToProposal
@@ -172,6 +173,61 @@ process. Greedy requests occupy one slot; `external-v1` permits up to the sealed
 `max_parallel_trials` across pending requests and policy-owned active trials.
 A response continues to occupy its slot until cancelled or consumed by a policy.
 
-The request/response layer is implemented. Automatic response consumption and
-policy-driven trial admission are the next implementation slice; a stored agent
-response is not yet an automatically queued experiment.
+Request/response persistence and explicit atomic admission are implemented.
+Automatic observation consumption and a repeating policy driver are separate
+work; recording a response alone does not queue an experiment.
+
+
+## Atomic proposal admission
+
+`search.admit_response` consumes one recorded response against the current search
+revision. Supply `campaign_id`, `request_id`, expected incumbent revision, and
+expected controller ID/epoch. Its header revision belongs to `search_state`,
+not the campaign. The CLI command and `research_search_admit_response` MCP tool
+use the same schema and transaction as the SDK/HTTP command.
+
+The caller needs `search.manage`, `candidate.propose`, `candidate.validate`,
+`trial.submit`, and `read`. These permissions are checked by the service itself,
+including direct Python calls. The response's authenticated agent remains the
+candidate's proposer; the transition separately records its committing actor.
+
+Source verification runs outside the controller write transaction while holding
+an artifact pin. Admission then rechecks current authority, campaign state,
+incumbent evidence, original parent, response ownership, pending membership, and
+search revision. A source parse failure leaves the recorded response pending.
+An epoch or parent change requires a new proposal context; supplying refreshed
+expected values cannot silently rebase the old response.
+
+One transaction records exactly one of four outcomes:
+
+| Outcome | Persisted result | Work admitted |
+|---|---|---|
+| `admitted` | Candidate, valid mutation receipt, immutable trial/stage graph, policy transition | One trial, occupying the original proposal's search slot |
+| `invalid` | Candidate, invalid mutation receipt, policy transition | None; request slot released |
+| `duplicate` | Transition referencing the existing same-campaign source tree | None; request slot released |
+| `agent_failed` | Transition and original failure finding | None; request slot released |
+
+Duplicate detection includes pending candidates. It compares canonical source
+identity within one campaign, not natural-language similarity or score. Explicit
+replication uses trial/confirmation APIs rather than resubmitting the same source
+as a new exploratory proposal. An invalid protected-file mutation is retained
+without a trial; a malformed/unavailable bundle remains unconsumed because its
+candidate identity could not be verified.
+
+The same transaction removes the pending request, adds any admitted trial to
+policy-owned active work, advances search revision, and appends its event. A
+trial-limit, seed, capacity, or revision refusal rolls back every new candidate,
+validation, trial, slot change, and transition together. It preserves the earlier
+response and spent proposal-request count. No training or LLM call runs inside
+the transaction.
+
+Retry uncertain admission with the original key, payload, principal, and revision.
+An accepted replay survives source cleanup failure, a competing delivery, or
+subsequent control changes. A new key cannot consume the same response twice.
+Cancellation after consumption cannot erase an admitted trial; use the trial's
+existing worker/campaign controls instead.
+
+An admitted trial still needs independent execution and authenticated evaluation.
+Admission does not change the incumbent or label the candidate a win. Its search
+slot remains occupied until policy observation and selection resolve that trial;
+scientific completion alone does not silently advance policy state.

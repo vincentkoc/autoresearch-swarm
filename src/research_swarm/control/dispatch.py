@@ -24,6 +24,7 @@ from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.search_models import (
+    AdmitProposalResponse,
     CancelProposal,
     ProposalRead,
     RequestProposal,
@@ -58,6 +59,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "search.admit_response": CommandDefinition(
+        AdmitProposalResponse,
+        "admit_proposal_response",
+        "search.manage",
+        True,
+        "Atomically consume a preserved response, validate its candidate, and queue eligible work.",
+        additional_scopes=("candidate.propose", "candidate.validate", "trial.submit", "read"),
+    ),
     "search.request_proposal": CommandDefinition(
         RequestProposal,
         "request_proposal",

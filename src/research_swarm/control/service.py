@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from research_swarm.control.campaigns import CampaignControl
+from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
 from research_swarm.control.closure import ClosureControl
 from research_swarm.control.commands import (
     CampaignTarget,
@@ -50,7 +51,13 @@ from research_swarm.control.proposals import ProposalControl
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
-from research_swarm.control.search_models import CancelProposal, RequestProposal, RespondToProposal
+from research_swarm.control.search_admission import SearchAdmission
+from research_swarm.control.search_models import (
+    AdmitProposalResponse,
+    CancelProposal,
+    RequestProposal,
+    RespondToProposal,
+)
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -64,7 +71,6 @@ from research_swarm.control.worker_outputs import (
 )
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession, WorkerTurnover
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
-from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
@@ -76,7 +82,6 @@ from research_swarm.domain.lifecycle import CampaignState, campaign_transition
 from research_swarm.domain.types import VersionedRecord, new_id, utc_now
 from research_swarm.evaluation.statistics import FixedPairedPolicy
 from research_swarm.projects.manifest import ResolvedProject, resolve_project
-from research_swarm.projects.source import validate_mutation
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
@@ -89,18 +94,6 @@ def check_revision(context: CommandContext, row: JsonObject) -> None:
             "The command requires the current aggregate revision",
             details={"expected": context.expected_revision, "current": row["revision"]},
         )
-
-
-def retain_source(
-    transaction: Transaction, reference: ArtifactRef, kind: str, identifier: str
-) -> None:
-    ArtifactCatalog.available(transaction, reference)
-    ArtifactCatalog.retain(
-        transaction,
-        ArtifactRetention(
-            artifact_id=reference.id, owner_kind=kind, owner_id=identifier, purpose="replay"
-        ),
-    )
 
 
 def input_sources(
@@ -154,6 +147,7 @@ class ResearchService:
         )
         self.worker_turnover = WorkerTurnover(database, assignment_key)
         self.proposals = ProposalControl(database)
+        self.search_admission = SearchAdmission(database, artifacts, self._submit_trial)
         self.results = ResultControl(database, artifacts)
         self.reconciliation = ReconciliationControl(database, self.results)
         self.closures = ClosureControl(database, self.reconciliation)
@@ -175,6 +169,11 @@ class ResearchService:
         self, context: CommandContext, request: ReconcileAttempt
     ) -> JsonObject:
         return self.closures.reconcile(context, request)
+
+    def admit_proposal_response(
+        self, context: CommandContext, request: AdmitProposalResponse
+    ) -> JsonObject:
+        return self.search_admission.admit(context, request)
 
     def request_proposal(self, context: CommandContext, request: RequestProposal) -> JsonObject:
         return self.proposals.request(context, request)
@@ -526,117 +525,29 @@ class ResearchService:
         with verified_source(self.artifacts, context, request.source_artifact) as (_, source):
 
             def propose(transaction: Transaction) -> JsonObject:
-                row = transaction.get("campaign", request.campaign_id)
-                check_revision(context, row)
-                campaign = CampaignData.model_validate(row["data"])
-                if campaign.contract_digest is None or row["state"] not in {
-                    "ready",
-                    "running",
-                    "paused",
-                    "awaiting_input",
-                }:
-                    raise ResearchError(
-                        ErrorCode.INVALID_TRANSITION, "Campaign cannot accept proposals"
-                    )
-                if len(set(request.parent_ids)) != len(request.parent_ids):
-                    raise ResearchError(
-                        ErrorCode.PROJECT_CONTRACT_INVALID, "Candidate parents must be distinct"
-                    )
-                for parent_id in request.parent_ids:
-                    parent = CandidateData.model_validate(
-                        transaction.get("candidate", parent_id)["data"]
-                    )
-                    if (
-                        parent.campaign_id != request.campaign_id
-                        or parent.project_id != campaign.contract.project_id
-                    ):
-                        raise ResearchError(
-                            ErrorCode.PROJECT_CONTRACT_INVALID,
-                            "Candidate parent belongs to another campaign",
-                        )
-                identifier = new_id()
-                candidate = CandidateData(
-                    project_id=campaign.contract.project_id,
-                    campaign_id=request.campaign_id,
-                    source_artifact=request.source_artifact,
-                    source=source,
-                    parent_ids=request.parent_ids,
-                    hypothesis=request.hypothesis,
-                    proposer_id=context.principal.id,
-                )
-                proposed = transaction.insert(
-                    "candidate",
-                    identifier,
-                    candidate.model_dump(mode="json"),
-                    state="proposed",
-                    campaign_id=request.campaign_id,
-                )
-                retain_source(transaction, request.source_artifact, "candidate", identifier)
-                transaction.event(
-                    "candidate.proposed", proposed, {"source_tree_digest": source.tree_digest}
-                )
-                return proposed
+                check_revision(context, transaction.get("campaign", request.campaign_id))
+                return propose_candidate(transaction, request, source)
 
             return self._execute(context, operation, request, scope, propose)
 
     def validate_candidate(self, context: CommandContext, request: ValidateCandidate) -> JsonObject:
         def validate(transaction: Transaction) -> JsonObject:
-            row = transaction.get("candidate", request.candidate_id)
-            check_revision(context, row)
-            candidate = CandidateData.model_validate(row["data"])
-            campaign = CampaignData.model_validate(
-                transaction.get("campaign", candidate.campaign_id)["data"]
-            )
-            assert campaign.contract_digest is not None
-            revision = ProjectRevisionData.model_validate(
-                transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
-            )
-            ArtifactCatalog.available(transaction, candidate.source_artifact)
-            findings: tuple[str, ...] = ()
-            try:
-                changed = validate_mutation(
-                    revision.resolved.source,
-                    candidate.source,
-                    revision.resolved.manifest.mutation,
-                    protected_paths=revision.resolved.protected_paths,
-                )
-            except ResearchError as error:
-                if error.code != ErrorCode.PROJECT_CONTRACT_INVALID:
-                    raise
-                changed = tuple(error.details["paths"])
-                findings = (error.code.value,)
-            validation = CandidateValidation(
-                candidate_id=request.candidate_id,
-                source_tree_digest=candidate.source.tree_digest,
-                campaign_contract_digest=campaign.contract_digest,
-                valid=not findings,
-                changed_paths=changed,
-                findings=findings,
-            )
-            result = transaction.insert(
-                "candidate_validation",
-                new_id(),
-                validation.model_dump(mode="json"),
-                state="valid" if validation.valid else "invalid",
-                campaign_id=candidate.campaign_id,
-                parent_id=request.candidate_id,
-            )
-            transaction.event(
-                "candidate.validated",
-                result,
-                {"candidate_id": request.candidate_id, "valid": validation.valid},
-            )
-            return result
+            check_revision(context, transaction.get("candidate", request.candidate_id))
+            return validate_candidate(transaction, request.candidate_id)
 
         return self._execute(context, "candidate.validate", request, "candidate.validate", validate)
 
     def submit_trial(self, context: CommandContext, request: SubmitTrial) -> JsonObject:
+        def submit(transaction: Transaction) -> JsonObject:
+            check_revision(context, transaction.get("campaign", request.campaign_id))
+            return self._submit_trial(transaction, request)
+
         return self._execute(
             context,
             "trial.submit",
             request,
             "trial.submit",
-            lambda transaction: self._submit_trial(transaction, request),
+            submit,
         )
 
     @staticmethod
@@ -647,7 +558,6 @@ class ResearchService:
         confirmation_side: Literal["candidate", "comparator"] | None = None,
     ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
-        check_revision(transaction.context, row)
         campaign = CampaignData.model_validate(row["data"])
         if (
             campaign.contract.promotion.mode == "paired_confirmation"

@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS records (
 CREATE INDEX IF NOT EXISTS records_campaign
 ON records(workspace_id, kind, campaign_id, state);
 CREATE INDEX IF NOT EXISTS records_workspace ON records(workspace_id);
+CREATE INDEX IF NOT EXISTS records_candidate_tree ON records(
+    workspace_id,campaign_id,json_extract(payload,'$.source.tree_digest')
+) WHERE kind='candidate';
 CREATE INDEX IF NOT EXISTS records_worker_evidence ON records(
     workspace_id,parent_id,json_extract(payload,'$.role'),
     json_extract(payload,'$.output_name'),json_extract(payload,'$.artifact.id')

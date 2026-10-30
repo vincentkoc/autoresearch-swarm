@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Admit recorded agent responses atomically with candidate validation, trial graphs, policy-state changes, and immutable transition receipts.
+- Preserve proposer attribution, reject stale parent/epoch contexts, retain invalid mutations, and deduplicate same-campaign source trees without implicit replication.
+- Share manual and policy candidate operations while keeping campaign and search revision checks distinct; recover accepted admissions despite later source preflight or cleanup failures.
+
 - Add durable external proposal requests, assigned-agent responses, and cancellation through the shared API, SDK, CLI, and MCP contracts.
 - Freeze bounded research context and parent identity, enforce search-state revision CAS and cumulative request budgets, and retain late agent output before candidate publication.
 - Preserve exact response replay and reported model usage without granting execution, evaluation, or promotion authority; expose bounded pending research in campaign context.

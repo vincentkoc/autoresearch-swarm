@@ -18,6 +18,7 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
     "search_state",
+    "policy_transition",
     "proposal_request",
     "proposal_response",
     "proposal_cancellation",
@@ -78,6 +79,8 @@ def summarize(row: JsonObject) -> JsonObject:
         for name in ("pending_request_ids", "active_trial_ids"):
             result["data"][name] = data[name][:32]
             result["data"][name + "_count"] = len(data[name])
+    elif row["kind"] == "policy_transition":
+        result["data"] = {**data, "finding": data.get("finding", "")[:1024]}
     elif row["kind"] == "proposal_request":
         result["data"] = {
             key: data[key]
