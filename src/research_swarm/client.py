@@ -18,6 +18,7 @@ from pydantic import TypeAdapter
 from research_swarm.control.commands import RegisterProject
 from research_swarm.control.dispatch import capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
+from research_swarm.control.search_models import ProposalRead
 from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerArtifacts
 from research_swarm.control.worker_outputs import (
     BeginWorkerUpload,
@@ -131,6 +132,8 @@ class LocalTransport:
                 .input_metadata(context, WorkerArtifactRead.model_validate(payload))
                 .model_dump(mode="json")
             )
+        if operation == "proposal.get":
+            return self.runtime.service.proposals.get(context, ProposalRead.model_validate(payload))
         if operation == "worker.get":
             return WorkerQueries(self.runtime.database).get(
                 context, WorkerRead.model_validate(payload)
@@ -329,6 +332,7 @@ class HTTPTransport:
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
         if operation in {
+            "proposal.get",
             "worker.get",
             "worker.list",
             "worker.input",
@@ -529,6 +533,9 @@ class ResearchClient:
     def list(self, request: RecordQuery) -> JsonObject:
         return self.transport.query("list", request.model_dump(mode="json"))
 
+    def proposal_get(self, request: ProposalRead) -> JsonObject:
+        return self.transport.query("proposal.get", request.model_dump(mode="json"))
+
     def worker_get(self, request: WorkerRead) -> JsonObject:
         return self.transport.query("worker.get", request.model_dump(mode="json"))
 
@@ -670,6 +677,9 @@ class AsyncResearchClient:
 
     async def list(self, request: RecordQuery) -> JsonObject:
         return await asyncio.to_thread(self.client.list, request)
+
+    async def proposal_get(self, request: ProposalRead) -> JsonObject:
+        return await asyncio.to_thread(self.client.proposal_get, request)
 
     async def worker_get(self, request: WorkerRead) -> JsonObject:
         return await asyncio.to_thread(self.client.worker_get, request)

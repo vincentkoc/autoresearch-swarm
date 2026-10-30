@@ -135,6 +135,10 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--manifest", default="research.toml")
         item.add_argument("--source-revision")
         item.add_argument("--key", required=True)
+    proposal = commands.add_parser("proposal")
+    proposal_actions = proposal.add_subparsers(dest="proposal_action", required=True)
+    proposal_get = proposal_actions.add_parser("get", help="Read one assigned research request")
+    proposal_get.add_argument("request_id")
     get = commands.add_parser("get")
     get.add_argument("kind")
     get.add_argument("identifier")
@@ -215,6 +219,10 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 registration=read_registration(args.registration) if args.registration else None,
             )
         ).model_dump(mode="json")
+    if args.action == "proposal":
+        from research_swarm.control.search_models import ProposalRead
+
+        return client.proposal_get(ProposalRead(request_id=args.request_id))
     if args.action == "worker":
         if args.worker_action == "provision-replacement":
             from research_swarm.workers.remote_enrollment import WorkerDescription

@@ -23,6 +23,12 @@ from research_swarm.control.promotions import AssessPromotion, CommitPromotion, 
 from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
+from research_swarm.control.search_models import (
+    CancelProposal,
+    ProposalRead,
+    RequestProposal,
+    RespondToProposal,
+)
 from research_swarm.control.service import ResearchService
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_lifecycle import (
@@ -52,6 +58,27 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "search.request_proposal": CommandDefinition(
+        RequestProposal,
+        "request_proposal",
+        "search.manage",
+        True,
+        "Assign external research from frozen incumbent context and a request-count budget.",
+    ),
+    "search.respond": CommandDefinition(
+        RespondToProposal,
+        "respond_proposal",
+        "proposal.respond",
+        False,
+        "Preserve the assigned agent response before candidate or policy publication.",
+    ),
+    "search.cancel_proposal": CommandDefinition(
+        CancelProposal,
+        "cancel_proposal",
+        "search.manage",
+        True,
+        "Close proposal admission while retaining late output and already consumed request budget.",
+    ),
     "worker.fence": CommandDefinition(
         FenceWorker,
         "fence_worker",
@@ -323,6 +350,10 @@ def capabilities() -> JsonObject:
             for operation, definition in COMMANDS.items()
         },
         "queries": ["get", "list", "context", "budget", "events"],
+        "proposal_queries": {
+            "scope": "proposal.respond",
+            "operations": {"proposal.get": ProposalRead.model_json_schema()},
+        },
         "worker_queries": {
             "scope": "worker.query",
             "operations": {

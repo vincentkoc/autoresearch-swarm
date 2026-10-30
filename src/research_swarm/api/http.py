@@ -14,6 +14,7 @@ from starlette.types import Receive, Scope, Send
 from research_swarm.control.auth import CredentialStore
 from research_swarm.control.dispatch import COMMANDS, capabilities, dispatch_command
 from research_swarm.control.queries import RecordKind, RecordQuery, ResearchQueries
+from research_swarm.control.search_models import ProposalRead
 from research_swarm.control.service import ResearchService
 from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerArtifacts
 from research_swarm.control.worker_outputs import WorkerUploadTarget
@@ -184,6 +185,10 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         actor.require("artifact.upload")
         return CommandContext(principal=actor, idempotency_key=new_id())
 
+    async def proposal_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
+        actor.require("proposal.respond")
+        return CommandContext(principal=actor, idempotency_key=new_id())
+
     async def worker_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
         actor.require("worker.query")
         return CommandContext(principal=actor, idempotency_key=new_id())
@@ -254,6 +259,13 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         kind: RecordKind, identifier: str, context: Annotated[CommandContext, Depends(read_context)]
     ) -> JsonObject:
         return await asyncio.to_thread(queries.get, context, kind, identifier)
+
+    @app.post("/v1/proposal/get")
+    async def proposal_get(
+        request: Request, context: Annotated[CommandContext, Depends(proposal_context)]
+    ) -> JsonObject:
+        parsed = ProposalRead.model_validate(await read_json(request))
+        return await asyncio.to_thread(service.proposals.get, context, parsed)
 
     @app.post("/v1/worker/get")
     async def worker_get(
@@ -442,6 +454,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         for name, schema in definition.request.model_json_schema().get("$defs", {}).items():
             components[name] = openapi_references(schema)
     for path, model in (
+        ("/v1/proposal/get", ProposalRead),
         ("/v1/worker/clock", ClockChallenge),
         ("/v1/worker/get", WorkerRead),
         ("/v1/worker/list", WorkerQuery),

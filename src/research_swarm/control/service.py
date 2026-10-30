@@ -46,9 +46,11 @@ from research_swarm.control.promotions import (
     InvalidateEvidence,
     PromotionControl,
 )
+from research_swarm.control.proposals import ProposalControl
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
+from research_swarm.control.search_models import CancelProposal, RequestProposal, RespondToProposal
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -151,6 +153,7 @@ class ResearchService:
             else None
         )
         self.worker_turnover = WorkerTurnover(database, assignment_key)
+        self.proposals = ProposalControl(database)
         self.results = ResultControl(database, artifacts)
         self.reconciliation = ReconciliationControl(database, self.results)
         self.closures = ClosureControl(database, self.reconciliation)
@@ -172,6 +175,15 @@ class ResearchService:
         self, context: CommandContext, request: ReconcileAttempt
     ) -> JsonObject:
         return self.closures.reconcile(context, request)
+
+    def request_proposal(self, context: CommandContext, request: RequestProposal) -> JsonObject:
+        return self.proposals.request(context, request)
+
+    def respond_proposal(self, context: CommandContext, request: RespondToProposal) -> JsonObject:
+        return self.proposals.respond(context, request)
+
+    def cancel_proposal(self, context: CommandContext, request: CancelProposal) -> JsonObject:
+        return self.proposals.cancel(context, request)
 
     def fence_worker(self, context: CommandContext, request: FenceWorker) -> JsonObject:
         return self.worker_turnover.fence(context, request)

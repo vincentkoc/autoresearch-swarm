@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add durable external proposal requests, assigned-agent responses, and cancellation through the shared API, SDK, CLI, and MCP contracts.
+- Freeze bounded research context and parent identity, enforce search-state revision CAS and cumulative request budgets, and retain late agent output before candidate publication.
+- Preserve exact response replay and reported model usage without granting execution, evaluation, or promotion authority; expose bounded pending research in campaign context.
+
 - Add resumable `worker provision-replacement` and `worker install-replacement` commands with persisted fresh identities and exact command replay.
 - Verify scoped replacement receipts, preserve original installations and environment registrations, and pin the shared machine registry before first connection.
 - Resume interrupted native initialization without copying old driver state or launching probes; replacements remain draining until explicitly activated.

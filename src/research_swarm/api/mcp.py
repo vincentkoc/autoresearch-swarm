@@ -13,6 +13,7 @@ from pydantic import Field, JsonValue, ValidationError
 from research_swarm.client import ResearchClient
 from research_swarm.control.dispatch import COMMANDS, CommandDefinition
 from research_swarm.control.queries import RecordKind, RecordQuery, summarize
+from research_swarm.control.search_models import ProposalRead
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
@@ -156,6 +157,11 @@ def make_mcp(
     def get_record(kind: RecordKind, identifier: ID, detail: bool = False) -> ToolCall:
         """Read one record, summarized by default. Large detail requires the HTTP API."""
         return tool_result(lambda: client.get(kind, identifier), compact=not detail)
+
+    @server.tool(name="research_proposal_get", annotations=read_only, structured_output=True)
+    def proposal_get(request: ProposalRead) -> ToolCall:
+        """Read this agent's assigned immutable context and preserved response."""
+        return tool_result(lambda: client.proposal_get(request), compact=False)
 
     @server.tool(name="research_worker_query", annotations=read_only, structured_output=True)
     def worker_query(request: WorkerQuery) -> ToolCall:

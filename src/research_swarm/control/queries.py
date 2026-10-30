@@ -17,6 +17,10 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
+    "search_state",
+    "proposal_request",
+    "proposal_response",
+    "proposal_cancellation",
     "project",
     "project_revision",
     "campaign",
@@ -67,7 +71,37 @@ def summarize(row: JsonObject) -> JsonObject:
         key: row[key] for key in ("id", "kind", "revision", "state", "campaign_id", "parent_id")
     }
     data = row["data"]
-    if row["kind"] == "attempt_submission":
+    if row["kind"] == "search_state":
+        result["data"] = {
+            key: data[key] for key in ("policy", "policy_version", "generation", "request_count")
+        }
+        for name in ("pending_request_ids", "active_trial_ids"):
+            result["data"][name] = data[name][:32]
+            result["data"][name + "_count"] = len(data[name])
+    elif row["kind"] == "proposal_request":
+        result["data"] = {
+            key: data[key]
+            for key in (
+                "proposer_id",
+                "policy_revision",
+                "parent_candidate_id",
+                "parent_source",
+                "seed",
+                "context_digest",
+                "incumbent_revision",
+            )
+        }
+    elif row["kind"] == "proposal_response":
+        result["data"] = {
+            key: data[key]
+            for key in ("response_digest", "responder_id", "recorded_at", "late_at_recording")
+        }
+        result["data"]["outcome"] = data["request"]["outcome"]
+        result["data"]["hypothesis"] = data["request"]["hypothesis"][:1024]
+        result["data"]["usage"] = data["request"]["usage"]
+    elif row["kind"] == "proposal_cancellation":
+        result["data"] = data
+    elif row["kind"] == "attempt_submission":
         result["data"] = {
             key: data[key]
             for key in ("publication_digest", "original_binding", "submitted_by", "submitted_at")
@@ -342,6 +376,21 @@ class ResearchQueries:
                 (context.principal.workspace_id, campaign_id, limit),
             ).fetchall()
             evidence = [summarize(transaction.get(row["kind"], row["id"])) for row in recent]
+            try:
+                search = summarize(transaction.get("search_state", campaign_id))
+            except ResearchError as error:
+                if error.code != ErrorCode.NOT_FOUND:
+                    raise
+                search = None
+            pending = connection.execute(
+                "SELECT id FROM records WHERE workspace_id=? AND campaign_id=? "
+                "AND kind='proposal_request' AND state IN ('pending','responded') "
+                "ORDER BY rowid LIMIT ?",
+                (context.principal.workspace_id, campaign_id, limit),
+            ).fetchall()
+            requests = [
+                summarize(transaction.get("proposal_request", row["id"])) for row in pending
+            ]
             budgets = connection.execute(
                 "SELECT payload FROM budgets WHERE workspace_id=? "
                 "AND campaign_id=? ORDER BY dimension",
@@ -369,6 +418,8 @@ class ResearchQueries:
             },
             "counts": [dict(row) for row in counts],
             "recent_evidence": evidence,
+            "search_state": search,
+            "pending_proposals": requests,
             "budget": [
                 {**account.model_dump(mode="json"), "available": str(account.available)}
                 for account in accounts

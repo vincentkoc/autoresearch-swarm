@@ -42,6 +42,7 @@ not implicitly supported.
 | Recovery-only worker | Original installation opening, historical signatures, pinned stores, dedicated immutable delivery intent, CLI | Real CPU closure, running independent supervisor, epoch change, lost upload/submission acknowledgments, missing interpreter, revocation, changed custody, driver locks, terminal race | Local HTTP/native proof; physical-host qualification pending |
 | Worker fencing and session replacement | Explicit CAS commands, immutable receipts, new principal/session, fresh draining projections | Original binding and epoch checks, independent-connection contention, old/new credential isolation, native/controller custody, replay and stale fences | Local CPU and HTTP recovery proof; physical-host qualification pending |
 | Remote replacement provisioning | Persisted identities and exact command, fixed private export, separate installation with original registry pins | Credential/command/export/native-init interruptions, registry removal race, original custody preservation, registered environment without probe, real CLI | Local HTTP/native CPU proof; physical-host qualification pending |
+| External proposal evidence | Assigned requests, immutable responses, explicit cancellation, request budgets, search revisions, bounded context | Real CPU incumbent, concurrent requests, late responses, restart, scope and artifact checks, CLI/MCP/HTTP replay | Local evidence layer; automatic admission and policy execution pending |
 | Search policies and atomic promotion | Observed/paired assessment, atomic selection, correction, explicit baseline recovery; search pending | Real CPU evidence, incumbent CAS, rejected control, profile mismatch, invalidation before/after commit | Equal-budget research-policy comparison pending |
 | Statistical gates and exposure | Fixed paired sign gate, sealed plans, exposure accounting, complete-panel assessment | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release, actual paired CPU control | Independent workload variance and held-out generalization pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
@@ -84,7 +85,7 @@ transport, process, or provider behavior.
 - **C18** — Child campaigns reserve concurrently. Pending end-to-end evidence.
 - **C19** — Child finishes and releases unused budget. Pending end-to-end evidence.
 - **C20** — Policy receives a duplicate observation. Pending end-to-end evidence.
-- **C21** — Controller crashes after a proposal-model response. Pending end-to-end evidence.
+- **C21** — A recorded external proposal response survives controller reopening before candidate publication; exact replay preserves one response and its reported usage. Automatic policy consumption remains pending.
 - **C22** — Seed changes between declared replicates. Pending end-to-end evidence.
 - **C23** — Evaluation returns an incomplete panel. Local pipeline records incomplete evidence and does not make it rankable.
 - **C24** — Protected evaluation times out after access. Pending end-to-end evidence.
