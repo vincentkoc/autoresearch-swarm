@@ -182,7 +182,11 @@ def test_ineligible_evaluation_is_recorded_without_becoming_valid(
 
 def test_absent_legacy_panel_does_not_change_serialized_contract_shape() -> None:
     source = Path(__file__).resolve().parents[1] / "examples" / "cpu_bigram" / "research.toml"
-    content = source.read_bytes().replace(b'expected_members = ["synthetic-validation-v1"]\n', b"")
+    content = (
+        source.read_text(encoding="utf-8")
+        .replace('expected_members = ["synthetic-validation-v1"]\n', "")
+        .encode("utf-8")
+    )
     legacy = parse_manifest(content).evaluation
     assert legacy.expected_members is None
     assert "expected_members" not in legacy.model_dump(mode="json")
