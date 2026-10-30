@@ -502,6 +502,38 @@ issue a fresh request. Already admitted trials keep their source and ancestry;
 once selection becomes available, observe them against the current eligible
 incumbent. The platform never relabels an old patch as a rebased proposal.
 
-These commands provide the portfolio state contract. The automatic plural
-portfolio planner is tracked separately; `search plan/advance` currently runs
-the greedy policy and does not silently reinterpret a portfolio campaign.
+Use the same bounded driver commands to operate a sealed portfolio:
+
+~~~sh
+research search plan CAMPAIGN_ID --baseline-trial BASELINE_TRIAL_ID
+research search advance CAMPAIGN_ID --baseline-trial BASELINE_TRIAL_ID --max-steps 32
+~~~
+
+Portfolio mode reads proposers, instructions, and seeds from the sealed themes.
+It rejects CLI overrides for those fields. In Python, construct `SearchDriver`
+with `PortfolioDriverConfiguration(baseline_trial_id=...)` from
+`research_swarm.search.portfolio`. `portfolio_snapshot()` returns all pending
+requests and active trial views; `PortfolioPolicy.plan(snapshot)` is pure.
+The greedy driver and its existing command identities remain compatible.
+
+Each invocation recovers the existing selection owner first. It then cancels
+superseded pending requests, selects an eligible settled sibling, admits a
+current response, or fills a free slot with the next sealed theme. It rereads
+state after every accepted action. An unanswered proposal, UNKNOWN execution,
+or incomplete bounded history scan retains only its own slot; it does not
+prevent other eligible slots from progressing. A retained selection owner
+prevents other promotions but does not prevent independent proposal admission.
+
+There is no generation barrier. An admitted old-parent trial can finish after
+another trial promotes; it keeps its ancestry and is compared against the new
+incumbent. Late responses to cancelled requests remain evidence. The driver
+never rebases a source tree or interprets cancellation as native process closure.
+
+The driver rechecks campaign, search, and controller authority after reading
+all slots. Contention returns `contended`; acknowledgment loss returns
+`delivery_uncertain`. Recreate the driver and advance from durable state.
+An accepted promotion can finish policy bookkeeping during a pause. New work
+stops at the authoritative target, exhausted allowance, or lifecycle boundary.
+Review-required evidence is never automatically abandoned. The driver neither
+calls an LLM nor starts a worker: external agents, `EvaluationDriver`, and
+independent workers continue to use their own scoped credentials.

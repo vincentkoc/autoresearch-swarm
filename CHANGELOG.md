@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Advance sealed portfolios through the shared API and CLI without a generation barrier; refill free slots while unresolved siblings retain their own custody.
+- Recover the durable selection owner, preserve old-parent trial ancestry, and cancel superseded pending proposals without erasing late responses or consumed request costs.
+- Bound plural evidence reads, recheck controller/search revisions, and keep greedy command identities stable through shared pure planning primitives.
+
 - Add the sealed `portfolio-v1` API contract with ordered research themes, exact proposer/instruction/seed admission, and bounded concurrent slots.
 - Protect pending trial allowance from manual submission and keep cumulative proposal costs and ordinals after cancellation.
 - Serialize portfolio selection through a durable trial owner enforced by observation pinning, resolution, abandonment, and direct promotion commits; retain admitted candidate ancestry across incumbent changes.

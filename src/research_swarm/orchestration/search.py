@@ -20,6 +20,12 @@ from research_swarm.search.greedy import (
     SearchSnapshot,
     SearchWait,
 )
+from research_swarm.search.portfolio import (
+    PortfolioDriverConfiguration,
+    PortfolioPolicy,
+    PortfolioSnapshot,
+    RequestView,
+)
 from research_swarm.state.database import JsonObject
 
 
@@ -56,7 +62,10 @@ class SearchDriver:
     """No native execution, provider calls, process-local custody, or implicit retries."""
 
     def __init__(
-        self, client: ResearchClient, campaign_id: str, config: GreedyConfiguration
+        self,
+        client: ResearchClient,
+        campaign_id: str,
+        config: GreedyConfiguration | PortfolioDriverConfiguration,
     ) -> None:
         self.client, self.campaign_id, self.config = client, campaign_id, config
 
@@ -106,10 +115,9 @@ class SearchDriver:
                     receipts.append(request["data"]["receipt_id"])
         return receipts[0] if len(receipts) == 1 else None
 
-    def snapshot(self) -> SearchSnapshot:
+    def _header(self) -> SearchSnapshot:
         context = self.client.context(self.campaign_id)
         campaign_row = self.client.get("campaign", self.campaign_id)
-        campaign = CampaignData.model_validate(campaign_row["data"])
         state = self._optional("search_state", self.campaign_id)
         summary = context["search_state"]
         if context["campaign"]["revision"] != campaign_row["revision"] or (
@@ -120,29 +128,41 @@ class SearchDriver:
                 "Campaign changed during bounded snapshot reads",
                 retryable=True,
             )
-        values: JsonObject = {"campaign": campaign_row, "context": context, "search": state}
-        complete = True
-        if state and state["data"]["pending_request_ids"]:
-            identifier = state["data"]["pending_request_ids"][0]
-            values["request"] = self.client.get("proposal_request", identifier)
-            values["response"] = self._optional("proposal_response", identifier)
-        active = state["data"]["active_trial_ids"] if state else []
-        trial_id = (
-            active[0]
-            if active
-            else (
-                self.config.baseline_trial_id if campaign.incumbent_candidate_id is None else None
-            )
+        return SearchSnapshot(campaign=campaign_row, context=context, search=state)
+
+    def _request(self, identifier: str) -> RequestView:
+        return RequestView(
+            request=self.client.get("proposal_request", identifier),
+            response=self._optional("proposal_response", identifier),
         )
+
+    def _trial_snapshot(
+        self,
+        header: SearchSnapshot,
+        trial_id: str | None,
+        *,
+        active: bool,
+        hydrate: bool = True,
+        trial_row: JsonObject | None = None,
+    ) -> SearchSnapshot:
+        campaign = CampaignData.model_validate(header.campaign["data"])
+        values: JsonObject = {
+            "campaign": header.campaign,
+            "context": header.context,
+            "search": header.search,
+        }
+        complete = True
         observation = None
         trial = None
         if trial_id:
-            trial = self.client.get("trial", trial_id)
+            trial = trial_row if trial_row is not None else self.client.get("trial", trial_id)
             if trial["campaign_id"] != self.campaign_id:
                 raise ResearchError(
                     ErrorCode.PROJECT_CONTRACT_INVALID, "Selected trial belongs to another campaign"
                 )
             values["trial"] = trial
+            if not hydrate:
+                return SearchSnapshot(**values)
             values["receipt_id"] = self._receipt(trial)
             if active:
                 pin_id = observation_selection_id(
@@ -225,8 +245,90 @@ class SearchDriver:
         values["scan_complete"] = complete
         return SearchSnapshot(**values)
 
+    def _greedy_snapshot(self, header: SearchSnapshot) -> SearchSnapshot:
+        from dataclasses import replace
+
+        campaign = CampaignData.model_validate(header.campaign["data"])
+        state = header.search
+        active = state["data"]["active_trial_ids"] if state else []
+        trial_id = (
+            active[0]
+            if active
+            else (
+                self.config.baseline_trial_id if campaign.incumbent_candidate_id is None else None
+            )
+        )
+        snapshot = self._trial_snapshot(header, trial_id, active=bool(active))
+        if state and state["data"]["pending_request_ids"]:
+            view = self._request(state["data"]["pending_request_ids"][0])
+            snapshot = replace(snapshot, request=view.request, response=view.response)
+        return snapshot
+
+    def snapshot(self) -> SearchSnapshot:
+        if not isinstance(self.config, GreedyConfiguration):
+            raise ValueError("Use portfolio_snapshot for a plural portfolio")
+        return self._greedy_snapshot(self._header())
+
+    def _portfolio_snapshot(self, header: SearchSnapshot) -> PortfolioSnapshot:
+        campaign = CampaignData.model_validate(header.campaign["data"])
+        state = header.search
+        active = state["data"]["active_trial_ids"] if state else []
+        pending = state["data"]["pending_request_ids"] if state else []
+        if len(active) + len(pending) > 16:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Portfolio slot scan exceeds its bound"
+            )
+        owner = state["data"].get("selection_trial_id") if state else None
+        if campaign.incumbent_candidate_id is None:
+            header = self._trial_snapshot(header, self.config.baseline_trial_id, active=False)
+        requests = tuple(self._request(identifier) for identifier in pending)
+        trials = {}
+        # Recover the durable selection first; retain active order for the next owner.
+        ordered = ([owner] if owner else []) + [
+            identifier for identifier in active if identifier != owner
+        ]
+        for identifier in ordered:
+            trial = self.client.get("trial", identifier)
+            data = trial["data"]
+            hydrate = identifier == owner or (
+                data["execution_outcome"] not in {"pending", "unknown"}
+                and data["resource_status"] not in {"active", "unknown"}
+            )
+            trials[identifier] = self._trial_snapshot(
+                header, identifier, active=True, hydrate=hydrate, trial_row=trial
+            )
+        current = self._header()
+        if (
+            current.campaign["revision"] != header.campaign["revision"]
+            or (current.search["revision"] if current.search else 0)
+            != (state["revision"] if state else 0)
+            or current.context["authority"] != header.context["authority"]
+        ):
+            raise ResearchError(
+                ErrorCode.REVISION_CONFLICT,
+                "Portfolio changed during bounded snapshot reads",
+                retryable=True,
+            )
+        return PortfolioSnapshot(
+            header, requests, tuple(trials[identifier] for identifier in active)
+        )
+
+    def portfolio_snapshot(self) -> PortfolioSnapshot:
+        if not isinstance(self.config, PortfolioDriverConfiguration):
+            raise ValueError("Portfolio snapshots require a portfolio driver configuration")
+        return self._portfolio_snapshot(self._header())
+
     def plan(self) -> SearchAction | SearchWait:
-        return GreedyPolicy.plan(self.snapshot(), self.config)
+        header = self._header()
+        policy = header.campaign["data"]["contract"]["search"]["policy"]
+        if policy == "greedy" and isinstance(self.config, GreedyConfiguration):
+            return GreedyPolicy.plan(self._greedy_snapshot(header), self.config)
+        if policy == "portfolio" and isinstance(self.config, PortfolioDriverConfiguration):
+            return PortfolioPolicy.plan(self._portfolio_snapshot(header))
+        return SearchWait(
+            state="needs_review",
+            reason="Driver configuration does not match the sealed search policy",
+        )
 
     def advance(self, *, max_steps: int = 32) -> SearchDriverResult:
         if type(max_steps) is not int or not 1 <= max_steps <= 128:

@@ -136,14 +136,14 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--manifest", default="research.toml")
         item.add_argument("--source-revision")
         item.add_argument("--key", required=True)
-    search = commands.add_parser("search", help="Plan or advance a bounded greedy research loop")
+    search = commands.add_parser("search", help="Plan or advance a bounded research loop")
     search_actions = search.add_subparsers(dest="search_action", required=True)
     for action in ("plan", "advance"):
         item = search_actions.add_parser(action)
         item.add_argument("campaign_id")
-        item.add_argument("--proposer", required=True)
+        item.add_argument("--proposer")
         item.add_argument("--baseline-trial")
-        item.add_argument("--first-seed", type=int, default=0)
+        item.add_argument("--first-seed", type=int)
         item.add_argument("--instructions")
         if action == "advance":
             item.add_argument("--max-steps", type=int, default=32)
@@ -244,13 +244,30 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
     if args.action == "search":
         from research_swarm.orchestration.search import SearchDriver
         from research_swarm.search.greedy import GreedyConfiguration
+        from research_swarm.search.portfolio import PortfolioDriverConfiguration
 
-        config = GreedyConfiguration(
-            proposer_id=args.proposer,
-            baseline_trial_id=args.baseline_trial,
-            first_seed=args.first_seed,
-            **({"instructions": args.instructions} if args.instructions is not None else {}),
-        )
+        policy = client.get("campaign", args.campaign_id)["data"]["contract"]["search"]["policy"]
+        config: GreedyConfiguration | PortfolioDriverConfiguration
+        if policy == "portfolio":
+            if any(
+                value is not None for value in (args.proposer, args.first_seed, args.instructions)
+            ):
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID,
+                    "Portfolio proposer, seed, and instructions belong to its sealed themes",
+                )
+            config = PortfolioDriverConfiguration(baseline_trial_id=args.baseline_trial)
+        else:
+            if args.proposer is None:
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID, "Greedy search requires --proposer"
+                )
+            config = GreedyConfiguration(
+                proposer_id=args.proposer,
+                baseline_trial_id=args.baseline_trial,
+                first_seed=args.first_seed if args.first_seed is not None else 0,
+                **({"instructions": args.instructions} if args.instructions is not None else {}),
+            )
         driver = SearchDriver(client, args.campaign_id, config)
         result = (
             driver.plan()
