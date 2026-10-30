@@ -9,7 +9,9 @@ from pydantic import ValidationError
 
 from research_swarm.control.commands import (
     CampaignTarget,
+    CompleteCampaign,
     CreateCampaign,
+    PauseCampaign,
     ProposeCandidate,
     RegisterProject,
     SubmitTrial,
@@ -18,6 +20,7 @@ from research_swarm.control.commands import (
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
+from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
 from research_swarm.control.service import ResearchService
 from research_swarm.control.workers import ClaimJob, EnrollWorker
@@ -38,6 +41,27 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "campaign.pause": CommandDefinition(
+        PauseCampaign,
+        "pause_campaign",
+        "campaign.manage",
+        True,
+        "Stop new trial admission and drain already active trials before pausing.",
+    ),
+    "campaign.complete": CommandDefinition(
+        CompleteCampaign,
+        "complete_campaign",
+        "campaign.manage",
+        True,
+        "Complete settled research and atomically record its final human and agent report.",
+    ),
+    "report.create": CommandDefinition(
+        ReportCampaign,
+        "report_campaign",
+        "report.create",
+        False,
+        "Capture bounded evidence, selection, failures, and budgets as JSON and Markdown.",
+    ),
     "confirmation.assess": CommandDefinition(
         AssessConfirmation,
         "assess_confirmation",

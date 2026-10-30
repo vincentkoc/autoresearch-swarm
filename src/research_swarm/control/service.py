@@ -7,9 +7,12 @@ from typing import Literal
 
 from pydantic import ValidationError
 
+from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.commands import (
     CampaignTarget,
+    CompleteCampaign,
     CreateCampaign,
+    PauseCampaign,
     ProposeCandidate,
     RegisterProject,
     SubmitTrial,
@@ -42,6 +45,7 @@ from research_swarm.control.promotions import (
     InvalidateEvidence,
     PromotionControl,
 )
+from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.domain.artifacts import ArtifactRetention
@@ -123,6 +127,16 @@ class ResearchService:
         self.evaluations = EvaluationControl(database, artifacts)
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
+        self.campaigns = CampaignControl(database)
+
+    def pause_campaign(self, context: CommandContext, request: PauseCampaign) -> JsonObject:
+        return self.campaigns.pause(context, request)
+
+    def complete_campaign(self, context: CommandContext, request: CompleteCampaign) -> JsonObject:
+        return self.campaigns.complete(context, request)
+
+    def report_campaign(self, context: CommandContext, request: ReportCampaign) -> JsonObject:
+        return self.campaigns.report(context, request)
 
     def create_confirmation(
         self, context: CommandContext, request: CreateConfirmationPlan

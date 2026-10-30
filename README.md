@@ -29,6 +29,7 @@ Start with `uv sync --group dev`, then `uv run research init` and
 See [agent control](docs/agent-control.md), the [Python SDK](docs/sdk.md), and
 the [HTTP API](docs/api.md) for their contracts.
 See [evaluation authority](docs/evaluation.md) for the boundary between measurements and receipts.
+See [campaign control](docs/campaigns.md) for pause, completion, and evidence reports.
 
 See the [implementation ledger](docs/implementation.md) for qualification status,
 the [design](docs/design.md) for the complete contract, and

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Drain active stage graphs before pausing and preserve queued work for explicit resume.
+- Complete only settled research under its stopping rule and atomically capture its final report.
+- Generate bounded JSON and Markdown from one evidence snapshot, freeze completed selection, and preserve later corrections.
 - Assess complete preselected confirmation panels, preserve failed realizations, and commit statistically qualified selections atomically.
 - Keep every paired receipt as a promotion dependency and suspend selection when supporting evidence is corrected.
 - Continue bounded native closure observation after a cleanup signal error instead of abandoning draining and reaping.

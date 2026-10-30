@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from pydantic import Field
 
+from research_swarm.control.campaigns import settle_pause
 from research_swarm.control.confirmation_runtime import release_unused_exposure, settle_exposure
 from research_swarm.control.models import JobData, TrialData
 from research_swarm.control.workers import AttemptData, worker_authority
@@ -333,6 +334,7 @@ class ResultControl:
             ),
         )
         self._advance_trial(transaction, trial_row, trial)
+        settle_pause(transaction, row["campaign_id"])
         transaction.event("job.completed", updated_job, {"attempt_id": row["id"]})
         transaction.event("attempt.observation_accepted", updated, {"publication_digest": digest})
         return updated

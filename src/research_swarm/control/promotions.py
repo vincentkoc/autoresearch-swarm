@@ -14,6 +14,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import PromotionDecision
 from research_swarm.domain.experiments import Direction
 from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.lifecycle import TERMINAL_CAMPAIGNS
 from research_swarm.domain.types import ID, Digest, Revision, VersionedRecord, new_id
 from research_swarm.evaluation.statistics import GateResult, Rational
 from research_swarm.state.database import Database, JsonObject, Transaction
@@ -195,6 +196,8 @@ class PromotionControl:
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Decision cannot promote")
             campaign_row = transaction.get("campaign", decision.campaign_id)
             campaign = CampaignData.model_validate(campaign_row["data"])
+            if campaign_row["state"] in TERMINAL_CAMPAIGNS:
+                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Completed selection is frozen")
             if (
                 campaign.incumbent_revision != decision.expected_incumbent_revision
                 or campaign.incumbent_candidate_id != decision.comparator_id

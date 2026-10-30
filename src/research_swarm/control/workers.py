@@ -189,10 +189,12 @@ class WorkerControl:
             job = JobData.model_validate(row["data"])
             campaign_row = transaction.get("campaign", row["campaign_id"])
             campaign = CampaignData.model_validate(campaign_row["data"])
-            if campaign_row["state"] != "running":
-                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Campaign admission is closed")
             trial_row = transaction.get("trial", job.trial_id)
             trial = TrialData.model_validate(trial_row["data"])
+            if campaign_row["state"] != "running" and not (
+                campaign_row["state"] == "pausing" and trial_row["state"] == "running"
+            ):
+                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Campaign admission is closed")
             if trial.execution_outcome not in {"pending"}:
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Trial is not executable")
             project = ProjectRevisionData.model_validate(
