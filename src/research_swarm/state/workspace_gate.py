@@ -76,7 +76,7 @@ def require_workspace_mutation(
         "SELECT state,payload FROM records WHERE workspace_id=? AND kind='workspace_gate' AND id=?",
         (workspace_id, workspace_id),
     ).fetchone()
-    if row is None:
+    if row is None or row["state"] == "active":
         return
     if (
         row["state"] == "recovering"

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Activate an elected native recovery target only after original execution, reservations, confirmation exposure, saved turns, reader pins and byte operations close consistently. Verify current artifact bytes and recheck the complete bounded state cut atomically.
+- Preserve queued stages, confirmation reservations, child funding and consumed costs; finish proven drain pauses without completing trials. Record signed activation history, keep the restored epoch and old worker/driver fences, and recover one commit after native process exit or lost replies.
+
 - Reconcile original saved agent turns during recovery through separate maintenance capabilities bound to the admitted campaign, original actor/action, fenced binding and exact target acknowledgment.
 - Preserve accepted and rejected target replies, explicitly close unacknowledged prepared turns, and clear pending pointers atomically without executing saved actions or resuming research. Recover exact committed replies if later preflight fails.
 

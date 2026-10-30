@@ -173,3 +173,32 @@ class RecoveryAdmission(VersionedRecord):
             "research.recovery-admission.v1",
             self.model_dump(mode="json", exclude={"target_signature"}),
         )
+
+
+class ActivateRecovery(VersionedRecord):
+    restore_id: ID
+    expected_control_epoch: Revision
+    reason: str = Field(min_length=1, max_length=2048)
+
+
+class RecoveryActivation(VersionedRecord):
+    request: ActivateRecovery
+    workspace_id: ID
+    controller_id: ID
+    restoration_digest: Digest
+    admission_digest: Digest
+    view_digest: Digest
+    artifact_digest: Digest
+    private_files_digest: Digest
+    evidence_through: Revision
+    gate_revision: Revision
+    operator_id: ID
+    activated_at: Timestamp
+    target_signature: str = Field(pattern=r"^[0-9a-f]{128}$")
+
+    @property
+    def proof_digest(self) -> str:
+        return record_digest(
+            "research.recovery-activation.v1",
+            self.model_dump(mode="json", exclude={"target_signature"}),
+        )

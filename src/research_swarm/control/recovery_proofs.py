@@ -2,6 +2,7 @@
 
 from research_swarm.crypto import Ed25519Provider, resolve_crypto, verify
 from research_swarm.domain.backup import (
+    RecoveryActivation,
     RecoveryAdmission,
     RestoreClaim,
     RestoreClaimRequest,
@@ -9,6 +10,7 @@ from research_swarm.domain.backup import (
     SignedRestoreClaim,
     SignedRestoreRequest,
 )
+from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
 
@@ -87,4 +89,37 @@ def verify_admission(
     except ValueError as error:
         raise ResearchError(
             ErrorCode.AUTHORIZATION_DENIED, "Recovery target proof differs"
+        ) from error
+
+
+def verify_activation(
+    activation: RecoveryActivation,
+    admission: RecoveryAdmission,
+    receipt: RestoreReceipt,
+    *,
+    crypto_provider: Ed25519Provider | None = None,
+) -> None:
+    verify_admission(admission, receipt, crypto_provider=crypto_provider)
+    if (
+        activation.restoration_digest != receipt.digest
+        or activation.admission_digest
+        != record_digest(
+            "research.recovery-admission-envelope.v1", admission.model_dump(mode="json")
+        )
+        or (activation.request.restore_id, activation.request.expected_control_epoch)
+        != (receipt.restore_id, receipt.target_control_epoch)
+        or (activation.workspace_id, activation.controller_id)
+        != (receipt.workspace_id, receipt.controller_id)
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Activation lifecycle identity differs")
+    try:
+        verify(
+            resolve_crypto(crypto_provider),
+            bytes.fromhex(receipt.target_public_key),
+            activation.proof_digest.encode("ascii"),
+            bytes.fromhex(activation.target_signature),
+        )
+    except ValueError as error:
+        raise ResearchError(
+            ErrorCode.AUTHORIZATION_DENIED, "Activation signature differs"
         ) from error

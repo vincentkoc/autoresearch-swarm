@@ -413,6 +413,12 @@ class Database:
                 require_recovery_admission(
                     connection, context, self.authority_identity, request_digest
                 )
+            elif operation == "workspace.activate_recovery":
+                from research_swarm.state.recovery_activation import require_recovery_activation
+
+                require_recovery_activation(
+                    connection, context, self.authority_identity, request_digest
+                )
             else:
                 require_workspace_mutation(
                     connection,

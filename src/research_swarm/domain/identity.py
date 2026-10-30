@@ -36,6 +36,7 @@ class CommandContext(Record):
     _recovery_operation: RecoveryOperationGuard | None = PrivateAttr(default=None)
     _recovery_reader: RecoveryReaderGuard | None = PrivateAttr(default=None)
     _recovery_turn: RecoveryTurnGuard | None = PrivateAttr(default=None)
+    _recovery_activation: RecoveryActivationGuard | None = PrivateAttr(default=None)
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,15 @@ class RecoveryAuthority:
     gate_revision: int
     control_epoch: int
     actor_id: str
+
+
+@dataclass(frozen=True)
+class RecoveryActivationGuard(RecoveryAuthority):
+    """Native byte verification bound to one complete recovery transaction cut."""
+
+    request_digest: str
+    view_digest: str
+    artifact_digest: str
 
 
 @dataclass(frozen=True)

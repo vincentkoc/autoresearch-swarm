@@ -149,9 +149,9 @@ ordinary artifact reads still refuse. The native backup verifier and importer
 have direct access to verified bytes; that access does not admit research work.
 The target keeps a distinct private `restore-custody.json` key for its identity.
 
-There is no activation command in this slice. Original worker processes may
-still be running and remain charged. Live worker reconciliation is required
-before activation can exist. A source claim elects one target but does not open it.
+Original worker processes may still be running and remain charged. Activation
+requires their original closure evidence and the completed recovery checks below.
+A source claim elects one target but does not open it.
 Do not remove the gate, reset budgets or copy machine registries to force progress.
 
 ## Elect one target
@@ -273,8 +273,8 @@ the exact artifact or upload. No generic artifact mutation is granted. Cleanup
 of an existing unpublished transfer remains possible after native settlement.
 
 An explicit recovery route binds the original private worker installation to the
-elected destination before the recovery driver can deliver there. Final activation
-remains required work. The target stays `recovering`; ordinary
+elected destination before the recovery driver can deliver there. Until explicit
+activation, the target stays `recovering`; ordinary
 research mutation, new dispatch and scientific acceptance remain unavailable.
 Neither a source claim nor an admission receipt proves native process closure.
 
@@ -370,6 +370,62 @@ attempt custody and budgets do not change when retiring this bookkeeping.
 Bindings retain their old identities and remain fenced after the pending turn
 is resolved; final activation must separately check all outstanding obligations.
 
+## Activate the reconciled target
+
+Activation is a native operator command and Python API. It requires the explicit
+restored directory, its private target custody, the original signed admission,
+and the current `workspace_gate` revision. It is not a remote wire command.
+
+```sh
+research --state-dir target-state backup activate \
+  --file activation.json --revision 3
+```
+
+`activation.json` contains `restore_id`, `expected_control_epoch`, and `reason`.
+Read the epoch and gate revision from the target; do not infer them from this
+example. The Python entry point is
+`checkpoints.activation.activate_recovery(runtime, context, ActivateRecovery(...))`.
+The CLI derives a stable command key from the restore ID. An exact committed
+request replays before reading mutable private files; a temporary blocker does
+not consume the command key.
+
+Before activation, the controller requires:
+
+- Every originally unresolved attempt has an immutable operational closure
+  receipt, consistent original dispatch and settled acceptance authority. Source
+  attempts that were already accepted retain that disposition. Pending or UNKNOWN
+  execution anywhere in the workspace blocks activation.
+- Dispatch reservations and confirmation exposures have their exact settlement
+  identities and amounts. Budget balances match their ledger entries, including
+  child-funding projections. Unknown custody and unreclaimed consumed capacity
+  block activation. Cumulative consumption and legitimate queued reservations stay.
+- Original driver bindings remain fenced, pending pointers are clear, and every
+  saved turn has its actual acknowledgment or explicit unacknowledged closure.
+- Uploads and worker upload receipts are terminal and consistent. No deletion or
+  retained reader pin remains. A reader session without pins does not block.
+- Every retained artifact is available and every verified generation passes a
+  native byte check, including journals uploaded during recovery.
+
+Native verification captures a bounded digest of record revisions, payloads,
+accounting, credentials, driver replies and workspace authority. The transaction
+rechecks that cut after byte verification; a concurrent state change refuses the
+entire transition. Private identity and keys are checked on both sides of byte
+verification. The native profile bounds the view to 100,000 rows and 64 MiB,
+and the artifact inventory to 10,000 generations.
+
+One transaction writes a target-signed immutable `recovery_activation` receipt
+and changes the gate to `active`. It does not increment the restored epoch.
+Campaigns remain paused and old driver identities remain fenced. A drain pause
+can now finish when an accepted training stage has left evaluation queued; that
+trial, queued stage and funding remain intact. Activation does not accept new
+scientific evidence, complete trials, enroll workers or resume campaigns.
+
+After activation, normal API mutation is available under existing authorization.
+Old worker sessions remain fenced; resumption requires explicitly qualified
+workers and control decisions. Re-inspecting the original import verifies its
+signed lifecycle history instead of comparing a legitimately changed workspace
+with pristine backup bytes. The original source remains sealed.
+
 ## Qualification boundary
 
 Native tests cover a real SQLite snapshot, artifact and key corruption, missing
@@ -377,8 +433,7 @@ files, hardlinks, scoped-authority refusal and incomplete export publication.
 Restore tests cover real process exit before the root marker, during a private
 file write and inside the SQLite transaction; concurrent exact replay; unchanged
 pending dispatch/budget custody; and rejection of lost acknowledgments or changed
-reservations. These qualify inactive import. A running-process reconciliation and
-single-target activation demonstration remains required for release recovery.
+reservations. These qualify inactive import.
 Claim tests additionally cover competing independent openers, restart, lost
 publication replies, actual process exit after publication, missing/substituted
 custody and forged target proofs. Windows CI checks protected-file replacement;
@@ -398,10 +453,16 @@ import and target admission. They verify retained capacity and refused closure
 while running, then delivery and settlement after the same native scope exits,
 without changing the original pending intent. They also cover signature/source-pin
 substitution, missing stores, immutable route IDs, driver-lock contention, CLI
-routing and lost target acknowledgments. Final target activation remains unqualified.
+routing and lost target acknowledgments.
 Reader tests use actual child-process exit and a live child handshake. They cover
 multiple pin actors, exact-set races, atomic rollback, opaque and foreign-host
 refusal, and authenticated HTTP replay.
+Activation tests cover original closed and not-started execution, exact settlement
+and ledger consistency, queued evaluation stages, reserved and consumed confirmation
+exposures, open child funding, reader pins, saved turns, byte-verification races,
+explicit CLI targeting and real process exit inside and after the activation
+transaction. Later sealing/export and a composed live-worker-to-activation recovery
+demonstration remain separate qualification work.
 Saved-turn tests cover absent, accepted and rejected target replies, unchanged
 execution accounting, preserved actor fences, target-acknowledgment races,
 interrupted transaction rollback and exact acknowledgment replay through a

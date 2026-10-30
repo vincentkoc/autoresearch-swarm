@@ -318,7 +318,12 @@ def _verify_completed(
         pass
     database = Database(destination / "research.sqlite")
     from research_swarm.checkpoints.admission import verify_admitted
+    from research_swarm.checkpoints.lifecycle import verify_activated
 
+    if verify_activated(database, receipt):
+        # Activation checked the current generations. Later research may legitimately
+        # collect the original backup's unreferenced artifacts; this is history only.
+        return receipt
     if not verify_admitted(database, receipt):
         _verify_restored(database, receipt)
         verify_preservation(backup, database, intent.restore_id)

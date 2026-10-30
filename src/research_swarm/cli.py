@@ -68,6 +68,11 @@ def parser() -> argparse.ArgumentParser:
     route.add_argument(
         "--file", type=Path, required=True, help="Public recovery route request JSON"
     )
+    activate = backups.add_parser("activate", help="Activate a fully reconciled native target")
+    activate.add_argument("--file", type=Path, required=True, help="Activation request JSON")
+    activate.add_argument(
+        "--revision", type=int, required=True, help="Current workspace gate revision"
+    )
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -490,6 +495,28 @@ def main(argv: list[str] | None = None) -> int:
             from research_swarm.checkpoints.backup import export_backup, verify_backup
             from research_swarm.domain.identity import CommandContext
 
+            if args.backup_action == "activate":
+                if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
+                    raise ResearchError(
+                        ErrorCode.PROJECT_CONTRACT_INVALID,
+                        "Activation requires the explicit restored target state",
+                    )
+                from research_swarm.checkpoints.activation import activate_recovery
+                from research_swarm.domain.backup import ActivateRecovery
+
+                activation_request = ActivateRecovery.model_validate(_request(args.file))
+                runtime = LocalRuntime.open(args.state_dir)
+                result = activate_recovery(
+                    runtime,
+                    CommandContext(
+                        principal=runtime.principal(args.token_file),
+                        idempotency_key="recovery-activation:" + activation_request.restore_id,
+                        expected_revision=args.revision,
+                    ),
+                    activation_request,
+                )
+                print(canonical_bytes(result).decode("utf-8"))
+                return 0
             if args.backup_action == "route":
                 if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
                     raise ResearchError(

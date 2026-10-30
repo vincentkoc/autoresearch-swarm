@@ -24,6 +24,7 @@ RecordKind = Literal[
     "workspace_gate",
     "backup_custody",
     "recovery_admission",
+    "recovery_activation",
     "restoration",
     "acceptance_lease",
     "imported_evidence",

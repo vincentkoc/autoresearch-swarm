@@ -20,7 +20,7 @@ def recovery_authority(
             "AND kind='workspace_gate' AND id=?",
             (workspace, workspace),
         ).fetchone()
-        if gate is None:
+        if gate is None or gate["state"] == "active":
             return None
         if gate["state"] != "recovering":
             raise ResearchError(ErrorCode.STALE_FENCE, "Workspace does not admit recovery evidence")
