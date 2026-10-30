@@ -405,8 +405,8 @@ Original recovery can release a proven closed native claim; controller capacity
 remains occupied until explicit reconciliation settles the original attempt.
 Replacement is neither a scientific result nor a retry of that experiment.
 
-These domain commands are available through every shared transport. Resumable
-remote replacement provisioning and private bundle installation are separate
-from this API slice. Do not overwrite the old installation or create another
-machine registry to avoid its occupied capacity. Credential revocation remains
-an independent authentication operation and also denies historical delivery.
+These domain commands are available through every shared transport. Use the
+[resumable provisioning and installation flow](remote-workers.md#provision-and-install-a-replacement-session)
+for remote workers. Preserve the old installation and its occupied machine
+registry. Credential revocation remains an independent authentication operation
+and also denies historical delivery.

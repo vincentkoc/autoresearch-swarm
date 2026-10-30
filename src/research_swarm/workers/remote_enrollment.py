@@ -19,7 +19,7 @@ from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import ID, Digest, Name, VersionedRecord, new_id
-from research_swarm.domain.workers import EngineCapabilities
+from research_swarm.domain.workers import EngineCapabilities, WorkerBinding
 from research_swarm.engines.registration import EnvironmentRegistration, verify_registration
 from research_swarm.engines.registry import engine_definition
 from research_swarm.runtime import (
@@ -80,6 +80,7 @@ class RemoteWorkerBundle(VersionedRecord):
     credential_id: ID
     token: str = Field(repr=False, pattern=r"^rsw_[A-Za-z0-9_-]{43}$")
     worker: WorkerData
+    replaces: WorkerBinding | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @field_validator("controller_url")
     @classmethod
@@ -98,7 +99,20 @@ class RemoteWorkerBundle(VersionedRecord):
             or self.worker.clock_mode != "bounded-continuous-v1"
         ):
             raise ValueError("Remote bundle differs from its scoped calibrated worker")
+        if self.replaces is not None and (
+            self.replaces.worker_id != self.worker.binding.worker_id
+            or self.replaces.workspace_id != self.worker.binding.workspace_id
+            or self.replaces.worker_session_id == self.worker.binding.worker_session_id
+        ):
+            raise ValueError("Replacement bundle differs from its original worker")
         return self
+
+
+class ReplacementOrigin(VersionedRecord):
+    original_worker: WorkerData
+    installation_digest: Digest
+    journal_identity: ID
+    registry_identity: ID
 
 
 class WorkerInstallation(VersionedRecord):
@@ -113,6 +127,9 @@ class WorkerInstallation(VersionedRecord):
     registration: EnvironmentRegistration | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    replacement: ReplacementOrigin | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def matching_state(self) -> Self:
@@ -122,6 +139,15 @@ class WorkerInstallation(VersionedRecord):
             self.bundle is None or self.journal_identity is None or self.registry_identity is None
         ):
             raise ValueError("Initialized worker lacks its persistent authority or storage pins")
+        if self.bundle is not None and (
+            self.bundle.replaces
+            != (self.replacement.original_worker.binding if self.replacement else None)
+            or (
+                self.replacement is not None
+                and self.bundle.worker.principal_id == self.replacement.original_worker.principal_id
+            )
+        ):
+            raise ValueError("Installation replacement relationship differs")
         if self.registration is not None and (
             self.registration.profile != self.description.profile
             or self.registration.environment_contracts != self.description.environment_contracts
@@ -360,18 +386,26 @@ def provision_worker(
         )
         state = state.model_copy(update={"worker": registered})
         write_private(path, canonical_bytes(state.model_dump(mode="json")))
-        destination = destination.expanduser().absolute()
-        with private_state_directory(destination.parent), FileLock(str(destination) + ".lock"):
-            if destination.exists():
-                existing = _read_secret(destination, RemoteWorkerBundle)
-                if existing != bundle:
-                    raise ResearchError(
-                        ErrorCode.IDEMPOTENCY_CONFLICT,
-                        "Bundle destination contains different authority",
-                    )
-            else:
-                write_private(destination, canonical_bytes(bundle.model_dump(mode="json")))
+        _export_bundle(bundle, destination)
         return bundle
+
+
+def _export_bundle(bundle: RemoteWorkerBundle, destination: Path) -> None:
+    destination = destination.expanduser().absolute()
+    with private_state_directory(destination.parent), FileLock(str(destination) + ".lock"):
+        _write_bundle(bundle, destination)
+
+
+def _write_bundle(bundle: RemoteWorkerBundle, destination: Path) -> None:
+    """Publish only while the caller holds the destination's private export lock."""
+    if destination.exists():
+        existing = _read_secret(destination, RemoteWorkerBundle)
+        if existing != bundle:
+            raise ResearchError(
+                ErrorCode.IDEMPOTENCY_CONFLICT, "Bundle destination contains different authority"
+            )
+    else:
+        write_private(destination, canonical_bytes(bundle.model_dump(mode="json")))
 
 
 def connect_worker(root: Path, *, bundle_path: Path | None = None) -> RemoteEnrollment:
@@ -400,6 +434,11 @@ def connect_worker(root: Path, *, bundle_path: Path | None = None) -> RemoteEnro
             )
         bundle = state.bundle
         registry = Path(state.machine_registry)
+        if (
+            state.replacement is not None
+            and read_identity(registry) != state.replacement.registry_identity
+        ):
+            raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Original machine registry differs")
         if state.initialized and (
             read_identity(root / "execution" / "journal.sqlite") != state.journal_identity
             or read_identity(registry) != state.registry_identity
@@ -423,12 +462,40 @@ def connect_worker(root: Path, *, bundle_path: Path | None = None) -> RemoteEnro
                 raise ResearchError(
                     ErrorCode.STALE_FENCE, "Remote enrollment differs from pinned authority"
                 )
+            if state.replacement is not None:
+                from research_swarm.control.worker_turnover import WorkerReplacement
+
+                receipt = client.worker_get(
+                    WorkerRead(
+                        worker_id=binding.worker_id,
+                        session_id=binding.worker_session_id,
+                        kind="worker_replacement",
+                        id=binding.worker_session_id,
+                    )
+                )
+                relation = WorkerReplacement.model_validate(receipt["data"])
+                if (
+                    receipt["state"] != "immutable"
+                    or relation.binding != binding
+                    or relation.previous_binding != state.replacement.original_worker.binding
+                ):
+                    raise ResearchError(
+                        ErrorCode.STALE_FENCE,
+                        "Replacement receipt differs from original installation",
+                    )
             worker = LocalWorker(
                 client,
                 bundle.worker,
                 root=root / "execution",
                 machine_registry=registry,
                 registration=state.registration,
+                machine_registry_identity=(
+                    state.registry_identity
+                    if state.initialized
+                    else state.replacement.registry_identity
+                    if state.replacement
+                    else None
+                ),
             )
             if state.initialized and (
                 worker.journal.identity != state.journal_identity

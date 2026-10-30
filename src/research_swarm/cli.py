@@ -93,6 +93,21 @@ def parser() -> argparse.ArgumentParser:
     provision.add_argument("--project", action="append", required=True)
     provision.add_argument("--bundle", type=Path, required=True)
     provision.add_argument("--name", default="Remote CPU worker")
+    replacement = worker_actions.add_parser(
+        "provision-replacement", help="Provision a fenced worker replacement"
+    )
+    replacement.add_argument("--description", type=Path, required=True)
+    replacement.add_argument("--fence", required=True)
+    replacement.add_argument("--revision", type=int, required=True)
+    replacement.add_argument("--reason", required=True)
+    replacement.add_argument("--url", required=True)
+    replacement.add_argument("--bundle", type=Path, required=True)
+    install = worker_actions.add_parser(
+        "install-replacement", help="Install a replacement beside original custody"
+    )
+    install.add_argument("--original-worker-dir", type=Path, required=True)
+    install.add_argument("--worker-dir", type=Path, required=True)
+    install.add_argument("--bundle", type=Path, required=True)
     connect = worker_actions.add_parser(
         "connect", help="Import or verify a pinned worker connection"
     )
@@ -201,6 +216,20 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
             )
         ).model_dump(mode="json")
     if args.action == "worker":
+        if args.worker_action == "provision-replacement":
+            from research_swarm.workers.remote_enrollment import WorkerDescription
+            from research_swarm.workers.remote_replacement import provision_replacement
+
+            bundle = provision_replacement(
+                client,
+                WorkerDescription.model_validate(_request(args.description)),
+                fence_id=args.fence,
+                expected_revision=args.revision,
+                reason=args.reason,
+                url=args.url,
+                destination=args.bundle,
+            )
+            return {"state": "provisioned", "worker": bundle.worker.model_dump(mode="json")}
         if args.worker_action == "provision":
             from research_swarm.workers.remote_enrollment import WorkerDescription, provision_worker
 
@@ -335,11 +364,22 @@ def main(argv: list[str] | None = None) -> int:
             "connect",
             "start",
             "recover",
+            "install-replacement",
         }:
             from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
 
             if args.controller or args.token_file or args.state_dir:
                 raise ValueError("Worker installation uses --worker-dir and its provisioned bundle")
+            if args.worker_action == "install-replacement":
+                from research_swarm.workers.remote_replacement import install_replacement
+
+                worker = install_replacement(args.original_worker_dir, args.worker_dir, args.bundle)
+                print(
+                    canonical_bytes(
+                        {"state": "installed", "worker": worker.model_dump(mode="json")}
+                    ).decode("utf-8")
+                )
+                return 0
             if args.worker_action == "recover":
                 from research_swarm.workers.recovery import recover_worker_attempt
 

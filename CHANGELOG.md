@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add resumable `worker provision-replacement` and `worker install-replacement` commands with persisted fresh identities and exact command replay.
+- Verify scoped replacement receipts, preserve original installations and environment registrations, and pin the shared machine registry before first connection.
+- Resume interrupted native initialization without copying old driver state or launching probes; replacements remain draining until explicitly activated.
+
 - Add explicit `worker.fence` and `worker.replace_session` commands with immutable receipts, original-binding checks, and atomic worker revisions.
 - Require fresh replacement identities, preserve historical evidence authority and occupied resources, and reset presence with admission draining until activation.
 - Preserve prior operational projections in replacement history and reject stale fences, reused principals, and competing replacements without changing original experiment accounting.

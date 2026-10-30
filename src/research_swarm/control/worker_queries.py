@@ -38,6 +38,7 @@ class WorkerRead(VersionedRecord):
         "worker_admission",
         "worker_presence",
         "worker_session",
+        "worker_replacement",
         "historical_attempt",
     ]
     id: ID
@@ -109,6 +110,17 @@ class WorkerQueries:
                 )
                 return transaction.get("attempt", request.id)
             worker = worker_authority(transaction, request.worker_id, request.session_id)
+            if request.kind == "worker_replacement":
+                if request.id != request.session_id:
+                    raise ResearchError(
+                        ErrorCode.AUTHORIZATION_DENIED, "Replacement session differs"
+                    )
+                row = transaction.get("worker_replacement", request.id)
+                if row["state"] != "immutable" or row["data"][
+                    "binding"
+                ] != worker.binding.model_dump(mode="json"):
+                    raise ResearchError(ErrorCode.STALE_FENCE, "Replacement receipt differs")
+                return row
             if request.kind in {"worker", "worker_admission", "worker_presence"}:
                 if request.id != request.worker_id:
                     raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker identity differs")

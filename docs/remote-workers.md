@@ -232,6 +232,68 @@ from research_swarm.workers.recovery import recover_worker_attempt
 report = recover_worker_attempt(Path("worker-state"), attempt_id)
 ~~~
 
+## Provision and install a replacement session
+
+First fence the exact original session through [`worker.fence`](worker-control.md#explicit-worker-fencing-and-session-replacement).
+Keep its fence ID and the returned worker revision. Replacement provisioning
+requires local operator `worker.manage`, `auth.manage`, and `read` authority.
+Reuse the original public description; this flow preserves capabilities and
+project scope.
+
+~~~sh
+research --state-dir ./controller-state worker provision-replacement \
+  --description ./worker-description.json \
+  --fence FENCE_UUID --revision FENCED_WORKER_REVISION \
+  --reason "Replace the original session" \
+  --url https://controller.example \
+  --bundle ./private-bundles/replacement.json
+~~~
+
+The operator stores one private provisioning record per worker and fence. Fresh
+principal, session, credential, token, command key, exact replacement request,
+and export destination are persisted before delivery. Retrying the same command
+replays that intent after lost acknowledgments. Changed inputs or destinations
+are conflicts. Revoked credentials, later fencing, and changed authority block
+export; they never trigger silent credential rotation.
+
+Transfer the private bundle to the original machine through an authorized
+channel. The platform does not send it to another host. Install into a separate,
+non-nested directory:
+
+~~~sh
+research worker install-replacement \
+  --original-worker-dir ./worker-state \
+  --worker-dir ./worker-state-next \
+  --bundle ./replacement.json
+~~~
+
+Installation verifies the original installation, journal and registry identities,
+then authenticates the new session and its own `worker_replacement` receipt.
+That receipt must identify the original binding. The worker receives only its
+own replacement receipt through the scoped query API.
+
+The new installation copies the original public description and exact private
+environment registration. It preserves the machine registry path and identity,
+creates a separate journal, and does not copy heartbeat, driver-command, or
+recovery state. A pending installation already pins the original registry, so a
+missing or swapped registry cannot be recreated empty during first connection.
+Interrupted initialization resumes its existing journal. Installation does not
+launch a workload or environment probe. The original installation remains the
+source for late evidence recovery.
+
+The replacement remains draining. Activate it explicitly with
+`worker.set_admission`, using its new binding and current admission revision,
+then start it with `research worker start --worker-dir ./worker-state-next`.
+Outstanding original attempts continue to occupy controller concurrency and
+native capacity until their respective closure requirements are met. A different
+controller's native registry ownership requires separate explicit migration;
+this flow does not transfer that ownership.
+
+The Python entry points are `provision_replacement` and `install_replacement`
+in `research_swarm.workers.remote_replacement`. Provisioning returns a private bundle;
+installation returns public worker identity; CLI
+output contains public identity only. Protect returned bundle objects as credentials.
+
 ## Evidence and limits
 
 Tests run real CLI subprocesses, scoped HTTP connections, and CPU execution. They

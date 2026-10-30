@@ -67,6 +67,7 @@ class LocalWorker:
         key: bytes | None = None,
         root: Path,
         machine_registry: Path,
+        machine_registry_identity: str | None = None,
         executable: Path | None = None,
         registration: EnvironmentRegistration | None = None,
         maximum_output_bytes: int = 256 * 1024 * 1024,
@@ -125,7 +126,11 @@ class LocalWorker:
             (self.root / "locks").mkdir(mode=0o700, exist_ok=True)
         machine_registry = machine_registry.absolute()
         with private_state_directory(machine_registry.parent):
-            self.resources = MachineResources(machine_registry)
+            self.resources = (
+                MachineResources.open_existing(machine_registry, machine_registry_identity)
+                if machine_registry_identity is not None
+                else MachineResources(machine_registry)
+            )
         pools = {"cpu": self.profile.cpu_slots}
         if self.profile.memory_bytes:
             pools["memory"] = self.profile.memory_bytes
