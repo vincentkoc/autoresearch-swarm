@@ -1,8 +1,12 @@
 """Workspace sealing identities; a seal never proves native process closure."""
 
-from pydantic import Field
+from typing import Literal
 
-from research_swarm.domain.types import ID, Revision, Timestamp, VersionedRecord
+from pydantic import Field, model_validator
+
+from research_swarm.domain.artifacts import StoredBlob
+from research_swarm.domain.canonical import record_digest
+from research_swarm.domain.types import ID, ByteCount, Digest, Revision, Timestamp, VersionedRecord
 
 
 class SealWorkspace(VersionedRecord):
@@ -23,3 +27,47 @@ class WorkspaceSeal(VersionedRecord):
     evidence_through: Revision
     unresolved_attempt_ids: tuple[ID, ...] = Field(max_length=10_000)
     worker_ids: tuple[ID, ...] = Field(max_length=10_000)
+
+
+class BackupFile(VersionedRecord):
+    digest: Digest
+    size_bytes: ByteCount
+
+
+class BackupPrivateFile(BackupFile):
+    name: Literal["identity.json", "operator.token", "dispatch.key", "assignment.key"]
+
+
+class BackupManifest(VersionedRecord):
+    profile: Literal["sealed-native-v1"] = "sealed-native-v1"
+    source_custody_id: ID
+    source_public_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    seal: WorkspaceSeal
+    seal_revision: Revision
+    seal_digest: Digest
+    snapshot_evidence_through: Revision
+    database_schema: Revision
+    database: BackupFile
+    private_files: tuple[BackupPrivateFile, ...] = Field(min_length=4, max_length=4)
+    artifacts: tuple[StoredBlob, ...] = Field(max_length=10_000)
+    exported_at: Timestamp
+    activation_requires_source_custody: Literal[True] = True
+
+    @model_validator(mode="after")
+    def unique_inventory(self) -> "BackupManifest":
+        if len({item.name for item in self.private_files}) != 4:
+            raise ValueError("Backup private-file inventory is incomplete")
+        if len({item.reference.id for item in self.artifacts}) != len(self.artifacts):
+            raise ValueError("Duplicate backup artifact")
+        if len({item.generation for item in self.artifacts}) != len(self.artifacts):
+            raise ValueError("Duplicate backup generation")
+        return self
+
+    @property
+    def digest(self) -> str:
+        return record_digest("research.backup.v1", self.model_dump(mode="json"))
+
+
+class SignedBackup(VersionedRecord):
+    manifest: BackupManifest
+    signature: str = Field(pattern=r"^[0-9a-f]{128}$")

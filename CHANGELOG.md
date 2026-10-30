@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Export and verify sealed native SQLite/filesystem checkpoints with complete generation inventories, private identity material, source-only custody keys and signed manifest digests.
+- Publish the manifest last, preserve exact completed-export replay, reject corrupt/incomplete bundles and restrict credential-bearing exports to full operators. Add exclusive private-directory creation on POSIX and Windows.
+
 - Add a shared workspace seal for backup admission: freeze new commands, credential changes, enrollment and notification acknowledgment while preserving exact prior replies and unresolved execution obligations.
 - Refuse sealing during uploads, deletions or retained artifact reads. Serialize deletion cleanup through its terminal commit so completed command replay cannot mutate storage after the cut.
 

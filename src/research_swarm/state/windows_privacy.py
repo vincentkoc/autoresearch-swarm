@@ -283,16 +283,18 @@ def verified_path(path: Path, *, directory: bool, protected: bool = False) -> It
 
 
 @contextmanager
-def private_directory(path: Path) -> Iterator[None]:
+def private_directory(path: Path, *, exclusive: bool = False) -> Iterator[None]:
     """Create missing components privately and pin the admitted runtime root."""
     if not path.parent.is_dir():
         with private_directory(path.parent):
             pass
     api = _api()
-    if not path.exists():
+    if exclusive or not path.exists():
         with _security(True) as attributes:
             result = api["CreateDirectoryW"](str(path), ctypes.byref(attributes))
-            if not result and (sys.platform != "win32" or ctypes.get_last_error() != 183):
+            if not result and (
+                exclusive or sys.platform != "win32" or ctypes.get_last_error() != 183
+            ):
                 _check(result)
     with verified_path(path, directory=True, protected=True):
         yield

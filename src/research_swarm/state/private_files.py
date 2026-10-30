@@ -59,14 +59,14 @@ def write_private(path: Path, content: bytes) -> None:
 
 
 @contextmanager
-def private_state_directory(root: Path) -> Iterator[None]:
+def private_state_directory(root: Path, *, exclusive: bool = False) -> Iterator[None]:
     if sys.platform == "win32":
         from research_swarm.state.windows_privacy import private_directory
 
-        with private_directory(root):
+        with private_directory(root, exclusive=exclusive):
             yield
     else:
-        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        root.mkdir(mode=0o700, parents=True, exist_ok=not exclusive)
         if stat.S_IMODE(root.stat().st_mode) & 0o077:
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED, "Runtime directory requires owner-only access"

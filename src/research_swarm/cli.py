@@ -32,6 +32,16 @@ def parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765)
     commands.add_parser("mcp", help="Expose typed agent tools over stdio")
     commands.add_parser("capabilities")
+    backup = commands.add_parser("backup", help="Export and verify a sealed native checkpoint")
+    backups = backup.add_subparsers(dest="backup_action", required=True)
+    export = backups.add_parser("export", help="Export an already sealed filesystem workspace")
+    export.add_argument("path", type=Path)
+    export.add_argument("--backup-id", required=True)
+    verify = backups.add_parser(
+        "verify", help="Verify a private checkpoint without opening a runtime"
+    )
+    verify.add_argument("path", type=Path)
+    verify.add_argument("--digest", help="Expected manifest digest from trusted custody")
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -431,6 +441,36 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     result: Any
     try:
+        if args.action == "backup":
+            if args.controller:
+                raise ValueError("Native backup operations cannot use a remote controller")
+            from research_swarm.checkpoints.backup import export_backup, verify_backup
+            from research_swarm.domain.identity import CommandContext
+
+            if args.backup_action == "export":
+                runtime = LocalRuntime.open(args.state_dir)
+                manifest = export_backup(
+                    runtime,
+                    CommandContext(
+                        principal=runtime.principal(args.token_file),
+                        idempotency_key="backup-export:" + args.backup_id,
+                    ),
+                    args.path,
+                    backup_id=args.backup_id,
+                )
+            else:
+                if args.state_dir or args.token_file:
+                    raise ValueError("Backup verification does not open controller state")
+                manifest = verify_backup(args.path, expected_digest=args.digest).manifest
+            print(
+                canonical_bytes(
+                    {
+                        "manifest_digest": manifest.digest,
+                        "manifest": manifest.model_dump(mode="json"),
+                    }
+                ).decode("utf-8")
+            )
+            return 0
         if args.action == "engine":
             if args.controller or args.token_file or args.state_dir:
                 raise ValueError(
