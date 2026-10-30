@@ -56,12 +56,18 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     campaign_options = {"limits": LIMITS, **(options if isinstance(options, dict) else {})}
     learning_rate = campaign_options.pop("source_learning_rate", None)
     finish_delay = campaign_options.pop("source_finish_delay", None)
+    finish_gate = campaign_options.pop("source_finish_gate", False)
     train_timeout = campaign_options.pop("source_train_timeout_ms", None)
+    scoring_delay_seed = campaign_options.pop("source_scoring_delay_seed", None)
+    network_policy = campaign_options.pop("source_network_policy", None)
     if (
         parallel_stage
         or learning_rate is not None
         or finish_delay is not None
+        or finish_gate
         or train_timeout is not None
+        or scoring_delay_seed is not None
+        or network_policy is not None
     ):
         copied = tmp_path / "parallel-source"
         shutil.copytree(source, copied)
@@ -74,11 +80,21 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
                 ),
                 encoding="utf-8",
             )
-        if finish_delay is not None:
+        if finish_delay is not None or finish_gate:
             training = source / "train.py"
+            wait = (
+                'while not marker.with_name("payload-release").exists():\n    time.sleep(0.01)\n'
+                if finish_gate
+                else f"time.sleep({finish_delay})\n"
+            )
             training.write_text(
                 training.read_text(encoding="utf-8")
-                + f"\nimport time\ntime.sleep({finish_delay})\n",
+                + "\nrequest = context()\n"
+                + 'marker = Path(request["output_root"]) / "payload-finished"\n'
+                + "count = int(marker.read_text()) if marker.exists() else 0\n"
+                + "marker.write_text(str(count + 1))\n"
+                + "import time\n"
+                + wait,
                 encoding="utf-8",
             )
     if parallel_stage:
@@ -95,6 +111,30 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
         manifest.write_text(
             content.replace("timeout_ms = 10000", f"timeout_ms = {train_timeout}", 1),
             encoding="utf-8",
+        )
+    if scoring_delay_seed is not None:
+        evaluator = source / "evaluate.py"
+        evaluator.write_text(
+            evaluator.read_text().replace(
+                "    tokens = [ALPHABET.index(character) for character in text]",
+                "    tokens = [ALPHABET.index(character) for character in text]\n"
+                f'    if request["seed"] == {scoring_delay_seed}:\n'
+                '        marker = Path(request["output_root"]) / "access.marker"\n'
+                '        marker.write_text(str(request["seed"]))\n'
+                "        import time\n"
+                "        time.sleep(30)",
+            )
+        )
+        manifest = source / "research.toml"
+        content = manifest.read_text()
+        position = content.rindex("timeout_ms = 10000")
+        manifest.write_text(content[:position] + content[position:].replace("10000", "1500", 1))
+    if network_policy is not None:
+        manifest = source / "research.toml"
+        manifest.write_text(
+            manifest.read_text().replace(
+                'network_policy = "inherit"', f'network_policy = "{network_policy}"'
+            )
         )
     registered = client.register_project(source, idempotency_key="source")["result"]
     campaign = client.command(

@@ -285,6 +285,14 @@ def test_replacement_preserves_original_native_and_controller_capacity_until_clo
         claim(new_client, new, job)
     assert still_occupied.value.code == ErrorCode.RESOURCE_UNAVAILABLE
     submission = pipeline.client.get("attempt_submission", recovered.submission_id)
+    publication = recoverable.intent().publication
+    assert publication is not None
+    with pytest.raises(ResearchError) as stale_publication:
+        recoverable.enrollment.worker.client.command(
+            "worker.publish_attempt", publication, idempotency_key="old-session-publication"
+        )
+    assert stale_publication.value.code == ErrorCode.AUTHORIZATION_DENIED
+    assert pipeline.client.budget(pipeline.campaign["id"]) == budget
     close_operationally(pipeline, submission)
     admitted = claim(new_client, new, job)
     assert admitted["data"]["dispatch"]["worker_session_id"] == new.binding.worker_session_id

@@ -504,10 +504,16 @@ async def test_unknown_observed_during_http_wait_prevents_a_subsequent_native_la
 
 
 @contextmanager
-def controller_process(pipeline: Pipeline) -> Iterator[str]:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        port = listener.getsockname()[1]
+def controller_process(
+    pipeline: Pipeline,
+    *,
+    port: int | None = None,
+    processes: list[subprocess.Popen[bytes]] | None = None,
+) -> Iterator[str]:
+    if port is None:
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
     process = subprocess.Popen(
         [
             sys.executable,
@@ -523,6 +529,8 @@ def controller_process(pipeline: Pipeline) -> Iterator[str]:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
+    if processes is not None:
+        processes.append(process)
     try:
         until = time.monotonic() + 10
         while True:

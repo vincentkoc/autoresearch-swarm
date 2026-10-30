@@ -361,6 +361,110 @@ def test_live_supervisor_keeps_custody_and_pending_snapshot_survives_later_closu
             supervised.process.wait(timeout=15)
 
 
+@pytest.mark.parametrize(
+    "pipeline", [{"source_finish_gate": True, "source_train_timeout_ms": 30000}], indirect=True
+)
+def test_controller_process_restart_preserves_live_native_scope_and_original_settlement(
+    pipeline: Pipeline,
+    tmp_path: Path,
+) -> None:
+    import time
+
+    from research_swarm.control.models import TrialData
+    from research_swarm.control.worker_records import AttemptData
+    from research_swarm.workers.timed_supervision import start_timed_supervisor
+    from tests.test_reconciliation import reconcile
+    from tests.test_scoped_driver import controller_process
+
+    controllers = []
+    root = tmp_path / "remote"
+    with (
+        controller_process(pipeline, processes=controllers) as url,
+        enrollment(pipeline, root, url) as connected,
+    ):
+        native = connected.worker
+        attempt = native.claim(pipeline.ready())
+        domain = AttemptData.model_validate(attempt["data"])
+        trial = TrialData.model_validate(pipeline.trial["data"])
+        native._verify(domain, trial)
+        entry = native._prepare(domain, trial)
+        supervised = start_timed_supervisor(
+            native.journal, attempt["id"], native._timed_origin(entry)
+        )
+        try:
+            until = time.monotonic() + 10
+            while not list(native.root.rglob("payload-finished")):
+                assert supervised.process.poll() is None and time.monotonic() < until
+                time.sleep(0.01)
+            marker = next(native.root.rglob("payload-finished"))
+            running = native.journal.get(attempt["id"])
+            assert running.state == JournalState.RUNNING and running.native is not None
+            assert native.resources.availability() == {"cpu": 0}
+            budget = pipeline.client.budget(pipeline.campaign["id"])
+            binding = connected.bundle.worker.binding
+            controllers[0].kill()  # Exact controller process created by this fixture.
+            controllers[0].communicate(timeout=5)
+            assert supervised.process.poll() is None
+            assert native.journal.get(attempt["id"]) == running
+            assert pipeline.client.budget(pipeline.campaign["id"]) == budget
+            port = int(url.rsplit(":", 1)[1])
+            with controller_process(pipeline, port=port) as restarted_url:
+                assert restarted_url == url
+                observed = recover_worker_attempt(root, attempt["id"])
+                assert observed.native_state == JournalState.RUNNING
+                assert observed.custody_state == "retained"
+                assert native.resources.availability() == {"cpu": 0}
+                assert native.journal.get(attempt["id"]).cancel_requested is False
+                marker.with_name("payload-release").touch()
+                supervised.process.wait(timeout=20)
+                closed = native.journal.get(attempt["id"])
+                assert closed.native == running.native and closed.state == JournalState.CLOSED
+                assert closed.timing.caps == running.timing.caps
+                assert closed.signed_assignment == running.signed_assignment
+                assert closed.outcome.closure.scope_closed
+                with pytest.raises(ResearchError) as expired_origin:
+                    native.execute(attempt["id"])
+                assert expired_origin.value.code == ErrorCode.ACCEPTANCE_EXPIRED
+                submissions = pipeline.client.list(RecordQuery(kind="attempt_submission"))["items"]
+                full = [
+                    pipeline.client.get("attempt_submission", item["id"]) for item in submissions
+                ]
+                submission = next(
+                    item
+                    for item in full
+                    if item["data"]["publication"]["report_artifact"] is not None
+                )
+                token = pipeline.runtime.credentials.issue(
+                    pipeline.runtime.principal(), pipeline.runtime.principal()
+                ).token
+                with ResearchClient.connect(url, token) as remote:
+                    settled = reconcile(pipeline, submission, client=remote)
+                    assert settled["attempt"]["state"] == "succeeded"
+                    assert settled["attempt"]["data"]["dispatch"] == attempt["data"]["dispatch"]
+                    assert remote.get("worker", binding.worker_id)["data"][
+                        "binding"
+                    ] == binding.model_dump(mode="json")
+                    after = remote.budget(pipeline.campaign["id"])
+                    assert all(
+                        item["reserved"] == item["uncertain"] == "0" for item in after["accounts"]
+                    )
+                assert (
+                    recover_worker_attempt(root, attempt["id"]).delivery_state
+                    == "controller_terminal"
+                )
+                assert pipeline.client.budget(pipeline.campaign["id"]) == after
+                assert len(pipeline.client.list(RecordQuery(kind="attempt"))["items"]) == 1
+                markers = list(native.root.rglob("payload-finished"))
+                assert len(markers) == 1 and markers[0].read_text() == "1"
+                assert native.resources.availability() == {"cpu": 1}
+        finally:
+            output_root = Path(entry.prepared.context.output_root)
+            output_root.mkdir(parents=True, exist_ok=True)
+            (output_root / "payload-release").touch()
+            supervised.close()
+            supervised.process.wait(timeout=20)
+
+
 def test_recovery_does_not_require_registered_interpreter_or_source(
     pipeline: Pipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

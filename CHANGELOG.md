@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Qualify controller-process restart during a live native workload, preserving its original assignment, deadline and custody through explicit late-result reconciliation.
+- Extend end-to-end proof for post-access scoring timeouts, exhausted-budget restart, unavailable isolation admission, revoked-session publication and retained artifacts after campaign completion; reconcile the contract ledger with existing native and transport evidence.
+
 - Add a reproducible CPU benchmark comparing funded greedy and portfolio searches under equal allowances, with frozen development/held-out starting seeds and a fresh final audit of each selected candidate.
 - Measure timed no-op confirmation panels through authenticated evaluations and the existing paired gate; preserve missing cells, actual costs, optimizer steps, immutable reports and descriptive uncertainty.
 - Add replayable discretionary artifact retention/release to the shared agent API, preserving required evidence ownership, and allow a local driver to reduce concurrency within its worker's admission.
