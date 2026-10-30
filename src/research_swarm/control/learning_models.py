@@ -8,7 +8,13 @@ from pydantic import Field, model_validator
 
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.learning import CategoricalPolicy, DecisionTrace, RewardSpec, Split
+from research_swarm.domain.learning import (
+    CategoricalPolicy,
+    DecisionTrace,
+    RewardSpec,
+    Split,
+    TrajectoryDataset,
+)
 from research_swarm.domain.types import ID, Digest, Name, Revision, Timestamp, VersionedRecord
 
 
@@ -85,5 +91,19 @@ class CommittedPolicyDecision(VersionedRecord):
     plan_digest: Digest
     decision: DecisionTrace
     source_artifact: ArtifactRef
+    actor_id: ID
+    recorded_at: Timestamp
+
+
+class QualifyTrajectoryDataset(VersionedRecord):
+    plan_id: ID
+    dataset_id: ID
+
+
+class QualifiedTrajectoryDataset(VersionedRecord):
+    profile: Literal["controller-one-step-development-v1"] = "controller-one-step-development-v1"
+    plan_id: ID
+    plan_digest: Digest
+    dataset: TrajectoryDataset
     actor_id: ID
     recorded_at: Timestamp

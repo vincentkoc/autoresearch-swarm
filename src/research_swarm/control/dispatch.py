@@ -33,7 +33,11 @@ from research_swarm.control.completion_models import (
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.import_models import ImportHistoricalEvidence
-from research_swarm.control.learning_models import CommitPolicyDecision, FreezeLearningPlan
+from research_swarm.control.learning_models import (
+    CommitPolicyDecision,
+    FreezeLearningPlan,
+    QualifyTrajectoryDataset,
+)
 from research_swarm.control.observation_models import (
     AbandonObservationSelection,
     ObserveTrial,
@@ -102,6 +106,13 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.qualify_dataset": CommandDefinition(
+        QualifyTrajectoryDataset,
+        "qualify_trajectory_dataset",
+        "learning.manage",
+        False,
+        "Qualify each frozen development episode against admission, evaluation and settled cost.",
+    ),
     "learning.freeze_plan": CommandDefinition(
         FreezeLearningPlan,
         "freeze_learning_plan",

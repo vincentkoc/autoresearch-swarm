@@ -9,8 +9,10 @@ This is the numerical training layer. The current example accepts structured
 input artifacts; parsing those artifacts does not establish that their claimed
 research evidence is authentic. [Controller-side decision precommitment and
 episode/split ownership](../../docs/agent-control.md#freeze-learning-episodes-before-proposal-responses)
-are available through the regular API. Dataset qualification and held-out policy
-evaluation remain separate requirements before a research-learning claim.
+are available through the regular API. The controller also provides
+[complete dataset qualification](../../docs/agent-control.md#qualify-a-development-dataset-from-recorded-experiments).
+Binding that qualification to training admission and evaluating the learned policy
+on held-out research remain separate requirements before an improvement claim.
 
 ## Contract
 

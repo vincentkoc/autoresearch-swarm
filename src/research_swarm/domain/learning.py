@@ -93,6 +93,17 @@ class LearningEvidence(VersionedRecord):
         "trial",
         "search_observation",
         "evaluation_receipt",
+        "evaluation_request",
+        "candidate",
+        "candidate_validation",
+        "job",
+        "attempt",
+        "run_result",
+        "attempt_closure",
+        "attempt_submission",
+        "learning_plan",
+        "learning_episode",
+        "learning_decision",
     ]
     id: ID
     revision: Revision

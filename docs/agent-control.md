@@ -765,3 +765,69 @@ job accounting and independent evaluation still apply. The numerical trainer in
 A controller-qualified trajectory dataset must still verify actual admission,
 comparison eligibility, corrections and settled costs for every planned episode.
 Held-out policy comparison and policy adoption remain pending.
+
+## Qualify a development dataset from recorded experiments
+
+After candidate admission and independent evaluation, call the controller to
+derive the dataset. The caller supplies IDs, not scores, rewards or a selection
+of successful trials:
+
+```python
+from research_swarm.control.learning_models import QualifyTrajectoryDataset
+
+qualified = operator.command(
+    "learning.qualify_dataset",
+    QualifyTrajectoryDataset(plan_id=plan["id"], dataset_id=new_id()),
+    idempotency_key="qualify-development-batch",
+)["result"]
+dataset = qualified["data"]["dataset"]
+```
+
+This command requires `learning.manage`; MCP exposes
+`research_learning_qualify_dataset`. Query `learning_dataset` for the immutable
+receipt, complete typed dataset and frozen plan identity.
+
+The controller follows each declared development episode through its owned
+decision, original response, admission transition, candidate validation and exact
+trial. Duplicate proposals cannot borrow a previous trial. It derives the one
+eligible candidate evaluation and compares it with the plan's original eligible
+same-seed comparator. Later incumbent changes do not change that comparator.
+
+Cost includes the issued proposal charge, optional trial-admission charge, and
+every attempt belonging to the admitted trial. It checks both attempt-linkage
+directions and includes earlier accepted failures. Closed-unaccepted attempts use
+their closure and submission evidence. Accepted not-started attempts use their
+settled controller accounting; reservation bounds never stand in for actual cost.
+The pre-existing comparator and subsequent confirmation campaigns are outside this
+episode cost scope. Agent-reported model usage is not treated as verified billing.
+
+Qualification rechecks effective corrections for both evaluations and all consumed
+run results, including earlier attempts. It sums verified settlement values using
+exact Decimal arithmetic and records their request/response identities alongside
+the research record revisions and digests. Reward is derived from those raw
+measurements and the frozen reward rule.
+
+All declared development episodes must qualify in order. Missing decisions,
+failed or duplicate proposals, pending evaluation, UNKNOWN execution, invalid
+comparisons and incomplete settlement block the batch. The refusal identifies the
+first blocking episode; original plans, responses and operational evidence remain
+available. No partial dataset is published. Held-out episodes remain excluded
+according to the original plan; callers cannot relabel them or nominate a smaller
+development subset.
+
+The initial profile admits at most 16 jobs and 16 total attempts per episode,
+128 evidence references per trajectory, and 8 MiB of canonical dataset JSON.
+Overflow refuses explicitly. Qualification reads and commits in one transaction,
+including its evidence watermark and event.
+
+A qualification receipt describes that transaction cut. Replaying its original
+intent returns the historical receipt, even after a later correction. Server
+code must call `require_current_dataset` again at training admission; it rechecks
+the full admission/evaluation/cost chain and rejects changed evidence. A fresh
+`dataset_id` requests a new qualification cut.
+
+The current numerical trainer can consume serialized dataset JSON, but
+controller-bound training admission and publication of a linked `TrainingJob`
+remain separate work. A qualification receipt does not launch training or adopt a
+policy. Held-out policy evaluation is also still required before claiming that
+the learned policy improves research.

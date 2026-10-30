@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Qualify complete frozen development datasets from controller-owned proposal decisions, admission transitions, independent evaluations and original same-seed comparators. Exclude predeclared held-out episodes and refuse incomplete or invalid batches without publishing partial data.
+- Capture exact proposal/trial/attempt costs and record/settlement provenance, including earlier attempts and effective corrections. Preserve historical qualification receipts while providing full-chain revalidation before future training admission.
+
 - Share exact settlement verification between recovery accounting and research evidence consumers. Verify reservation ownership, terminal actuals, request digests and one settlement per reservation; resolve generated settlement IDs without guessing an attempt ID.
 - Preserve the ledger's wider Decimal consumption range in settlement proofs and learning trajectories. Guard indexed lookup against malformed historical JSON so unrelated database startup remains available while invalid evidence refuses qualification.
 
