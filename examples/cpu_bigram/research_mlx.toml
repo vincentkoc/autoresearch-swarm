@@ -1,0 +1,69 @@
+schema_version = "1.0"
+
+[project]
+name = "MLX bigram language model"
+slug = "mlx-bigram"
+description = "Original Metal training with the independent standard-library bigram scorer."
+
+[source]
+mode = "directory"
+paths = ["common.py", "evaluate.py", "train_mlx.py", "dataset.json", "research_mlx.toml", "mlx-macos-cp312.lock"]
+
+[mutation]
+allow = ["train_mlx.py"]
+
+[environment]
+profile = "mlx-metal"
+lock_path = "mlx-macos-cp312.lock"
+network_policy = "inherit"
+
+[data]
+manifest_path = "dataset.json"
+
+[evaluation]
+protected_paths = ["common.py", "evaluate.py"]
+comparison_class = "mlx-bigram-synthetic-v1"
+measurement_trust = "authenticated"
+expected_members = ["synthetic-validation-v1"]
+
+[[evaluation.metrics]]
+name = "val_bpb"
+unit = "bits_per_predicted_byte"
+direction = "minimize"
+aggregation = "mean_over_validation_transitions"
+
+[timing]
+budget_ms = 1000
+scope = "active_training"
+timer_authority = "project_reported"
+
+[[stages]]
+id = "train"
+kind = "train"
+argv = ["python", "train_mlx.py"]
+timeout_ms = 30000
+output_names = ["model"]
+
+[stages.resources]
+engine_profile = "mlx-metal"
+cpu_slots = 1
+memory_bytes = 536870912
+accelerator_count = 1
+exclusive_device = true
+required_features = ["registered-python-v1", "shared-host-device-memory"]
+
+[[stages]]
+id = "evaluate"
+kind = "evaluate"
+argv = ["python", "evaluate.py"]
+dependencies = ["train"]
+required_artifacts = ["model"]
+timeout_ms = 30000
+
+[stages.resources]
+engine_profile = "mlx-metal"
+cpu_slots = 1
+memory_bytes = 536870912
+accelerator_count = 1
+exclusive_device = true
+required_features = ["registered-python-v1", "shared-host-device-memory"]

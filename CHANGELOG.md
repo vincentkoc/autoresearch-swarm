@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an original MLX Metal bigram workload with a platform-specific hash lock, explicit GPU stream/materialization, discarded warmup state, and separate active-training timing.
+- Reuse the independent standard-library scorer and qualify real registered-worker training/evaluation on Apple Silicon, including a fixed-step float32 differential check and two injected seeds.
+
 - Add bounded controller-side result acceptance leases, distinct from immutable launch and native execution deadlines, with explicit heartbeat renewal and scoped reads.
 - Fence expired publication without releasing custody, quarantine original late evidence, and record the lease in explicit reconciliation; preserve cancellation acknowledgments and original accounting.
 - Upgrade SQLite to schema 3 without rewriting old signed records or acknowledgments; unresolved legacy attempts require reconciliation rather than invented lease authority.

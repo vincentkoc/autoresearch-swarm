@@ -39,6 +39,7 @@ See [event recovery](docs/api.md#recover-an-expired-event-cursor) for frozen
 snapshots and bounded catch-up when a client reconnects after stream expiry.
 
 Run the original CPU example with `uv run research run examples/cpu_bigram`.
+The same reference scorer also qualifies a [native MLX Metal workload](docs/mlx-workload.md).
 Run a second ordinary workload with [the synthetic pose project](examples/synthetic_pose/README.md),
 including historical receipt import and fresh authorized replay.
 See [local runs](docs/local-runs.md) for resume, budgets, and agent control.

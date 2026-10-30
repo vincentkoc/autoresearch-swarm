@@ -14,7 +14,9 @@ The framework and device backend remain separate fields.
 
 The generic worker can bind these registrations to native execution. CPU execution
 is tested with a separate virtual environment. Accelerator routing and admission
-have synthetic contract tests; physical accelerator workloads remain unqualified.
+have synthetic contract tests. The [original MLX bigram workload](mlx-workload.md)
+also has native Metal training and independent scoring proof on an Apple M5 Max.
+CUDA, ROCm, and MPS workloads remain separately unqualified.
 Existing CPU workers keep their original enrollment and signed-record interpretation;
 registering a new environment does not replace an active worker.
 

@@ -22,3 +22,8 @@ The native command reads the file named by `RESEARCH_CONTEXT`. The context suppl
 its seed, budget, named inputs, output directory, and report path. The project does
 not import or depend on the research engine. See
 [the workload protocol](../../docs/workload-protocol.md) for the interface.
+
+`research_mlx.toml` selects the native Metal implementation in `train_mlx.py` and
+reuses this dataset and scorer. See [the MLX workload guide](../../docs/mlx-workload.md)
+for its hash-locked environment, registered worker, explicit GPU timing, and
+separate comparison contract. The CPU path still needs no third-party packages.
