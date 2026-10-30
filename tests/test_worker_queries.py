@@ -195,7 +195,7 @@ def test_empty_worker_poll_and_unowned_lookup_do_not_scan_completed_history(
     client, worker, _ = scoped_worker(pipeline)
     accepted = claim(client, worker, pipeline.ready())
     database = pipeline.runtime.database
-    connect = database.connect
+    connect = database.store.connect
     instructions = 0
 
     def step() -> int:
@@ -209,7 +209,7 @@ def test_empty_worker_poll_and_unowned_lookup_do_not_scan_completed_history(
             connection.connection.set_progress_handler(step, 1)
             yield connection
 
-    monkeypatch.setattr(database, "connect", measured)
+    monkeypatch.setattr(database.store, "connect", measured)
     with connect() as connection:
         connection.execute(
             "UPDATE records SET payload=json_set(payload,'$.publication_status','accepted') "
@@ -227,6 +227,7 @@ def test_empty_worker_poll_and_unowned_lookup_do_not_scan_completed_history(
         return instructions
 
     before = observe()
+    assert before > 0
     with connect() as connection:
         connection.connection.executemany(
             "INSERT INTO records SELECT workspace_id,kind,?,revision,state,campaign_id,parent_id,"

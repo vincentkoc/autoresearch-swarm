@@ -28,6 +28,7 @@ from research_swarm.domain.event_recovery import (
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
 from research_swarm.state.database import Database, JsonObject, Transaction, encode
+from research_swarm.state.sql import SqlSession
 
 
 def snapshot_row(transaction: Transaction, identifier: str) -> JsonObject:
@@ -296,8 +297,8 @@ class EventRecovery:
 
     def page(self, context: CommandContext, intent: RecoveryPage) -> JsonObject:
         context.principal.require("read")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             snapshot = active_snapshot(Transaction(connection, context), intent.snapshot_id)
             after = 0
             if intent.cursor is not None:
@@ -349,10 +350,12 @@ class EventRecovery:
                 "next_cursor": cursor_out,
             }
 
+        return self.database.store.read(read)
+
     def item(self, context: CommandContext, intent: RecoveryItem) -> JsonObject:
         context.principal.require("read")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             snapshot = active_snapshot(Transaction(connection, context), intent.snapshot_id)
             row = connection.execute(
                 "SELECT content_digest,size_bytes,substr(content,?,?) AS part FROM recovery_items "
@@ -380,3 +383,5 @@ class EventRecovery:
                 "content_base64": base64.b64encode(row["part"]).decode("ascii"),
                 "next_offset": intent.offset + len(row["part"]),
             }
+
+        return self.database.store.read(read)

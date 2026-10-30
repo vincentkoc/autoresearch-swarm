@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Move credential management, research/scoped-worker queries, proposal ownership, orchestration inspection and recovery reads onto storage callbacks without expanding caller permissions.
+- Preserve atomic credential installation, query snapshots and bounded worker-query scanning; add callback-only service tests covering ownership, revocation and snapshot expiry.
+
 - Run the shared command kernel through a real Durable Object SQL adapter, preserving command replay, event/outbox transactions and rejection fencing across local workerd restart.
 - Share schema migrations, reject unversioned/unsupported state, normalize SQL constraints and binary/NULL values, and bound authority counters before JavaScript precision can change their meaning.
 

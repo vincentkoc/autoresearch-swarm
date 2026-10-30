@@ -29,6 +29,7 @@ from research_swarm.domain.types import new_id, utc_now
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
+from research_swarm.state.sql import SqlSession
 
 MAX_CONTEXT_BYTES = 64 * 1024
 
@@ -405,8 +406,8 @@ class ProposalControl:
 
     def get(self, context: CommandContext, request: ProposalRead) -> JsonObject:
         context.principal.require("proposal.respond")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             transaction = Transaction(connection, context)
             row, _ = self._owned(transaction, request.request_id)
             try:
@@ -416,3 +417,5 @@ class ProposalControl:
                     raise
                 response = None
             return {"request": row, "response": response}
+
+        return self.database.store.read(read)

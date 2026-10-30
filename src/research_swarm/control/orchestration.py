@@ -33,6 +33,7 @@ from research_swarm.state.drive_closures import (
     target_acknowledgment,
 )
 from research_swarm.state.drive_guard import require_driver_started
+from research_swarm.state.sql import SqlSession
 from research_swarm.state.waits import consume_ready_wait, fence_wait
 
 CONTROL_OPERATIONS = frozenset(
@@ -318,8 +319,7 @@ class OrchestrationControl:
     def _read(
         self, context: CommandContext, identifier: str, *, execute: bool
     ) -> tuple[DriveTurn, JsonObject | None, bool]:
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+        def read(connection: SqlSession) -> tuple[DriveTurn, JsonObject | None, bool]:
             transaction = Transaction(connection, context)
             row = transaction.get("drive_turn", identifier)
             turn = DriveTurn.model_validate(row["data"])
@@ -334,8 +334,9 @@ class OrchestrationControl:
             else:
                 require_action_scopes(context, turn.action.operation)
             response = self._acknowledgment(transaction, turn)
-            connection.commit()
-        return turn, response, row["state"] == "closed_unacknowledged"
+            return turn, response, row["state"] == "closed_unacknowledged"
+
+        return self.database.store.read(read)
 
     def _finish(
         self, context: CommandContext, operation: str, intent: DriveTurnTarget

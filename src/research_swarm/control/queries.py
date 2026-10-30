@@ -17,6 +17,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
     "acceptance_lease",
@@ -422,8 +423,8 @@ class ResearchQueries:
                 raise ResearchError(
                     ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid query cursor"
                 ) from error
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             through = (
                 cursor.through
                 if cursor
@@ -465,13 +466,14 @@ class ResearchQueries:
                         ).model_dump(mode="json")
                     )
                 ).decode("ascii")
-            connection.commit()
-        return {"items": items, "next_cursor": next_cursor, "membership_through": through}
+            return {"items": items, "next_cursor": next_cursor, "membership_through": through}
+
+        return self.database.store.read(read)
 
     def budget(self, context: CommandContext, campaign_id: str) -> JsonObject:
         context.principal.require("read")
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             campaign = Transaction(connection, context).get("campaign", campaign_id)
             rows = connection.execute(
                 "SELECT payload FROM budgets WHERE workspace_id=? "
@@ -479,15 +481,16 @@ class ResearchQueries:
                 (context.principal.workspace_id, campaign_id),
             ).fetchall()
             accounts = [BudgetAccount.model_validate_json(row["payload"]) for row in rows]
-            connection.commit()
-        return {
-            "campaign_id": campaign_id,
-            "campaign_revision": campaign["revision"],
-            "accounts": [
-                {**account.model_dump(mode="json"), "available": str(account.available)}
-                for account in accounts
-            ],
-        }
+            return {
+                "campaign_id": campaign_id,
+                "campaign_revision": campaign["revision"],
+                "accounts": [
+                    {**account.model_dump(mode="json"), "available": str(account.available)}
+                    for account in accounts
+                ],
+            }
+
+        return self.database.store.read(read)
 
     def context(self, context: CommandContext, campaign_id: str, *, limit: int = 10) -> JsonObject:
         from research_swarm.control.campaigns import target_met
@@ -497,8 +500,8 @@ class ResearchQueries:
             raise ResearchError(
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Context limit must be between 1 and 50"
             )
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             transaction = Transaction(connection, context)
             campaign = transaction.get("campaign", campaign_id)
             data = CampaignData.model_validate(campaign["data"])
@@ -544,40 +547,41 @@ class ResearchQueries:
             stopping_status = {"target_met": target_met(transaction, campaign_id, data)}
             funding = funding_context(transaction, campaign_id)
             operational = operational_context(transaction, campaign_id)
-            connection.commit()
-        return {
-            "schema_version": "1.0",
-            **({"funding": funding} if funding is not None else {}),
-            **({"operational": operational} if operational is not None else {}),
-            "watermark": authority["watermark"],
-            "authority": {
-                "controller_id": authority["controller_id"],
-                "control_epoch": authority["control_epoch"],
-            },
-            "campaign": summarize(campaign),
-            "contract": {
-                "project_id": data.contract.project_id,
-                "project_revision_id": data.contract.project_revision_id,
-                "protocol_digest": data.contract.protocol_digest,
-                "comparison_class": data.contract.comparison_class,
-                "primary_metric": data.contract.primary_metric,
-                "search": data.contract.search.model_dump(mode="json"),
-                "promotion": data.contract.promotion.model_dump(mode="json"),
-                "stopping": data.contract.stopping.model_dump(mode="json"),
-                **(
-                    {"delegation": data.contract.delegation.model_dump(mode="json")}
-                    if data.contract.delegation is not None
-                    else {}
-                ),
-            },
-            "counts": [dict(row) for row in counts],
-            "recent_evidence": evidence,
-            "search_state": search,
-            "pending_proposals": requests,
-            "stopping_status": stopping_status,
-            "budget": [
-                {**account.model_dump(mode="json"), "available": str(account.available)}
-                for account in accounts
-            ],
-            "claim": "No validated improvement is implied by queued or measured work.",
-        }
+            return {
+                "schema_version": "1.0",
+                **({"funding": funding} if funding is not None else {}),
+                **({"operational": operational} if operational is not None else {}),
+                "watermark": authority["watermark"],
+                "authority": {
+                    "controller_id": authority["controller_id"],
+                    "control_epoch": authority["control_epoch"],
+                },
+                "campaign": summarize(campaign),
+                "contract": {
+                    "project_id": data.contract.project_id,
+                    "project_revision_id": data.contract.project_revision_id,
+                    "protocol_digest": data.contract.protocol_digest,
+                    "comparison_class": data.contract.comparison_class,
+                    "primary_metric": data.contract.primary_metric,
+                    "search": data.contract.search.model_dump(mode="json"),
+                    "promotion": data.contract.promotion.model_dump(mode="json"),
+                    "stopping": data.contract.stopping.model_dump(mode="json"),
+                    **(
+                        {"delegation": data.contract.delegation.model_dump(mode="json")}
+                        if data.contract.delegation is not None
+                        else {}
+                    ),
+                },
+                "counts": [dict(row) for row in counts],
+                "recent_evidence": evidence,
+                "search_state": search,
+                "pending_proposals": requests,
+                "stopping_status": stopping_status,
+                "budget": [
+                    {**account.model_dump(mode="json"), "available": str(account.available)}
+                    for account in accounts
+                ],
+                "claim": "No validated improvement is implied by queued or measured work.",
+            }
+
+        return self.database.store.read(read)

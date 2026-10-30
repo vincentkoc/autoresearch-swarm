@@ -33,11 +33,17 @@ stores. Native connection escape hatches and filesystem backup explicitly refuse
 stores that cannot provide those capabilities.
 
 The command, replay, bootstrap, record, snapshot, event and notification paths use
-these callbacks. Some higher-level services still contain native connection paths;
-the complete hosted service remains unqualified until those paths, clock/key custody
-and artifact operations are adapted. A callback-only facade has local conformance
-coverage, while the [Cloudflare runtime fixture](../adapters/cloudflare/README.md)
-separately qualifies its nested transaction and FFI primitives.
+these callbacks. Credentials, campaign queries, scoped worker/proposer reads,
+orchestration turn inspection and recovery page/chunk reads use the same boundary.
+Credential installation keeps its lookup and conditional insert in one write;
+queries retain their ownership checks and pagination bounds in one snapshot.
+Worker query authority does not grant global research read access.
+
+Artifact and execution-evidence preflights still contain native connection paths.
+The complete hosted service remains unqualified until those paths, clock/key custody
+and artifact operations are adapted. A callback-only facade covers the migrated
+services. The [Cloudflare runtime fixture](../adapters/cloudflare/README.md) runs
+the shared command kernel and schema migrations through its actual SQL adapter.
 
 ## Worker admission
 

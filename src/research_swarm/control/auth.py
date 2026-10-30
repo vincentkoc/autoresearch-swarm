@@ -13,6 +13,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import ID, Timestamp, new_id, utc_now
 from research_swarm.state.database import Database, encode
+from research_swarm.state.sql import SqlSession
 
 
 @dataclass(frozen=True)
@@ -25,12 +26,15 @@ class IssuedCredential:
 class CredentialStore:
     def __init__(self, database: Database) -> None:
         self.database = database
-        with database.connect() as connection:
+
+        def initialize(connection: SqlSession) -> None:
             connection.execute("""CREATE TABLE IF NOT EXISTS credentials (
                 id TEXT PRIMARY KEY, token_digest TEXT NOT NULL UNIQUE,
                 workspace_id TEXT NOT NULL REFERENCES workspaces(id), principal TEXT NOT NULL,
                 created_at TEXT NOT NULL, expires_at TEXT, revoked INTEGER NOT NULL DEFAULT 0
             )""")
+
+        database.store.write(initialize)
 
     def issue(
         self, issuer: Principal, principal: Principal, *, expires_at: str | None = None
@@ -44,7 +48,8 @@ class CredentialStore:
                 )
         token = "rsw_" + secrets.token_urlsafe(32)
         identifier = new_id()
-        with self.database.connect() as connection:
+
+        def persist(connection: SqlSession) -> None:
             connection.execute(
                 "INSERT INTO credentials"
                 "(id,token_digest,workspace_id,principal,created_at,expires_at) "
@@ -58,6 +63,8 @@ class CredentialStore:
                     expires_at,
                 ),
             )
+
+        self.database.store.write(persist)
         return IssuedCredential(identifier, token, principal)
 
     @staticmethod
@@ -83,43 +90,40 @@ class CredentialStore:
         if re.fullmatch(r"rsw_[A-Za-z0-9_-]{43}", token) is None:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid enrollment credential")
         digest = self._digest(token)
-        with self.database.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                rows = connection.execute(
-                    "SELECT * FROM credentials WHERE id=? OR token_digest=?", (identifier, digest)
-                ).fetchall()
-                if rows:
-                    row = rows[0]
-                    if (
-                        len(rows) != 1
-                        or row["id"] != identifier
-                        or row["token_digest"] != digest
-                        or row["workspace_id"] != principal.workspace_id
-                        or Principal.model_validate_json(row["principal"]) != principal
-                        or row["revoked"]
-                        or row["expires_at"] is not None
-                    ):
-                        raise ResearchError(
-                            ErrorCode.AUTHORIZATION_DENIED,
-                            "Enrollment credential differs or is no longer active",
-                        )
-                else:
-                    connection.execute(
-                        "INSERT INTO credentials"
-                        "(id,token_digest,workspace_id,principal,created_at) VALUES (?,?,?,?,?)",
-                        (
-                            identifier,
-                            digest,
-                            principal.workspace_id,
-                            encode(principal.model_dump(mode="json")),
-                            utc_now(),
-                        ),
+
+        def persist(connection: SqlSession) -> None:
+            rows = connection.execute(
+                "SELECT * FROM credentials WHERE id=? OR token_digest=?", (identifier, digest)
+            ).fetchall()
+            if rows:
+                row = rows[0]
+                if (
+                    len(rows) != 1
+                    or row["id"] != identifier
+                    or row["token_digest"] != digest
+                    or row["workspace_id"] != principal.workspace_id
+                    or Principal.model_validate_json(row["principal"]) != principal
+                    or row["revoked"]
+                    or row["expires_at"] is not None
+                ):
+                    raise ResearchError(
+                        ErrorCode.AUTHORIZATION_DENIED,
+                        "Enrollment credential differs or is no longer active",
                     )
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+            else:
+                connection.execute(
+                    "INSERT INTO credentials"
+                    "(id,token_digest,workspace_id,principal,created_at) VALUES (?,?,?,?,?)",
+                    (
+                        identifier,
+                        digest,
+                        principal.workspace_id,
+                        encode(principal.model_dump(mode="json")),
+                        utc_now(),
+                    ),
+                )
+
+        self.database.store.write(persist)
         return IssuedCredential(identifier, token, principal)
 
     @staticmethod
@@ -129,11 +133,12 @@ class CredentialStore:
     def resolve(self, token: str) -> Principal:
         if not token.startswith("rsw_") or len(token) > 256:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid credential")
-        with self.database.connect() as connection:
-            row = connection.execute(
+        row = self.database.store.read(
+            lambda connection: connection.execute(
                 "SELECT principal,expires_at,revoked FROM credentials WHERE token_digest=?",
                 (self._digest(token),),
             ).fetchone()
+        )
         if row is None or row["revoked"]:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid credential")
         if row["expires_at"] is not None:
@@ -147,10 +152,13 @@ class CredentialStore:
 
     def revoke(self, issuer: Principal, identifier: str) -> None:
         issuer.require("auth.manage")
-        with self.database.connect() as connection:
+
+        def revoke(connection: SqlSession) -> None:
             changed = connection.execute(
                 "UPDATE credentials SET revoked=1 WHERE workspace_id=? AND id=? RETURNING id",
                 (issuer.workspace_id, identifier),
             )
             if len(changed.fetchall()) != 1:
                 raise ResearchError(ErrorCode.NOT_FOUND, "Credential not found")
+
+        self.database.store.write(revoke)

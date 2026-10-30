@@ -209,17 +209,25 @@ def test_changed_profile_and_other_controller_cannot_reenroll_native_pool(
     assert enrolled.worker.resources.availability() == {"cpu": 1}
 
 
-def test_credential_install_is_atomic_and_never_rotates(tmp_path: Path) -> None:
+@pytest.mark.parametrize("callback_only", [False, True])
+def test_credential_install_is_atomic_and_never_rotates(
+    tmp_path: Path, callback_only: bool
+) -> None:
     runtime = LocalRuntime.open(tmp_path / "runtime")
+    credentials = runtime.credentials
+    if callback_only:
+        from research_swarm.control.auth import CredentialStore
+        from research_swarm.state.database import Database
+        from tests.test_state_store import CallbacksOnly
+
+        credentials = CredentialStore(Database.from_store(CallbacksOnly(runtime.database.store)))
     issuer = runtime.principal()
     actor = Principal(id=new_id(), workspace_id=issuer.workspace_id, scopes=frozenset({"read"}))
     identifier, token = new_id(), "rsw_" + secrets.token_urlsafe(32)
     with ThreadPoolExecutor(max_workers=3) as pool:
         results = list(
             pool.map(
-                lambda _: runtime.credentials.install(
-                    issuer, actor, identifier=identifier, token=token
-                ),
+                lambda _: credentials.install(issuer, actor, identifier=identifier, token=token),
                 range(3),
             )
         )
@@ -230,11 +238,9 @@ def test_credential_install_is_atomic_and_never_rotates(tmp_path: Path) -> None:
         (identifier, token, actor.model_copy(update={"scopes": frozenset({"*"})})),
     ):
         with pytest.raises(ResearchError):
-            runtime.credentials.install(
-                issuer, changed_actor, identifier=changed_id, token=changed_token
-            )
-    runtime.credentials.revoke(issuer, identifier)
+            credentials.install(issuer, changed_actor, identifier=changed_id, token=changed_token)
+    credentials.revoke(issuer, identifier)
     with pytest.raises(ResearchError):
-        runtime.credentials.install(issuer, actor, identifier=identifier, token=token)
+        credentials.install(issuer, actor, identifier=identifier, token=token)
     with runtime.database.connect() as connection:
         assert connection.execute("SELECT COUNT(*) FROM credentials").fetchone()[0] == 2

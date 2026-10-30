@@ -19,6 +19,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import ID, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.sql import SqlSession
 
 
 class WorkerQuery(VersionedRecord):
@@ -95,8 +96,8 @@ class WorkerQueries:
     def get(self, context: CommandContext, request: WorkerRead) -> JsonObject:
         context.principal.require("worker.query")
         request = WorkerRead.model_validate(request)
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             transaction = Transaction(connection, context)
             if request.kind == "worker_session":
                 if request.id != request.session_id:
@@ -175,11 +176,13 @@ class WorkerQueries:
                     )
             return transaction.get(request.kind, request.id)
 
+        return self.database.store.read(read)
+
     def list(self, context: CommandContext, request: WorkerQuery) -> JsonObject:
         context.principal.require("worker.query")
         request = WorkerQuery.model_validate(request)
-        with self.database.connect() as connection:
-            connection.execute("BEGIN")
+
+        def read(connection: SqlSession) -> JsonObject:
             transaction = Transaction(connection, context)
             worker = (
                 WorkerData.model_validate(
@@ -287,3 +290,5 @@ class WorkerQueries:
                 else None
             )
             return {"items": items, "next_cursor": next_cursor, "scanned": len(scanned)}
+
+        return self.database.store.read(read)
