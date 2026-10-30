@@ -22,14 +22,8 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import ID, VersionedRecord, new_id
-from research_swarm.projects.manifest import MAX_PROJECT_MANIFEST_BYTES, parse_manifest
+from research_swarm.projects.capture import capture_project
 from research_swarm.projects.native_files import SourceReader
-from research_swarm.projects.source import (
-    bundle_directory,
-    bundle_git,
-    portable_path,
-    read_git_file,
-)
 from research_swarm.runtime import LocalRuntime
 from research_swarm.state.artifacts import BeginUpload
 from research_swarm.state.database import JsonObject
@@ -378,35 +372,9 @@ class ResearchClient:
         manifest_path: str = "research.toml",
         revision: str | None = None,
     ) -> ArtifactRef:
-        root = root.resolve()
-        portable_path(manifest_path)
-        if revision is not None:
-            revision, content = read_git_file(
-                root, revision, manifest_path, limit=MAX_PROJECT_MANIFEST_BYTES
-            )
-            manifest = parse_manifest(content)
-        else:
-            with SourceReader(root) as reader, reader.open(manifest_path) as source:
-                manifest = parse_manifest(source.read(MAX_PROJECT_MANIFEST_BYTES + 1))
-            if manifest.source.mode == "git":
-                revision, content = read_git_file(
-                    root,
-                    manifest.source.base_revision,
-                    manifest_path,
-                    limit=MAX_PROJECT_MANIFEST_BYTES,
-                )
-                manifest = parse_manifest(content)
         with TemporaryDirectory(prefix="research-capture-") as temporary:
             bundle = Path(temporary) / "source.zip"
-            if revision is not None:
-                bundle_git(
-                    root,
-                    revision,
-                    bundle,
-                    paths=manifest.source.paths,
-                )
-            else:
-                bundle_directory(root, bundle, paths=manifest.source.paths)
+            capture_project(root, bundle, manifest_path=manifest_path, revision=revision)
             return self.upload_file(
                 bundle, idempotency_key=idempotency_key, media_type="application/zip"
             )

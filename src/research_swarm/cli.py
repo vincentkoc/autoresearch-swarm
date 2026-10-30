@@ -30,6 +30,21 @@ def parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765)
     commands.add_parser("mcp", help="Expose typed agent tools over stdio")
     commands.add_parser("capabilities")
+    run = commands.add_parser(
+        "run", help="Freeze a project, execute its baseline, and expose agent control"
+    )
+    run.add_argument("path", type=Path)
+    run.add_argument("--key", help="Stable run identity; defaults to the source path")
+    run.add_argument("--manifest", default="research.toml")
+    run.add_argument("--source-revision")
+    run.add_argument("--primary-metric")
+    run.add_argument("--seed", type=int, default=0)
+    run.add_argument("--max-trials", type=int, default=10)
+    run.add_argument("--cpu-slots", type=int, default=1)
+    run.add_argument("--machine-registry", type=Path)
+    run.add_argument(
+        "--inputs-file", type=Path, help="JSON mapping of input names to artifact references"
+    )
     worker = commands.add_parser("worker")
     worker_actions = worker.add_subparsers(dest="worker_action", required=True)
     local = worker_actions.add_parser("run", help="Drain admitted campaign work on the local CPU")
@@ -104,6 +119,29 @@ def _request(path: Path | None) -> dict[str, Any]:
 
 
 def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
+    if args.action == "run":
+        from research_swarm.orchestration.bootstrap import RunOptions
+        from research_swarm.orchestration.run import run_project
+
+        options = RunOptions(
+            manifest_path=args.manifest,
+            source_revision=args.source_revision,
+            primary_metric=args.primary_metric,
+            seed=args.seed,
+            max_trials=args.max_trials,
+            parallelism=args.cpu_slots,
+            input_artifacts=_request(args.inputs_file) if args.inputs_file else {},
+        )
+        return asyncio.run(
+            run_project(
+                client,
+                args.path,
+                key=args.key,
+                options=options,
+                cpu_slots=args.cpu_slots,
+                machine_registry=args.machine_registry,
+            )
+        ).model_dump(mode="json")
     if args.action == "worker":
         from research_swarm.orchestration.local import LocalDriver
         from research_swarm.workers.local_enrollment import ensure_local_enrollment
@@ -208,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             result = _execute(client, args)
             print(canonical_bytes(result).decode("utf-8"))
-            if args.action == "worker" and result["state"] == "blocked":
+            if args.action in {"worker", "run"} and result["state"] in {"blocked", "needs_review"}:
                 return 3
         return 0
     except ResearchError as error:

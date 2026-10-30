@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `research run` to freeze a project, create an external-agent campaign, and execute its baseline through the local driver.
+- Persist source and bootstrap identity across interrupted uploads and commands, without recapturing changed or missing checkouts.
+- Return bounded evidence context and explicit awaiting-proposals, awaiting-completion, or review outcomes without claiming research completion.
 - Drive local campaign stages concurrently through persisted API commands and automatic scoped enrollment.
 - Recover lost command acknowledgments and pending receipts, retain uncertain capacity, and drain native threads before releasing driver ownership.
 - Add `research worker run` with bounded JSON outcomes and explicit blocked exit status.
