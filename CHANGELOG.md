@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add explicit scientific completion with immutable reviewed obligations, preserving UNKNOWN custody and child funding while freezing the final research report.
+- Reconcile original late evidence without launching successor work or reopening selection; keep operational-only closure distinct from accepted scientific results.
+- Close resources separately after all original obligations settle, with atomic child-funding settlement, replayable receipts, and current operational context through HTTP, SDK, CLI, and MCP.
+
 - Share one provider-neutral delivery kernel between the default local asyncio driver and Temporal Activities, preserving the existing Temporal import surface.
 - Persist local startup generations and exact pending references before API delivery, recover lost acknowledgments after reopening, and reject competing steps or checkpoint ownership changes.
 - Keep local delivery independent of the Temporal SDK and preserve ready-wait evidence and native custody when its loop stops.

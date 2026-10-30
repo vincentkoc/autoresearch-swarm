@@ -10,6 +10,7 @@ from pydantic import Field, ValidationError
 
 from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
+from research_swarm.control.obligations import operational_context
 from research_swarm.domain.budgets import BudgetAccount
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -18,6 +19,10 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
+    "campaign_obligations",
+    "campaign_obligation_chunk",
+    "scientific_completion",
+    "campaign_resource_closure",
     "orchestration_checkpoint",
     "orchestration_checkpoint_chunk",
     "orchestration_transfer",
@@ -94,6 +99,9 @@ def summarize(row: JsonObject) -> JsonObject:
     }
     data = row["data"]
     if row["kind"] in {
+        "campaign_obligations",
+        "scientific_completion",
+        "campaign_resource_closure",
         "orchestration_checkpoint",
         "orchestration_transfer",
         "orchestration_start",
@@ -105,6 +113,12 @@ def summarize(row: JsonObject) -> JsonObject:
         "wakeup_acknowledgment",
     }:
         result["data"] = data
+    elif row["kind"] == "campaign_obligation_chunk":
+        result["data"] = {
+            "review_id": data["review_id"],
+            "ordinal": data["ordinal"],
+            "entry_count": len(data["entries"]),
+        }
     elif row["kind"] == "orchestration_checkpoint_chunk":
         result["data"] = {
             "checkpoint_id": data["checkpoint_id"],
@@ -509,10 +523,12 @@ class ResearchQueries:
             accounts = [BudgetAccount.model_validate_json(row["payload"]) for row in budgets]
             stopping_status = {"target_met": target_met(transaction, campaign_id, data)}
             funding = funding_context(transaction, campaign_id)
+            operational = operational_context(transaction, campaign_id)
             connection.commit()
         return {
             "schema_version": "1.0",
             **({"funding": funding} if funding is not None else {}),
+            **({"operational": operational} if operational is not None else {}),
             "watermark": authority["watermark"],
             "authority": {
                 "controller_id": authority["controller_id"],

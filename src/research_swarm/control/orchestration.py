@@ -51,6 +51,9 @@ CONTROL_OPERATIONS = frozenset(
         "evaluation.authorize",
         "campaign.pause",
         "campaign.complete",
+        "campaign.capture_obligations",
+        "campaign.complete_scientific",
+        "campaign.close_resources",
         "report.create",
     }
 )

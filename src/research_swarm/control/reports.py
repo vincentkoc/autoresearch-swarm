@@ -7,6 +7,7 @@ from pydantic import Field
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
+from research_swarm.control.obligations import operational_context
 from research_swarm.control.queries import summarize
 from research_swarm.domain.budgets import BudgetAccount
 from research_swarm.domain.canonical import record_digest
@@ -45,9 +46,24 @@ def markdown(snapshot: JsonObject) -> str:
         "",
         "Stopping reason: " + literal(snapshot["stopping_reason"] or "Not completed"),
         "",
-        "## Selection",
-        "",
     ]
+    if operational := snapshot.get("operational"):
+        lines.extend(
+            [
+                "Operational status: " + operational["status"],
+                "",
+                "Obligation review: `" + operational["obligations_id"] + "`",
+                "",
+                "Resource closure: "
+                + (
+                    "`" + operational["resource_closure_id"] + "`"
+                    if operational["resource_closure_id"]
+                    else "pending"
+                ),
+                "",
+            ]
+        )
+    lines.extend(["## Selection", ""])
     incumbent = snapshot["incumbent"]
     if incumbent["candidate_id"]:
         lines.extend(
@@ -198,6 +214,9 @@ def create_report(
         "detail_query": {"kind": "evaluation_receipt", "campaign_id": campaign_row["id"]},
     }
     funding = funding_context(transaction, campaign_row["id"])
+    operational = operational_context(transaction, campaign_row["id"])
+    if operational is not None:
+        snapshot["operational"] = operational
     if funding is not None:
         snapshot["funding"] = funding
     content: JsonObject = {"snapshot": snapshot, "markdown": markdown(snapshot)}

@@ -6,6 +6,7 @@ from uuid import UUID, uuid5
 
 from pydantic import Field
 
+from research_swarm.control.obligations import admitted_before_completion
 from research_swarm.control.observations import PublishAttempt, evidence_roles, output_intent
 from research_swarm.control.results import ResultControl
 from research_swarm.control.worker_outputs import verify_evidence_receipt
@@ -248,7 +249,9 @@ class ReconciliationControl:
                 "reconciliation": None,
             }
         campaign = transaction.get("campaign", attempt.dispatch.campaign_id)
-        if campaign["state"] in TERMINAL_CAMPAIGNS:
+        if campaign["state"] in TERMINAL_CAMPAIGNS and not admitted_before_completion(
+            transaction, campaign["id"], intent.attempt_id
+        ):
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Terminal research cannot be resumed")
         if journal.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}:
             raise ResearchError(

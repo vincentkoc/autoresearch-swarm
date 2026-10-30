@@ -30,6 +30,7 @@ from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef, RunResult
 from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.lifecycle import TERMINAL_CAMPAIGNS
 from research_swarm.domain.types import utc_now
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
@@ -352,7 +353,9 @@ class ResultControl:
     def _advance_trial(transaction: Transaction, row: JsonObject, trial: TrialData) -> None:
         jobs = {identifier: transaction.get("job", identifier) for identifier in trial.job_ids}
         withheld = trial.execution_outcome == "closed_unaccepted"
-        if withheld:
+        terminal = transaction.get("campaign", row["campaign_id"])["state"] in TERMINAL_CAMPAIGNS
+        stopping_reason = "trial_closed_unaccepted" if withheld else "campaign_completed"
+        if withheld or terminal:
             for identifier, job_row in jobs.items():
                 data = JobData.model_validate(job_row["data"])
                 if (
@@ -365,18 +368,16 @@ class ResultControl:
                     identifier,
                     expected_revision=job_row["revision"],
                     state="not_started",
-                    data=data.model_copy(
-                        update={"stopping_reason": "trial_closed_unaccepted"}
-                    ).model_dump(mode="json"),
+                    data=data.model_copy(update={"stopping_reason": stopping_reason}).model_dump(
+                        mode="json"
+                    ),
                 )
                 jobs[identifier] = changed
                 release_unused_exposure(transaction, data)
-                transaction.event(
-                    "job.admission_stopped", changed, {"reason": "trial_closed_unaccepted"}
-                )
+                transaction.event("job.admission_stopped", changed, {"reason": stopping_reason})
         pending = (
             set()
-            if withheld
+            if withheld or terminal
             else {identifier for identifier, job in jobs.items() if job["state"] == "blocked"}
         )
         while pending:
@@ -421,6 +422,8 @@ class ResultControl:
             if withheld
             else "succeeded"
             if states == {"succeeded"}
+            else "cancelled"
+            if terminal and complete and "not_started" in states and "failed" not in states
             else "failed"
             if complete
             else "unknown"

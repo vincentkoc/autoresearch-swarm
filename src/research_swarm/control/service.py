@@ -26,6 +26,11 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
+from research_swarm.control.completion_models import (
+    CaptureCampaignObligations,
+    CloseCampaignResources,
+    CompleteScientificCampaign,
+)
 from research_swarm.control.confirmation import (
     AssessConfirmation,
     ConfirmationControl,
@@ -76,6 +81,7 @@ from research_swarm.control.queries import RecordKind
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
+from research_swarm.control.scientific_completion import ScientificCompletionControl
 from research_swarm.control.search_admission import SearchAdmission
 from research_swarm.control.search_models import (
     AdmitProposalResponse,
@@ -203,6 +209,7 @@ class ResearchService:
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
+        self.scientific_completion = ScientificCompletionControl(database)
         self.children = ChildControl(database, self._create_campaign, self._validate_contract)
         self.orchestration = OrchestrationControl(database, self._dispatch_drive)
         self.orchestration_waits = OrchestrationWaitControl(database)
@@ -365,6 +372,21 @@ class ResearchService:
 
     def complete_campaign(self, context: CommandContext, request: CompleteCampaign) -> JsonObject:
         return self.campaigns.complete(context, request)
+
+    def capture_campaign_obligations(
+        self, context: CommandContext, request: CaptureCampaignObligations
+    ) -> JsonObject:
+        return self.scientific_completion.capture(context, request)
+
+    def complete_campaign_scientific(
+        self, context: CommandContext, request: CompleteScientificCampaign
+    ) -> JsonObject:
+        return self.scientific_completion.complete(context, request)
+
+    def close_campaign_resources(
+        self, context: CommandContext, request: CloseCampaignResources
+    ) -> JsonObject:
+        return self.scientific_completion.close_resources(context, request)
 
     def report_campaign(self, context: CommandContext, request: ReportCampaign) -> JsonObject:
         return self.campaigns.report(context, request)

@@ -20,6 +20,7 @@ from research_swarm.domain.evidence import (
     RunResult,
 )
 from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.lifecycle import TERMINAL_CAMPAIGNS
 from research_swarm.domain.types import ID, Digest, Name, Timestamp, VersionedRecord, utc_now
 from research_swarm.evaluation.eligibility import validate_receipt
 from research_swarm.projects.workload import WorkloadReport
@@ -123,6 +124,12 @@ class EvaluationControl:
 
         def authorize(transaction: Transaction) -> JsonObject:
             row = transaction.get("job", intent.job_id)
+            campaign_row = transaction.get("campaign", row["campaign_id"])
+            if campaign_row["state"] in TERMINAL_CAMPAIGNS:
+                raise ResearchError(
+                    ErrorCode.INVALID_TRANSITION,
+                    "Terminal research cannot authorize new evaluation",
+                )
             if context.expected_revision != row["revision"]:
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Evaluation job revision changed")
             current = JobData.model_validate(row["data"])
