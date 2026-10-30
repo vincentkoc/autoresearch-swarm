@@ -7,8 +7,9 @@ an accepted reply is lost. Use a durable turn as the retry boundary instead.
 
 The current implementation supplies initial ownership, one saved command per
 turn, transaction-time fencing, acknowledgment recovery, and durable waits with
-destination-bound wakeups. Provider Workflows and checkpoint ownership transfer
-are separate work. An adapter label is descriptive metadata, not qualification.
+destination-bound wakeups. A paused campaign can transfer to fresh driver
+principals through a verified same-workspace checkpoint. Provider Workflows
+remain separate work. An adapter label is descriptive metadata, not qualification.
 
 ## Bind dedicated principals
 
@@ -259,8 +260,82 @@ fencing between preflight and commit, owned-pin cleanup, reserved-key collisions
 and unchanged staging bytes after denied HTTP mutations. Wait tests include a
 controller process exiting immediately after commit, reopening the runtime,
 receiver acknowledgment loss, persisted timer recovery, parent-child wakeups,
-and rollback when notification storage fails. Temporal replay, Cloudflare
-execution, and ownership transfer require their own qualification.
+and rollback when notification storage fails. Temporal replay and Cloudflare
+execution require their own qualification.
 Closure tests also cover a delayed original dispatch, competing operators,
 controller reopen, real HTTP recovery, accepted/rejected acknowledgment gaps,
 and atomic rollback if storing the closure event fails.
+
+## Transfer a paused campaign
+
+`orchestration.transfer` changes the research driver inside the same workspace.
+It requires `read`, `orchestration.manage`, and `orchestration.drive`, a sealed
+paused campaign, its current revision, the original binding epoch, and the
+binding revision as `expected_revision`. The operator cannot be a bound driver.
+Successor actors must be fresh dedicated principals without earlier commands or
+ownership. The campaign remains paused until an explicit `campaign.start`.
+
+Native attempts must have proven closure. Unknown resource custody, unsettled
+attempt reservations, and work still pinned to the retiring evaluator block
+transfer. A completed failed scoring job does not remain a blocker merely because
+its authorization record survives. Pending confirmation panels keep their
+original evaluator identity and block transfer until that work is resolved.
+
+```python
+from research_swarm.control.orchestration_models import TransferOrchestration
+
+transfer = operator.command(
+    "orchestration.transfer",
+    TransferOrchestration(
+        transfer_id=transfer_id,
+        campaign_id=campaign_id,
+        campaign_revision=paused_campaign["revision"],
+        epoch=old_binding["data"]["epoch"],
+        adapter="local",
+        configuration_digest=configuration_digest,
+        routes={"control": new_control_id, "evaluator": new_evaluator_id},
+        reason="Move the paused campaign to replacement research drivers",
+    ),
+    idempotency_key=transfer_id,
+    expected_revision=old_binding["revision"],
+)["result"]
+```
+
+The controller follows required artifact retention owners, verifies their bytes
+under read pins, then rechecks the full manifest in the write transaction.
+Changed or corrupt evidence refuses transfer before ownership changes. The
+transaction records an immutable checkpoint and old binding, fences old turns
+and waits, reconciles a pending target acknowledgment or records its distinct
+absent-ack closure, advances the orchestration epoch, and creates a pending start
+intent for each successor route. All effects commit together.
+
+The checkpoint records campaign contract and record digests, full budget balances
+and reservations, child-funding projections, required artifact identities and
+generations, workspace authority, and the observed event watermark. It is an
+audit of the transfer, not a portable backup or a frozen copy of every historical
+payload. It has no expiry and does not depend on recovery-snapshot storage.
+The local profile limits the manifest to 100,000 selected records, 4,096 unique
+required artifacts, 131,072 entries, and 64 MiB of canonical manifest bytes.
+Chunks contain at most 128 entries and 256 KiB each, with at most 1,024 chunks.
+Oversized evidence returns `RESOURCE_UNAVAILABLE`; it is never silently omitted.
+
+After assignment, each successor reads `orchestration_start` using its ID from
+the binding's `start_ids`, verifies the referenced checkpoint and chunks, and
+recovers current state through a fresh snapshot and event catch-up. It then sends
+`orchestration.acknowledge_start` with the exact start ID, checkpoint digest, an
+observed watermark at least as new as the checkpoint, and the start revision as
+`expected_revision`. Only the named actor can acknowledge its route. New turns
+and waits are blocked until that acknowledgment commits. A stored start intent
+does not itself provision a process or prove provider delivery.
+
+Replaying the transfer identity returns its original immutable receipt. A
+different intent cannot reuse that identity. Competing transfers select one
+successor epoch. Old deliveries retain their original destinations and accepted
+effects remain recoverable. Workspace worker authority, queued trials, admitted
+scientific contracts, budgets, and funded children are unchanged.
+
+Local tests cover competing transfers, absent/accepted/rejected pending turns,
+corrupt and changing artifacts, evaluator and native-custody blockers, large
+manifest entries, and transactional rollback. The HTTP successor test recovers a
+fresh snapshot, acknowledges both routes, and resumes the original queued CPU
+trial on its existing worker without another attempt or workspace-authority change.

@@ -39,6 +39,19 @@ class CloseDriveTurn(DriveTurnTarget):
     finding: str = Field(min_length=1, max_length=2048)
 
 
+class TransferOrchestration(BindOrchestration):
+    transfer_id: ID
+    epoch: int = Field(strict=True, ge=1)
+    campaign_revision: Revision
+    reason: str = Field(min_length=1, max_length=2048)
+
+
+class AcknowledgeDriverStart(VersionedRecord):
+    start_id: ID
+    checkpoint_digest: Digest
+    observed_watermark: Revision
+
+
 class FenceOrchestration(VersionedRecord):
     campaign_id: ID
     epoch: int = Field(strict=True, ge=1)

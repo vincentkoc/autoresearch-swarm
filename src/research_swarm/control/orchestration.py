@@ -19,7 +19,6 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, DriveGuard, guarded_context
 from research_swarm.domain.orchestration import (
     DriveAction,
-    DriveReceipt,
     DriveTurn,
     OrchestrationBinding,
     OrchestrationOwner,
@@ -30,8 +29,10 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.drive_closures import (
     close_unacknowledged,
     closure_outcome,
+    settle_acknowledged,
     target_acknowledgment,
 )
+from research_swarm.state.drive_guard import require_driver_started
 from research_swarm.state.waits import consume_ready_wait, fence_wait
 
 CONTROL_OPERATIONS = frozenset(
@@ -223,6 +224,7 @@ class OrchestrationControl:
                 raise ResearchError(ErrorCode.STALE_FENCE, "Orchestration binding is fenced")
             if context.expected_revision != row["revision"]:
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Orchestration binding changed")
+            require_driver_started(transaction, binding, owner.route)
             if binding.pending_turn_id is not None:
                 raise ResearchError(
                     ErrorCode.RESOURCE_UNAVAILABLE,
@@ -342,54 +344,7 @@ class OrchestrationControl:
                 context.principal.require("orchestration.manage")
             if row["state"] == "closed_unacknowledged":
                 return closure_outcome(transaction, row)
-            response = self._acknowledgment(transaction, turn)
-            if response is None:
-                raise ResearchError(
-                    ErrorCode.RESOURCE_UNAVAILABLE, "Turn has no durable target acknowledgment"
-                )
-            if row["state"] == "settled":
-                receipt = transaction.get("drive_receipt", row["id"])
-            else:
-                receipt = transaction.insert(
-                    "drive_receipt",
-                    row["id"],
-                    DriveReceipt(
-                        turn_id=row["id"],
-                        target_command_id=response["command_id"],
-                        target_request_digest=turn.action.request_digest,
-                        target_response_digest=record_digest(
-                            "research.drive-response-v1", response
-                        ),
-                        disposition=response["disposition"],
-                        reconciled_by=context.principal.id,
-                        reconciled_at=utc_now(),
-                    ).model_dump(mode="json"),
-                    state="immutable",
-                    campaign_id=turn.campaign_id,
-                )
-                row = transaction.update(
-                    "drive_turn",
-                    row["id"],
-                    expected_revision=row["revision"],
-                    data=row["data"],
-                    state="settled",
-                )
-                owner = transaction.get("orchestration_binding", turn.campaign_id)
-                binding = OrchestrationBinding.model_validate(owner["data"])
-                if binding.epoch == turn.epoch and binding.pending_turn_id == row["id"]:
-                    transaction.update(
-                        "orchestration_binding",
-                        turn.campaign_id,
-                        expected_revision=owner["revision"],
-                        state=owner["state"],
-                        data=binding.model_copy(update={"pending_turn_id": None}).model_dump(
-                            mode="json"
-                        ),
-                    )
-                transaction.event(
-                    "orchestration.turn_settled", receipt, {"disposition": response["disposition"]}
-                )
-            return {"turn": row, "receipt": receipt, "response": response}
+            return settle_acknowledged(transaction, row)
 
         return self.database.execute(
             context, operation, intent.model_dump(mode="json"), "orchestration.drive", finish

@@ -47,6 +47,9 @@ class OrchestrationBinding(VersionedRecord):
     next_ordinal: int = Field(default=1, strict=True, ge=1)
     pending_turn_id: ID | None = None
     active_wait_id: ID | None = Field(default=None, exclude_if=lambda value: value is None)
+    start_ids: dict[DriverRoute, ID] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     bound_by: ID
     bound_at: Timestamp
 

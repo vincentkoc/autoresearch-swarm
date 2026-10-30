@@ -18,6 +18,12 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
+    "orchestration_checkpoint",
+    "orchestration_checkpoint_chunk",
+    "orchestration_transfer",
+    "orchestration_binding_history",
+    "orchestration_start",
+    "orchestration_start_ack",
     "orchestration_wait",
     "wait_readiness",
     "wakeup_delivery",
@@ -88,6 +94,10 @@ def summarize(row: JsonObject) -> JsonObject:
     }
     data = row["data"]
     if row["kind"] in {
+        "orchestration_checkpoint",
+        "orchestration_transfer",
+        "orchestration_start",
+        "orchestration_start_ack",
         "orchestration_binding",
         "orchestration_wait",
         "wait_readiness",
@@ -95,6 +105,12 @@ def summarize(row: JsonObject) -> JsonObject:
         "wakeup_acknowledgment",
     }:
         result["data"] = data
+    elif row["kind"] == "orchestration_checkpoint_chunk":
+        result["data"] = {
+            "checkpoint_id": data["checkpoint_id"],
+            "ordinal": data["ordinal"],
+            "entry_count": len(data["entries"]),
+        }
     elif row["kind"] == "drive_turn":
         result["data"] = {
             key: data[key]

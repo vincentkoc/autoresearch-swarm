@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Transfer paused campaigns to fresh driver principals through an immutable verified checkpoint, preserving scientific identities, worker authority, queued work, and child funding.
+- Reconcile original target acknowledgments or record distinct absent-ack closure before advancing the driver epoch; require each successor to acknowledge checkpoint recovery before issuing turns or waits.
+- Bound checkpoint manifests by canonical byte size and entry count, verify required retained artifacts, and refuse unresolved native or retiring-evaluator work without partial ownership changes.
+
 - Close fenced pending actions without a committed target acknowledgment using a distinct immutable closure, preserving the difference from accepted or rejected research commands.
 - Reject delayed original dispatch before it can create a replacement acknowledgment; recover closed ordinals over the same API without replanning, releasing budgets, or changing native custody.
 

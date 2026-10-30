@@ -31,11 +31,13 @@ from research_swarm.control.observation_models import (
     SelectTrialObservation,
 )
 from research_swarm.control.orchestration_models import (
+    AcknowledgeDriverStart,
     BindOrchestration,
     CloseDriveTurn,
     DriveTurnTarget,
     FenceOrchestration,
     PrepareDriveTurn,
+    TransferOrchestration,
 )
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
@@ -88,6 +90,22 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "orchestration.transfer": CommandDefinition(
+        TransferOrchestration,
+        "transfer_orchestration",
+        "orchestration.manage",
+        True,
+        "Transfer a reconciled paused campaign to fresh drivers within the same state authority.",
+        additional_scopes=("read", "orchestration.drive"),
+    ),
+    "orchestration.acknowledge_start": CommandDefinition(
+        AcknowledgeDriverStart,
+        "acknowledge_driver_start",
+        "orchestration.drive",
+        True,
+        "Acknowledge this successor's checkpoint before preparing research actions.",
+        additional_scopes=("read",),
+    ),
     "orchestration.close_turn": CommandDefinition(
         CloseDriveTurn,
         "close_drive_turn",

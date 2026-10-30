@@ -54,12 +54,15 @@ from research_swarm.control.observation_models import (
 )
 from research_swarm.control.orchestration import OrchestrationControl
 from research_swarm.control.orchestration_models import (
+    AcknowledgeDriverStart,
     BindOrchestration,
     CloseDriveTurn,
     DriveTurnTarget,
     FenceOrchestration,
     PrepareDriveTurn,
+    TransferOrchestration,
 )
+from research_swarm.control.orchestration_transfer import OrchestrationTransferControl
 from research_swarm.control.orchestration_waits import OrchestrationWaitControl
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
@@ -203,6 +206,7 @@ class ResearchService:
         self.children = ChildControl(database, self._create_campaign, self._validate_contract)
         self.orchestration = OrchestrationControl(database, self._dispatch_drive)
         self.orchestration_waits = OrchestrationWaitControl(database)
+        self.orchestration_transfer = OrchestrationTransferControl(database, artifacts)
         self.worker_lifecycle = WorkerLifecycle(database)
 
     def create_recovery_snapshot(
@@ -220,6 +224,16 @@ class ResearchService:
 
     def close_drive_turn(self, context: CommandContext, intent: CloseDriveTurn) -> JsonObject:
         return self.orchestration.close(context, intent)
+
+    def transfer_orchestration(
+        self, context: CommandContext, intent: TransferOrchestration
+    ) -> JsonObject:
+        return self.orchestration_transfer.transfer(context, intent)
+
+    def acknowledge_driver_start(
+        self, context: CommandContext, intent: AcknowledgeDriverStart
+    ) -> JsonObject:
+        return self.orchestration_transfer.acknowledge_start(context, intent)
 
     def collect_expired_snapshots(
         self, context: CommandContext, intent: CollectExpiredSnapshots

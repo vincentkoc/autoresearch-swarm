@@ -7,10 +7,16 @@ from uuid import NAMESPACE_URL, uuid5
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import DriveGuard, guarded_context
-from research_swarm.domain.orchestration import DriveTurn, OrchestrationBinding, OrchestrationOwner
+from research_swarm.domain.orchestration import (
+    DriverRoute,
+    DriveTurn,
+    OrchestrationBinding,
+    OrchestrationOwner,
+)
 from research_swarm.state.database import Transaction
 
 DRIVER_COMMANDS = {
+    "orchestration.acknowledge_start",
     "stream.create_snapshot",
     "stream.release_snapshot",
     "orchestration.record_wait",
@@ -20,6 +26,22 @@ DRIVER_COMMANDS = {
     "orchestration.execute_turn",
     "orchestration.reconcile_turn",
 }
+
+
+def require_driver_started(
+    transaction: Transaction, binding: OrchestrationBinding, route: DriverRoute
+) -> None:
+    if binding.start_ids is None:
+        return
+    start_id = binding.start_ids.get(route)
+    if (
+        start_id is None
+        or transaction.get("orchestration_start", start_id)["state"] != "acknowledged"
+    ):
+        raise ResearchError(
+            ErrorCode.RESOURCE_UNAVAILABLE,
+            "Acknowledge the successor checkpoint before driving research",
+        )
 
 
 def require_reserved_command_key(transaction: Transaction, request_digest: str) -> None:

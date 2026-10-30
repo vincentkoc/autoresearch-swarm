@@ -17,6 +17,7 @@ from research_swarm.domain.orchestration_waits import (
 )
 from research_swarm.domain.types import utc_now
 from research_swarm.state.database import Database, JsonObject, Transaction
+from research_swarm.state.drive_guard import require_driver_started
 from research_swarm.state.waits import consume_ready_wait, reconcile_condition, watermark
 
 
@@ -80,6 +81,7 @@ class OrchestrationWaitControl:
                 raise ResearchError(ErrorCode.STALE_FENCE, "Orchestration binding is fenced")
             if context.expected_revision != row["revision"]:
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Orchestration binding changed")
+            require_driver_started(transaction, binding, owner.route)
             if binding.configuration_digest != intent.configuration_digest:
                 raise ResearchError(
                     ErrorCode.PROJECT_CONTRACT_INVALID, "Wait configuration changed"
