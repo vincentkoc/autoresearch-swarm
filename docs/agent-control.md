@@ -826,11 +826,10 @@ code must call `require_current_dataset` again at training admission; it recheck
 the full admission/evaluation/cost chain and rejects changed evidence. A fresh
 `dataset_id` requests a new qualification cut.
 
-The current numerical trainer can consume serialized dataset JSON, but
-controller-bound training admission and publication of a linked `TrainingJob`
-remain separate work. A qualification receipt does not launch training or adopt a
-policy. Held-out policy evaluation is also still required before claiming that
-the learned policy improves research.
+A qualification receipt does not launch training or adopt a policy. The approved
+training admission below binds it to ordinary jobs. Publication of a linked
+`TrainingJob` and held-out policy evaluation remain separate requirements before
+claiming that the learned policy improves research.
 
 ## Prepare canonical policy-training inputs
 
@@ -873,6 +872,85 @@ rewrite that historical binding. `require_prepared_inputs` verifies current
 qualification, exact canonical hashes, sizes and artifact availability before a
 future admission can rely on it.
 
-This prepares inputs only. Controller-bound training admission, approved training
-profiles and linked output receipts remain separate work; preparing artifacts does
-not launch a trial or authorize policy adoption.
+Preparing artifacts does not launch a trial or authorize policy adoption.
+
+## Approve and admit ordinary policy training
+
+The initial training profile supports one categorical REINFORCE update. An
+operator with `learning.profile.manage` and `read` explicitly approves an exact
+registered project revision:
+
+```python
+from research_swarm.control.learning_training_models import (
+    RegisterPolicyTrainingProfile,
+    AdmitPolicyTraining,
+)
+
+profile = operator.command(
+    "learning.register_training_profile",
+    RegisterPolicyTrainingProfile(
+        profile_id=new_id(),
+        project_revision_id=registered["project_revision"]["id"],
+    ),
+    idempotency_key="approve-policy-trainer",
+)["result"]
+```
+
+This approval is a trust decision about code. Structural checks cannot prove
+that an arbitrary evaluator implements the algorithm correctly. Review the
+trainer, checker, support code and environment before granting approval. The
+profile freezes the full resolved project revision, source artifact, configuration
+and approving actor. Source bytes stay pinned through the approval transaction.
+
+The supported graph has exactly two stages: a trainer and its dependent checker.
+Both invoke `python <source-entry>`. Only the literal trainer entry may be in the
+mutation allowlist; the checker entry must be explicitly protected. Support files,
+the manifest, environment lock and training configuration cannot change in a
+candidate. This excludes shell wrappers, module entry points and arbitrary
+multi-stage training graphs from this initial profile.
+
+The protected data manifest declares `one-step-reinforce-v1`, one epoch, a finite
+learning rate, one expected panel and an update-error tolerance no larger than
+`1e-12`. The checker consumes `behavior`, `trajectories`, `policy` and `update`;
+its primary metric is `update_error`, minimized with maximum absolute residual
+aggregation. The ordinary campaign must supply exactly the two prepared inputs.
+`policy` and `update` come exclusively from the trainer's outputs.
+
+Create, seal and start a regular campaign for that exact project revision, using
+`primary_metric="update_error"` and the prepared input references. Propose and
+validate a candidate through the ordinary API. Then an actor with `learning.manage`,
+`trial.submit` and `read` admits it:
+
+```python
+admission = operator.command(
+    "learning.admit_training",
+    AdmitPolicyTraining(
+        admission_id=new_id(),
+        profile_id=profile["id"],
+        inputs_id=binding["request"]["binding_id"],
+        campaign_id=campaign["id"],
+        candidate_id=candidate["id"],
+        validation_id=validation["id"],
+        seed=17,
+    ),
+    idempotency_key="admit-policy-training",
+    expected_revision=campaign["revision"],
+)["result"]
+```
+
+Admission revalidates the full development evidence and canonical input binding,
+approved profile, campaign revision, candidate validation and budget allowance.
+Trial, jobs, accounting, admission receipt and events commit together. Ordinary
+workers execute those jobs; normal evaluator authorization and receipts apply.
+There is no learning-specific scheduler or subprocess service.
+
+The shared command catalog exposes both operations through SDK, HTTP, CLI and
+MCP. Query `learning_profile` and `learning_admission` for their immutable records.
+Concurrent requests with the same admission ID and intent create one trial.
+Exact replay returns its historical receipt; it does not revalidate later evidence
+or authorize another run. A new admission ID requires current evidence again.
+
+A later correction preserves the executed trial and its costs. It must block
+future publication or adoption based on that training input. This admission
+slice does not yet publish a linked `TrainingJob`, run held-out evaluation, or
+adopt the learned policy. A valid numerical update is not proof of better research.

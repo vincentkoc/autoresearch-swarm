@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Approve immutable policy-training profiles with a protected checker and a single mutable trainer entry. Freeze configuration, environment and source identities through explicit scoped approval.
+- Admit controller-qualified inputs as ordinary training trials with current evidence, campaign revision, candidate validation and budget checks. Commit jobs, charges and the linked admission atomically, and replay concurrent submissions without another trial.
+
 - Prepare canonical policy-training inputs directly from current controller-qualified datasets and frozen behavior policies. Recheck evidence after byte publication, retain both artifacts atomically, and preserve committed replay without renewing stale authority.
 - Expose input preparation through the common agent API with exact upload/read scopes. Support an explicit bounded 8 MiB controller artifact while preserving the 1 MiB default for other inline metadata.
 

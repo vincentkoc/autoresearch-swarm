@@ -38,7 +38,11 @@ from research_swarm.control.learning_models import (
     FreezeLearningPlan,
     QualifyTrajectoryDataset,
 )
-from research_swarm.control.learning_training_models import PreparePolicyInputs
+from research_swarm.control.learning_training_models import (
+    AdmitPolicyTraining,
+    PreparePolicyInputs,
+    RegisterPolicyTrainingProfile,
+)
 from research_swarm.control.observation_models import (
     AbandonObservationSelection,
     ObserveTrial,
@@ -107,6 +111,22 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.register_training_profile": CommandDefinition(
+        RegisterPolicyTrainingProfile,
+        "register_policy_training_profile",
+        "learning.profile.manage",
+        False,
+        "Approve an exact project revision and protected checker for policy training.",
+        additional_scopes=("read",),
+    ),
+    "learning.admit_training": CommandDefinition(
+        AdmitPolicyTraining,
+        "admit_policy_training",
+        "learning.manage",
+        True,
+        "Admit ordinary training jobs from an approved profile and current qualified inputs.",
+        additional_scopes=("trial.submit", "read"),
+    ),
     "learning.prepare_training_inputs": CommandDefinition(
         PreparePolicyInputs,
         "prepare_policy_inputs",

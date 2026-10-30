@@ -11,8 +11,9 @@ research evidence is authentic. [Controller-side decision precommitment and
 episode/split ownership](../../docs/agent-control.md#freeze-learning-episodes-before-proposal-responses)
 are available through the regular API. The controller also provides
 [complete dataset qualification](../../docs/agent-control.md#qualify-a-development-dataset-from-recorded-experiments).
-Binding that qualification to training admission and evaluating the learned policy
-on held-out research remain separate requirements before an improvement claim.
+[Approved training admission](../../docs/agent-control.md#approve-and-admit-ordinary-policy-training)
+binds qualified inputs to normal jobs. Linked output publication and evaluation of
+the learned policy on held-out research remain required before an improvement claim.
 
 ## Contract
 
@@ -34,8 +35,11 @@ string alone does not pin installed bytes.
 For controller-qualified data, use
 [`learning.prepare_training_inputs`](../../docs/agent-control.md#prepare-canonical-policy-training-inputs)
 to obtain canonical `behavior` and `trajectories` references. Standalone numerical
-fixtures can upload both files through the normal artifact API. Use the ordinary
+fixtures can upload both files through the normal artifact API and use the ordinary
 project bootstrap with `RunOptions(primary_metric="update_error", input_artifacts=...)`.
+For authenticated research evidence, register an approved profile and use
+`learning.admit_training` after ordinary campaign/candidate preparation. It
+revalidates the prepared data at admission and preserves a linked receipt.
 `orchestration.bootstrap.prepare_run` creates the regular campaign/trial/stage
 graph. Registered workers claim and execute the train and evaluation stages;
 an independently authorized evaluator completes the evaluation receipt.
@@ -97,6 +101,8 @@ Tests use an analytic two-action task and an independent finite-difference check
 They also execute both project stages through real native CPU jobs and a distinct
 evaluator, retrieve the learned policy from the artifact store, and reject a
 trainer that changes its checkpoint and report consistently but incorrectly.
-The trajectory evidence in those tests is synthetic. They establish a real
-reward-driven numerical update and protected checker, not a trained policy's
-improvement on held-out research or recursive self-improvement.
+Those analytic fixtures use synthetic trajectory evidence. A separate native
+test produces controller-qualified trajectories from CPU research experiments,
+prepares the inputs, admits this project and completes both training/checker jobs.
+These establish numerical training and evidence-bound admission, not a trained
+policy's improvement on held-out research or recursive self-improvement.

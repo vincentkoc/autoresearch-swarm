@@ -49,6 +49,7 @@ from research_swarm.control.evaluations import (
 from research_swarm.control.import_models import ImportHistoricalEvidence
 from research_swarm.control.imports import HistoricalImportControl
 from research_swarm.control.learning import LearningControl
+from research_swarm.control.learning_admission import LearningAdmissionControl
 from research_swarm.control.learning_datasets import LearningDatasetControl
 from research_swarm.control.learning_inputs import LearningInputControl
 from research_swarm.control.learning_models import (
@@ -56,7 +57,12 @@ from research_swarm.control.learning_models import (
     FreezeLearningPlan,
     QualifyTrajectoryDataset,
 )
-from research_swarm.control.learning_training_models import PreparePolicyInputs
+from research_swarm.control.learning_profiles import LearningProfileControl
+from research_swarm.control.learning_training_models import (
+    AdmitPolicyTraining,
+    PreparePolicyInputs,
+    RegisterPolicyTrainingProfile,
+)
 from research_swarm.control.models import (
     CampaignContract,
     CampaignData,
@@ -232,6 +238,8 @@ class ResearchService:
         self.learning = LearningControl(database)
         self.learning_datasets = LearningDatasetControl(database)
         self.learning_inputs = LearningInputControl(database, artifacts)
+        self.learning_profiles = LearningProfileControl(database, artifacts)
+        self.learning_admission = LearningAdmissionControl(database, self._submit_direct_trial)
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
         self.search_admission = SearchAdmission(
@@ -439,6 +447,16 @@ class ResearchService:
         self, context: CommandContext, request: PreparePolicyInputs
     ) -> JsonObject:
         return self.learning_inputs.prepare(context, request)
+
+    def register_policy_training_profile(
+        self, context: CommandContext, request: RegisterPolicyTrainingProfile
+    ) -> JsonObject:
+        return self.learning_profiles.register(context, request)
+
+    def admit_policy_training(
+        self, context: CommandContext, request: AdmitPolicyTraining
+    ) -> JsonObject:
+        return self.learning_admission.admit(context, request)
 
     def commit_policy_decision(
         self, context: CommandContext, request: CommitPolicyDecision
@@ -839,33 +857,30 @@ class ResearchService:
         return self._execute(context, "candidate.validate", request, "candidate.validate", validate)
 
     def submit_trial(self, context: CommandContext, request: SubmitTrial) -> JsonObject:
-        def submit(transaction: Transaction) -> JsonObject:
-            row = transaction.get("campaign", request.campaign_id)
-            check_revision(context, row)
-            campaign = CampaignData.model_validate(row["data"])
-            if campaign.contract.search.policy == "portfolio":
-                from research_swarm.control.portfolio import require_portfolio_trial_allowance
-                from research_swarm.control.proposals import search_state
-                from research_swarm.control.search_models import SearchState
-
-                state = SearchState.model_validate(
-                    search_state(transaction, request.campaign_id, campaign)["data"]
-                )
-                require_portfolio_trial_allowance(
-                    transaction,
-                    request.campaign_id,
-                    campaign,
-                    len(state.pending_request_ids),
-                )
-            return self._submit_trial(transaction, request)
-
         return self._execute(
             context,
             "trial.submit",
             request,
             "trial.submit",
-            submit,
+            lambda transaction: self._submit_direct_trial(transaction, request),
         )
+
+    def _submit_direct_trial(self, transaction: Transaction, request: SubmitTrial) -> JsonObject:
+        row = transaction.get("campaign", request.campaign_id)
+        check_revision(transaction.context, row)
+        campaign = CampaignData.model_validate(row["data"])
+        if campaign.contract.search.policy == "portfolio":
+            from research_swarm.control.portfolio import require_portfolio_trial_allowance
+            from research_swarm.control.proposals import search_state
+            from research_swarm.control.search_models import SearchState
+
+            state = SearchState.model_validate(
+                search_state(transaction, request.campaign_id, campaign)["data"]
+            )
+            require_portfolio_trial_allowance(
+                transaction, request.campaign_id, campaign, len(state.pending_request_ids)
+            )
+        return self._submit_trial(transaction, request)
 
     @staticmethod
     def _submit_trial(
