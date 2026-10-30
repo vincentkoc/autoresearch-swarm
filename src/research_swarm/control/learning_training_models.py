@@ -7,7 +7,12 @@ from pydantic import Field
 from research_swarm.control.commands import SubmitTrial
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.learning import FiniteNumber, LearningRate
+from research_swarm.domain.learning import (
+    CategoricalPolicy,
+    FiniteNumber,
+    LearningRate,
+    TrainingJob,
+)
 from research_swarm.domain.types import ID, Digest, Name, Timestamp, VersionedRecord
 
 
@@ -71,5 +76,22 @@ class PolicyTrainingAdmission(VersionedRecord):
     trial_id: ID
     trainer_job_id: ID
     checker_job_id: ID
+    actor_id: ID
+    recorded_at: Timestamp
+
+
+class PublishPolicyTraining(VersionedRecord):
+    admission_id: ID
+
+
+class PublishedPolicyTraining(VersionedRecord):
+    request: PublishPolicyTraining
+    training: TrainingJob
+    bindings_digest: Digest
+    policy: CategoricalPolicy
+    update_digest: Digest
+    checker_job_id: ID
+    checker_attempt_id: ID
+    update_error: FiniteNumber = Field(ge=0)
     actor_id: ID
     recorded_at: Timestamp

@@ -828,8 +828,8 @@ the full admission/evaluation/cost chain and rejects changed evidence. A fresh
 
 A qualification receipt does not launch training or adopt a policy. The approved
 training admission below binds it to ordinary jobs. Publication of a linked
-`TrainingJob` and held-out policy evaluation remain separate requirements before
-claiming that the learned policy improves research.
+`TrainingJob` follows the output publication flow below. Held-out policy evaluation
+remains required before claiming that the learned policy improves research.
 
 ## Prepare canonical policy-training inputs
 
@@ -950,7 +950,60 @@ Concurrent requests with the same admission ID and intent create one trial.
 Exact replay returns its historical receipt; it does not revalidate later evidence
 or authorize another run. A new admission ID requires current evidence again.
 
-A later correction preserves the executed trial and its costs. It must block
-future publication or adoption based on that training input. This admission
-slice does not yet publish a linked `TrainingJob`, run held-out evaluation, or
-adopt the learned policy. A valid numerical update is not proof of better research.
+A later correction preserves the executed trial and its costs. It blocks new
+publication or current qualification based on that training input. Admission does
+not run held-out evaluation or adopt the learned policy. A valid numerical update
+is not proof of better research.
+
+## Publish a checked policy checkpoint
+
+After the trainer and checker finish, an actor with `learning.manage` and `read`
+can publish their linked training receipt:
+
+```python
+from research_swarm.control.learning_training_models import PublishPolicyTraining
+
+publication = operator.command(
+    "learning.publish_training",
+    PublishPolicyTraining(admission_id=admission["id"]),
+    idempotency_key="publish-policy-checkpoint",
+)["result"]["data"]
+training = publication["training"]
+learned_policy = publication["policy"]
+```
+
+The request contains only the admission ID. The controller derives the trial,
+trainer/checker jobs, current attempts, evaluation authorization, evaluator receipt
+and named output references. It verifies accepted successful execution, exact
+settlement evidence for those attempts, the original input bindings and current
+development evidence. It also requires the checker's reported `update_error` to
+lie between zero and the approved tolerance. A valid evaluator receipt alone does
+not satisfy this additional threshold.
+
+The controller reads `policy` and `update` through the normal artifact service,
+with a 64 KiB limit per file. Both read pins remain live through commit. Parsed
+outputs must agree on the policy, parent policy, ordered actions, dataset, reward
+rule, algorithm, learning rate, epoch and complete batch size. Numerical
+correctness remains the approved independent checker's responsibility; parsing a
+report is not another execution of the trainer.
+
+The final transaction rechecks all evidence and exact output references, retains
+both artifacts, and inserts one immutable `learning_publication` record and event.
+The embedded `TrainingJob.job_id` and `attempt_id` identify the trainer;
+`evaluator_receipt_id` identifies the checker's receipt. `update_report` is the
+trainer's policy-update artifact, separate from the evaluator's workload report.
+The publication includes the parsed learned policy, update digest, evidence-binding
+digest and checker identities. It creates no new job, charge or incumbent change.
+
+MCP exposes `research_learning_publish_training`; regular evidence queries expose
+`learning_publication`. There is one publication per admission. Concurrent calls
+and retries return the same receipt, including recovery after a lost committed
+reply. Historical replay remains available after later evidence corrections or
+byte-service failure. Server consumers must call `require_current_training`
+before relying on that receipt as current evidence; it revalidates research data,
+execution, settlements, checker eligibility and publication bindings.
+
+This receipt qualifies a checked numerical update. Held-out evaluation and an
+explicit adoption decision remain separate work. Its attempt proofs do not claim
+to aggregate every historical training retry or total campaign cost; those remain
+available through the ordinary ledger.

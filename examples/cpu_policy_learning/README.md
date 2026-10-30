@@ -12,8 +12,9 @@ episode/split ownership](../../docs/agent-control.md#freeze-learning-episodes-be
 are available through the regular API. The controller also provides
 [complete dataset qualification](../../docs/agent-control.md#qualify-a-development-dataset-from-recorded-experiments).
 [Approved training admission](../../docs/agent-control.md#approve-and-admit-ordinary-policy-training)
-binds qualified inputs to normal jobs. Linked output publication and evaluation of
-the learned policy on held-out research remain required before an improvement claim.
+binds qualified inputs to normal jobs. [Output publication](../../docs/agent-control.md#publish-a-checked-policy-checkpoint)
+links the checked checkpoint to that evidence. Evaluation of the learned policy
+on held-out research remains required before an improvement claim.
 
 ## Contract
 
@@ -103,6 +104,7 @@ evaluator, retrieve the learned policy from the artifact store, and reject a
 trainer that changes its checkpoint and report consistently but incorrectly.
 Those analytic fixtures use synthetic trajectory evidence. A separate native
 test produces controller-qualified trajectories from CPU research experiments,
-prepares the inputs, admits this project and completes both training/checker jobs.
-These establish numerical training and evidence-bound admission, not a trained
+prepares the inputs, admits this project, completes both training/checker jobs and
+publishes the checkpoint with current evidence and protected artifact ownership.
+These establish numerical training and evidence-bound publication, not a trained
 policy's improvement on held-out research or recursive self-improvement.

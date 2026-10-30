@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Publish one learned checkpoint per admitted training trial, deriving output references and evaluator authority from ordinary execution records. Verify exact input/output lineage, current research evidence, settled successful attempts and the approved numerical tolerance.
+- Keep bounded checkpoint/report reads pinned through atomic publication and artifact retention. Preserve historical replay after later corrections while requiring fresh evidence checks for current use; publication does not adopt the policy.
+
 - Approve immutable policy-training profiles with a protected checker and a single mutable trainer entry. Freeze configuration, environment and source identities through explicit scoped approval.
 - Admit controller-qualified inputs as ordinary training trials with current evidence, campaign revision, candidate validation and budget checks. Commit jobs, charges and the linked admission atomically, and replay concurrent submissions without another trial.
 

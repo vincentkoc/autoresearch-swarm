@@ -41,6 +41,7 @@ from research_swarm.control.learning_models import (
 from research_swarm.control.learning_training_models import (
     AdmitPolicyTraining,
     PreparePolicyInputs,
+    PublishPolicyTraining,
     RegisterPolicyTrainingProfile,
 )
 from research_swarm.control.observation_models import (
@@ -111,6 +112,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.publish_training": CommandDefinition(
+        PublishPolicyTraining,
+        "publish_policy_training",
+        "learning.manage",
+        False,
+        "Publish a checked checkpoint from an admitted training trial without adopting it.",
+        additional_scopes=("read",),
+    ),
     "learning.register_training_profile": CommandDefinition(
         RegisterPolicyTrainingProfile,
         "register_policy_training_profile",

@@ -58,9 +58,11 @@ from research_swarm.control.learning_models import (
     QualifyTrajectoryDataset,
 )
 from research_swarm.control.learning_profiles import LearningProfileControl
+from research_swarm.control.learning_publication import LearningPublicationControl
 from research_swarm.control.learning_training_models import (
     AdmitPolicyTraining,
     PreparePolicyInputs,
+    PublishPolicyTraining,
     RegisterPolicyTrainingProfile,
 )
 from research_swarm.control.models import (
@@ -239,6 +241,7 @@ class ResearchService:
         self.learning_datasets = LearningDatasetControl(database)
         self.learning_inputs = LearningInputControl(database, artifacts)
         self.learning_profiles = LearningProfileControl(database, artifacts)
+        self.learning_publication = LearningPublicationControl(database, artifacts)
         self.learning_admission = LearningAdmissionControl(database, self._submit_direct_trial)
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
@@ -457,6 +460,11 @@ class ResearchService:
         self, context: CommandContext, request: AdmitPolicyTraining
     ) -> JsonObject:
         return self.learning_admission.admit(context, request)
+
+    def publish_policy_training(
+        self, context: CommandContext, request: PublishPolicyTraining
+    ) -> JsonObject:
+        return self.learning_publication.publish(context, request)
 
     def commit_policy_decision(
         self, context: CommandContext, request: CommitPolicyDecision

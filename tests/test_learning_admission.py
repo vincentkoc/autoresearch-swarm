@@ -38,10 +38,12 @@ from tests.test_local_pipeline import pipeline as pipeline
 from tests.test_proposals import PROPOSAL_LIMITS
 
 
-def training_admission(pipeline, tmp_path, *, extra_input=False, admission_limit=10):
+def training_admission(
+    pipeline, tmp_path, *, extra_input=False, admission_limit=10, source_change=None
+):
     _, receipt, _, prepare = prepared_batch(pipeline, tmp_path)
     prepared = PreparedPolicyInputs.model_validate(prepare_inputs(pipeline, prepare)["data"])
-    registered = training_project(pipeline.client, tmp_path)
+    registered = training_project(pipeline.client, tmp_path, change=source_change)
     profile = register_profile(pipeline.client, profile_intent(registered))
     inputs = {"behavior": prepared.behavior, "trajectories": prepared.trajectories}
     if extra_input:
@@ -108,6 +110,27 @@ def trials(client, campaign):
     return client.list(RecordQuery(kind="trial", campaign_id=campaign["id"]))["items"]
 
 
+def finish_training(pipeline, admission):
+    trainer = pipeline.client.get("job", admission["data"]["trainer_job_id"])
+    attempt = pipeline.worker.claim(trainer)
+    assert pipeline.worker.execute(attempt["id"])["state"] == "succeeded"
+    checker = pipeline.client.get("job", admission["data"]["checker_job_id"])
+    authorization = pipeline.client.command(
+        "evaluation.authorize",
+        AuthorizeEvaluation(job_id=checker["id"], evaluator_id=pipeline.runtime.principal().id),
+        expected_revision=checker["revision"],
+        idempotency_key="authorize-policy-checker",
+    )["result"]
+    checker = pipeline.client.get("job", checker["id"])
+    attempt = pipeline.worker.claim(checker)
+    assert pipeline.worker.execute(attempt["id"])["state"] == "succeeded"
+    return pipeline.client.command(
+        "evaluation.complete",
+        CompleteEvaluation(request_id=authorization["id"], attempt_id=attempt["id"]),
+        idempotency_key="policy-checker-receipt",
+    )["result"]
+
+
 @pytest.mark.parametrize(
     "pipeline",
     [
@@ -133,23 +156,7 @@ class TestTrainingAdmission:
             "update": trainer["id"],
         }
         assert checker["data"]["inputs"] == trainer["data"]["inputs"]
-        attempt = pipeline.worker.claim(trainer)
-        assert pipeline.worker.execute(attempt["id"])["state"] == "succeeded"
-        checker = pipeline.client.get("job", checker["id"])
-        authorization = pipeline.client.command(
-            "evaluation.authorize",
-            AuthorizeEvaluation(job_id=checker["id"], evaluator_id=pipeline.runtime.principal().id),
-            expected_revision=checker["revision"],
-            idempotency_key="authorize-policy-checker",
-        )["result"]
-        checker = pipeline.client.get("job", checker["id"])
-        attempt = pipeline.worker.claim(checker)
-        assert pipeline.worker.execute(attempt["id"])["state"] == "succeeded"
-        receipt = pipeline.client.command(
-            "evaluation.complete",
-            CompleteEvaluation(request_id=authorization["id"], attempt_id=attempt["id"]),
-            idempotency_key="policy-checker-receipt",
-        )["result"]
+        receipt = finish_training(pipeline, admission)
         assert receipt["state"] == "valid"
         assert len(trials(pipeline.client, campaign)) == 1
         costs = {
