@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a JSON CLI and typed stdio MCP tools over the shared command and query service.
+- Verify replay, structured errors, bounded summaries, and credential revocation through real agent subprocesses.
 - Add local and HTTP Python clients, async convenience methods, and durable private runtime initialization.
 - Resume artifact transfers through their recorded lifecycle and verify downloaded content.
 - Expose authenticated research commands, bounded context, event streams, and verified artifact transfer over HTTP.

@@ -42,6 +42,9 @@ dev = [
 Repository = "https://github.com/vincentkoc/autoresearch-swarm"
 Documentation = "https://github.com/vincentkoc/autoresearch-swarm/tree/main/docs"
 
+[project.scripts]
+research = "research_swarm.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/research_swarm"]
 

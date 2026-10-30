@@ -21,7 +21,13 @@ Temporal and Cloudflare adapters are planned against the same domain semantics.
 
 Implemented foundations include the transactional ledger, exact budget arithmetic,
 evaluation receipt validation, verified artifact lifecycle, and immutable source
-bundles. The complete campaign runner and public control transports are still in progress.
+bundles. The authenticated HTTP API, Python SDK, JSON CLI, and stdio MCP tools
+share one command service. The complete campaign runner remains in progress.
+
+Start with `uv sync --group dev`, then `uv run research init` and
+`uv run research capabilities`. Run `uv run research mcp` to expose agent tools.
+See [agent control](docs/agent-control.md), the [Python SDK](docs/sdk.md), and
+the [HTTP API](docs/api.md) for their contracts.
 
 See the [implementation ledger](docs/implementation.md) for qualification status,
 the [design](docs/design.md) for the complete contract, and

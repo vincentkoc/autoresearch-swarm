@@ -14,7 +14,7 @@ not implicitly supported.
 | Machine resource admission | Shared native registry, atomic reservations, quarantine, closure-bound release | Independent-process contention, cross-controller rejection, restart, stale closure, duplicate release tests | Synthetic pool proof; physical device qualification pending |
 | Project manifests and source isolation | Source bundles, mutation boundary, TOML manifest and immutable resolution implemented | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation, protected dependency/protocol tests | Linux/macOS/Windows CI passed; original-workload qualification pending |
 | Workload protocol and original CPU project | Sealed file context, bounded report/output verification, real training and separate evaluator | Immutable source execution, two injected seeds, checkpoint identity, improvement against uniform model | macOS local proof; cross-platform workload CI pending |
-| API, SDK, CLI, MCP | HTTP and local/remote Python SDK, async methods, private runtime initialization | Real loopback HTTP, credential/scope/replay, bounded transfer, runtime contention/restart | CLI/MCP pending |
+| API, SDK, CLI, MCP | HTTP, local/remote Python SDK, async methods, JSON CLI, stdio MCP, private runtime | Real loopback HTTP and agent subprocesses, shared replay, bounded transfer/context, revocation, runtime restart | Cross-platform transport CI pending |
 | Controller commands | Project revisions, campaign activation, candidate validation, atomic trial graphs | Concurrent replay, frozen baseline, mutation boundary, transaction rollback, trial-limit tests | Worker result and transport integration pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Pending | Pending | Equal-budget research pending |
@@ -31,7 +31,7 @@ not implicitly supported.
 
 The foundation suite has 53 tests. Artifact, source, and manifest tests extend it to
 116, qualified on Linux/macOS/Windows and Python 3.11–3.13. Native supervision,
-journal, resource, and workload tests extend the local suite to 152 passing tests, including
+journal, resource, workload, controller, and SDK tests extend the local suite to 193 passing tests, including
 real process, deadline, race, and recovery coverage. This does not
 establish complete worker admission, API, provider, or scientific behavior.
 
@@ -67,7 +67,7 @@ transport, process, or provider behavior.
 - **C27** — Worker lacks a required isolation feature. Pending end-to-end evidence.
 - **C28** — Process spawns a child and cancellation occurs. Pending end-to-end evidence.
 - **C29** — Native clocks differ. Pending end-to-end evidence.
-- **C30** — API/MCP/CLI perform the same operation. Pending end-to-end evidence.
+- **C30** — API/MCP/CLI perform the same operation. Shared SDK/HTTP replay and real CLI/MCP command replay pass locally; integrated execution remains pending.
 - **C31** — Controller restarts with budget exhausted. Pending end-to-end evidence.
 - **C32** — Campaign completes with an unresolved resource. Pending end-to-end evidence.
 - **C33** — A late valid result returns after lease expiry. Pending end-to-end evidence.
