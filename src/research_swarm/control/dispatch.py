@@ -27,6 +27,7 @@ from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_outputs import BeginWorkerUpload, WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.workers import ClaimJob, EnrollWorker
+from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import VersionedRecord
@@ -264,6 +265,7 @@ def capabilities() -> JsonObject:
             "operations": {
                 "worker.get": WorkerRead.model_json_schema(),
                 "worker.list": WorkerQuery.model_json_schema(),
+                "worker.clock": ClockChallenge.model_json_schema(),
             },
         },
         "worker_inputs": {
@@ -276,6 +278,12 @@ def capabilities() -> JsonObject:
             "publication_scope": "worker.publish",
         },
         "execution": "registered_worker_required",
+        "clock": {
+            "default_mode": "local-utc-v1",
+            "calibrated_mode": "bounded-continuous-v1",
+            "time_evidence": "signed_process_epoch",
+            "calibrated_execution": "pending_native_admission",
+        },
         "evaluation": "authenticated_receipts",
         "drivers": {"local": "explicit_worker", "temporal": "pending", "cloudflare": "pending"},
     }

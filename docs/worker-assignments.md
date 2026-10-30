@@ -183,8 +183,8 @@ Clock samples retain continuous, awake, and wall readings plus read uncertainty.
 Their continuity check distinguishes suspension, counter reversal, and wall-clock
 steps. These are prerequisites for remote calibration. They do not authenticate
 controller time or grant remote launch authority. The protocol below supplies
-authenticated time evidence. Controller integration, live supervisor-origin
-qualification, and wiring through every journal release gate remain separate work.
+authenticated time evidence. Live supervisor-origin qualification and wiring
+through every journal release gate remain separate work.
 
 ## Signed authority-time evidence
 
@@ -236,8 +236,52 @@ Intersections require the same assignment, authority epoch, local origin, and
 counter profile. A native release consumer must still check a fresh interval,
 current authority, cancellation, and its live origin; a cap alone grants nothing.
 
-These records and algorithms are implemented and tested as protocol primitives.
-There is no public time endpoint or automatic remote launch yet. The controller
-must use one qualified time source for both replies and assignment issuance,
-and the supervisor must consume these bounds at every release gate before that
-capability is advertised.
+## Controller time admission
+
+Enrollment freezes `clock_mode`. The default `local-utc-v1` preserves the existing
+local execution path. Opt-in `bounded-continuous-v1` requires pinned Ed25519
+assignment authority. A qualified enrollment cannot downgrade to local time by
+omitting its assignment's timing sidecar. The stock local worker explicitly
+rejects calibrated execution until its native release protocol consumes the
+clock estimates and proves its live origin.
+
+`POST /v1/worker/clock` accepts `ClockChallenge` under `worker.query`. It verifies
+the principal, current enrollment/session, mode, and pinned signing key before
+returning `SignedClockReply`. This is a query, not a replayable command: workers
+use a fresh challenge for each new sampling round. The SDK exposes `worker_clock`
+in both clients; MCP exposes `research_worker_clock`.
+
+One process-owned clock serves every worker under a database, workspace,
+controller/control epoch, and signing key. It anchors UTC once, advances that
+anchor with the native continuous counter, and freezes its policy for that
+process. Runtime reopening retains the same instance and invalidation latch.
+It checks both the original anchor and the previous sample for discontinuities.
+Suspend, wall steps, counter reversal, profile changes, and read failures poison
+that epoch. An inherited clock refuses use after fork. The initial continuity
+tolerance is conservative: accumulated wall-clock drift can require an explicit
+controller restart. There is no automatic re-anchor or policy-based reset.
+
+A timed claim derives issue, launch-expiry, and hard-deadline timestamps from one
+validated observation. It writes the original signed assignment, separate signed
+time binding, budget reservation, and dispatch events in one transaction. A
+rejected claim cannot leave a reservation. Exact accepted-command replay returns
+the original acknowledgment even if the clock later becomes invalid.
+
+Timed input acquisition verifies the sidecar against the original signed grant
+and compares expiry in its issuing clock epoch. Authorization is repeated inside
+the artifact-pin transaction. Clock failure or a missing/mismatched epoch denies
+new input pins. A stream admitted before failure may finish; output uploads and
+previously accepted command replay remain available for evidence recovery.
+
+A fresh controller process owns a fresh clock epoch. It does not attach a new
+time signature to an old grant or silently extend that grant. Persistent HTTP or
+MCP servers and retained SDK runtimes can support sampling and admission in one
+process. Independent direct-local CLI invocations cannot carry a calibration
+across processes; a load-balanced controller clock is not qualified. Old grants
+and evidence remain stored. Clock expiry alone never proves native closure,
+frees a device, refunds an attempt, or permits a retry.
+
+Tests cover scoped HTTP/async queries, same-process runtime reopening, native fork
+rejection, independent-process epoch mismatch, immutable replay, input-pin races,
+and output recovery. Automatic remote execution remains unavailable until native
+journal/release integration and the live-origin handshake are qualified.

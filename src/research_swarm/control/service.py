@@ -56,6 +56,7 @@ from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
+from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.experiments import ExperimentSpec, SourceRef
@@ -194,6 +195,13 @@ class ResearchService:
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Worker authority is not configured"
             )
         return self.workers.claim(context, request)
+
+    def worker_clock(self, context: CommandContext, request: ClockChallenge) -> SignedClockReply:
+        if self.workers is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Worker authority is not configured"
+            )
+        return self.workers.clock(context, request)
 
     def publish_attempt(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         return self.results.publish(context, request)

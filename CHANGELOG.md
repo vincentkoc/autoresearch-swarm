@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Share one process-owned clock between scoped time samples, timed assignment issuance, and input-expiry checks.
+- Preserve clock invalidation across runtime reopening and reject inherited or mismatched epochs without resetting accepted grants or evidence.
+- Expose signed time queries through HTTP, SDK, async SDK, and MCP; keep calibrated enrollment explicit while native admission remains pending.
 - Define separately signed controller-time replies and exact-assignment clock bindings without changing existing assignment signatures.
 - Bound time estimates by full roundtrip delay, relative clock-rate assumptions, sample age, and measured read uncertainty; derive conservative absolute caps.
 - Bind one-use clock challenges to a live sampling origin and preserve their original anchors on replay.

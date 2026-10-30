@@ -12,6 +12,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import LocalRuntime, read_private
+from research_swarm.state.database import Database
 from research_swarm.workers import local_enrollment
 from research_swarm.workers.journal import WorkerJournal
 from research_swarm.workers.local_enrollment import EnrollmentState, ensure_local_enrollment
@@ -83,6 +84,62 @@ def test_interrupted_credential_install_resumes_persisted_secret(
     assert resumed.model_dump(
         exclude={"initialized", "journal_identity", "registry_identity"}
     ) == pending.model_dump(exclude={"initialized", "journal_identity", "registry_identity"})
+
+
+def test_legacy_enrollment_lost_ack_resumes_after_clock_mode_upgrade(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = LocalRuntime.open(tmp_path / "runtime")
+    registry = tmp_path / "machine" / "resources.sqlite"
+    execute = Database.execute
+
+    def legacy_commit(
+        self: Database,
+        context: Any,
+        operation: str,
+        payload: Any,
+        scope: str,
+        handler: Any,
+    ) -> Any:
+        if operation != "worker.enroll":
+            return execute(self, context, operation, payload, scope, handler)
+        old_payload = {key: value for key, value in payload.items() if key != "clock_mode"}
+
+        def legacy_record(transaction: Any) -> Any:
+            row = handler(transaction)
+            row["data"].pop("clock_mode", None)
+            transaction.connection.execute(
+                "UPDATE records SET payload=json_remove(payload,'$.clock_mode') WHERE id=?",
+                (row["id"],),
+            )
+            return row
+
+        execute(self, context, operation, old_payload, scope, legacy_record)
+        raise OSError("Synthetic lost legacy enrollment acknowledgment")
+
+    monkeypatch.setattr(Database, "execute", legacy_commit)
+    with pytest.raises(OSError, match="lost legacy"):
+        ensure_local_enrollment(runtime, machine_registry=registry)
+    pending = stored(runtime)
+    assert not pending.initialized
+    monkeypatch.setattr(Database, "execute", execute)
+    resumed = ensure_local_enrollment(LocalRuntime.open(runtime.root), machine_registry=registry)
+    assert resumed.worker.worker.clock_mode == "local-utc-v1"
+    assert resumed.worker.worker.binding.worker_id == pending.worker_id
+    assert stored(runtime).initialized
+    with runtime.database.connect() as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM records WHERE kind='worker'").fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM commands WHERE idempotency_key=?",
+                ("local-enrollment:" + pending.worker_id,),
+            ).fetchone()[0]
+            == 1
+        )
 
 
 @pytest.mark.parametrize("kind", ["journal", "registry"])

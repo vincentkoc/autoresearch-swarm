@@ -19,6 +19,7 @@ from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerAr
 from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
+from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
@@ -138,7 +139,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     )
     queries = ResearchQueries(service.database)
     workers = WorkerQueries(service.database)
-    worker_artifacts = WorkerArtifacts(service.database, service.artifacts)
+    worker_artifacts = WorkerArtifacts(service.database, service.artifacts, service.workers)
 
     @app.exception_handler(ResearchError)
     async def domain_error(request: Request, error: ResearchError) -> JSONResponse:
@@ -260,6 +261,13 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     ) -> JsonObject:
         parsed = WorkerRead.model_validate(await read_json(request))
         return await asyncio.to_thread(workers.get, context, parsed)
+
+    @app.post("/v1/worker/clock", response_model=SignedClockReply)
+    async def worker_clock(
+        request: Request, context: Annotated[CommandContext, Depends(worker_context)]
+    ) -> SignedClockReply:
+        parsed = ClockChallenge.model_validate(await read_json(request))
+        return await asyncio.to_thread(service.worker_clock, context, parsed)
 
     @app.post("/v1/worker/list")
     async def worker_list(
@@ -434,6 +442,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         for name, schema in definition.request.model_json_schema().get("$defs", {}).items():
             components[name] = openapi_references(schema)
     for path, model in (
+        ("/v1/worker/clock", ClockChallenge),
         ("/v1/worker/get", WorkerRead),
         ("/v1/worker/list", WorkerQuery),
         ("/v1/worker/input", WorkerArtifactRead),

@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import BinaryIO
 
-from research_swarm.control.workers import AttemptData, WorkerData, worker_authority
+from research_swarm.control.workers import AttemptData, WorkerControl, WorkerData, worker_authority
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
@@ -49,13 +49,21 @@ def assigned_attempt(
     return worker, attempt
 
 
-def input_reference(transaction: Transaction, request: WorkerArtifactRead) -> ArtifactRef:
-    _, attempt = assigned_attempt(
+def input_reference(
+    transaction: Transaction, request: WorkerArtifactRead, workers: WorkerControl | None = None
+) -> ArtifactRef:
+    worker, attempt = assigned_attempt(
         transaction, request.worker_id, request.session_id, request.attempt_id
     )
     if attempt.publication_status != "pending":
         raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Input grant is already settled")
-    if min(attempt.dispatch.expires_at, attempt.dispatch.hard_deadline_at) <= utc_now():
+    if workers is None:
+        if worker.clock_mode != "local-utc-v1" or attempt.assignment_time is not None:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Issuing clock authority is unavailable")
+        now = utc_now()
+    else:
+        now = workers.input_time(worker, attempt)
+    if min(attempt.dispatch.expires_at, attempt.dispatch.hard_deadline_at) <= now:
         raise ResearchError(ErrorCode.STALE_FENCE, "Input acquisition grant has expired")
     references = [attempt.source_artifact, *attempt.inputs.values()]
     reference = next((ref for ref in references if ref.id == request.artifact_id), None)
@@ -65,10 +73,15 @@ def input_reference(transaction: Transaction, request: WorkerArtifactRead) -> Ar
 
 
 class WorkerArtifacts:
-    def __init__(self, database: Database, artifacts: ArtifactService) -> None:
+    def __init__(
+        self, database: Database, artifacts: ArtifactService, workers: WorkerControl | None = None
+    ) -> None:
         if database.path.resolve() != artifacts.database.path.resolve():
             raise ValueError("Worker artifacts must share the research transaction authority")
+        if workers is not None and database.path.resolve() != workers.database.path.resolve():
+            raise ValueError("Worker input clocks must share the research transaction authority")
         self.database, self.artifacts = database, artifacts
+        self.workers = workers
 
     def input_metadata(self, context: CommandContext, request: WorkerArtifactRead) -> ArtifactRef:
         context.principal.require("worker.inputs")
@@ -76,7 +89,7 @@ class WorkerArtifacts:
         with self.database.connect() as connection:
             connection.execute("BEGIN")
             transaction = Transaction(connection, context)
-            reference = input_reference(transaction, request)
+            reference = input_reference(transaction, request, self.workers)
             return ArtifactCatalog.available(transaction, reference).reference
 
     @contextmanager
@@ -87,7 +100,7 @@ class WorkerArtifacts:
         reference = self.input_metadata(context, request)
 
         def authorize(transaction: Transaction, observed: ArtifactRef) -> None:
-            if input_reference(transaction, request) != observed:
+            if input_reference(transaction, request, self.workers) != observed:
                 raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Assigned input changed")
 
         with self.artifacts.reader_authorized(

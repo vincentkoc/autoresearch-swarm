@@ -145,6 +145,11 @@ class LocalWorker:
     def _verify(
         self, attempt: AttemptData, trial: TrialData
     ) -> VerifiedDispatch | VerifiedAssignment:
+        if self.worker.clock_mode != "local-utc-v1" or attempt.assignment_time is not None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE,
+                "Local worker does not yet admit calibrated execution",
+            )
         if (
             self.worker.project_ids is not None
             and trial.spec.project_id not in self.worker.project_ids

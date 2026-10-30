@@ -111,3 +111,10 @@ Downloads verify size and digest and refuse to overwrite an existing destination
 
 The tests cover initialization contention, restart, local/HTTP replay, complete
 upload retry, scoped-token refusal, and the shared async command acknowledgment.
+
+Both clients expose `worker_clock(ClockChallenge) -> SignedClockReply`. A worker
+enrolled for calibrated time uses `ClockSampler.begin()`, sends that challenge,
+and completes it with the returned reply. The sampling origin must remain alive;
+reconstructing a sampler does not renew an existing attempt's authority. Keep the
+controller process alive across this sequence. The stock local worker continues
+to use its default local time mode until native calibrated admission is supported.

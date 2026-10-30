@@ -33,6 +33,7 @@ from research_swarm.domain.acknowledgments import (
 )
 from research_swarm.domain.artifacts import ArtifactRecord
 from research_swarm.domain.canonical import record_digest, strict_json_loads
+from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
@@ -114,13 +115,19 @@ class LocalTransport:
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
         context = self._context()
+        if operation == "worker.clock":
+            return self.runtime.service.worker_clock(
+                context, ClockChallenge.model_validate(payload)
+            ).model_dump(mode="json")
         if operation == "worker.output":
             return self.runtime.service.worker_outputs.status(
                 context, WorkerUploadTarget.model_validate(payload)
             )
         if operation == "worker.input":
             return (
-                WorkerArtifacts(self.runtime.database, self.runtime.artifacts)
+                WorkerArtifacts(
+                    self.runtime.database, self.runtime.artifacts, self.runtime.service.workers
+                )
                 .input_metadata(context, WorkerArtifactRead.model_validate(payload))
                 .model_dump(mode="json")
             )
@@ -188,7 +195,9 @@ class LocalTransport:
 
     def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef:
         context = self._context()
-        artifacts = WorkerArtifacts(self.runtime.database, self.runtime.artifacts)
+        artifacts = WorkerArtifacts(
+            self.runtime.database, self.runtime.artifacts, self.runtime.service.workers
+        )
         reference = artifacts.input_metadata(context, request)
         with artifacts.input_reader(context, request) as source:
             return write_download(reference, iter(lambda: source.read(64 * 1024), b""), destination)
@@ -315,7 +324,13 @@ class HTTPTransport:
         )
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
-        if operation in {"worker.get", "worker.list", "worker.input", "worker.output"}:
+        if operation in {
+            "worker.get",
+            "worker.list",
+            "worker.input",
+            "worker.output",
+            "worker.clock",
+        }:
             return self._request("POST", "/v1/" + operation.replace(".", "/"), json=payload)
         if operation == "capabilities":
             return self._request("GET", "/v1/capabilities")
@@ -513,6 +528,11 @@ class ResearchClient:
     def worker_get(self, request: WorkerRead) -> JsonObject:
         return self.transport.query("worker.get", request.model_dump(mode="json"))
 
+    def worker_clock(self, request: ClockChallenge) -> SignedClockReply:
+        return SignedClockReply.model_validate(
+            self.transport.query("worker.clock", request.model_dump(mode="json"))
+        )
+
     def worker_list(self, request: WorkerQuery) -> JsonObject:
         return self.transport.query("worker.list", request.model_dump(mode="json"))
 
@@ -649,6 +669,9 @@ class AsyncResearchClient:
 
     async def worker_get(self, request: WorkerRead) -> JsonObject:
         return await asyncio.to_thread(self.client.worker_get, request)
+
+    async def worker_clock(self, request: ClockChallenge) -> SignedClockReply:
+        return await asyncio.to_thread(self.client.worker_clock, request)
 
     async def worker_list(self, request: WorkerQuery) -> JsonObject:
         return await asyncio.to_thread(self.client.worker_list, request)

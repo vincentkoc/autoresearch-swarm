@@ -17,6 +17,7 @@ from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes
+from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Name, Revision, VersionedRecord
 
@@ -170,6 +171,11 @@ def make_mcp(
     def worker_input(request: WorkerArtifactRead) -> ToolCall:
         """Read the exact metadata of an authorized input without workspace read access."""
         return tool_result(lambda: client.worker_input(request).model_dump(mode="json"))
+
+    @server.tool(name="research_worker_clock", annotations=read_only, structured_output=True)
+    def worker_clock(request: ClockChallenge) -> ToolCall:
+        """Obtain a nonce-bound signed time sample for this enrolled worker."""
+        return tool_result(lambda: client.worker_clock(request).model_dump(mode="json"))
 
     @server.tool(name="research_worker_output", annotations=read_only, structured_output=True)
     def worker_output(request: WorkerUploadTarget) -> ToolCall:
