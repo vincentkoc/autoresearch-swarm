@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import Field, ValidationError
 
+from research_swarm.control.acceptance import lease_row
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.queries import RecordCursor, summarize
 from research_swarm.control.worker_sessions import historical_attempt_owner, historical_session
@@ -34,6 +35,7 @@ class WorkerRead(VersionedRecord):
     kind: Literal[
         "worker",
         "attempt",
+        "acceptance_lease",
         "trial",
         "worker_admission",
         "worker_presence",
@@ -126,7 +128,7 @@ class WorkerQueries:
                     raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker identity differs")
                 if request.kind == "worker_admission" or request.kind == "worker_presence":
                     return worker_state(transaction, worker.binding, request.kind)
-            elif request.kind == "attempt":
+            elif request.kind in {"attempt", "acceptance_lease"}:
                 try:
                     row = transaction.get("attempt", request.id)
                 except ResearchError as error:
@@ -145,7 +147,11 @@ class WorkerQueries:
                     raise ResearchError(
                         ErrorCode.AUTHORIZATION_DENIED, "Record is not assigned to worker"
                     )
-                return row
+                return (
+                    lease_row(transaction, request.id)
+                    if request.kind == "acceptance_lease"
+                    else row
+                )
             else:
                 owned = connection.execute(
                     "SELECT id FROM records WHERE workspace_id=? AND kind='attempt' "

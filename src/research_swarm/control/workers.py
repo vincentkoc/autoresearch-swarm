@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from pydantic import Field, model_validator
 
+from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.authority_clock import AuthorityTime, process_authority_clock
 from research_swarm.control.confirmation_runtime import claim_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
@@ -121,6 +122,7 @@ class WorkerControl:
         if assignment_key is not None and len(assignment_key) != 32:
             raise ValueError("Assignment signing requires a 32-byte Ed25519 key")
         self._assignment_key = assignment_key
+        self.acceptance = AcceptanceControl(database, self._time)
 
     def _clock_signer(self, worker: WorkerData) -> ClockSigner:
         if self._assignment_key is None or worker.assignment_authority is None:
@@ -442,6 +444,13 @@ class WorkerControl:
                 state="reserved",
                 campaign_id=row["campaign_id"],
                 parent_id=request.job_id,
+            )
+            self.acceptance.issue(
+                transaction,
+                attempt,
+                worker,
+                now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                clock_time,
             )
             updated_job = transaction.update(
                 "job",

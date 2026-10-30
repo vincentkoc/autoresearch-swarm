@@ -184,6 +184,9 @@ class ClosureControl:
                 }
             ).model_dump(mode="json"),
         )
+        self.reconciliation.results.acceptance.settle(
+            transaction, intent.attempt_id, "closed_unaccepted"
+        )
         native_resolution = (
             "not_started"
             if verified.not_started

@@ -157,11 +157,14 @@ def test_new_origin_cannot_revive_an_attached_unreleased_attempt(
     assert worker.resources.availability() == {"cpu": 1}
 
 
-def test_clock_failure_after_preparation_publishes_unstarted_and_releases_claim(
+def test_clock_failure_after_preparation_quarantines_unstarted_and_releases_native_claim(
     pipeline: Pipeline,
     simulated: SimulatedClock,
     tmp_path: Path,
 ) -> None:
+    from research_swarm.control.queries import RecordQuery
+    from tests.test_reconciliation import reconcile
+
     worker, _ = native_worker(pipeline, tmp_path)
     row = worker.claim(pipeline.ready())
     worker._prepare(
@@ -170,11 +173,20 @@ def test_clock_failure_after_preparation_publishes_unstarted_and_releases_claim(
     assert worker.resources.availability() == {"cpu": 0}
     prior = simulated.reading
     simulated.reading = replace(prior, wall_ns=prior.wall_ns + 2_000_000_000)
-    completed = worker.execute(row["id"])
+    with pytest.raises(ResearchError) as unqualified:
+        worker.execute(row["id"])
+    assert unqualified.value.code == ErrorCode.ACCEPTANCE_EXPIRED
     entry = worker.journal.get(row["id"])
-    assert completed["state"] == "not_started" and entry.native is None
+    assert entry.state == JournalState.NOT_STARTED and entry.native is None
     assert "Clock admission unavailable" in entry.finding
     assert worker.resources.availability() == {"cpu": 1}
+    assert pipeline.client.get("attempt", row["id"])["state"] == "execution_unknown"
+    submissions = pipeline.client.list(RecordQuery(kind="attempt_submission"))["items"]
+    assert len(submissions) == 1
+    submission = pipeline.client.get("attempt_submission", submissions[0]["id"])
+    completed = reconcile(pipeline, submission)
+    assert completed["attempt"]["state"] == "not_started"
+    assert completed["reconciliation"]["data"]["acceptance_disposition"] == "unqualified"
 
 
 def test_origin_failure_at_claim_cannot_leave_a_relaunchable_gap(

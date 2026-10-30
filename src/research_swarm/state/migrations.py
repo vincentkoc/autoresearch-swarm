@@ -7,7 +7,7 @@ from time import monotonic, sleep
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def enable_wal(connection: sqlite3.Connection, *, timeout_ms: int) -> None:
@@ -79,11 +79,16 @@ def initialize(connection: sqlite3.Connection, base_schema: str) -> None:
     connection.execute("BEGIN IMMEDIATE")
     try:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, SCHEMA_VERSION):
+        if version not in (0, 1, 2, SCHEMA_VERSION):
             raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported database schema")
         apply_statements(connection, base_schema)
         if version < 2:
             migrate_v2(connection)
+        if version < 3:
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS acceptance_leases ON records"
+                "(workspace_id, campaign_id, state, id) WHERE kind='acceptance_lease'"
+            )
         connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         connection.commit()
     except BaseException:

@@ -19,6 +19,7 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
+    "acceptance_lease",
     "imported_evidence",
     "campaign_obligations",
     "campaign_obligation_chunk",
@@ -100,6 +101,7 @@ def summarize(row: JsonObject) -> JsonObject:
     }
     data = row["data"]
     if row["kind"] in {
+        "acceptance_lease",
         "campaign_obligations",
         "scientific_completion",
         "campaign_resource_closure",

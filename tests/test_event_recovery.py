@@ -111,7 +111,7 @@ def test_schema_v1_migrates_once_under_concurrent_openers_and_preserves_commands
     with ThreadPoolExecutor(max_workers=2) as pool:
         databases = list(pool.map(lambda _: open_database(), range(2)))
     with databases[0].connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         row = connection.execute("SELECT * FROM workspaces WHERE id=?", (workspace,)).fetchone()
         assert row["next_sequence"] == 29 and row["event_floor"] == 1
         assert (

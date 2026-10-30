@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.child_models import (
     CancelChildCampaign,
     CreateChildCampaign,
@@ -96,6 +97,13 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "attempt.expire_acceptance": CommandDefinition(
+        ExpireAcceptance,
+        "expire_acceptance",
+        "campaign.manage",
+        True,
+        "Record expired acceptance without releasing native custody or reserving replacement work.",
+    ),
     "evidence.import_historical": CommandDefinition(
         ImportHistoricalEvidence,
         "import_historical_evidence",

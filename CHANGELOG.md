@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add bounded controller-side result acceptance leases, distinct from immutable launch and native execution deadlines, with explicit heartbeat renewal and scoped reads.
+- Fence expired publication without releasing custody, quarantine original late evidence, and record the lease in explicit reconciliation; preserve cancellation acknowledgments and original accounting.
+- Upgrade SQLite to schema 3 without rewriting old signed records or acknowledgments; unresolved legacy attempts require reconciliation rather than invented lease authority.
+
 - Add a second ordinary CPU research project with fictional pose data, deterministic training, protected evaluation, and two explicit historical receipt readers.
 - Qualify historical import followed by fresh native replay, preserving checkpoint and draw-order identity, missing observations, separate panels, and distinct macro/pooled error denominators without a project-specific engine plugin.
 

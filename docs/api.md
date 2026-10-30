@@ -25,6 +25,11 @@ and `result`. A durable rejection contains that same command identity,
 original command ID. Authentication, schema, and preflight refusals can happen
 before a command outcome is stored; these have no command ID or disposition.
 
+An `ACCEPTANCE_EXPIRED` publication rejection atomically records its conservative
+lease fence and uncertainty alongside the rejected acknowledgment. It accepts no
+result and releases no resource. This prevents an observed expiry or clock
+failure from reviving ordinary acceptance after time changes.
+
 An unavailable acknowledgment does not prove rejection. Timeout, disconnect,
 malformed response, unexpected status, or missing command identity produces SDK
 error `DELIVERY_UNCERTAIN`. Retry with the same actor, operation, payload, expected
@@ -181,10 +186,13 @@ snapshot instead of adopting another principal's cursor.
 CLI equivalents are `research command stream.create_snapshot`,
 `research snapshot page ID`, and `research snapshot item ID ORDINAL`.
 MCP exposes the four stream commands plus `research_snapshot_page` and
-`research_snapshot_item`. The SQLite store upgrades schema 1 to 2 in one
+`research_snapshot_item`. The SQLite store upgrades schema 1 or 2 to 3 in one
 transaction, retaining original command acknowledgments and event sequences.
 Concurrent openers recheck the schema under the migration lock; a failed
 migration rolls back, and newer unsupported schemas are rejected.
+Schema 3 adds [result acceptance leases](acceptance-leases.md). Pending legacy
+attempts require explicit reconciliation; prior accepted acknowledgments remain
+unchanged. Upgrade with old controller processes stopped.
 
 ## Artifact transfer
 

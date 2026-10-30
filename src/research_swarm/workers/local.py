@@ -655,8 +655,16 @@ class LocalWorker:
             finding=finding,
         )
         digest = record_digest("research.attempt-publication", publication.model_dump(mode="json"))
-        return dict(
+        try:
+            return dict(
+                self.client.command(
+                    "worker.publish_attempt", publication, idempotency_key="publish:" + digest
+                )["result"]
+            )
+        except ResearchError as error:
+            if error.code != ErrorCode.ACCEPTANCE_EXPIRED:
+                raise
             self.client.command(
-                "worker.publish_attempt", publication, idempotency_key="publish:" + digest
-            )["result"]
-        )
+                "worker.submit_evidence", publication, idempotency_key="quarantine:" + digest
+            )
+            raise

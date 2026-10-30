@@ -7,6 +7,8 @@ from typing import Literal, get_args
 
 from pydantic import ValidationError
 
+from research_swarm.control.acceptance import AcceptanceControl
+from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
 from research_swarm.control.child_models import (
@@ -204,7 +206,10 @@ class ResearchService:
                 transaction, request, consuming_proposal_id=proposal_id
             ),
         )
-        self.results = ResultControl(database, artifacts)
+        self.acceptance = (
+            self.workers.acceptance if self.workers is not None else AcceptanceControl(database)
+        )
+        self.results = ResultControl(database, artifacts, self.acceptance)
         self.reconciliation = ReconciliationControl(database, self.results)
         self.closures = ClosureControl(database, self.reconciliation)
         self.evaluations = EvaluationControl(database, artifacts)
@@ -217,7 +222,10 @@ class ResearchService:
         self.orchestration = OrchestrationControl(database, self._dispatch_drive)
         self.orchestration_waits = OrchestrationWaitControl(database)
         self.orchestration_transfer = OrchestrationTransferControl(database, artifacts)
-        self.worker_lifecycle = WorkerLifecycle(database)
+        self.worker_lifecycle = WorkerLifecycle(database, self.acceptance)
+
+    def expire_acceptance(self, context: CommandContext, request: ExpireAcceptance) -> JsonObject:
+        return self.acceptance.expire(context, request)
 
     def import_historical_evidence(
         self, context: CommandContext, intent: ImportHistoricalEvidence

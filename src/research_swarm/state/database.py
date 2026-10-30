@@ -315,7 +315,7 @@ class Database:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, SCHEMA_VERSION):
+            if version not in (0, 1, 2, SCHEMA_VERSION):
                 raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported database schema")
             enable_wal(connection, timeout_ms=busy_timeout_ms)
             connection.execute("PRAGMA synchronous=FULL")
@@ -361,6 +361,8 @@ class Database:
         payload: Mapping[str, Any],
         scope: str,
         handler: Callable[[Transaction], JsonObject],
+        *,
+        on_rejection: Callable[[Transaction, ResearchError], None] | None = None,
     ) -> JsonObject:
         context.principal.require(scope)
         request_digest = _request_digest(context, operation, payload)
@@ -397,6 +399,11 @@ class Database:
                         encode(response)
                     except ResearchError as error:
                         connection.execute("ROLLBACK TO domain_operation")
+                        if on_rejection is not None:
+                            # A caller may persist a separately authorized conservative
+                            # fence with the rejected acknowledgment. Failed effects
+                            # remain rolled back; a hook failure rolls back everything.
+                            on_rejection(Transaction(connection, context), error)
                         response = {
                             "command_id": context.command_id,
                             "disposition": "rejected",

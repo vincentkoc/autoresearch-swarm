@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 
+from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.campaigns import settle_pause
 from research_swarm.control.confirmation_runtime import release_unused_exposure, settle_exposure
 from research_swarm.control.models import JobData, TrialData
@@ -40,8 +41,14 @@ from research_swarm.workers.journal import JournalEntry
 
 
 class ResultControl:
-    def __init__(self, database: Database, artifacts: ArtifactService) -> None:
+    def __init__(
+        self,
+        database: Database,
+        artifacts: ArtifactService,
+        acceptance: AcceptanceControl | None = None,
+    ) -> None:
         self.database, self.artifacts = database, artifacts
+        self.acceptance = acceptance or AcceptanceControl(database)
 
     @staticmethod
     def _settle_uploads(transaction: Transaction, attempt: AttemptData, worker: WorkerData) -> None:
@@ -115,7 +122,23 @@ class ResultControl:
                 payload,
                 "worker.publish",
                 lambda transaction: self._accept(transaction, request, journal, report),
+                on_rejection=lambda transaction, error: self._fence_rejection(
+                    transaction, request, error
+                ),
             )
+
+    def _fence_rejection(
+        self, transaction: Transaction, request: PublishAttempt, error: ResearchError
+    ) -> None:
+        if error.code != ErrorCode.ACCEPTANCE_EXPIRED:
+            return
+        attempt = AttemptData.model_validate(transaction.get("attempt", request.attempt_id)["data"])
+        worker = worker_authority(
+            transaction, attempt.dispatch.worker_id, attempt.dispatch.worker_session_id
+        )
+        self.acceptance.expire_if_due(
+            transaction, attempt, worker, observed_disposition=error.details["lease_disposition"]
+        )
 
     @contextmanager
     def pin_evidence(
@@ -176,6 +199,7 @@ class ResultControl:
         worker = worker_authority(
             transaction, attempt.dispatch.worker_id, attempt.dispatch.worker_session_id
         )
+        self.acceptance.require(transaction, attempt, worker)
         return self._accept_observation(transaction, request, journal, report, worker)
 
     def _accept_observation(
@@ -333,6 +357,7 @@ class ResultControl:
                 campaign_id=row["campaign_id"],
                 parent_id=row["id"],
             )
+        self.acceptance.settle(transaction, row["id"], "accepted")
         settle_cancellation(transaction, row["id"], state, utc_now())
         updated_job = transaction.update(
             "job",

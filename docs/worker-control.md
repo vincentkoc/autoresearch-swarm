@@ -1,8 +1,9 @@
 # Worker operational control
 
 The controller records three different facts: admission policy, worker presence,
-and cancellation progress. A heartbeat is an observation. It is not a lease
-extension, proof of native process closure, or authority to refund a reservation.
+and cancellation progress. A presence-only heartbeat is an observation. Explicit
+[acceptance lease renewals](acceptance-leases.md) can extend result-publication
+grace, while native process closure and budget settlement remain separate.
 
 The shared command catalog exposes these operations through the Python SDK,
 HTTP command endpoint, JSON CLI, and MCP. The scoped worker query endpoints also
@@ -31,7 +32,8 @@ revision. Operators can list admission records; absence means revision zero.
 `worker_presence` records the full binding, last heartbeat sequence, driver
 instance ID, and controller receipt time. Before the first heartbeat, the scoped
 read returns `unobserved` at revision zero. Reads do not create either record.
-Every accepted heartbeat advances presence only. An operator's admission CAS
+Every accepted heartbeat advances presence; explicit renewals also update their
+named acceptance leases. An operator's admission CAS
 therefore remains valid during unrelated heartbeat traffic.
 
 The sequence is monotone across driver restarts within an enrollment. Gaps are

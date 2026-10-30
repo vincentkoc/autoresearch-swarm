@@ -6,6 +6,8 @@ from uuid import UUID, uuid5
 
 from pydantic import Field
 
+from research_swarm.control.acceptance import lease_row
+from research_swarm.control.acceptance_models import AcceptanceLease
 from research_swarm.control.obligations import admitted_before_completion
 from research_swarm.control.observations import PublishAttempt, evidence_roles, output_intent
 from research_swarm.control.results import ResultControl
@@ -61,6 +63,10 @@ class AttemptReconciliation(VersionedRecord):
     operator_id: ID
     reconciled_at: Timestamp
     reason: str
+    acceptance_lease: AcceptanceLease | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    acceptance_disposition: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 def publication_digest(request: PublishAttempt) -> str:
@@ -108,6 +114,7 @@ class ReconciliationControl:
     def _submit(self, transaction: Transaction, request: PublishAttempt) -> JsonObject:
         worker, attempt = self._owner(transaction, request)
         archive_session(transaction, worker)
+        self.results.acceptance.expire_if_due(transaction, attempt, worker)
         digest = publication_digest(request)
         identifier = str(uuid5(UUID(transaction.workspace_id), "attempt-submission:" + digest))
         try:
@@ -257,6 +264,7 @@ class ReconciliationControl:
             raise ResearchError(
                 ErrorCode.EXECUTION_UNKNOWN, "Reconciliation requires native closure"
             )
+        original_lease = lease_row(transaction, intent.attempt_id)
         accepted = self.results._accept_observation(
             transaction, submission.publication, journal, report, worker
         )
@@ -275,6 +283,8 @@ class ReconciliationControl:
             control_epoch=intent.expected_control_epoch,
             operator_id=transaction.context.principal.id,
             reconciled_at=utc_now(),
+            acceptance_lease=AcceptanceLease.model_validate(original_lease["data"]),
+            acceptance_disposition=original_lease["state"],
             reason=intent.reason,
         )
         recorded = transaction.insert(

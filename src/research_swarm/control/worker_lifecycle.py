@@ -6,6 +6,8 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from research_swarm.control.acceptance import AcceptanceControl
+from research_swarm.control.acceptance_models import LeaseRenewal
 from research_swarm.control.worker_state import (
     AttemptCancellation,
     WorkerAdmission,
@@ -29,10 +31,16 @@ class WorkerHeartbeat(VersionedRecord):
     sequence: int = Field(strict=True, ge=1, le=9_007_199_254_740_991)
     acknowledgments: tuple[ControlAcknowledgment, ...] = Field(default=(), max_length=100)
 
+    lease_renewals: tuple[LeaseRenewal, ...] = Field(
+        default=(), max_length=100, exclude_if=lambda value: not value
+    )
+
     @model_validator(mode="after")
     def unique_acknowledgments(self) -> Self:
         if len({item.attempt_id for item in self.acknowledgments}) != len(self.acknowledgments):
             raise ValueError("Control acknowledgments must identify distinct attempts")
+        if len({item.attempt_id for item in self.lease_renewals}) != len(self.lease_renewals):
+            raise ValueError("Acceptance renewals must identify distinct attempts")
         return self
 
 
@@ -61,8 +69,9 @@ def operator_worker(transaction: Transaction, binding: WorkerBinding) -> None:
 
 
 class WorkerLifecycle:
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, acceptance: AcceptanceControl | None = None) -> None:
         self.database = database
+        self.acceptance = acceptance or AcceptanceControl(database)
 
     def set_admission(self, context: CommandContext, request: SetWorkerAdmission) -> JsonObject:
         def change(transaction: Transaction) -> JsonObject:
@@ -183,6 +192,10 @@ class WorkerLifecycle:
                         ErrorCode.STALE_FENCE, "Control acknowledgment differs from assignment"
                     )
                 acknowledgments.append((row, control))
+            renewed = [
+                self.acceptance.renew(transaction, worker, item, request.sequence)
+                for item in request.lease_renewals
+            ]
             received = utc_now()
             for row, control in acknowledgments:
                 if control.acknowledged_at is None:
@@ -213,6 +226,7 @@ class WorkerLifecycle:
             )
             transaction.event("worker.heartbeat", updated, {"sequence": request.sequence})
             return {
+                **({"lease_renewals": renewed} if request.lease_renewals else {}),
                 "presence": updated,
                 "admission": worker_state(transaction, request.binding, "worker_admission"),
             }

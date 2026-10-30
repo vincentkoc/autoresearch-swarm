@@ -321,9 +321,12 @@ class LocalDriver:
                     try:
                         observed = task.result()
                     except ResearchError as error:
-                        if error.code != ErrorCode.RESOURCE_UNAVAILABLE:
+                        if error.code not in {
+                            ErrorCode.RESOURCE_UNAVAILABLE,
+                            ErrorCode.ACCEPTANCE_EXPIRED,
+                        }:
                             raise
-                        deferred[identifier] = ErrorCode.RESOURCE_UNAVAILABLE
+                        deferred[identifier] = error.code
                     else:
                         executed.add(identifier)
                         if observed["state"] == "execution_unknown":
