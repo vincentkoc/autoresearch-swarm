@@ -51,6 +51,21 @@ def parser() -> argparse.ArgumentParser:
     local.add_argument("campaign_id")
     local.add_argument("--cpu-slots", type=int, default=1)
     local.add_argument("--machine-registry", type=Path)
+    describe = worker_actions.add_parser("describe", help="Describe a persistent remote CPU worker")
+    describe.add_argument("--worker-dir", type=Path, required=True)
+    describe.add_argument("--cpu-slots", type=int, default=1)
+    describe.add_argument("--machine-registry", type=Path)
+    provision = worker_actions.add_parser("provision", help="Write a private scoped worker bundle")
+    provision.add_argument("--description", type=Path, required=True)
+    provision.add_argument("--url", required=True)
+    provision.add_argument("--project", action="append", required=True)
+    provision.add_argument("--bundle", type=Path, required=True)
+    provision.add_argument("--name", default="Remote CPU worker")
+    connect = worker_actions.add_parser(
+        "connect", help="Import or verify a pinned worker connection"
+    )
+    connect.add_argument("--worker-dir", type=Path, required=True)
+    connect.add_argument("--bundle", type=Path)
     command = commands.add_parser("command", help="Send a typed domain command")
     command.add_argument("operation")
     command.add_argument("--file", type=Path, help="JSON request file, otherwise read stdin")
@@ -143,6 +158,18 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
             )
         ).model_dump(mode="json")
     if args.action == "worker":
+        if args.worker_action == "provision":
+            from research_swarm.workers.remote_enrollment import WorkerDescription, provision_worker
+
+            bundle = provision_worker(
+                client,
+                WorkerDescription.model_validate(_request(args.description)),
+                url=args.url,
+                project_ids=tuple(args.project),
+                destination=args.bundle,
+                name=args.name,
+            )
+            return {"state": "provisioned", "worker": bundle.worker.model_dump(mode="json")}
         from research_swarm.orchestration.local import LocalDriver
         from research_swarm.workers.local_enrollment import ensure_local_enrollment
 
@@ -210,6 +237,29 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
+        if args.action == "worker" and args.worker_action in {"describe", "connect"}:
+            from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
+
+            if args.controller or args.token_file or args.state_dir:
+                raise ValueError("Worker installation uses --worker-dir and its provisioned bundle")
+            if args.worker_action == "describe":
+                description = describe_worker(
+                    args.worker_dir,
+                    cpu_slots=args.cpu_slots,
+                    machine_registry=args.machine_registry,
+                )
+                print(canonical_bytes(description.model_dump(mode="json")).decode("utf-8"))
+            else:
+                with connect_worker(args.worker_dir, bundle_path=args.bundle) as enrollment:
+                    print(
+                        canonical_bytes(
+                            {
+                                "state": "connected",
+                                "worker": enrollment.worker.worker.model_dump(mode="json"),
+                            }
+                        ).decode("utf-8")
+                    )
+            return 0
         if args.action in {"init", "serve"}:
             if args.controller:
                 raise ValueError("Local service commands cannot use a remote controller")

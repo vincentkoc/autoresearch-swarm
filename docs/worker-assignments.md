@@ -43,8 +43,8 @@ digests and execution profile. Restart checks the same assignment again; result
 publication must preserve it. A signed enrollment cannot fall back to HMAC.
 
 Default local execution uses the controller host's clock. Explicit calibrated
-execution is described below. Remote enrollment provisioning and the persistent
-remote driver remain pending. Signatures
+execution is described below. [Remote enrollment](remote-workers.md) uses explicit
+operator bundles; the persistent remote driver remains pending. Signatures
 alone do not qualify a remote worker or prove native process closure.
 
 ## Scoped discovery and recovery
@@ -78,8 +78,8 @@ with the offered revision and preserve the command key through uncertain deliver
 The atomic claim can reject an offer that became unavailable.
 
 The same views are available through HTTP, Python/async SDKs, and MCP. Independent
-remote provisioning, physical clock qualification, and a persistent remote driver remain
-pending; these endpoints alone do not qualify execution on another host.
+physical clock qualification and a persistent remote driver remain pending;
+these endpoints alone do not qualify execution on another host.
 
 ## Attempt-bound inputs
 
@@ -284,8 +284,8 @@ frees a device, refunds an attempt, or permits a retry.
 
 Tests cover scoped HTTP/async queries, same-process runtime reopening, native fork
 rejection, independent-process epoch mismatch, immutable replay, input-pin races,
-and output recovery. The persistent remote driver and enrollment provisioning
-remain separate from this explicit execution protocol.
+and output recovery. Explicit remote enrollment is available; the persistent
+remote driver remains separate from this execution protocol.
 
 ## Durable worker timing
 

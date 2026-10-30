@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add durable CPU worker descriptions, operator provisioning, and pinned HTTP connections through `research worker describe`, `provision`, and `connect`.
+- Persist identities before provisioning, export restricted private bundles, and resume interrupted enrollment without rotating tokens or sessions.
+- Reject changed profiles, native storage identities, connection bundles, and revoked or missing completed credentials; redact private-record validation failures.
 - Execute explicitly calibrated CPU assignments through a live private origin and atomic journal claim/release gates.
 - Recheck deadlines after journal lock waits and immediately before native release; keep the hard-deadline watchdog active while authorization is blocked.
 - Settle failures before launch without stranding capacity, retain uncertainty after a claimed launch, and preserve fixed deadlines when the origin process dies.

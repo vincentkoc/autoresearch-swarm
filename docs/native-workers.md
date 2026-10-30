@@ -1,7 +1,8 @@
 # Native worker execution
 
 The core includes native supervision, a worker journal, `LocalWorker`, and a local
-async campaign driver. Remote worker enrollment remains integration work.
+async campaign driver. [Remote CPU enrollment](remote-workers.md) uses explicit
+operator bundles; persistent remote scheduling remains integration work.
 
 ## Run a local campaign
 
