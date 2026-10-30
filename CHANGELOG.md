@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Persist authenticated worker dispatches, launch barriers, cancellation intent, and recoverable observations.
+- Supervise bounded native process groups and Windows jobs with capped output and independent deadlines.
+- Recover native completion after publication failure without repeating the workload.
+- Upgrade FileLock to the patched 4.2 series and retain artifact concurrency coverage.
 - Resolve repository manifests from immutable bundles with separate protocol and source identities.
 - Share stage-graph validation between project manifests and sealed experiments.
 - Flush staged artifacts through writable descriptors for native Windows publication.

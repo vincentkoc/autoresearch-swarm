@@ -9,9 +9,9 @@ not implicitly supported.
 | SQLite transactions, events, outbox | Transaction substrate implemented | Restart, independent connections, rollback, watermark tests pass | Foundation CI passes on Linux, macOS, Windows, Python 3.11–3.13 |
 | Exact budget arithmetic | Implemented foundation | Exact arithmetic, uncertainty, settlement, overshoot tests pass | Hierarchical accounting pending |
 | Evaluator receipts | Validator implemented | Identity, seed, provenance, and panel tests pass | Authenticated transport pending |
-| Artifact lifecycle | Local verified catalog, generations, retention, quotas, recovery | Corruption, interrupted commit, duplicate upload, retain/delete race, native reader crash tests | Linux/macOS CI passed; Windows descriptor-flush repair awaits CI; hosted stores pending |
-| Local worker and supervision | Pending | Pending | Each supported OS pending |
-| Project manifests and source isolation | Source bundles, mutation boundary, TOML manifest and immutable resolution implemented | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation, protected dependency/protocol tests | Linux/macOS CI passed; full Windows and original-workload qualification pending |
+| Artifact lifecycle | Local verified catalog, generations, retention, quotas, recovery | Corruption, interrupted commit, duplicate upload, retain/delete race, native reader crash tests | Linux/macOS/Windows CI passed; patched FileLock qualification pending; hosted stores pending |
+| Local worker and supervision | Authenticated dispatch, durable journal, native barrier, independent supervisor, bounded output implemented | Real cancellation, launch race, deadline, transport loss, publication recovery tests | macOS local proof; native Linux/Windows CI and full worker admission pending |
+| Project manifests and source isolation | Source bundles, mutation boundary, TOML manifest and immutable resolution implemented | Deterministic capture, pinned Git source, traversal, corruption, dirty-checkout preservation, protected dependency/protocol tests | Linux/macOS/Windows CI passed; original-workload qualification pending |
 | API, SDK, CLI, MCP | Pending | Pending | Real transport pending |
 | Remote workers and scheduling | Pending | Pending | Physical swarm pending |
 | Search policies and atomic promotion | Pending | Pending | Equal-budget research pending |
@@ -26,10 +26,10 @@ not implicitly supported.
 
 ## Contract scenarios
 
-The foundation suite has 53 tests. Artifact, source, and manifest tests extend it to 116
-passing tests on Python 3.12/macOS. They include separate-process locks, a crashed
-reader, independent database races, and source isolation. This does not establish
-complete worker, API, provider, or scientific behavior.
+The foundation suite has 53 tests. Artifact, source, and manifest tests extend it to
+116, qualified on Linux/macOS/Windows and Python 3.11–3.13. Native supervision and
+journal tests add real process, deadline, race, and recovery coverage. This does not
+establish complete worker admission, API, provider, or scientific behavior.
 
 The design defines C01–C42. Unit coverage alone does not qualify their complete
 transport, process, or provider behavior.
