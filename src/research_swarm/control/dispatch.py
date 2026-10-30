@@ -7,6 +7,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from research_swarm.control.child_models import (
+    CancelChildCampaign,
+    CreateChildCampaign,
+    SettleChildCampaign,
+)
 from research_swarm.control.commands import (
     CampaignTarget,
     CompleteCampaign,
@@ -312,6 +317,27 @@ COMMANDS = {
         "campaign.manage",
         False,
         "Create a draft campaign and its budget accounts.",
+    ),
+    "campaign.create_child": CommandDefinition(
+        CreateChildCampaign,
+        "create_child_campaign",
+        "campaign.manage",
+        True,
+        "Fund a draft child atomically using the current parent campaign revision.",
+    ),
+    "campaign.settle_child": CommandDefinition(
+        SettleChildCampaign,
+        "settle_child_campaign",
+        "campaign.manage",
+        True,
+        "Settle terminal child funding using its allocation revision; settled receipts replay.",
+    ),
+    "campaign.cancel_child": CommandDefinition(
+        CancelChildCampaign,
+        "cancel_child_campaign",
+        "campaign.manage",
+        True,
+        "Cancel an unstarted funded child using its campaign revision and release unused funding.",
     ),
     "campaign.validate": CommandDefinition(
         CampaignTarget,

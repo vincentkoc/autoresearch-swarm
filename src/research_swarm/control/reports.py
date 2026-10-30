@@ -5,6 +5,7 @@ import re
 from pydantic import Field
 
 from research_swarm.control.comparisons import eligible_evaluation
+from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
 from research_swarm.control.queries import summarize
 from research_swarm.domain.budgets import BudgetAccount
@@ -96,6 +97,32 @@ def markdown(snapshot: JsonObject) -> str:
             "",
         ]
     )
+    if funding := snapshot.get("funding"):
+        lines.extend(
+            [
+                "## Campaign funding",
+                "",
+                (
+                    "Budget totals already include descendant consumption; "
+                    "do not add child totals again."
+                ),
+                "",
+            ]
+        )
+        if incoming := funding["incoming"]:
+            lines.extend(
+                [
+                    f"Parent: `{incoming['parent_campaign_id']}`. Allocation: {incoming['state']}.",
+                    "",
+                ]
+            )
+        lines.extend(
+            [
+                f"Direct children: {funding['child_count']}. "
+                f"Open allocations: {funding['open_child_count']}.",
+                "",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -170,6 +197,9 @@ def create_report(
         ),
         "detail_query": {"kind": "evaluation_receipt", "campaign_id": campaign_row["id"]},
     }
+    funding = funding_context(transaction, campaign_row["id"])
+    if funding is not None:
+        snapshot["funding"] = funding
     content: JsonObject = {"snapshot": snapshot, "markdown": markdown(snapshot)}
     content["report_digest"] = record_digest("research.report", content)
     row = transaction.insert(

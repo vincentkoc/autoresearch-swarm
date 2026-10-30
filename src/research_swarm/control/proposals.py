@@ -18,6 +18,7 @@ from research_swarm.control.search_models import (
     RespondToProposal,
     SearchState,
 )
+from research_swarm.control.trial_allowance import require_funded_trials
 from research_swarm.control.workers import authority
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.budgets import BudgetKind
@@ -142,6 +143,7 @@ class ProposalControl:
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Search state revision changed")
             state = SearchState.model_validate(previous["data"])
             validate_portfolio_request(transaction, campaign, state, request)
+            require_funded_trials(transaction, request.campaign_id, campaign, Decimal(1))
             slots = 1 if state.policy == "greedy" else campaign.contract.search.max_parallel_trials
             if len(state.pending_request_ids) + len(state.active_trial_ids) >= slots:
                 raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Search slots are occupied")

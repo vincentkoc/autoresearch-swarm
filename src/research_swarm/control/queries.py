@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import Field, ValidationError
 
+from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
 from research_swarm.domain.budgets import BudgetAccount
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
@@ -17,6 +18,10 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 RecordKind = Literal[
+    "campaign_funding",
+    "funding_projection",
+    "funding_change",
+    "funding_settlement",
     "search_state",
     "policy_transition",
     "search_observation",
@@ -74,7 +79,30 @@ def summarize(row: JsonObject) -> JsonObject:
         key: row[key] for key in ("id", "kind", "revision", "state", "campaign_id", "parent_id")
     }
     data = row["data"]
-    if row["kind"] == "search_state":
+    if row["kind"] == "campaign_funding":
+        result["data"] = {
+            key: data[key]
+            for key in (
+                "parent_campaign_id",
+                "child_campaign_id",
+                "root_campaign_id",
+                "depth",
+                "remaining_depth",
+            )
+        }
+        result["data"]["limits"] = data["limits"][:16]
+        result["data"]["dimension_count"] = len(data["limits"])
+    elif row["kind"] in {"funding_projection", "funding_settlement"}:
+        result["data"] = {
+            "funding_id": data["funding_id"],
+            "balances": dict(sorted(data["balances"].items())[:16]),
+            "dimension_count": len(data["balances"]),
+        }
+        if row["kind"] == "funding_settlement":
+            result["data"]["final_report_id"] = data["final_report_id"]
+    elif row["kind"] == "funding_change":
+        result["data"] = data
+    elif row["kind"] == "search_state":
         result["data"] = {
             key: data[key] for key in ("policy", "policy_version", "generation", "request_count")
         }
@@ -186,6 +214,8 @@ def summarize(row: JsonObject) -> JsonObject:
         result["data"]["primary_metric"] = data["contract"]["primary_metric"]
         result["data"]["incumbent_eligibility"] = data.get("incumbent_eligibility", "eligible")
         result["data"]["incumbent_evidence_level"] = data.get("incumbent_evidence_level")
+        if data.get("parent_campaign_id") is not None:
+            result["data"]["parent_campaign_id"] = data["parent_campaign_id"]
     elif row["kind"] == "job":
         result["data"] = {
             "stage_id": data["stage"]["id"],
@@ -430,9 +460,11 @@ class ResearchQueries:
             ).fetchall()
             accounts = [BudgetAccount.model_validate_json(row["payload"]) for row in budgets]
             stopping_status = {"target_met": target_met(transaction, campaign_id, data)}
+            funding = funding_context(transaction, campaign_id)
             connection.commit()
         return {
             "schema_version": "1.0",
+            **({"funding": funding} if funding is not None else {}),
             "watermark": authority["watermark"],
             "authority": {
                 "controller_id": authority["controller_id"],
@@ -448,6 +480,11 @@ class ResearchQueries:
                 "search": data.contract.search.model_dump(mode="json"),
                 "promotion": data.contract.promotion.model_dump(mode="json"),
                 "stopping": data.contract.stopping.model_dump(mode="json"),
+                **(
+                    {"delegation": data.contract.delegation.model_dump(mode="json")}
+                    if data.contract.delegation is not None
+                    else {}
+                ),
             },
             "counts": [dict(row) for row in counts],
             "recent_evidence": evidence,

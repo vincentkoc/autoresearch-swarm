@@ -546,3 +546,90 @@ checks original native identities, independent receipts, source digests,
 ancestry, single attempts, policy consumption, final closure, and restored
 capacity. Gates precede active training; this demonstrates asynchronous native
 workload overlap, not concurrent training throughput or physical fleet scaling.
+
+## Allocate bounded child campaigns
+
+Before sealing a delegating campaign, set `delegation.max_depth` and declare
+cumulative `child_campaigns/count` and `trial_admissions/count` limits alongside
+the normal execution budgets. Trial admission consumes one count, including
+failed or cancelled work; a child allocation does not replenish that counter.
+The funded trial allowance must not exceed the campaign's `stopping.max_trials`.
+Campaigns without delegation or a declared trial counter retain their existing
+contract shape and behavior.
+
+`campaign.create_child` requires `campaign.manage` and the parent campaign's
+current revision. The parent must be sealed, running, eligible, and below its
+declared metric target. For example:
+
+~~~python
+from research_swarm.control.child_models import CreateChildCampaign
+from research_swarm.control.models import SearchConfiguration
+from research_swarm.domain.budgets import BudgetLimit
+
+created = client.command(
+    "campaign.create_child",
+    CreateChildCampaign(
+        parent_campaign_id=parent_id,
+        name="Optimizer branch",
+        limits=(
+            BudgetLimit(dimension="attempts", limit=4, unit="count"),
+            BudgetLimit(dimension="execution_ms", limit=50_000, unit="ms"),
+            BudgetLimit(dimension="trial_admissions", limit=1, unit="count"),
+        ),
+        search=SearchConfiguration(policy="external", version="external-v1"),
+        max_trials=1,
+        remaining_depth=0,
+    ),
+    idempotency_key="optimizer-child-1",
+    expected_revision=parent_revision,
+)["result"]
+child_id = created["campaign"]["id"]
+~~~
+
+Creation charges one `child_campaigns` admission and holds each granted amount
+in the parent, atomically. The child starts as a draft and uses the usual
+validate/seal/start commands. It inherits the exact project revision, protected
+protocol, input artifacts, primary metric, promotion configuration, target, and
+manual-completion policy. Its search configuration may differ, and its maximum
+trial count may decrease. A positive `remaining_depth` enables further delegation
+and requires a funded `child_campaigns` dimension; the global depth limit is eight.
+No child request accepts project, data, evaluator, or credential overrides.
+
+Each grant must match a parent dimension, unit, and accounting kind. Cumulative
+and exposure budgets can be delegated. Native capacity and retained storage
+keep their separate authorities. Confirmation exposure is inherited and funded;
+a child ID does not create a fresh exposure allowance. Missing funds, ancestor
+deficits, and trial allowance already promised to pending proposals reject the
+whole creation transaction. Direct submissions and confirmation panels obey
+the same funded trial counter. A valid response consumes its own pending promise.
+
+Consumption and uncertainty propagate while the child runs. Unused grant funds
+remain held until closure. Completing a child requires closed native work,
+settled evaluation, zero reserved/uncertain balances, and closed descendants.
+Completion writes the final report and releases the grant remainder atomically.
+An exhausted funded trial allowance can satisfy a nonmanual stopping rule even
+when descendants consumed it; all other closure requirements still apply.
+
+`campaign.settle_child` is an explicit reconciliation operation. It accepts
+`child_campaign_id`, no caller-supplied costs, and the current funding projection's
+revision. Once settled, repeated delivery keys return the original immutable
+receipt, even if the supplied revision is stale. Exact command replay still
+requires the original payload and revision. `campaign.cancel_child` can cancel
+only an unstarted draft/ready child with no admitted trials or open descendants.
+It returns unused funding, but does not refund the creation count. It cannot
+cancel a running native process.
+
+Pause and completion act on the named campaign. Pausing a parent does not
+implicitly cancel already allocated children. Workers, evaluation authority,
+and credentials remain independently managed. Child funding grants no new
+machine or API access.
+
+`context` and JSON/Markdown reports expose incoming funding, bounded child
+summaries, held funds, uncertainty, and settlement identities. Use the
+`campaign_funding`, `funding_projection`, `funding_change`, and
+`funding_settlement` record queries to drill into history. Parent budget totals
+already include descendants: do not add child totals a second time.
+
+This supports bounded recursive research execution. Policy-training artifacts,
+held-out policy comparison, and a demonstrated RL improvement remain separate
+capabilities; nested campaigns alone are not evidence of self-improvement.

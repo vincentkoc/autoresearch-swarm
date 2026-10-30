@@ -40,7 +40,7 @@ class SearchAdmission:
         self,
         database: Database,
         artifacts: ArtifactService,
-        submit_trial: Callable[[Transaction, SubmitTrial], JsonObject],
+        submit_trial: Callable[[Transaction, SubmitTrial, str], JsonObject],
     ) -> None:
         self.database = database
         self.artifacts = artifacts
@@ -185,6 +185,7 @@ class SearchAdmission:
                             validation_id=validation["id"],
                             seed=request.seed,
                         ),
+                        intent.request_id,
                     )
                 admission = admission.model_copy(
                     update={

@@ -9,6 +9,12 @@ from pydantic import ValidationError
 
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
+from research_swarm.control.child_models import (
+    CancelChildCampaign,
+    CreateChildCampaign,
+    SettleChildCampaign,
+)
+from research_swarm.control.children import ChildControl, charge_trial, validate_delegation
 from research_swarm.control.closure import ClosureControl
 from research_swarm.control.commands import (
     CampaignTarget,
@@ -157,7 +163,13 @@ class ResearchService:
         self.proposals = ProposalControl(database)
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
-        self.search_admission = SearchAdmission(database, artifacts, self._submit_trial)
+        self.search_admission = SearchAdmission(
+            database,
+            artifacts,
+            lambda transaction, request, proposal_id: self._submit_trial(
+                transaction, request, consuming_proposal_id=proposal_id
+            ),
+        )
         self.results = ResultControl(database, artifacts)
         self.reconciliation = ReconciliationControl(database, self.results)
         self.closures = ClosureControl(database, self.reconciliation)
@@ -165,7 +177,23 @@ class ResearchService:
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
+        self.children = ChildControl(database, self._create_campaign, self._validate_contract)
         self.worker_lifecycle = WorkerLifecycle(database)
+
+    def create_child_campaign(
+        self, context: CommandContext, request: CreateChildCampaign
+    ) -> JsonObject:
+        return self.children.create(context, request)
+
+    def settle_child_campaign(
+        self, context: CommandContext, request: SettleChildCampaign
+    ) -> JsonObject:
+        return self.children.settle(context, request)
+
+    def cancel_child_campaign(
+        self, context: CommandContext, request: CancelChildCampaign
+    ) -> JsonObject:
+        return self.children.cancel(context, request)
 
     def submit_attempt_evidence(
         self, context: CommandContext, request: PublishAttempt
@@ -386,71 +414,82 @@ class ResearchService:
 
             return self._execute(context, operation, request, scope, register)
 
-    def create_campaign(self, context: CommandContext, request: CreateCampaign) -> JsonObject:
-        def create(transaction: Transaction) -> JsonObject:
-            project = ProjectData.model_validate(
-                transaction.get("project", request.project_id)["data"]
+    @staticmethod
+    def _create_campaign(
+        transaction: Transaction, request: CreateCampaign, parent_campaign_id: str | None = None
+    ) -> JsonObject:
+        project = ProjectData.model_validate(transaction.get("project", request.project_id)["data"])
+        revision_id = request.project_revision_id or project.current_revision_id
+        revision = ProjectRevisionData.model_validate(
+            transaction.get("project_revision", revision_id)["data"]
+        )
+        if revision.project_id != request.project_id:
+            raise ResearchError(
+                ErrorCode.PROJECT_CONTRACT_INVALID,
+                "Project revision belongs to another project",
             )
-            revision_id = request.project_revision_id or project.current_revision_id
-            revision = ProjectRevisionData.model_validate(
-                transaction.get("project_revision", revision_id)["data"]
+        resolved = revision.resolved
+        if request.primary_metric not in {
+            metric.name for metric in resolved.manifest.evaluation.metrics
+        }:
+            raise ResearchError(
+                ErrorCode.PROJECT_CONTRACT_INVALID,
+                "Primary metric is not declared by the evaluator",
             )
-            if revision.project_id != request.project_id:
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID,
-                    "Project revision belongs to another project",
-                )
-            resolved = revision.resolved
-            if request.primary_metric not in {
-                metric.name for metric in resolved.manifest.evaluation.metrics
-            }:
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID,
-                    "Primary metric is not declared by the evaluator",
-                )
-            contract = CampaignContract(
-                project_id=request.project_id,
-                project_revision_id=revision_id,
-                project_manifest_digest=resolved.manifest_digest,
-                protocol_digest=record_digest(
-                    "research.campaign-protocol",
-                    {
-                        "project_protocol": resolved.protocol_digest,
-                        "inputs": {
-                            name: {"digest": reference.digest, "size_bytes": reference.size_bytes}
-                            for name, reference in request.input_artifacts.items()
-                        },
+        contract = CampaignContract(
+            project_id=request.project_id,
+            project_revision_id=revision_id,
+            project_manifest_digest=resolved.manifest_digest,
+            protocol_digest=record_digest(
+                "research.campaign-protocol",
+                {
+                    "project_protocol": resolved.protocol_digest,
+                    "inputs": {
+                        name: {"digest": reference.digest, "size_bytes": reference.size_bytes}
+                        for name, reference in request.input_artifacts.items()
                     },
-                ),
-                comparison_class=resolved.manifest.evaluation.comparison_class,
-                primary_metric=request.primary_metric,
-                limits=request.limits,
-                search=request.search,
-                promotion=request.promotion,
-                stopping=request.stopping,
-                input_artifacts=request.input_artifacts,
-            )
-            identifier = new_id()
-            for reference in contract.input_artifacts.values():
-                retain_source(transaction, reference, "campaign", identifier)
-            row = transaction.insert(
-                "campaign",
-                identifier,
-                CampaignData(name=request.name, contract=contract).model_dump(mode="json"),
-                state=CampaignState.DRAFT,
-                campaign_id=identifier,
-            )
-            BudgetLedger.create(transaction, identifier, contract.limits)
-            transaction.event("campaign.created", row, {"project_revision_id": revision_id})
-            return row
+                },
+            ),
+            comparison_class=resolved.manifest.evaluation.comparison_class,
+            primary_metric=request.primary_metric,
+            limits=request.limits,
+            search=request.search,
+            promotion=request.promotion,
+            stopping=request.stopping,
+            input_artifacts=request.input_artifacts,
+            delegation=request.delegation,
+        )
+        identifier = new_id()
+        for reference in contract.input_artifacts.values():
+            retain_source(transaction, reference, "campaign", identifier)
+        row = transaction.insert(
+            "campaign",
+            identifier,
+            CampaignData(
+                name=request.name, contract=contract, parent_campaign_id=parent_campaign_id
+            ).model_dump(mode="json"),
+            state=CampaignState.DRAFT,
+            campaign_id=identifier,
+        )
+        BudgetLedger.create(transaction, identifier, contract.limits)
+        transaction.event("campaign.created", row, {"project_revision_id": revision_id})
+        return row
 
-        return self._execute(context, "campaign.create", request, "campaign.manage", create)
+    def create_campaign(self, context: CommandContext, request: CreateCampaign) -> JsonObject:
+        return self._execute(
+            context,
+            "campaign.create",
+            request,
+            "campaign.manage",
+            lambda transaction: self._create_campaign(transaction, request),
+        )
 
     @staticmethod
     def _validate_contract(transaction: Transaction, campaign: CampaignData) -> None:
         from research_swarm.control.portfolio import portfolio_contract
 
         portfolio_contract(campaign)
+        validate_delegation(campaign)
         revision = ProjectRevisionData.model_validate(
             transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
         )
@@ -603,6 +642,8 @@ class ResearchService:
         request: SubmitTrial,
         confirmation_plan_id: str | None = None,
         confirmation_side: Literal["candidate", "comparator"] | None = None,
+        *,
+        consuming_proposal_id: str | None = None,
     ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         campaign = CampaignData.model_validate(row["data"])
@@ -681,6 +722,13 @@ class ResearchService:
                 ),
             },
         ).sealed()
+        charge_trial(
+            transaction,
+            campaign,
+            request.campaign_id,
+            spec.trial_id,
+            consuming_proposal_id=consuming_proposal_id,
+        )
         job_ids = {stage.id: new_id() for stage in spec.stages}
         bindings = input_sources(resolved, campaign.contract.input_artifacts)
         trial = transaction.insert(

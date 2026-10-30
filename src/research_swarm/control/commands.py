@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import Field
 
 from research_swarm.control.models import (
+    DelegationConfiguration,
     PromotionConfiguration,
     SearchConfiguration,
     StoppingRule,
@@ -32,6 +33,9 @@ class CreateCampaign(VersionedRecord):
     promotion: PromotionConfiguration = Field(default_factory=PromotionConfiguration)
     stopping: StoppingRule = Field(default_factory=StoppingRule)
     input_artifacts: dict[Name, ArtifactRef] = Field(default_factory=dict)
+    delegation: DelegationConfiguration | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class CampaignTarget(VersionedRecord):

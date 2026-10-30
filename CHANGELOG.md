@@ -2,8 +2,12 @@
 
 ## Unreleased
 
+- Add agent-accessible child creation, unstarted-child cancellation, and replayable funding settlement through the shared API, SDK, CLI, and MCP command registry.
+- Inherit the parent's frozen project, evaluator, data inputs, promotion contract, and stopping constraints; enforce bounded depth, cumulative child/trial counters, and pending-proposal allowance across descendants.
+- Close allocations atomically with final reports, preserve funds while native work remains unknown, and expose bounded funding context without double-counting descendant costs.
+
 - Add transactional child-allocation accounting with immutable funding identities, live ancestor projections, exact signed ledger entries, and idempotent remainder settlement.
-- Preserve commitments and uncertainty after overshoot, block new reservations against ancestor deficits, and keep unused grants held until explicit closure. Public child-campaign commands follow this internal ledger foundation.
+- Preserve commitments and uncertainty after overshoot, block new reservations against ancestor deficits, and keep unused grants held until explicit closure.
 
 - Qualify asynchronous portfolio progress with two registered HTTP CPU workers sharing native capacity: a third candidate enters its workload while the original candidate remains alive, after an independently evaluated sibling promotes.
 - Verify original process identity, distinct source lineage, separate evaluator authority, accepted closure, exact attempt counts, and restored shared capacity in the native integration test.

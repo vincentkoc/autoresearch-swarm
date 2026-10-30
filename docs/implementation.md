@@ -7,7 +7,7 @@ not implicitly supported.
 |---|---|---|---|
 | Domain schemas and JCS hashing | Implemented foundation | Golden/validation tests pass | Cross-language pending |
 | SQLite transactions, events, outbox | Transaction substrate implemented | Restart, independent connections, rollback, watermark tests pass | Foundation CI passes on Linux, macOS, Windows, Python 3.11–3.13 |
-| Exact budget arithmetic | Implemented foundation | Exact arithmetic, uncertainty, settlement, overshoot tests pass | Hierarchical accounting pending |
+| Exact budget arithmetic | Implemented foundation and hierarchical accounting | Exact arithmetic, uncertainty, settlement, overshoot and recursive allocation tests pass | Real CPU child execution locally verified |
 | Evaluator receipts | Pre-execution authorization and authenticated completion implemented | Scoped credentials, exact attempts, replay, incomplete panels, invalid metrics | Local CPU pipeline passes; statistical promotion remains separate |
 | Artifact lifecycle | Local verified catalog, generations, retention, quotas, recovery | Corruption, interrupted commit, duplicate upload, retain/delete race, native reader crash tests | Artifact tests pass on Linux/macOS/Windows with patched FileLock; hosted stores pending |
 | Local worker and supervision | Authenticated dispatch, durable preparation/journal, native barrier, independent supervisor, bounded output, registered CPU stage execution | Real cancellation, launch race, deadline, transport loss, publication recovery, complete stage graph | Integrated pipeline passes Linux/macOS/Windows CI, Python 3.11–3.13 |
@@ -51,8 +51,8 @@ not implicitly supported.
 | Asynchronous portfolio planning | Pure plural planner, API-only driver, sealed theme allocation, owner recovery, stale request cancellation | Local CPU/HTTP selection, lost commit while paused, UNKNOWN retention, bounded scan isolation, CLI/controller races, two registered workers with independent evaluation and early replacement work | Native CPU workload overlap verified on local macOS; physical fleet and throughput scaling pending |
 | Statistical gates and exposure | Fixed paired sign gate, sealed plans, exposure accounting, complete-panel assessment | Exact null signs, atomic panel rollback, seed reservation, profile binding, no-access release, actual paired CPU control | Independent workload variance and held-out generalization pending |
 | Existing-project adoption | Pending | Pending | Private replay retained separately |
-| Hierarchical allocation ledger | Immutable grants, bounded lineage, live ancestor accounting, deficit admission guard, projection receipts and terminal settlement | Independent SQLite races, uncertainty, committed overshoot, sibling blocking, recursive release, replay/reopen, rollback and exact decimals | Internal ledger verified; public child lifecycle and real child execution pending |
-| Nested campaigns and policy benchmark | Pending public lifecycle and benchmark | Funding ledger foundation verified separately | Held-out comparison pending |
+| Hierarchical allocation ledger | Immutable grants, bounded lineage, live ancestor accounting, deficit admission guard, projection receipts and terminal settlement | Independent SQLite races, uncertainty, committed overshoot, sibling blocking, recursive release, replay/reopen, rollback and exact decimals | Public child lifecycle and real CPU child execution locally verified |
+| Nested campaigns and policy benchmark | Funded child API, inherited contracts, bounded depth and admission counters, final settlement reports | HTTP creation, CLI cancellation, real CPU descendants, counter/pending-promise conflicts, confirmation rollback, UNKNOWN closure and completion rollback | Local funded recursion verified; policy benchmark and held-out comparison pending |
 | Temporal | Pending | Pending | Real server pending |
 | Cloudflare | Pending | Pending | Hosted deployment pending |
 | Actual reward-driven policy learning | Pending | Pending | Training/evaluation pending |
@@ -88,8 +88,8 @@ transport, process, or provider behavior.
 - **C15** — A real CPU workload exits with code 7; its research observation has no score and resolves without a scientific rejection or promotion.
 - **C16** — Candidate and comparator use different forbidden protocols. Pending end-to-end evidence.
 - **C17** — Two promotions reference the same incumbent revision. Local concurrent commands select one incumbent and preserve the conflicting assessment.
-- **C18** — Child campaigns reserve concurrently. Pending end-to-end evidence.
-- **C19** — Child finishes and releases unused budget. Pending end-to-end evidence.
+- **C18** — Independent client connections race child creation against insufficient parent funds. Exactly one child/allocation commits; the rejected command leaves no child or creation charge. Public HTTP creation and unchanged-key replay also pass locally.
+- **C19** — A real CPU child executes and receives an authenticated evaluation. Consumption appears in ancestor accounts before completion; atomic finalization releases only the remaining grant and records its settlement in the final report. A report-write failure rolls back child completion and ancestor release.
 - **C20** — Equivalent evidence/context yields one observation identity. Independent principals race each greedy boundary with one admitted trial, one policy consumption, and one incumbent advance. Immutable pins recover the assessment-to-promotion-to-resolution gaps.
 - **C21** — Recorded external responses survive reopening and preserve reported usage. The greedy driver recovers lost command replies at proposal, admission, observation, pin, assessment, commit, and resolution boundaries. Provider response loss before durable recording remains separate.
 - **C22** — Seed changes between declared replicates. Pending end-to-end evidence.
@@ -111,5 +111,5 @@ transport, process, or provider behavior.
 - **C38** — Corrections preserve evidence and suspend affected selection. Explicit abandonment of a selected trial records fresh closed evidence or verified pinned-comparator corrections, preserves original pins/metrics, and releases only the policy slot.
 - **C39** — Events arrive while a client recovers from a cursor gap. Pending end-to-end evidence.
 - **C40** — Retained artifacts outlive a completed job. Pending end-to-end evidence.
-- **C41** — A child budget settles after repeated notifications. Pending end-to-end evidence.
+- **C41** — Exact completion replay and repeated explicit settlement with new delivery keys through a reopened runtime return one immutable receipt without changing ancestor consumption or release again. Local CPU and independent-connection proof; provider delivery remains separate.
 - **C42** — Python and another implementation hash edge-case fixtures. Pending end-to-end evidence.

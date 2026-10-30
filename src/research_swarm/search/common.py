@@ -300,6 +300,10 @@ def proposal_allowance(snapshot: SearchSnapshot, pending_count: int = 0) -> Sear
     if trial_count + pending_count >= campaign.contract.stopping.max_trials:
         return SearchWait(state="budget_exhausted", reason="Campaign trial limit is reached")
     budgets = {item["dimension"]: item for item in snapshot.context["budget"]}
+    if "trial_admissions" in budgets and (
+        Decimal(budgets["trial_admissions"]["available"]) < pending_count + 1
+    ):
+        return SearchWait(state="budget_exhausted", reason="No funded trial allowance remains")
     if "proposal_requests" not in budgets or Decimal(budgets["proposal_requests"]["available"]) < 1:
         return SearchWait(
             state="budget_exhausted", reason="No declared proposal-request allowance remains"
