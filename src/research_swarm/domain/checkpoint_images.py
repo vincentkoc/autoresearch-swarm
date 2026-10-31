@@ -6,11 +6,11 @@ from typing import Annotated, Literal, get_args
 from pydantic import Field, StrictInt, StrictStr, field_validator, model_validator
 
 from research_swarm.domain.artifacts import StoredBlob
-from research_swarm.domain.assignments import SignatureHex
+from research_swarm.domain.assignments import PublicKeyHex, SignatureHex
 from research_swarm.domain.backup import BackupCustodyPin, WorkspaceSeal
 from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes, record_digest
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
-from research_swarm.domain.types import ID, Digest, Record, VersionedRecord
+from research_swarm.domain.types import ID, Digest, Name, Record, VersionedRecord
 
 MAX_CHUNK_BYTES = 1024 * 1024
 MAX_MANIFEST_BYTES = 1024 * 1024
@@ -158,3 +158,17 @@ class LogicalCheckpointManifest(VersionedRecord):
 class SignedLogicalCheckpoint(VersionedRecord):
     manifest: LogicalCheckpointManifest
     signature: SignatureHex
+
+
+class LogicalImportIntent(VersionedRecord):
+    restore_id: ID
+    manifest_digest: Digest
+    target_backend: Literal["cloudflare-do"] = "cloudflare-do"
+    target_location: Name
+    target_deployment_digest: Digest
+    target_public_key: PublicKeyHex
+    operator_id: ID
+
+    @property
+    def digest(self) -> str:
+        return record_digest("research.logical-import-intent.v1", self.model_dump(mode="json"))

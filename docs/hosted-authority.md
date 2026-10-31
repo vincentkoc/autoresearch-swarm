@@ -1722,8 +1722,12 @@ before table inspection, including the protected KV and alarm state described in
 and [workerd's metadata implementation](https://github.com/cloudflare/workerd/blob/main/src/workerd/util/sqlite-metadata.h).
 It checks metadata layouts, schema version and the complete provisioning seal in
 the caller's SQL snapshot. Native tests cover drift and retained revocations; the
-workerd storage probe now exercises the exact bounded PRAGMA queries. Its new
-runtime receipt remains pending.
+workerd storage probe exercises the exact bounded PRAGMA queries. That extension
+passed 19 actual workerd tests in 368.69 seconds at
+`27895cdaa275063ff78d77a586a258b2adc6afe0` in
+[qualification 41213290280](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41213290280).
+Linux passed 772 native tests in 322.55 seconds and macOS passed 772 in 378.79
+seconds. This receipt predates capture, fingerprint and import runtime probes.
 
 The internal `checkpoint_capture.capture_checkpoint()` source port captures a
 complete image in one consistent `StateStore.read()` callback. It authenticates
@@ -1787,8 +1791,8 @@ execution authority. Tests retain the existing native restore scenarios and prov
 that an interrupted outer transaction rolls back both staged rows and restoration.
 
 This internal primitive does not authorize source bytes or a target. Hosted logical
-image verification, inactive import, original-source election, R2 recovery and
-fenced activation still need their own implementation and provider qualification.
+image import, original-source election, R2 recovery and fenced activation have
+separate ownership and provider qualification boundaries.
 
 `checkpoints.fingerprint.fingerprint_state()` supplies a separate inactive replay
 primitive. It validates portable schemas, preflights counts/types/lengths, then
@@ -1813,6 +1817,62 @@ Native tests pin a golden digest, modify evidence in every portable table, test
 addition/deletion and page independence, and cover bounded recovery headroom. The
 workerd capture probe also checks unchanged and changed fingerprints; its extended
 runtime receipt remains pending.
+
+## Private logical inactive import
+
+`checkpoint_import.import_checkpoint()` is an internal source-byte ingestion port.
+It requires the protected target bootstrap credential and checks its digest against
+the fixed target manifest before SQL access. The immutable `LogicalImportIntent`
+binds source manifest digest, restore UUID, actual target backend/location, target
+deployment digest, restoring operator and target custody public key. The caller
+holds the target private key separately; its possession is checked before import.
+The source custody key cannot be reused as the target key. The owning integration
+must generate and protect a fresh key for each target.
+
+The target must have a different physical authority and activation, the same
+workspace/controller, and the next control epoch. This initial profile requires
+the target provisioning operator to match the image operator. Source authority
+and custody expectations arrive from the trusted caller, separately from the
+signed envelope. The entrypoint verifies the envelope and every chunk itself;
+passing a caller-constructed verification object is insufficient.
+
+Before copying, the serialized write checks that every portable table is empty
+and that the complete application-table roster contains only the research schema
+and the initialized portable tables. Credential schema creation, when needed,
+is part of the transaction. Existing deployment/provisioning metadata, foreign
+tables and application triggers refuse. Explicit fixed-column inserts preserve
+raw values; there is no replacement, credential reinstallation or normalization.
+After insertion, schema/FK checks, scalar profile preflight, exact row counts and
+strict source-cut inspection must agree with the signed manifest. The imported
+provider must retain its source authority. No target witness is acquired here.
+
+The same write runs the shared inactive transformation, checks its receipt and
+phase, and saves the original intent, receipt and full portable-state fingerprint
+in target-owned `hosted_checkpoint_import` metadata. Source rows, worker copies,
+epoch change, events, outbox and this metadata commit together. An interrupted
+insert, transform or fingerprint leaves the target unchanged. The source's
+credential revocations, historical acknowledgments, budgets and binary recovery
+items remain exact; source workers and native process custody are untouched.
+
+An exact retry reauthenticates target bootstrap, reverifies source bytes and pins,
+then checks the target roster/schema, exact intent, complete fingerprint, receipt,
+epoch and inactive gate in one serialized snapshot. It returns the original
+receipt without rerunning the transformation. Changed, added or missing rows,
+extra deployment metadata and different target identities refuse. Later legitimate
+recovery transitions require a separate historical receipt lookup; they must not
+refresh this fingerprint to claim the original import still matches.
+
+This port has native SQLite transaction qualification only. Tests cover rollback
+at all three mutation phases, independent-connection races, invalid signed cuts,
+changes in all twelve tables, changed bootstrap pairings, exact worker archival
+and source preservation. Actual workerd import qualification and its operator
+transport are still required. No target R2 bytes are fetched or declared available.
+Imported artifact rows are historical catalog evidence; byte restoration and
+verification must precede activation. The target has no completed provisioning or
+authority configuration and cannot open through the ordinary production router.
+Original-source election, recovery reconciliation, credential compatibility and
+activation remain mandatory. Re-exporting a subsequently recovered authority will
+also require explicit admission of its recovery metadata and custody history.
 
 ## Required implementation slices
 

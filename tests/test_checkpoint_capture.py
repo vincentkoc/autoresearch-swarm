@@ -9,6 +9,7 @@ from adapters.cloudflare.checkpoint_capture import capture_checkpoint
 from research_swarm.checkpoints.capture import CaptureLimits, capture_rows, preflight_rows
 from research_swarm.checkpoints.image_format import LAYOUT, row_values, sign_manifest, verify_image
 from research_swarm.control.backup import BackupControl
+from research_swarm.control.worker_records import WorkerData
 from research_swarm.crypto import public_key
 from research_swarm.domain.backup import BackupCustodyPin, RegisterBackupCustody, SealWorkspace
 from research_swarm.domain.canonical import content_digest, strict_json_loads
@@ -16,7 +17,8 @@ from research_swarm.domain.checkpoint_images import LogicalChunk
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import new_id
-from research_swarm.state.database import Database, encode
+from research_swarm.domain.workers import EngineCapabilities, WorkerBinding
+from research_swarm.state.database import Database, Transaction, encode
 from research_swarm.state.schema_contracts import quoted
 from tests.test_checkpoint_schema import source as source
 from tests.test_cloudflare_deployment import deployment as deployment
@@ -27,7 +29,7 @@ RAW = ' { "x":1, "x":2, "name":"e\u0301", "nul":"\\u0000" }\n'
 
 
 @pytest.fixture
-async def sealed(source):
+async def sealed(source, request):
     e = source
     authority = e.manifest.configuration.authority
     principal = e.manifest.credentials[0].principal
@@ -35,6 +37,33 @@ async def sealed(source):
     e.backup_id, e.snapshot_id = new_id(), new_id()
 
     def evidence(sql):
+        if getattr(request, "param", None) == "worker":
+            e.worker = WorkerData(
+                binding=WorkerBinding(
+                    workspace_id=authority.workspace_id,
+                    controller_id=authority.controller_id,
+                    control_epoch=authority.control_epoch,
+                    worker_id=new_id(),
+                    worker_session_id=new_id(),
+                ),
+                principal_id=principal.id,
+                name="Synthetic retained worker",
+                max_concurrency=1,
+                profiles=(
+                    EngineCapabilities(
+                        name="python-cpu",
+                        backend="python",
+                        cpu_slots=1,
+                        execution_fingerprint=content_digest(b"synthetic-worker"),
+                    ),
+                ),
+            )
+            Transaction(sql, e.context).insert(
+                "worker",
+                e.worker.binding.worker_id,
+                e.worker.model_dump(mode="json"),
+                state="active",
+            )
         for key in ["\ue000", "\U00010000", *(f"command-{i:03}" for i in range(250))]:
             sql.execute(
                 "INSERT INTO commands VALUES (?,?,?,?,?,?,?)",

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add private atomic logical import into an inactive target. Bind protected
+  bootstrap, physical deployment, source signature/custody and target key; preserve
+  all portable rows, fence copied workers and commit the receipt with a complete
+  state fingerprint. Exact retries reverify the inactive state. Import does not
+  provision a running target, copy artifact bytes, elect it or authorize activation.
+
 - Add a bounded streaming fingerprint of every portable state table for inactive
   restore verification. Bind schema/layout, table counts and length-framed typed
   rows; preserve the capture paginator's binary order and allow bounded headroom
