@@ -98,6 +98,57 @@ def test_worker_object_limit_rejects_without_upload_or_quota_mutation(pipeline: 
     assert upload_state(client, accepted)["state"] == "pending"
 
 
+@pytest.mark.parametrize("mismatch", ["reference", "generation"])
+def test_finalization_rejects_a_verified_blob_from_another_upload(
+    pipeline: Pipeline, mismatch: str
+) -> None:
+    client, _, credential, target = output_client(pipeline)
+    request = begin(client, target, b"ordinary evidence")
+    client.transport.worker_append(request, 0, b"ordinary evidence")
+    runtime = pipeline.runtime
+    spec = UploadSpec.model_validate(upload_state(client, request)["data"])
+    blob = runtime.artifacts.store.finalize(spec)
+    foreign = (
+        blob.model_copy(update={"generation": new_id()})
+        if mismatch == "generation"
+        else (
+            blob.model_copy(
+                update={"reference": blob.reference.model_copy(update={"size_bytes": 1})}
+            )
+        )
+    )
+    context = CommandContext(principal=credential.principal, idempotency_key="foreign-blob")
+    before = runtime.database.store.read(
+        lambda sql: sql.execute(
+            "SELECT COUNT(*) FROM records WHERE kind IN ('artifact','artifact_reference')"
+        ).one()[0]
+    )
+    with pytest.raises(ResearchError) as refused:
+        runtime.database.execute(
+            context,
+            "worker.finalize_upload",
+            request.model_dump(mode="json"),
+            "worker.outputs",
+            lambda transaction: runtime.service.worker_outputs._finalize_in(
+                transaction,
+                request,
+                foreign,
+            ),
+        )
+    assert refused.value.code == ErrorCode.ARTIFACT_UNVERIFIED
+    assert upload_state(client, request)["state"] == "pending"
+    assert (
+        runtime.database.store.read(
+            lambda sql: sql.execute(
+                "SELECT COUNT(*) FROM records WHERE kind IN ('artifact','artifact_reference')"
+            ).one()[0]
+        )
+        == before
+    )
+    accepted = client.command("worker.finalize_upload", request, idempotency_key="correct-blob")
+    assert accepted["result"]["artifact"] == blob.reference.model_dump(mode="json")
+
+
 def test_restricted_http_worker_executes_and_retains_attempt_evidence(
     pipeline: Pipeline,
     tmp_path: Path,

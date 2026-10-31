@@ -617,8 +617,19 @@ read access. Faults cover invalid ownership, settled grants, missing admission,
 policy mismatch, expiry during a held read, corrupted/missing/retired/oversized
 objects, catalog change after verification, revocation, source epoch change and
 cancellation. A queued revocation orders after the completed read, then prevents
-the next request. These are local adapter tests, not workerd or cloud deployment
-qualification. Outputs, result publication and evaluator completion remain open.
+the next request. The actual native-source workerd/R2 fixture subsequently passed
+at `dceafc3` in [CI 41198736103](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41198736103):
+nine workerd tests passed in 219.17 seconds, including scoped source and named-input
+downloads and restart replay. Targeted native tests passed on Linux (351), macOS
+(351) and Windows (347, with four skips). This is local runtime qualification;
+cloud deployment, outputs, result publication and evaluator completion remain open.
+
+Worker-output preparation now shares the native begin and publication transaction
+callbacks. Publication checks the exact upload reference and generation before
+retaining evidence and writing its scoped provenance. Recovery publication also
+requires a bounded parsed journal and verifies its original grant in the final
+transaction. Byte verification and journal parsing remain internal preflight
+responsibilities; these helpers alone do not enable a hosted output route.
 
 ### Signed clock query boundary
 

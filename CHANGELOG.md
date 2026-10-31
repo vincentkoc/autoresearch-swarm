@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Share worker-upload begin and publication transactions across byte adapters.
+  Bind publication to the exact upload reference/generation, preserve scoped
+  provenance and require checked recovery journals before pending publication.
+
 - Write CLI JSON responses and errors as canonical UTF-8 bytes. Redirected Windows
   output no longer turns a successfully replayed report containing Unicode into
   an encoding failure; text-only in-process capture remains supported.

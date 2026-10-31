@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import model_validator
 
 from research_swarm.control.recovery_operations import (
+    MAX_JOURNAL_BYTES,
     recovery_context,
     require_journal_upload,
     require_raw_operation,
@@ -205,16 +206,9 @@ class WorkerOutputs:
     ) -> JournalEntry | None:
         if context._recovery_operation is None:
             return None
-        from research_swarm.workers.journal_records import JournalEntry
-
         with self.artifacts.store.reader(context.principal.workspace_id, blob) as stream:
-            raw = stream.read(1024 * 1024 + 1)
-        try:
-            journal = JournalEntry.model_validate(strict_json_loads(raw))
-        except ValueError as error:
-            raise ResearchError(
-                ErrorCode.ARTIFACT_UNVERIFIED, "Recovery journal is invalid"
-            ) from error
+            raw = stream.read(MAX_JOURNAL_BYTES + 1)
+        journal = self._parse_journal(raw)
 
         self.database.store.read(
             lambda connection: self._verify_journal_in(
@@ -222,6 +216,20 @@ class WorkerOutputs:
             )
         )
         return journal
+
+    @staticmethod
+    def _parse_journal(raw: bytes) -> JournalEntry:
+        """Decode bounded immutable bytes; native grant verification is separate."""
+        from research_swarm.workers.journal_records import JournalEntry
+
+        try:
+            if len(raw) > MAX_JOURNAL_BYTES:
+                raise ValueError("Recovery journal exceeds its byte limit")
+            return JournalEntry.model_validate(strict_json_loads(raw))
+        except ValueError as error:
+            raise ResearchError(
+                ErrorCode.ARTIFACT_UNVERIFIED, "Recovery journal is invalid"
+            ) from error
 
     def _verify_journal_in(
         self,
@@ -287,40 +295,47 @@ class WorkerOutputs:
             context, request.role, request.output_name, request.content.size_bytes
         )
 
-        def begin(transaction: Transaction) -> JsonObject:
-            worker, attempt = historical_attempt_owner(
-                transaction, request.worker_id, request.session_id, request.attempt_id
-            )
-            require_pending(attempt)
-            assert attempt.signed_assignment is not None
-            stage = next(
-                stage
-                for stage in attempt.signed_assignment.payload.spec.stages
-                if stage.id == attempt.dispatch.stage_id
-            )
-            if request.role == "output" and request.output_name not in stage.output_names:
-                raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Output name is not declared")
-            upload = self.artifacts.create_upload_in(transaction, request.content)
-            receipt = transaction.insert(
-                "worker_upload",
-                upload["id"],
-                WorkerUploadData(
-                    binding=worker.binding,
-                    attempt_id=request.attempt_id,
-                    upload_id=upload["id"],
-                    role=request.role,
-                    output_name=request.output_name,
-                ).model_dump(mode="json"),
-                state="pending",
-                campaign_id=attempt.dispatch.campaign_id,
-                parent_id=request.attempt_id,
-            )
-            transaction.event("worker.upload_started", receipt, {"upload_id": upload["id"]})
-            return upload
-
         return self.database.execute(
-            context, "worker.begin_upload", request.model_dump(mode="json"), "worker.outputs", begin
+            context,
+            "worker.begin_upload",
+            request.model_dump(mode="json"),
+            "worker.outputs",
+            lambda transaction: self._begin_in(transaction, request),
         )
+
+    def _begin_in(self, transaction: Transaction, request: BeginWorkerUpload) -> JsonObject:
+        require_journal_upload(
+            transaction.context, request.role, request.output_name, request.content.size_bytes
+        )
+        worker, attempt = historical_attempt_owner(
+            transaction, request.worker_id, request.session_id, request.attempt_id
+        )
+        require_pending(attempt)
+        assert attempt.signed_assignment is not None
+        stage = next(
+            stage
+            for stage in attempt.signed_assignment.payload.spec.stages
+            if stage.id == attempt.dispatch.stage_id
+        )
+        if request.role == "output" and request.output_name not in stage.output_names:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Output name is not declared")
+        upload = self.artifacts.create_upload_in(transaction, request.content)
+        receipt = transaction.insert(
+            "worker_upload",
+            upload["id"],
+            WorkerUploadData(
+                binding=worker.binding,
+                attempt_id=request.attempt_id,
+                upload_id=upload["id"],
+                role=request.role,
+                output_name=request.output_name,
+            ).model_dump(mode="json"),
+            state="pending",
+            campaign_id=attempt.dispatch.campaign_id,
+            parent_id=request.attempt_id,
+        )
+        transaction.event("worker.upload_started", receipt, {"upload_id": upload["id"]})
+        return upload
 
     def status(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
         context.principal.require("worker.outputs")
@@ -422,45 +437,12 @@ class WorkerOutputs:
             self._validate_journal(context, request, blob) if row["state"] == "pending" else None
         )
 
-        def finalize(transaction: Transaction) -> JsonObject:
-            if journal is not None:
-                self._verify_journal_in(transaction, request, blob, journal)
-            receipt, data, _, _, attempt = owned_upload(transaction, request)
-            if data.artifact is None:
-                require_pending(attempt)
-            result = self.artifacts.publish_upload_in(transaction, upload.id, blob)
-            artifact = ArtifactRecord.model_validate(result["data"])
-            if data.artifact is not None and data.artifact != artifact.reference:
-                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Upload provenance changed")
-            if data.artifact is None:
-                retained = ArtifactCatalog.retain(
-                    transaction,
-                    ArtifactRetention(
-                        artifact_id=artifact.reference.id,
-                        owner_kind="worker_upload",
-                        owner_id=upload.id,
-                        purpose="unpublished_evidence",
-                    ),
-                )
-                receipt = transaction.update(
-                    "worker_upload",
-                    upload.id,
-                    expected_revision=receipt["revision"],
-                    state="finalized",
-                    data=data.model_copy(
-                        update={
-                            "artifact": artifact.reference,
-                            "retention_id": retained["id"],
-                        }
-                    ).model_dump(mode="json"),
-                )
-                transaction.event(
-                    "worker.upload_finalized", receipt, {"artifact_id": artifact.reference.id}
-                )
-            return {"upload_id": upload.id, "artifact": artifact.reference.model_dump(mode="json")}
-
         response = self.database.execute(
-            context, "worker.finalize_upload", payload, "worker.outputs", finalize
+            context,
+            "worker.finalize_upload",
+            payload,
+            "worker.outputs",
+            lambda transaction: self._finalize_in(transaction, request, blob, journal=journal),
         )
         # Publication is already committed. Cleanup remains quota-accounted and
         # explicitly recoverable; its failure cannot replace the accepted acknowledgment.
@@ -469,6 +451,59 @@ class WorkerOutputs:
         except Exception:
             logger.warning("Upload cleanup remains pending: %s", request.upload_id, exc_info=True)
         return response
+
+    def _finalize_in(
+        self,
+        transaction: Transaction,
+        request: WorkerUploadTarget,
+        blob: StoredBlob,
+        *,
+        journal: JournalEntry | None = None,
+    ) -> JsonObject:
+        """Commit verified bytes and provenance together; callers own byte preflight."""
+        receipt, data, row, upload, attempt = owned_upload(transaction, request)
+        if blob != StoredBlob(reference=upload.reference(), generation=upload.id):
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Verified upload generation differs")
+        if (
+            transaction.context._recovery_operation is not None
+            and row["state"] == "pending"
+            and journal is None
+        ):
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Recovery journal proof is absent")
+        if journal is not None:
+            self._verify_journal_in(transaction, request, blob, journal)
+        if data.artifact is None:
+            require_pending(attempt)
+        result = self.artifacts.publish_upload_in(transaction, upload.id, blob)
+        artifact = ArtifactRecord.model_validate(result["data"])
+        if data.artifact is not None and data.artifact != artifact.reference:
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Upload provenance changed")
+        if data.artifact is None:
+            retained = ArtifactCatalog.retain(
+                transaction,
+                ArtifactRetention(
+                    artifact_id=artifact.reference.id,
+                    owner_kind="worker_upload",
+                    owner_id=upload.id,
+                    purpose="unpublished_evidence",
+                ),
+            )
+            receipt = transaction.update(
+                "worker_upload",
+                upload.id,
+                expected_revision=receipt["revision"],
+                state="finalized",
+                data=data.model_copy(
+                    update={
+                        "artifact": artifact.reference,
+                        "retention_id": retained["id"],
+                    }
+                ).model_dump(mode="json"),
+            )
+            transaction.event(
+                "worker.upload_finalized", receipt, {"artifact_id": artifact.reference.id}
+            )
+        return {"upload_id": upload.id, "artifact": artifact.reference.model_dump(mode="json")}
 
     def cleanup(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
         request = WorkerUploadTarget.model_validate(request)

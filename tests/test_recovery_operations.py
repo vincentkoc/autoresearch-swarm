@@ -223,6 +223,27 @@ def test_partial_transfer_survives_restart_and_bad_journal_can_be_aborted(recove
     )
 
 
+def test_pending_recovery_publication_cannot_omit_prepared_journal(recovery, monkeypatch):
+    entry = recovery.native.journal.get(recovery.target.attempt_id)
+    content = canonical_bytes(entry.model_dump(mode="json"))
+    target = begin(recovery.worker, recovery.target, content)
+    recovery.worker.transport.worker_append(target, 0, content)
+    with monkeypatch.context() as missing:
+        missing.setattr(
+            recovery.runtime.service.worker_outputs, "_validate_journal", lambda *args: None
+        )
+        with pytest.raises(ResearchError, match="journal proof is absent"):
+            recovery.worker.command(
+                "worker.finalize_upload", target, idempotency_key="missing-proof"
+            )
+    assert recovery.operator.get("worker_upload", target.upload_id)["state"] == "pending"
+    accepted = recovery.worker.command(
+        "worker.finalize_upload", target, idempotency_key="checked-proof"
+    )
+    assert accepted["result"]["upload_id"] == target.upload_id
+    assert recovery.operator.get("worker_upload", target.upload_id)["state"] == "finalized"
+
+
 @pytest.mark.parametrize(
     "role,name,size",
     [("report", None, 5), ("output", "checkpoint", 5), ("journal", None, 1024 * 1024 + 1)],
