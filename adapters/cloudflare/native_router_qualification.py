@@ -6,7 +6,12 @@ from durable_sql import DurableObjectStore
 from exclusive import exclusive
 from pydantic import Field, TypeAdapter
 from r2_binding import R2BindingTransport
-from research_router import ExistingResearchRouter, HostedConfiguration, HostedResearchConfiguration
+from research_router import (
+    ExistingResearchRouter,
+    HostedConfiguration,
+    HostedInputConfiguration,
+    HostedResearchConfiguration,
+)
 from router_qualification import DISPATCH_KEY, NAMESPACE, configuration, prepare_provision
 from witness_binding import WitnessHTTPTransport
 from witness_qualification import SEED
@@ -26,6 +31,7 @@ class NativeProbe(VersionedRecord):
     source: WitnessSource | None = None
     origin: str | None = Field(default=None, max_length=256)
     research_profile: bool = Field(default=False, strict=True)
+    input_profile: bool = Field(default=False, strict=True)
 
 
 class NativeFixtureR2(R2BindingTransport):
@@ -54,7 +60,9 @@ async def open_native_router(
 
     async def load():
         def read(sql):
-            config = TypeAdapter(HostedConfiguration | HostedResearchConfiguration).validate_json(
+            config = TypeAdapter(
+                HostedConfiguration | HostedResearchConfiguration | HostedInputConfiguration
+            ).validate_json(
                 sql.execute("SELECT payload FROM hosted_authority_config WHERE singleton=1").one()[
                     0
                 ]
@@ -99,7 +107,11 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
             if probe.source is None:
                 raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Native source is required")
             config, principals = configuration(
-                object_id, crypto, source=probe.source, research_profile=probe.research_profile
+                object_id,
+                crypto,
+                source=probe.source,
+                research_profile=probe.research_profile,
+                input_profile=probe.input_profile,
             )
             if probe.action == "describe":
                 return config.model_dump(mode="json")

@@ -12,6 +12,7 @@ from research_router import (
     ExistingResearchRouter,
     HostedArtifactConfiguration,
     HostedConfiguration,
+    HostedInputConfiguration,
     HostedResearchConfiguration,
     dispatch_key_digest,
 )
@@ -68,8 +69,15 @@ class UnserializedFixture:
 
 
 def configuration(
-    object_id, crypto, *, artifact_profile=False, research_profile=False, source=None
+    object_id,
+    crypto,
+    *,
+    artifact_profile=False,
+    research_profile=False,
+    input_profile=False,
+    source=None,
 ):
+    research_profile = research_profile or input_profile
     public = public_key(crypto, SEED).hex()
     source = source or WitnessSource(
         id=identifier("source"),
@@ -88,7 +96,8 @@ def configuration(
             id=identifier("router-worker-principal"),
             workspace_id=identifier("router-workspace"),
             scopes={"worker.query", "worker.publish"}
-            | ({"worker.claim"} if research_profile else set()),
+            | ({"worker.claim"} if research_profile else set())
+            | ({"worker.inputs"} if input_profile else set()),
         ),
     )
     config = HostedConfiguration(
@@ -116,7 +125,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedResearchConfiguration if research_profile else HostedArtifactConfiguration
+            HostedInputConfiguration
+            if input_profile
+            else (HostedResearchConfiguration if research_profile else HostedArtifactConfiguration)
         )
         config = profile_type(
             **config.model_dump(exclude={"profile"}),

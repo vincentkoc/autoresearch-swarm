@@ -578,7 +578,14 @@ profile discovery, independent signature/time binding verification, exact replay
 with unavailable storage and witness, protected-file refusal, corrupted source,
 catalog/credential changes, cancellation, competing claims and current read
 permission on replay. They use SQLite with an asynchronous byte fixture and do
-not establish actual workerd qualification for this new profile.
+not establish actual workerd qualification by themselves. The separate real native
+source/R2/DO admission test passed at `36f19cb` in
+[qualification 41198210270](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41198210270):
+eight workerd tests passed in 194.39 seconds. The unchanged SDK registered ordinary
+source, submitted a trial and obtained a scoped signed claim; lost acknowledgments
+replayed during outages and after a workerd restart. The worker independently
+validated native deadline caps before restart. Replay does not renew those caps
+or promise that the original grant remains launchable after a long restart.
 
 ### Buffered scoped worker inputs
 

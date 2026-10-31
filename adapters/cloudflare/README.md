@@ -241,7 +241,18 @@ headers cannot upgrade an existing profile. The source endpoint and R2 binding
 come from explicit fixture provisioning. Local fault headers, public fixture
 credentials and setup routes are not production interfaces. This probe establishes
 no worker execution, output publication, evaluator completion or cloud deployment.
-Its runtime result must be recorded separately after qualification.
+The admission profile passed at `36f19cb` in
+[qualification 41198210270](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41198210270):
+eight workerd tests passed in 194.39 seconds. Native qualification passed 329 tests
+on Linux/macOS and 325 with four skips on Windows. These are targeted results,
+not a full-suite or production-deployment claim.
+
+The same test now has a separately provisioned `research-inputs-witness-v1` case.
+It includes a named campaign input and uses only the scoped worker routes to read
+that input and the assigned source from actual R2. Global artifact reads remain
+denied, and successful buffered reads create no command acknowledgment or event.
+The input case requires its own passing runtime receipt; the admission receipt
+above predates this extension.
 
 ## Agent API facade
 

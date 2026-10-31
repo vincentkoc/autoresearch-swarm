@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the native-source workerd qualification with separately provisioned
+  scoped input transfers for ordinary source and a named campaign artifact.
+  Record the passing admission-only runtime receipt without widening its claim.
+
 - Add a separately provisioned hosted input profile. Workers download only assigned
   source and named inputs using their scoped SDK routes; complete R2 verification
   precedes fresh expiry/epoch authorization, without global read access or pins.

@@ -7,6 +7,7 @@ import pytest
 
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.control.queries import RecordQuery
+from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.workers import AttemptData, WorkerData
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
@@ -22,25 +23,36 @@ from tests.test_manifest import project as project
 from tests.test_time_witnesses import source
 
 
-def client_at(url, token):
+def client_at(url, token, input_profile=False):
     client = connect(url, token)
     client.transport.http.headers["x-fixture-research-profile"] = "true"
+    if input_profile:
+        client.transport.http.headers["x-fixture-input-profile"] = "true"
     return client
 
 
-def inspect(url):
-    return control(url, "inspect", research_profile=True)
+def inspect(url, input_profile=False):
+    return control(url, "inspect", research_profile=True, input_profile=input_profile)
 
 
-def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(tmp_path, project):
+@pytest.mark.parametrize("input_profile", [False, True])
+def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(
+    tmp_path, project, input_profile
+):
     build_current_sources()
     descriptor = source().model_copy(update={"native_profile": native_clock().profile})
     with ExitStack() as lifetime:
         with server(tmp_path, sequence=1) as url:
             config = control(
-                url, "describe", source=descriptor.model_dump(mode="json"), research_profile=True
+                url,
+                "describe",
+                source=descriptor.model_dump(mode="json"),
+                research_profile=True,
+                input_profile=input_profile,
             )
-            assert config["profile"] == "research-admission-witness-v1"
+            assert config["profile"] == (
+                "research-inputs-witness-v1" if input_profile else "research-admission-witness-v1"
+            )
             endpoint = Endpoint(
                 WitnessAuthorityScope.model_validate(config["authority"]), descriptor
             )
@@ -53,23 +65,36 @@ def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(tmp_pa
                 source=descriptor.model_dump(mode="json"),
                 origin=origin,
                 research_profile=True,
+                input_profile=input_profile,
             )
             assert "error" not in setup, setup
             with (
-                client_at(url, setup["operator_token"]) as operator,
-                client_at(url, setup["worker_token"]) as worker_client,
+                client_at(url, setup["operator_token"], input_profile) as operator,
+                client_at(url, setup["worker_token"], input_profile) as worker_client,
             ):
+                inputs = {}
+                if input_profile:
+                    manifest = project / "research.toml"
+                    manifest.write_text(
+                        manifest.read_text().replace(
+                            'kind = "train"', 'kind = "train"\nrequired_artifacts = ["training"]'
+                        )
+                    )
+                    data_path = tmp_path / "training.bin"
+                    data_path.write_bytes(b"public synthetic input\x00\xff")
+                    data = operator.upload_file(data_path, idempotency_key="training-input")
+                    inputs = {"training": data.model_dump(mode="json")}
                 # Lose the first trial acknowledgment after the actual shared commit.
                 operator.transport.http.headers["x-fixture-drop-command"] = "trial.submit"
                 with pytest.raises(ResearchError) as lost:
-                    admit(operator, project)
+                    admit(operator, project, input_artifacts=inputs)
                 assert lost.value.code == ErrorCode.DELIVERY_UNCERTAIN
                 del operator.transport.http.headers["x-fixture-drop-command"]
-                before, calls = inspect(url), len(endpoint.requests)
+                before, calls = inspect(url, input_profile), len(endpoint.requests)
                 endpoint.mode = "unavailable"
                 operator.transport.http.headers["x-fixture-r2-fault"] = "unavailable"
-                admitted = admit(operator, project)
-                assert inspect(url) == before and len(endpoint.requests) == calls
+                admitted = admit(operator, project, input_artifacts=inputs)
+                assert inspect(url, input_profile) == before and len(endpoint.requests) == calls
                 assert len(operator.list(RecordQuery(kind="project"))["items"]) == 1
                 assert len(operator.list(RecordQuery(kind="trial"))["items"]) == 1
                 del operator.transport.http.headers["x-fixture-r2-fault"]
@@ -92,7 +117,7 @@ def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(tmp_pa
                     "session_id": worker.binding.worker_session_id,
                     "job_id": admitted.job["id"],
                 }
-                before, calls = inspect(url), len(endpoint.requests)
+                before, calls = inspect(url, input_profile), len(endpoint.requests)
                 endpoint.mode = "unavailable"
                 worker_client.transport.http.headers["x-fixture-r2-fault"] = "unavailable"
                 claimed = worker_client.command(
@@ -101,7 +126,7 @@ def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(tmp_pa
                     idempotency_key="claim",
                     expected_revision=admitted.job["revision"],
                 )
-                assert inspect(url) == before and len(endpoint.requests) == calls
+                assert inspect(url, input_profile) == before and len(endpoint.requests) == calls
                 with pytest.raises(ResearchError) as scoped:
                     worker_client.get("job", admitted.job["id"])
                 assert scoped.value.code == ErrorCode.AUTHORIZATION_DENIED
@@ -129,15 +154,37 @@ def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(tmp_pa
                     attempt.signed_assignment.payload.source_tree_digest
                     == admitted.revision["data"]["resolved"]["source"]["tree_digest"]
                 )
+                if input_profile:
+                    del worker_client.transport.http.headers["x-fixture-r2-fault"]
+                    target = WorkerArtifactRead(
+                        worker_id=worker.binding.worker_id,
+                        session_id=worker.binding.worker_session_id,
+                        attempt_id=claimed["result"]["id"],
+                        artifact_id=attempt.source_artifact.id,
+                    )
+                    before_input = inspect(url, input_profile)
+                    for request, filename in (
+                        (target, "source"),
+                        (target.model_copy(update={"artifact_id": data.id}), "training"),
+                    ):
+                        reference = worker_client.worker_input(request)
+                        destination = tmp_path / (filename + ".download")
+                        assert worker_client.worker_download(request, destination) == reference
+                        if filename == "training":
+                            assert destination.read_bytes() == b"public synthetic input\x00\xff"
+                    with pytest.raises(ResearchError) as forbidden:
+                        worker_client.download(data.id, tmp_path / "global.download")
+                    assert forbidden.value.code == ErrorCode.AUTHORIZATION_DENIED
+                    assert inspect(url, input_profile) == before_input
                 endpoint.mode = "unavailable"
                 calls = len(endpoint.requests)
-                before_restart = inspect(url)
+                before_restart = inspect(url, input_profile)
 
         # Preserve the native source origin while replacing the real workerd process.
         with (
             server(tmp_path, sequence=2) as url,
-            client_at(url, setup["operator_token"]) as operator,
-            client_at(url, setup["worker_token"]) as worker_client,
+            client_at(url, setup["operator_token"], input_profile) as operator,
+            client_at(url, setup["worker_token"], input_profile) as worker_client,
         ):
             operator.transport.http.headers["x-fixture-r2-fault"] = "unavailable"
             assert (
@@ -166,7 +213,7 @@ def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(tmp_pa
                 )
                 == claimed
             )
-            assert inspect(url) == before_restart and len(endpoint.requests) == calls
+            assert inspect(url, input_profile) == before_restart and len(endpoint.requests) == calls
             assert len(operator.list(RecordQuery(kind="attempt"))["items"]) == 1
             assert len(operator.list(RecordQuery(kind="acceptance_lease"))["items"]) == 1
 
@@ -178,7 +225,7 @@ def test_ordinary_project_claim_replay_and_native_time_binding_in_workerd(tmp_pa
                     idempotency_key="fresh-registration",
                 )
             assert unavailable.value.code == ErrorCode.TRANSPORT_UNAVAILABLE
-            assert inspect(url) == before_restart and len(endpoint.requests) == calls
+            assert inspect(url, input_profile) == before_restart and len(endpoint.requests) == calls
             del operator.transport.http.headers["x-fixture-r2-fault"]
             endpoint.mode = "normal"
 
