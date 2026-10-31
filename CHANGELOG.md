@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Require an explicit recovery verifier when binding a generic state adapter.
+  Verify admission against the same SQL snapshot before returning recovery
+  authority; asynchronous or value-returning plugins refuse. Native SQLite keeps
+  its existing proof checks, and copied records cannot enable hosted recovery.
+
 - Extend the three-Worker probe through completed-target requests and competing
   source elections. Lose both election replies, verify one winner, restart every
   Worker, and require exact retained proof bytes with both targets still inactive.

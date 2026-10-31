@@ -2040,6 +2040,17 @@ claim, changed physical destination, shared custody key or exhausted epoch refus
 These bounded records and pure verifiers supply no storage, election or activation
 authority. Hosted recovery admission remains separate implementation work.
 
+The shared database accepts an owner-supplied `RecoveryAdmissionVerifier` through
+`Database.from_store(..., recovery_verifier=...)`. It receives the current SQL
+snapshot, physical store identity, caller context, restoration receipt, admission
+and crypto provider. The synchronous hook may read that snapshot and verify
+signatures; it must not perform I/O, mutate state, sample clocks or start nested
+commands. Returning an awaitable or a value refuses capability creation.
+`Database(path)` installs the native SQLite verifier. A generic adapter defaults
+to no recovery verifier, even if its records contain a valid native admission.
+Runtime construction owns this capability; API callers and research project
+manifests cannot enable it. This port alone does not enable hosted recovery.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and

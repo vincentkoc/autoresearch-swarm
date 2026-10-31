@@ -1,6 +1,5 @@
 """Capture the elected target independently of any particular recovery operation."""
 
-from research_swarm.control.recovery_proofs import verify_admission
 from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.backup import RecoveryAdmission, RestoreReceipt
 from research_swarm.domain.canonical import record_digest
@@ -39,13 +38,15 @@ def recovery_authority(
         admitted = RecoveryAdmission.model_validate(
             transaction.get("recovery_admission", receipt.restore_id)["data"]
         )
+        database.verify_recovery_admission(
+            connection, context, receipt, admitted, crypto_provider=crypto_provider
+        )
         return gate["revision"], receipt, admitted
 
     snapshot = database.store.read(read)
     if snapshot is None:
         return None
     revision, receipt, admitted = snapshot
-    verify_admission(admitted, receipt, crypto_provider=crypto_provider)
     return RecoveryAuthority(
         authority=(database.authority_identity.backend, database.authority_identity.location),
         restore_id=receipt.restore_id,

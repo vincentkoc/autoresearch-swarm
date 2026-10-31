@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from research_swarm.crypto import Ed25519Provider, resolve_crypto
+from research_swarm.domain.backup import RecoveryAdmission, RestoreReceipt
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import Event
@@ -15,6 +17,10 @@ from research_swarm.domain.types import utc_now
 from research_swarm.state.boundaries import ExecutionBoundary, QueryOutcome, synchronous_value
 from research_swarm.state.events import event_page
 from research_swarm.state.execution import command_execution
+from research_swarm.state.recovery_verification import (
+    NativeRecoveryVerifier,
+    RecoveryAdmissionVerifier,
+)
 from research_swarm.state.sql import (
     IntegrityViolation,
     SqlSession,
@@ -341,17 +347,51 @@ class Database:
         self._native_store: SQLiteStore | None = native
         self.store: StateStore = native
         self._execution_boundary = execution_boundary
+        self._recovery_verifier: RecoveryAdmissionVerifier | None = NativeRecoveryVerifier()
 
     @classmethod
     def from_store(
-        cls, store: StateStore, *, execution_boundary: ExecutionBoundary | None = None
+        cls,
+        store: StateStore,
+        *,
+        execution_boundary: ExecutionBoundary | None = None,
+        recovery_verifier: RecoveryAdmissionVerifier | None = None,
     ) -> Database:
         """Bind the shared command kernel to an already initialized authority store."""
         instance = cls.__new__(cls)
         instance.store = store
         instance._native_store = None
         instance._execution_boundary = execution_boundary
+        instance._recovery_verifier = recovery_verifier
         return instance
+
+    def verify_recovery_admission(
+        self,
+        sql: SqlSession,
+        context: CommandContext,
+        receipt: RestoreReceipt,
+        admission: RecoveryAdmission,
+        *,
+        crypto_provider: Ed25519Provider | None = None,
+    ) -> None:
+        verifier = self._recovery_verifier
+        if verifier is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "State authority has no recovery verifier"
+            )
+
+        # Check plugin return values even when an implementation violates the protocol.
+        verify = cast(Callable[..., object], verifier.verify)
+        result = verify(
+            sql,
+            authority=self.authority_identity,
+            context=context,
+            receipt=receipt,
+            admission=admission,
+            crypto=resolve_crypto(crypto_provider),
+        )
+        if synchronous_value(result) is not None:
+            raise TypeError("Recovery verifiers must return None synchronously")
 
     @property
     def path(self) -> Path:
