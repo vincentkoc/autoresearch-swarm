@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a bounded hosted delivery facade with separate gateway and route
+  credentials. Reuse the existing exclusive authority gate, recheck current
+  credentials on replay, retain exact saved-work outcomes, and prevent request
+  clients from escaping their owner or leaking private failure details.
+
 - Add an async saved-work delivery kernel over a narrow get/command client
   protocol. Share binding checks, work identities, stable command keys and
   outcomes with native delivery, while keeping native startup and thread-custody

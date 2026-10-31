@@ -926,8 +926,8 @@ receipt and does not claim statistical confirmation or cloud deployment.
 At `956b079e4fe0dcd74d458d3713f1b613c0622de5`,
 [CI 41202953477](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41202953477)
 passed **14 actual workerd tests in 243.20 seconds**, including scientific
-closeout. Linux passed 447 tests in 210.76 seconds and macOS passed 447 in 199.15
-seconds; the Windows job was still running at this checkpoint. Saved-turn
+closeout. Linux passed 447 tests in 210.76 seconds, macOS passed 447 in 199.15
+seconds, and Windows passed 443 with four skips in 650.42 seconds. Saved-turn
 orchestration was added afterward and needs its own runtime receipt.
 
 ### Saved-turn delivery boundary
@@ -1030,6 +1030,34 @@ lost replies, duplicate execution, event readiness and fencing. They reject chan
 bindings and route actors, refuse timers and real transferred successor startup,
 and enforce the import boundary in a fresh interpreter. These tests do not qualify
 a DO delivery facade or a running Cloudflare Workflow.
+
+### Hosted delivery facade
+
+`HostedDelivery` maps the same bounded `/v1/delivery/bootstrap`, `inspect`,
+`execute` and `wait` HTTP protocol to the async kernel under the router's existing
+exclusive gate. It requires the orchestration profile. Trusted application
+configuration registers one exact binding and route-token map for each gateway
+principal; the request body cannot register credentials or choose another actor.
+The gateway requires `orchestration.deliver` and must differ from all route actors.
+Registration inputs are copied, and both gateway and route credentials resolve
+against current authority state on every request, including historical replay.
+Expiring credentials remain unavailable in this runtime.
+
+Request-local clients expose only the kernel's four record queries and two saved
+delivery commands. They call the internal guarded dispatcher without acquiring a
+second exclusive gate or inventing a witness. Each client checks its owning task
+and request lifetime, so detached or retained clients cannot use the private
+dispatch path. Unexpected failures and cancellation reach the gate before HTTP
+translation. Unknown completion returns retryable uncertainty; it cannot become
+a fabricated rejection or success. Requests and responses have a 16 KiB bound;
+errors contain codes and retryability, never exception text or route credentials.
+
+Native adapter tests cover copied registration, identity substitution, revocation,
+pending and ready event waits, concurrent exact replay after a lost response,
+cancellation, detached clients and malformed/oversized envelopes. The facade is
+not yet wired into the actual workerd entrypoint or a Workflow transport profile.
+In-memory registration is trusted application configuration, not durable
+registration or restart qualification.
 
 ### Signed clock query boundary
 
