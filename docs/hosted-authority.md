@@ -1097,6 +1097,15 @@ format check. The actual runtime probe remains pending.
 The same run passed 478 native adapter tests on Linux in 265.82 seconds and on
 macOS in 175.43 seconds; Windows subsequently passed too.
 
+At `89fbc065cb353706af9dac6f06ac8b46e3982297`,
+[CI 41206622520](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41206622520)
+passed 17 workerd tests in 518.94 seconds, including the two-process Workflow
+delivery and queued transfer probes. The HTTP/witness Node suite passed 13 tests;
+the hybrid suites passed 13 and 4 tests, with TypeScript and formatting checks
+passing. Native Linux passed 527 tests in 296.05 seconds and macOS passed 527 in
+186.24 seconds; Windows was still running at this checkpoint. This receipt does
+not cover successor startup, introduced in later commits.
+
 ### Transfer preparation boundary
 
 `OrchestrationTransferControl._prepare_in()` selects an immutable transfer view
@@ -1311,6 +1320,36 @@ production source authentication, service routing, artifact custody and hosted
 restore remain unqualified; the complete hosted execution profile remains unavailable.
 The separately qualified native-source chain and explicit worker clock admission
 do not by themselves supply hosted job execution, input custody or publication.
+
+## Production deployment inputs
+
+`deployment.py` defines a public `DeploymentManifest` and a separate protected
+secret bundle. The manifest pins one namespace, authority name and object ID,
+the `RESEARCH_AUTHORITY` and `ARTIFACTS` binding names, the startup-profile
+configuration, witness origin/timeout, credential roster and optional exact
+delivery registrations. Its canonical digest covers this entire configuration,
+including routing fields outside `HostedStartupConfiguration.digest`. A production
+provisioner must persist that complete seal and every normal reopen must verify
+it; the current input-contract slice does not yet implement that lifecycle.
+
+The loader checks physical store identity, assignment/dispatch key agreement,
+credential digests and workspace/scope agreement. The provisioning actor must
+be able to install every roster principal. Gateway credentials differ from route
+actors and reference the exact declared control/evaluator credentials. Nested
+maps are immutable, and registrations receive copied public bindings. A separate
+bootstrap secret cannot double as a normal API, witness or key secret. Secret
+values have no JSON model and their representation is redacted; parse failures
+return an opaque error with the original exception suppressed.
+
+Production origin admission requires HTTPS with no userinfo, path, query or
+fragment. Local workerd tests may opt into loopback through an explicit loader
+argument, which is not an API request field. Input and roster sizes are bounded.
+Golden digests and native tests cover mismatched identity, credentials, scopes,
+registrations, malformed input and mutation resistance. These checks establish
+configuration consistency. The receiving DO still needs to compare its actual ID,
+the public Worker must verify its named-object resolution, and deployment must
+qualify the physical bucket binding. No resources, secrets or routes are deployed
+by this module.
 
 ## Native worker calibration
 

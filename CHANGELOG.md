@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Define fixed production deployment and credential manifests separately from
+  protected secret bindings. Verify physical authority, key and roster digests,
+  scoped delivery registrations and HTTPS witness routing; freeze nested maps
+  and return opaque configuration errors without secret representations.
+
 - Add an actual workerd successor-recovery probe: restart a transferred authority,
   recover a lost snapshot-creation response through the existing SDK, acknowledge
   both drivers, execute one saved action, then replay offline after another restart.
