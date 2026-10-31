@@ -13,7 +13,7 @@ export default {
       });
     }
     if (request.method === "POST" && url.pathname.startsWith("/fixture/")) {
-      const encoded = JSON.parse(await readBody(request, 1024));
+      const encoded = JSON.parse(await readBody(request, 64 * 1024));
       if (typeof encoded.content_hex !== "string") {
         return new Response("Invalid fixture input", { status: 400 });
       }
@@ -21,7 +21,9 @@ export default {
         encoded.content_hex.match(/../g) ?? [],
         (pair) => Number.parseInt(pair, 16),
       );
-      const { credential } = JSON.parse(new TextDecoder().decode(bytes));
+      const { credential, request_json } = JSON.parse(
+        new TextDecoder().decode(bytes),
+      );
       if (url.pathname === "/fixture/default-provision") {
         try {
           await env.RESEARCH_API.provision(credential);
@@ -32,6 +34,33 @@ export default {
       }
       if (url.pathname === "/fixture/provision") {
         const result = await env.RESEARCH_BOOTSTRAP.provision(credential);
+        return new Response(
+          request.headers.get("x-fixture-drop-bootstrap") === "true"
+            ? "{"
+            : result,
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      const checkpoints = {
+        "/fixture/checkpoint-seal": "checkpoint_seal",
+        "/fixture/checkpoint-capture": "checkpoint_capture",
+        "/fixture/default-checkpoint-seal": "checkpoint_seal",
+        "/fixture/default-checkpoint-capture": "checkpoint_capture",
+      };
+      const method = checkpoints[url.pathname];
+      if (method) {
+        if (url.pathname.startsWith("/fixture/default-")) {
+          try {
+            await env.RESEARCH_API[method](credential, request_json);
+            return Response.json({ denied: false });
+          } catch {
+            return Response.json({ denied: true });
+          }
+        }
+        const result = await env.RESEARCH_BOOTSTRAP[method](
+          credential,
+          request_json,
+        );
         return new Response(
           request.headers.get("x-fixture-drop-bootstrap") === "true"
             ? "{"

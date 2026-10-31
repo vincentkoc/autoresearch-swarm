@@ -9,14 +9,20 @@ from contextlib import ExitStack
 import httpx
 import pytest
 
-from adapters.cloudflare.deployment import authority_id
+from adapters.cloudflare.checkpoint_wire import decode_checkpoint
+from adapters.cloudflare.deployment import DeploymentManifest, authority_id
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
+from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.client import ResearchClient
 from research_swarm.control.queries import RecordQuery
+from research_swarm.crypto import public_key
+from research_swarm.domain.backup import BackupCustodyPin
 from research_swarm.domain.canonical import content_digest
+from research_swarm.domain.checkpoint_images import SignedLogicalCheckpoint
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import DriveAction, OrchestrationBinding
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
+from research_swarm.domain.types import new_id
 from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
 from research_swarm.orchestration.delivery_contract import binding_reference
 from research_swarm.orchestration.gateway_models import GatewayBinding
@@ -54,22 +60,28 @@ def fixture_config(directory):
     return path
 
 
-def fixture_secrets(directory, manifest, secrets):
+def fixture_secrets(directory, manifest, secrets, *, source=None):
     values = {
         "RESEARCH_MANIFEST": json.dumps(manifest, separators=(",", ":")),
         "RESEARCH_SECRETS": json.dumps(secrets, separators=(",", ":")),
     }
+    if source is not None:
+        values["RESEARCH_CHECKPOINT_SOURCE"] = json.dumps(source, separators=(",", ":"))
     assert all("'" not in value and "\n" not in value for value in values.values())
     write_private(
         directory / ".dev.vars",
         "".join(f"{name}='{value}'\n" for name, value in values.items()).encode(),
     )
-    return tuple(values.values()) + (
-        secrets["assignment_seed_hex"],
-        secrets["dispatch_key_hex"],
-        secrets["bootstrap"],
-        secrets["witness_consumer"],
-        *secrets["credentials"].values(),
+    return (
+        tuple(values.values())
+        + (() if source is None else (source["custody_seed_hex"],))
+        + (
+            secrets["assignment_seed_hex"],
+            secrets["dispatch_key_hex"],
+            secrets["bootstrap"],
+            secrets["witness_consumer"],
+            *secrets["credentials"].values(),
+        )
     )
 
 
@@ -82,6 +94,38 @@ def post(client, credential, *, drop=False, default=False):
     )
     assert result.status_code == 200, result.text[:1000]
     return result
+
+
+def checkpoint(client, credential, payload, *, capture=False, drop=False, default=False):
+    path = "/fixture/" + ("default-" if default else "")
+    path += "checkpoint-capture" if capture else "checkpoint-seal"
+    result = client.post(
+        path,
+        json={"credential": credential, "request_json": json.dumps(payload)},
+        headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
+    )
+    assert result.status_code == 200, result.text[:1000]
+    return result
+
+
+def fixture_custody(manifest, crypto):
+    fixed = DeploymentManifest.model_validate(manifest)
+    authority = fixed.configuration.authority
+    seed = bytes([193]) * 32
+    pin = BackupCustodyPin(
+        custody_id=new_id(),
+        workspace_id=authority.workspace_id,
+        controller_id=authority.controller_id,
+        control_epoch=authority.control_epoch,
+        public_key=public_key(crypto, seed).hex(),
+    )
+    return {
+        "schema_version": "1.0",
+        "deployment_digest": fixed.digest,
+        "authority": authority.model_dump(mode="json"),
+        "pin": pin.model_dump(mode="json"),
+        "custody_seed_hex": seed.hex(),
+    }
 
 
 def drive_new_campaign(operator, http, url, manifest, secrets, admitted, directory):
@@ -202,7 +246,8 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
 
     with serving(app, ssl_certfile=str(certificate), ssl_keyfile=str(key)) as origin:
         manifest["witness_origin"] = origin
-        redactions = fixture_secrets(private, manifest, secrets)
+        custody = fixture_custody(manifest, deployment[2])
+        redactions = fixture_secrets(private, manifest, secrets, source=custody)
         options.update(
             {
                 "child_environment": {"NODE_EXTRA_CA_CERTS": str(certificate)},
@@ -262,6 +307,9 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
                 "/native-research",
                 "/research",
                 "/witness/sample",
+                "/checkpoint_seal",
+                "/checkpoint_capture",
+                "/v1/checkpoints",
             ):
                 assert http.post(path).status_code == 404
 
@@ -303,6 +351,79 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
             assert len(reports) == 2 and report["result"]["id"] in {row["id"] for row in reports}
             assert len(endpoint.requests) == requests
 
+            seal_request = {
+                "schema_version": "1.0",
+                "request_id": new_id(),
+                "expected_revision": 0,
+                "seal": {
+                    "backup_id": new_id(),
+                    "expected_controller_id": config_data["authority"]["controller_id"],
+                    "expected_control_epoch": 1,
+                    "reason": "Production private checkpoint qualification",
+                },
+            }
+            capture_request = {"backup_id": seal_request["seal"]["backup_id"]}
+            for capture in (False, True):
+                payload = capture_request if capture else seal_request
+                assert checkpoint(
+                    http, secrets["bootstrap"], payload, capture=capture, default=True
+                ).json() == {"denied": True}
+                assert (
+                    checkpoint(http, "wrong", payload, capture=capture).json()["error"]["code"]
+                    == "AUTHORIZATION_DENIED"
+                )
+            assert checkpoint(http, secrets["bootstrap"], seal_request, drop=True).text == "{"
+            sealed = checkpoint(http, secrets["bootstrap"], seal_request).json()
+            assert "error" not in sealed, sealed
+            assert sealed["seal"]["result"]["state"] == "sealed"
+            captured = checkpoint(http, secrets["bootstrap"], capture_request, capture=True).text
+            envelope, bodies = decode_checkpoint(captured)
+            image = SignedLogicalCheckpoint.model_validate_json(envelope).manifest
+            verified = verify_image(
+                envelope,
+                bodies,
+                expected_digest=image.digest,
+                expected_source=WitnessAuthorityScope.model_validate(custody["authority"]),
+                expected_custody=BackupCustodyPin.model_validate(custody["pin"]),
+                crypto=deployment[2],
+            )
+            assert image.artifacts
+            assert {
+                row[2]
+                for chunk in verified.chunks
+                if chunk.table == "records"
+                for row in chunk.rows
+                if row[1] == "report"
+            } == {row["id"] for row in reports}
+            assert all(value not in captured for value in redactions)
+            evidence = envelope + b"".join(bodies)
+            assert all(value.encode() not in evidence for value in redactions)
+            assert len(endpoint.requests) == requests
+
+        # The original custody and exact sealed cut survive another real runtime restart.
+        with (
+            server(tmp_path, sequence=4, **options) as url,
+            httpx.Client(base_url=url, trust_env=False, timeout=30) as http,
+        ):
+            assert checkpoint(http, secrets["bootstrap"], seal_request).json() == sealed
+            assert (
+                checkpoint(
+                    http, secrets["bootstrap"], capture_request, capture=True, drop=True
+                ).text
+                == "{"
+            )
+            assert (
+                checkpoint(http, secrets["bootstrap"], capture_request, capture=True).text
+                == captured
+            )
+            changed_seal = copy.deepcopy(seal_request)
+            changed_seal["seal"]["reason"] = "Changed request cannot replace a saved seal"
+            assert (
+                checkpoint(http, secrets["bootstrap"], changed_seal).json()["error"]["code"]
+                == "IDEMPOTENCY_CONFLICT"
+            )
+            assert len(endpoint.requests) == requests
+
         changed = copy.deepcopy(manifest)
         changed["object_id"] = "b" * 64 if object_id != "b" * 64 else "c" * 64
         changed["configuration"]["store_location"] = (
@@ -311,9 +432,9 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
         changed["configuration"]["authority"]["state_authority_id"] = authority_id(
             changed["namespace"], changed["object_id"]
         )
-        options["diagnostic_secrets"] = fixture_secrets(private, changed, secrets)
+        options["diagnostic_secrets"] = fixture_secrets(private, changed, secrets, source=custody)
         with (
-            server(tmp_path, sequence=4, **options) as url,
+            server(tmp_path, sequence=5, **options) as url,
             ResearchClient.connect(url, operator_token) as operator,
         ):
             with pytest.raises(ResearchError) as mismatch:

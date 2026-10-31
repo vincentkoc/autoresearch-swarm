@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the actual production workerd probe through private seal/capture RPC,
+  signature verification, lost replies and another runtime restart during a witness
+  outage. Keep the fixture operator separate from production and check public denial.
+
 - Expose source seal and signed capture through private, fixed-target Bootstrap
   RPC. Retain custody in an optional protected binding, recheck the current root
   credential at each command, and commit seal/pin plus capture-capacity admission

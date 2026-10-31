@@ -1796,8 +1796,12 @@ Production `Bootstrap` and its fixed `ResearchAuthority` expose binding-only
 `checkpoint_capture(credential, request_json)`. Both authenticate bootstrap and
 the fixed physical target; the DO repeats those checks. `Default` exposes neither
 method, and HTTP checkpoint routes remain absent. The ordinary agent API is
-unchanged. This source API has native transaction tests; actual private RPC
-qualification remains pending.
+unchanged. This source API has native transaction tests. The actual production
+workerd probe now exercises the private RPC with existing project/artifact/report
+evidence, validates signed bytes, loses replies and restarts before exact replay
+during a witness outage. It checks default/public denial and no additional witness
+calls. Its runtime receipt remains pending; maximum-size RPC and deployed service
+qualification are separate from that functional probe.
 
 The optional protected `RESEARCH_CHECKPOINT_SOURCE` binding contains:
 
