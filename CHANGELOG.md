@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Persist internal time-provider generations, source retirement and explicit
+  requalification. Bind observations to the actual caller and operation; commit
+  conservative fences through rejection or query transactions, preserve original
+  retirement evidence and reject old-generation proofs. Hosted activation remains
+  disabled pending its exclusive operation adapter and provider qualification.
+
 - Preserve internal source-change evidence only after witness signature and
   exact-request verification. Keep generic stale errors and transport refusals
   separate from evidence that may support a durable clock fence.

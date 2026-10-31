@@ -10,10 +10,11 @@ one-use response verification and epoch derivation are implemented. A frozen
 public fixture is independently checked in Python and JavaScript. A separate
 native source primitive observes the existing qualified clock implementation
 and preserves its fault latch; independent child processes establish distinct
-source origins locally. Wire validity does not qualify a deployment. The
-exclusive operation context, persisted retirement, authenticated source
-deployment and hosted adapter remain to be implemented. The private HTTP source
-transport is locally verified; it does not establish Container routing.
+source origins locally. Internal provider generations, explicit requalification
+and persisted retirement are locally verified. Wire validity does not qualify a
+deployment. The exclusive operation context, authenticated source deployment
+and hosted adapter remain to be implemented. The private HTTP source transport
+is locally verified; it does not establish Container routing.
 
 ## Decision and boundary
 
@@ -258,6 +259,49 @@ logical authority activation before accepting new commands. A restored copy
 must not reproduce an old active authority merely because it copied its signing
 key and clock configuration. Quiescent ownership transfer still fences the old
 driver and state authority.
+
+### Internal lifecycle state
+
+`TimeProviders` implements the transactional source lifecycle against the shared
+SQL port. It does not enable a hosted clock, acquire witnesses, expose management
+commands or establish native rate qualification. Its `qualified` state means
+that an explicit lifecycle admission recorded one source origin; the runtime
+must separately enforce its complete hosted profile.
+
+Each workspace stores one `time_provider` projection per logical activation UUID.
+Loading it compares the complete authority scope, including the controller epoch,
+assignment key and state authority. Registration starts unqualified. Explicit
+requalification checks a fresh authenticated response against the previous
+projection revision and commits a new generation UUID and immutable generation
+record. That management response cannot supply time under the new generation.
+The next operation needs its own witness.
+
+Prepared operations bind the physical store identity, authenticated actor,
+invocation ID, idempotency key, operation name, expected revision, provider
+revision and normalized payload through `research.time-witness-operation.v1`.
+Every state boundary receives the actual executing operation name and payload
+and recomputes that digest. Existing command digest preimages remain unchanged.
+Internal proof objects are not transport inputs.
+
+The retirement key is the digest of source ID, source key ID and native epoch in
+the `research.time-source-origin.v1` domain. It excludes activation, provider
+generation, profile and policy. Retirement is workspace-wide. If several
+activation projections name the same origin, they reuse the first immutable
+retirement record and each obtains its own fence. A delayed proof cannot fence
+a newer projection revision; replaying an already committed fence adds no event.
+
+`check()` raises an internal `ProviderChanged` only for authenticated source
+changes or an already retired origin. Command handlers pass that proof to
+`fence()` in their rejection hook, after rejected handler effects roll back.
+For a query, the internal write callback commits the fence and returns the
+refusal; the caller raises it after commit. Register, requalify and fence also
+check the workspace gate, so direct invocation cannot mutate sealed/restoring
+state. The integration must preserve these semantics under the exclusive turn.
+
+Local tests cover independent-connection qualification races, changed operations,
+E1→E2→E1 across reopening, shared origins, stale proofs, immutable evidence,
+rejection-hook rollback, query fencing and inactive workspace refusal. Native
+workers and the existing local controller continue to use their current clock.
 
 ## Native worker calibration
 
