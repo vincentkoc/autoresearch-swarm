@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Share source archive validation and project resolution across native paths and
+  immutable byte buffers. Verify every source entry without extraction, preserve
+  existing digest preimages, and retain native extraction behavior.
+
 - Add explicit, persisted worker admission for the hosted witness clock profile
   and exact policy. Preserve default native behavior and legacy serialization;
   require the original enrollment permission for launch, publication and recovery.

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tomllib
-import zipfile
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,6 +16,7 @@ from research_swarm.projects.source import (
     SourceManifest,
     inspect_bundle,
     matches,
+    open_bundle,
     path_pattern,
     portable_path,
 )
@@ -161,7 +161,9 @@ def parse_manifest(content: bytes) -> ProjectManifest:
     return ProjectManifest.model_validate(tomllib.loads(content.decode("utf-8")))
 
 
-def resolve_project(bundle: Path, *, manifest_path: str = "research.toml") -> ResolvedProject:
+def resolve_project(
+    bundle: Path | bytes, *, manifest_path: str = "research.toml"
+) -> ResolvedProject:
     """Resolve only the immutable bundle; later working-tree edits cannot affect it."""
     portable_path(manifest_path)
     source = inspect_bundle(bundle)
@@ -171,7 +173,7 @@ def resolve_project(bundle: Path, *, manifest_path: str = "research.toml") -> Re
         entry = entries.get(path)
         if entry is None or entry.size_bytes > limit:
             raise ValueError("A required project contract file is absent or too large")
-        with zipfile.ZipFile(bundle) as archive:
+        with open_bundle(bundle) as archive:
             content = archive.read(path)
         if len(content) != entry.size_bytes or content_digest(content) != entry.digest:
             raise ValueError("Project contract content does not match its source identity")

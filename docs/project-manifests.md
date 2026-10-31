@@ -2,8 +2,15 @@
 
 A research repository declares its commands and evaluation contract in
 `research.toml`. It does not inherit a platform class or install a project-specific
-plugin. The parser and immutable-bundle resolver are implemented. Campaign execution
-and the CLI remain in progress.
+plugin. The parser resolves immutable source bundles before campaign admission.
+
+The shared resolver accepts a native archive path or immutable archive bytes.
+Both produce the same source, manifest, evaluator, environment and protocol hashes.
+`inspect_bundle` checks metadata; `verify_bundle` additionally hashes every source
+entry without extraction. A plausible ZIP directory or CRC is not sufficient
+content proof. Byte verification retains the same path, member, compression and
+size rules as native extraction. It does not replace an adapter's artifact
+authorization, reference-digest verification or transactional retention checks.
 
 The following template declares a training command and a separate evaluator.
 The repository supplies the named scripts, dataset manifest, and dependency lock.

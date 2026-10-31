@@ -14,8 +14,8 @@ import tempfile
 import time
 import unicodedata
 import zipfile
-from collections.abc import Iterable
-from contextlib import suppress
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager, suppress
 from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import IO
@@ -441,34 +441,74 @@ def bundle_git(
         raise
 
 
-def inspect_bundle(path: Path) -> SourceManifest:
-    if path.stat().st_size > MAX_SOURCE_BYTES + 2 * MAX_MANIFEST_BYTES:
+@contextmanager
+def open_bundle(bundle: Path | bytes) -> Iterator[zipfile.ZipFile]:
+    """Open an immutable byte buffer or native bundle with the same archive limit."""
+    size = len(bundle) if isinstance(bundle, bytes) else bundle.stat().st_size
+    if size > MAX_SOURCE_BYTES + 2 * MAX_MANIFEST_BYTES:
         raise ValueError("Source archive exceeds its size limit")
-    with zipfile.ZipFile(path) as archive:
-        info = archive.getinfo(MANIFEST_NAME)
-        if info.file_size > MAX_MANIFEST_BYTES or info.compress_type != zipfile.ZIP_STORED:
-            raise ValueError("Invalid source manifest encoding or size")
-        manifest = SourceManifest.model_validate(strict_json_loads(archive.read(info)))
-        expected = {entry.path: entry for entry in manifest.entries}
-        members = archive.infolist()
-        if len(members) != len(expected) + 1 or len({item.filename for item in members}) != len(
-            members
+    with (
+        io.BytesIO(bundle) if isinstance(bundle, bytes) else bundle.open("rb") as stream,
+        zipfile.ZipFile(stream) as archive,
+    ):
+        yield archive
+
+
+def _inspect_archive(archive: zipfile.ZipFile) -> SourceManifest:
+    info = archive.getinfo(MANIFEST_NAME)
+    if info.file_size > MAX_MANIFEST_BYTES or info.compress_type != zipfile.ZIP_STORED:
+        raise ValueError("Invalid source manifest encoding or size")
+    manifest = SourceManifest.model_validate(strict_json_loads(archive.read(info)))
+    expected = {entry.path: entry for entry in manifest.entries}
+    members = archive.infolist()
+    if len(members) != len(expected) + 1 or len({item.filename for item in members}) != len(
+        members
+    ):
+        raise ValueError("Source archive membership does not match the manifest")
+    for item in members:
+        if item.filename == MANIFEST_NAME:
+            continue
+        portable_path(item.filename)
+        entry = expected.get(item.filename)
+        mode = (item.external_attr >> 16) & 0xFFFF
+        if (
+            entry is None
+            or item.file_size != entry.size_bytes
+            or item.compress_type != zipfile.ZIP_STORED
+            or item.flag_bits & 1
+            or (stat.S_IFMT(mode) not in {0, stat.S_IFREG})
         ):
-            raise ValueError("Source archive membership does not match the manifest")
-        for item in members:
-            if item.filename == MANIFEST_NAME:
-                continue
-            portable_path(item.filename)
-            entry = expected.get(item.filename)
-            mode = (item.external_attr >> 16) & 0xFFFF
-            if (
-                entry is None
-                or item.file_size != entry.size_bytes
-                or item.compress_type != zipfile.ZIP_STORED
-                or item.flag_bits & 1
-                or (stat.S_IFMT(mode) not in {0, stat.S_IFREG})
-            ):
-                raise ValueError("Source archive entry violates its contract")
+            raise ValueError("Source archive entry violates its contract")
+    return manifest
+
+
+def inspect_bundle(bundle: Path | bytes) -> SourceManifest:
+    """Check archive metadata. Use verify_bundle to authenticate every entry's bytes."""
+    with open_bundle(bundle) as archive:
+        return _inspect_archive(archive)
+
+
+def _verified_entry(archive: zipfile.ZipFile, entry: SourceEntry, output: IO[bytes] | None) -> None:
+    digest = hashlib.sha256()
+    copied = 0
+    with archive.open(entry.path) as source:
+        while block := source.read(CHUNK_SIZE):
+            copied += len(block)
+            if copied > entry.size_bytes:
+                raise ValueError("Source entry exceeds its declared size")
+            digest.update(block)
+            if output is not None:
+                output.write(block)
+    if copied != entry.size_bytes or "sha256:" + digest.hexdigest() != entry.digest:
+        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Source entry digest mismatch")
+
+
+def verify_bundle(bundle: Path | bytes) -> SourceManifest:
+    """Verify all source entries without extracting or requiring a writable filesystem."""
+    with open_bundle(bundle) as archive:
+        manifest = _inspect_archive(archive)
+        for entry in manifest.entries:
+            _verified_entry(archive, entry, None)
         return manifest
 
 
@@ -482,19 +522,8 @@ def extract_bundle(path: Path, destination: Path, *, expected_tree_digest: str) 
             for entry in manifest.entries:
                 target = destination.joinpath(*entry.path.split("/"))
                 target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                digest = hashlib.sha256()
-                copied = 0
-                with archive.open(entry.path) as source, target.open("xb") as output:
-                    while block := source.read(CHUNK_SIZE):
-                        copied += len(block)
-                        if copied > entry.size_bytes:
-                            raise ValueError("Source entry exceeds its declared size")
-                        digest.update(block)
-                        output.write(block)
-                if copied != entry.size_bytes or "sha256:" + digest.hexdigest() != entry.digest:
-                    raise ResearchError(
-                        ErrorCode.ARTIFACT_UNVERIFIED, "Source entry digest mismatch"
-                    )
+                with target.open("xb") as output:
+                    _verified_entry(archive, entry, output)
                 target.chmod(0o700 if entry.executable else 0o600)
         return manifest
     except BaseException:
