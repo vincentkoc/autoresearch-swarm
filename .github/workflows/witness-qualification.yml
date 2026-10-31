@@ -52,6 +52,7 @@ jobs:
           tests/test_clock_admission.py tests/test_source_bytes.py tests/test_hosted_research.py
           tests/test_hosted_worker_inputs.py
           tests/test_hosted_worker_outputs.py
+          tests/test_hosted_result_publication.py tests/test_observation_bytes.py
           tests/test_cli_encoding.py tests/test_agent_research_cycle.py
           tests/test_supervision.py
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope

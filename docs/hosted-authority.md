@@ -622,8 +622,8 @@ at `dceafc3` in [CI 41198736103](https://github.com/vincentkoc/autoresearch-swar
 nine workerd tests passed in 219.17 seconds, including scoped source and named-input
 downloads and restart replay. Targeted native tests passed on Linux (351), macOS
 (351) and Windows (347, with four skips). This is local runtime qualification;
-cloud deployment, output runtime qualification, result publication and evaluator
-completion remain open.
+cloud deployment and subsequent execution/evaluation profiles require separate
+qualification.
 
 Worker-output preparation now shares the native begin and publication transaction
 callbacks. Publication checks the exact upload reference and generation before
@@ -662,15 +662,19 @@ retryable and quota reserved. Finalization never depends on implicit cleanup.
 This profile refuses sealed or recovering workspaces before byte access; hosted
 restoration has no qualified native recovery authority. Local adapter tests cover
 the unchanged SDK, restricted scopes, historical ownership, verification faults,
-revocation, cancellation, ordering, retry and quota retention. Actual workerd output
-qualification and result/evaluator publication remain separate work.
+revocation, cancellation, ordering, retry and quota retention.
 
 The workerd qualification now includes a separately provisioned output-profile
 case. It uploads through the unchanged SDK against real R2, loses committed
 publication and cleanup responses, retires duplicate and abandoned generations,
 then replays those commands after an owned workerd restart with storage and the
 native source unavailable. The synthetic artifacts do not claim to be valid model
-results. A passing run receipt is required before calling this runtime qualified.
+results. This extension passed at `10afb04` in
+[CI 41199740476](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41199740476):
+10 workerd tests passed in 167.21 seconds and 13 Node transport tests passed in
+10.094 seconds. Targeted Linux and macOS suites each passed 375 tests. Windows was
+still running when this receipt was recorded. This qualifies the local output
+runtime, not result acceptance, evaluator completion or cloud deployment.
 
 Result preparation now has shared current-owner and role-specific catalog selectors,
 plus a byte decoder that verifies the immutable reference, 1 MiB bound, strict JSON
@@ -678,6 +682,39 @@ and object shape. Every role is authorized before identical reads are coalesced.
 The native path keeps its original pin lifetime and acceptance transaction;
 historical reconciliation remains a separately authorized operation. These seams
 do not themselves expose hosted result or evaluator publication.
+
+### Buffered execution-result publication
+
+`research-publication-witness-v1` explicitly extends the output profile with
+`worker.publish_attempt`. Its SDK command and `worker.publish` scope are unchanged.
+Scoped workers need each artifact's original attempt/role receipt; legacy
+unscoped workers retain the additional `read` requirement. Historical upload
+permission cannot authorize fresh result acceptance from a replaced worker.
+
+Publication selects current ownership and every evidence role before coalescing
+identical objects. It permits at most 32 evidence roles and 8 MiB of unique
+evidence; each object also obeys the configured R2 size limit. Every referenced
+generation, including logs and outputs, is read and verified under the authority
+gate. Journal/report observations additionally require exact reference checks,
+strict JSON, the 1 MiB observation bound and their existing typed contracts.
+
+Only after storage I/O and decoding finish does the adapter acquire a fresh
+witness. The final transaction rechecks ownership, role receipts and catalog
+selection, then calls the unchanged native acceptance and rejection-fencing
+callbacks. There are no storage awaits or native reader pins after the witness.
+The native accounting rules still distinguish proven closure, proven absence and
+unknown execution. Acceptance expiry records a conservative fence rather than
+claiming closure or settling reserved compute. Accepted acknowledgments replay
+after current authentication even when storage and the time source are unavailable.
+
+Local adapter tests execute a fixture-owned CPU process using a real admitted
+native clock source. They cover successful closure, failed closure, proven
+not-started execution, corrupt evidence, malformed observations, changed grants,
+role bounds, revocation, cancellation, expiry and reopen replay. These tests use
+an in-process HTTP/storage harness; actual workerd result qualification is a
+separate step. The profile refuses historical acceptance and sealed/recovering
+workspace operations. It creates no evaluator receipt or scientific promotion;
+evaluator authorization and completion remain separate work.
 
 ### Signed clock query boundary
 

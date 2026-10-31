@@ -85,6 +85,10 @@ class HostedOutputConfiguration(HostedInputConfiguration):
     profile: Literal["research-outputs-witness-v1"] = "research-outputs-witness-v1"
 
 
+class HostedPublicationConfiguration(HostedOutputConfiguration):
+    profile: Literal["research-publication-witness-v1"] = "research-publication-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
@@ -101,20 +105,27 @@ def supports_outputs(configuration):
     return isinstance(configuration, HostedOutputConfiguration)
 
 
+def supports_publication(configuration):
+    return isinstance(configuration, HostedPublicationConfiguration)
+
+
 def allowed_commands(configuration):
     if __package__:
         from .artifact_router import COMMANDS as artifact_commands
         from .research_admission import COMMANDS as research_commands
+        from .result_publication import COMMANDS as publication_commands
         from .worker_outputs import COMMANDS as output_commands
     else:
         from artifact_router import COMMANDS as artifact_commands
         from research_admission import COMMANDS as research_commands
+        from result_publication import COMMANDS as publication_commands
         from worker_outputs import COMMANDS as output_commands
     return (
         COMMANDS
         | (artifact_commands if supports_artifacts(configuration) else frozenset())
         | (research_commands if supports_research(configuration) else frozenset())
         | (output_commands if supports_outputs(configuration) else frozenset())
+        | (publication_commands if supports_publication(configuration) else frozenset())
     )
 
 
@@ -168,6 +179,7 @@ class ExistingResearchRouter:
                 | HostedResearchConfiguration
                 | HostedInputConfiguration
                 | HostedOutputConfiguration
+                | HostedPublicationConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (
@@ -217,17 +229,20 @@ class ExistingResearchRouter:
             if __package__:
                 from .artifact_router import HostedArtifacts
                 from .research_admission import HostedResearchAdmission
+                from .result_publication import HostedResultPublication
                 from .worker_inputs import HostedWorkerInputs
                 from .worker_outputs import HostedWorkerOutputs
             else:
                 from artifact_router import HostedArtifacts
                 from research_admission import HostedResearchAdmission
+                from result_publication import HostedResultPublication
                 from worker_inputs import HostedWorkerInputs
                 from worker_outputs import HostedWorkerOutputs
             instance.artifacts = HostedArtifacts(instance)
             instance.research = HostedResearchAdmission(instance)
             instance.inputs = HostedWorkerInputs(instance)
             instance.outputs = HostedWorkerOutputs(instance)
+            instance.publication = HostedResultPublication(instance)
             return instance
 
         return await exclusive(state, construct)
@@ -352,6 +367,8 @@ class ExistingResearchRouter:
                 return await self.research.command(token, context, operation, payload)
             if operation in self.outputs.commands:
                 return await self.outputs.command(token, context, operation, payload)
+            if operation in self.publication.commands:
+                return await self.publication.command(token, context, operation, payload)
             if operation not in COMMANDS:
                 raise unavailable()
             definition, request = validate_command_input(context, operation, payload)

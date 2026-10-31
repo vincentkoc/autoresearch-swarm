@@ -29,6 +29,7 @@ if __package__:
         supports_artifacts,
         supports_inputs,
         supports_outputs,
+        supports_publication,
         supports_research,
     )
 else:
@@ -40,6 +41,7 @@ else:
         supports_artifacts,
         supports_inputs,
         supports_outputs,
+        supports_publication,
         supports_research,
     )
 
@@ -193,6 +195,20 @@ def capabilities(configuration):
             "cleanup": "explicit-command",
             "abort": "intent-then-cleanup",
             "recovery": "unavailable",
+        }
+    if supports_publication(configuration):
+        if __package__:
+            from .result_publication import MAX_EVIDENCE_ARTIFACTS, MAX_EVIDENCE_BYTES
+        else:
+            from result_publication import MAX_EVIDENCE_ARTIFACTS, MAX_EVIDENCE_BYTES
+        result["execution"] = "cpu-result-publication"
+        result["publication"] = {
+            "scope": "worker.publish",
+            "legacy_unscoped_worker_requires_read": True,
+            "max_evidence_artifacts": MAX_EVIDENCE_ARTIFACTS,
+            "max_evidence_bytes": MAX_EVIDENCE_BYTES,
+            "historical_acceptance": "unavailable",
+            "evaluation_receipts": "unavailable",
         }
     return result
 

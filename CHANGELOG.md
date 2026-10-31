@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an explicit hosted result-publication profile. Verify all scoped execution
+  evidence before the fresh witness, then reuse the native acceptance transaction
+  and rejection fence. Preserve exact replay, finite evidence bounds and separate
+  evaluator authority; uploaded observations cannot declare scientific success.
+
 - Share current result-owner and per-role evidence selection with byte adapters.
   Decode observations only after exact size/digest and 1 MiB checks; preserve
   native pin lifetimes, legacy read scopes and independent reconciliation authority.

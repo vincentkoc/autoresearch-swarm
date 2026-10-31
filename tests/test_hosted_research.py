@@ -169,17 +169,22 @@ def enrollment(principal_id, policy_digest, **changes):
     }
 
 
-def enroll_and_claim(client, admitted, principal_id, *, worker_client=None):
+def enroll_and_claim(client, admitted, principal_id, *, worker_client=None, project_ids=None):
     worker_client = worker_client or client
     caps = client.capabilities()
     assert caps["execution"] in {
         "cpu-claim-only",
         "cpu-claim-and-inputs",
         "cpu-claim-and-transfers",
+        "cpu-result-publication",
     }
     enrolled = client.command(
         "worker.enroll",
-        enrollment(principal_id, caps["clock"]["policy_digest"]),
+        enrollment(
+            principal_id,
+            caps["clock"]["policy_digest"],
+            **({"project_ids": project_ids} if project_ids is not None else {}),
+        ),
         idempotency_key="worker",
     )["result"]
     worker = WorkerData.model_validate(enrolled["data"])
