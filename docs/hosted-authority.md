@@ -1351,6 +1351,14 @@ the public Worker must verify its named-object resolution, and deployment must
 qualify the physical bucket binding. No resources, secrets or routes are deployed
 by this module.
 
+`CredentialStore.initialize_in()` and `install_in()` can participate in one
+owner-controlled SQL write alongside provisioning intent and source registration.
+They do not open or commit another transaction. The ordinary installation API
+retains its authorization and conflict behavior; an existing revoked or expiring
+credential is not repaired. Atomic roster tests preserve pre-existing credentials
+and roll back new schema/members when initialization or a later member fails.
+This is the shared preparation boundary, not a deployed bootstrap endpoint.
+
 ## Native worker calibration
 
 The worker measures the entire challenge round trip:

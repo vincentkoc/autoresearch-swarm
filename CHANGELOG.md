@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Allow credential schema and installation to share an owner's atomic
+  provisioning transaction. Preserve install authorization, identity, expiry and
+  revocation checks, and roll back the complete roster on any member failure.
+
 - Define fixed production deployment and credential manifests separately from
   protected secret bindings. Verify physical authority, key and roster digests,
   scoped delivery registrations and HTTPS witness routing; freeze nested maps

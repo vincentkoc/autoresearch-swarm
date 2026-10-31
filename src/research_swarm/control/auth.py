@@ -29,14 +29,16 @@ class CredentialStore:
     def __init__(self, database: Database) -> None:
         self.database = database
 
-        def initialize(connection: SqlSession) -> None:
-            connection.execute("""CREATE TABLE IF NOT EXISTS credentials (
-                id TEXT PRIMARY KEY, token_digest TEXT NOT NULL UNIQUE,
-                workspace_id TEXT NOT NULL REFERENCES workspaces(id), principal TEXT NOT NULL,
-                created_at TEXT NOT NULL, expires_at TEXT, revoked INTEGER NOT NULL DEFAULT 0
-            )""")
+        database.store.write(self.initialize_in)
 
-        database.store.write(initialize)
+    @staticmethod
+    def initialize_in(connection: SqlSession) -> None:
+        """Initialize credential storage inside the caller's authorized write transaction."""
+        connection.execute("""CREATE TABLE IF NOT EXISTS credentials (
+            id TEXT PRIMARY KEY, token_digest TEXT NOT NULL UNIQUE,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id), principal TEXT NOT NULL,
+            created_at TEXT NOT NULL, expires_at TEXT, revoked INTEGER NOT NULL DEFAULT 0
+        )""")
 
     @classmethod
     def open_existing(cls, database: Database) -> CredentialStore:
@@ -96,46 +98,60 @@ class CredentialStore:
         This is not credential rotation. Conflicting, revoked, or expiring credentials
         require an explicit operator action and are never replaced here.
         """
-        principal = self._authorize(issuer, principal)
+        self._authorize(issuer, principal)
+        return self.database.store.write(
+            lambda connection: self.install_in(
+                connection, issuer, principal, identifier=identifier, token=token
+            )
+        )
+
+    @classmethod
+    def install_in(
+        cls,
+        connection: SqlSession,
+        issuer: Principal,
+        principal: Principal,
+        *,
+        identifier: str,
+        token: str,
+    ) -> IssuedCredential:
+        """Install one credential without committing or opening another transaction."""
+        principal = cls._authorize(issuer, principal)
         TypeAdapter(ID).validate_python(identifier)
         if re.fullmatch(r"rsw_[A-Za-z0-9_-]{43}", token) is None:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid enrollment credential")
-        digest = self._digest(token)
-
-        def persist(connection: SqlSession) -> None:
-            rows = connection.execute(
-                "SELECT * FROM credentials WHERE id=? OR token_digest=?", (identifier, digest)
-            ).fetchall()
-            if rows:
-                row = rows[0]
-                if (
-                    len(rows) != 1
-                    or row["id"] != identifier
-                    or row["token_digest"] != digest
-                    or row["workspace_id"] != principal.workspace_id
-                    or Principal.model_validate_json(row["principal"]) != principal
-                    or row["revoked"]
-                    or row["expires_at"] is not None
-                ):
-                    raise ResearchError(
-                        ErrorCode.AUTHORIZATION_DENIED,
-                        "Enrollment credential differs or is no longer active",
-                    )
-            else:
-                require_workspace_mutation(connection, principal.workspace_id, "credential.install")
-                connection.execute(
-                    "INSERT INTO credentials"
-                    "(id,token_digest,workspace_id,principal,created_at) VALUES (?,?,?,?,?)",
-                    (
-                        identifier,
-                        digest,
-                        principal.workspace_id,
-                        encode(principal.model_dump(mode="json")),
-                        utc_now(),
-                    ),
+        digest = cls._digest(token)
+        rows = connection.execute(
+            "SELECT * FROM credentials WHERE id=? OR token_digest=?", (identifier, digest)
+        ).fetchall()
+        if rows:
+            row = rows[0]
+            if (
+                len(rows) != 1
+                or row["id"] != identifier
+                or row["token_digest"] != digest
+                or row["workspace_id"] != principal.workspace_id
+                or Principal.model_validate_json(row["principal"]) != principal
+                or row["revoked"]
+                or row["expires_at"] is not None
+            ):
+                raise ResearchError(
+                    ErrorCode.AUTHORIZATION_DENIED,
+                    "Enrollment credential differs or is no longer active",
                 )
-
-        self.database.store.write(persist)
+        else:
+            require_workspace_mutation(connection, principal.workspace_id, "credential.install")
+            connection.execute(
+                "INSERT INTO credentials"
+                "(id,token_digest,workspace_id,principal,created_at) VALUES (?,?,?,?,?)",
+                (
+                    identifier,
+                    digest,
+                    principal.workspace_id,
+                    encode(principal.model_dump(mode="json")),
+                    utc_now(),
+                ),
+            )
         return IssuedCredential(identifier, token, principal)
 
     @staticmethod
