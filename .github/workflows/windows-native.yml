@@ -1,0 +1,46 @@
+name: Windows native qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify selected revision
+        shell: pwsh
+        run: |
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:GITHUB_SHA) {
+            throw "Checkout does not match selected revision"
+          }
+          Write-Output "Qualified revision: $actual"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - run: uv sync --locked --group dev --python 3.12
+      - name: Native ownership, recovery and cancellation
+        run: >-
+          uv run --no-sync pytest -q --tb=short --durations=10
+          tests/test_windows_privacy.py
+          tests/test_windows_sqlite_owner.py
+          tests/test_recovery_activation.py::test_real_process_exit_at_activation_has_one_recoverable_commit
+          tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
+          tests/test_portfolio_native.py
+          tests/test_r2_runtime.py
+          tests/test_worker_recovery.py::test_original_driver_and_attempt_locks_are_respected
