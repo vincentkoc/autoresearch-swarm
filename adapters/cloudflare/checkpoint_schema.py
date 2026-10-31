@@ -6,8 +6,12 @@ from research_swarm.state.schema import SCHEMA_VERSION
 from research_swarm.state.schema_contracts import unsupported
 
 if __package__:
+    from .checkpoint_anchor import TABLE as ELECTION_TABLE
+    from .checkpoint_anchor import require_election_schema
     from .provisioning import require_deployment_in
 else:
+    from checkpoint_anchor import TABLE as ELECTION_TABLE
+    from checkpoint_anchor import require_election_schema
     from provisioning import require_deployment_in
 
 METADATA = {
@@ -36,7 +40,10 @@ def require_checkpoint_schema(sql, manifest):
         "AND substr(lower(tbl_name),1,5)!='__cf_' "
         "AND substr(lower(tbl_name),1,4)!='_cf_' LIMIT 129"
     ).fetchall()
+    names = {row["name"] for row in objects if row["type"] == "table"}
     allowed = set(TABLES) | set(METADATA)
+    if ELECTION_TABLE in names:
+        allowed.add(ELECTION_TABLE)
     if len(objects) > 128 or any(
         row["type"] not in {"table", "index"}
         or row["tbl_name"] not in allowed
@@ -44,8 +51,10 @@ def require_checkpoint_schema(sql, manifest):
         for row in objects
     ):
         raise unsupported()
-    if {row["name"] for row in objects if row["type"] == "table"} != allowed:
+    if names != allowed:
         raise unsupported()
+    if ELECTION_TABLE in names:
+        require_election_schema(sql)
     require_portable_image_schema(sql)
     for name, fields in METADATA.items():
         rows = sql.execute(

@@ -2037,6 +2037,29 @@ These bounded records and pure verifiers supply no storage, election or activati
 authority. Atomic source election, completed-target request generation and hosted
 recovery admission remain separate implementation work.
 
+A fresh source seal also registers `LogicalElectionAnchor` in the portable record
+ledger and its matching row in the original-only `hosted_checkpoint_elections`
+table. Registration, its event/outbox, seal/custody acknowledgments and final
+capture-capacity check share one transaction. The marker binds the complete source
+scope, physical store, deployment and custody; it contains no future image digest.
+The captured image therefore includes the marker without a circular digest.
+
+Source admission checks the complete pair before replaying commands. A missing
+table, missing row, orphan metadata or changed binding refuses without recreation.
+The mutable election table is explicitly admitted by the source schema inspector
+and excluded from every portable image. Inactive imports preserve the marker as
+historical evidence and cannot acquire the source's election authority. Legacy
+images without markers still verify, capture and import; replaying their old seal
+through the new source RPC refuses instead of initializing unused election state.
+No automatic legacy upgrade is defined.
+
+The next transition may only change original-only metadata from `open` to
+`elected`, retaining the exact signed election. It must not append a portable event
+or command acknowledgment after capture, because that would alter the selected
+image. Whole-store rollback/PITR of the original authority is not qualified:
+restoring both marker and election row to an earlier state requires an independent
+non-rollbackable authority before this protocol could safely elect again.
+
 ## Required implementation slices
 
 1. Freeze witness schemas, signatures, epoch derivation and one-use operation

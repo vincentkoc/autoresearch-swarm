@@ -16,8 +16,10 @@ from research_swarm.state.database import Transaction
 from research_swarm.state.time_providers import TimeProviders
 
 if __package__:
+    from .checkpoint_anchor import require_anchor_in
     from .checkpoint_schema import require_checkpoint_schema
 else:
+    from checkpoint_anchor import require_anchor_in
     from checkpoint_schema import require_checkpoint_schema
 
 
@@ -75,6 +77,7 @@ def capture_checkpoint(
         )
         if cut.custody_pin != expected_custody:
             raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint custody differs")
+        require_anchor_in(sql, manifest, store.identity, expected_custody)
         context = CommandContext(principal=principal, idempotency_key="checkpoint:" + backup_id)
         provider = TimeProviders(store.identity).load(
             Transaction(sql, context, observe_waits=False), config.authority

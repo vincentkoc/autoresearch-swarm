@@ -17,12 +17,14 @@ from research_swarm.state.database import Database, Transaction
 from research_swarm.state.time_providers import TimeProviders
 
 if __package__:
+    from .checkpoint_anchor import register_anchor_in, require_anchor_in
     from .checkpoint_capture import capture_checkpoint, require_source_operator_in
     from .checkpoint_schema import require_checkpoint_schema
     from .checkpoint_wire import encode_checkpoint
     from .deployment import secret_digest
     from .exclusive import exclusive
 else:
+    from checkpoint_anchor import register_anchor_in, require_anchor_in
     from checkpoint_capture import capture_checkpoint, require_source_operator_in
     from checkpoint_schema import require_checkpoint_schema
     from checkpoint_wire import encode_checkpoint
@@ -128,6 +130,7 @@ class _SourceStore:
             or BackupCustodyPin.model_validate_json(rows[0]["payload"]) != self.custody.binding.pin
         ):
             raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint custody is already pinned")
+        require_anchor_in(sql, manifest, self.identity, self.custody.binding.pin)
         return callback(sql)
 
     def read(self, callback):
@@ -164,6 +167,16 @@ async def seal_source(
 
         def commit(sql):
             bound = _SourceStore(store, sql, manifest, token, custody)
+            fresh = (
+                sql.execute(
+                    "SELECT 1 FROM records WHERE workspace_id=? AND "
+                    "((kind='workspace_gate' AND state!='active') OR "
+                    "(kind='backup_custody' AND json_extract(payload,'$.control_epoch')=?)) "
+                    "LIMIT 1",
+                    (scope.workspace_id, scope.control_epoch),
+                ).fetchone()
+                is None
+            )
             control = BackupControl(Database.from_store(bound))
             context = CommandContext(
                 principal=principal,
@@ -179,6 +192,9 @@ async def seal_source(
                     }
                 ),
                 RegisterBackupCustody(backup_id=request.seal.backup_id, pin=custody.binding.pin),
+            )
+            register_anchor_in(
+                sql, manifest, store.identity, custody.binding.pin, context, allow_create=fresh
             )
             # Generated records and acknowledgments must fit too. Refusal rolls
             # back both phases instead of leaving an unexportable sealed source.

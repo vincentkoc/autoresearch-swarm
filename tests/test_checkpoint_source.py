@@ -127,7 +127,7 @@ async def test_interrupted_seal_rolls_back_both_phases_and_retries_exactly(confi
     events = rows(e, "events")
     accepted = await call(e)
     assert accepted["seal"]["result"]["revision"] == 1
-    assert len(rows(e, "events")) == len(events) + 2
+    assert len(rows(e, "events")) == len(events) + 3
     before = portable_rows(e)
     assert await call(e) == accepted
     assert portable_rows(e) == before

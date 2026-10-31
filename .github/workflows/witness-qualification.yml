@@ -84,6 +84,7 @@ jobs:
           tests/test_checkpoint_source_research.py
           tests/test_checkpoint_target.py
           tests/test_checkpoint_elections.py
+          tests/test_checkpoint_anchor.py
           tests/test_inactive_transform.py
           tests/test_cloudflare_runtime.py
           tests/test_production_delivery.py

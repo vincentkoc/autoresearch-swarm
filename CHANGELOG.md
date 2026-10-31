@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Register original-authority election state atomically with a new hosted seal.
+  Export its immutable marker, exclude its mutable election table, and refuse
+  missing or mismatched pairs without repair. Legacy images still import but
+  cannot silently acquire election authority; final capture refusal rolls back all state.
+
 - Define destination-bound logical election proofs around unchanged native
   recovery signatures. Require the exact target intent, original source scope,
   deployment and custody pins; a native-only claim cannot pass hosted verification.

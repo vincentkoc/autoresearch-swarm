@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from adapters.cloudflare import checkpoint_import
+from adapters.cloudflare.checkpoint_anchor import KIND, TABLE, register_anchor_in, require_anchor_in
 from adapters.cloudflare.checkpoint_import import import_checkpoint
 from adapters.cloudflare.deployment import DeploymentManifest, authority_id
 from research_swarm.checkpoints.image_format import TABLES, describe_chunk, sign_manifest
@@ -115,6 +116,39 @@ def snapshot(store):
         }
 
     return store.read(read)
+
+
+async def test_import_retains_portable_anchor_without_original_election_authority(recovery):
+    e = recovery
+    source = e.source
+    source.store.write(
+        lambda sql: register_anchor_in(
+            sql,
+            source.manifest,
+            source.store.identity,
+            source.pin,
+            source.context,
+            allow_create=True,
+        )
+    )
+    e.image = capture(source)
+    e.intent = e.intent.model_copy(update={"manifest_digest": e.image.manifest.digest})
+    e.envelope = sign_manifest(e.image.manifest, SEED, crypto=source.crypto)
+    before = portable_rows(source)
+    receipt = restore(e)
+    assert restore(e) == receipt
+    imported = snapshot(e.target)
+    assert TABLE not in imported
+    markers = [row for row in imported["records"] if row["kind"] == KIND]
+    assert len(markers) == 1 and markers[0]["id"] == source.pin.custody_id
+    assert markers[0]["payload"] == next(row[7] for row in before["records"] if row[1] == KIND)
+    with pytest.raises(ResearchError):
+        e.target.read(
+            lambda sql: require_anchor_in(
+                sql, source.manifest, e.target.identity, source.pin, required=True
+            )
+        )
+    assert portable_rows(source) == before
 
 
 async def test_import_preserves_evidence_and_replays_once_without_opening_runtime(
