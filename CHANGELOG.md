@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add one-use witness operation contexts with transaction-bound time, explicit
+  execution ownership and synchronous callbacks. Refuse reused responses,
+  nested-command timestamp borrowing and use after closure; keep the distinct
+  hosted clock profile unavailable to workers until adapter qualification.
+
 - Persist internal time-provider generations, source retirement and explicit
   requalification. Bind observations to the actual caller and operation; commit
   conservative fences through rejection or query transactions, preserve original

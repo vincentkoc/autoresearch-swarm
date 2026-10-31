@@ -33,9 +33,12 @@ class AuthorityTimeProvider(Protocol):
     def authority_identity(self) -> StoreIdentity: ...
 
     def observe(self, scope: ClockAuthorityScope) -> AuthorityTime:
-        """Observe fresh qualified time synchronously without network or storage I/O.
+        """Return operation-qualified time synchronously without network or storage I/O.
 
         Scope derives from verified controller and signing authority. Providers
         preserve their epoch/invalidation semantics; they never authorize a worker.
+        Native providers sample fresh time. A serialized witness provider returns
+        its current operation's fixed linearization instant and refuses use outside
+        that operation. Its adapter must qualify the complete ordering contract.
         """
         ...

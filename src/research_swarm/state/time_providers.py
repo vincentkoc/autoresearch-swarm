@@ -11,6 +11,7 @@ from research_swarm.control.time_witnesses import (
     PendingTimeWitness,
     VerifiedTimeWitness,
 )
+from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
@@ -87,8 +88,11 @@ class TimeProviders:
     also enforce the workspace gate, including direct query-triggered fences.
     """
 
-    def __init__(self, store: StoreIdentity) -> None:
+    def __init__(
+        self, store: StoreIdentity, *, crypto_provider: Ed25519Provider | None = None
+    ) -> None:
         self.store = store
+        self.crypto_provider = crypto_provider
 
     @staticmethod
     def _authority(transaction: Transaction, scope: WitnessAuthorityScope) -> None:
@@ -147,7 +151,13 @@ class TimeProviders:
         """Bind the complete caller/operation without changing command hash preimages."""
         source = source or expected.data.source
         digest = self._digest(context, expected, operation, payload)
-        pending = PendingTimeWitness(source, expected.data.scope, context.command_id, digest)
+        pending = PendingTimeWitness(
+            source,
+            expected.data.scope,
+            context.command_id,
+            digest,
+            crypto_provider=self.crypto_provider,
+        )
         return WitnessOperationBinding(
             self.store,
             context.principal.id,

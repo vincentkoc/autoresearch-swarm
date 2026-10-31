@@ -11,10 +11,11 @@ public fixture is independently checked in Python and JavaScript. A separate
 native source primitive observes the existing qualified clock implementation
 and preserves its fault latch; independent child processes establish distinct
 source origins locally. Internal provider generations, explicit requalification
-and persisted retirement are locally verified. Wire validity does not qualify a
-deployment. The exclusive operation context, authenticated source deployment
-and hosted adapter remain to be implemented. The private HTTP source transport
-is locally verified; it does not establish Container routing.
+and persisted retirement are locally verified. A one-use synchronous operation
+context is implemented. Wire validity does not qualify a deployment. Provider
+exclusive ordering, authenticated source deployment and the hosted adapter remain
+to be implemented. The private HTTP source transport is locally verified; it
+does not establish Container routing.
 
 ## Decision and boundary
 
@@ -302,6 +303,46 @@ Local tests cover independent-connection qualification races, changed operations
 E1→E2→E1 across reopening, shared origins, stale proofs, immutable evidence,
 rejection-hook rollback, query fencing and inactive workspace refusal. Native
 workers and the existing local controller continue to use their current clock.
+
+## One-use operation context
+
+`WitnessAuthorityTimeProvider.prepare()` owns a fresh pending request and an
+exclusive local guard until the caller leaves the turn. The hosting adapter must
+also hold its Durable Object ordering gate from before the witness request
+through the command commit. The Python guard does not establish that platform
+property or stop code paths that bypass the adapter.
+
+The turn exposes the exact request, accepts one response through `complete()`,
+and runs one synchronous callback through `run()`. It checks the current provider
+projection and actual transaction operation before installing an `AuthorityTime`.
+Every observation in that callback returns the same declared linearization
+instant. A changed source retains internal evidence for the transaction's
+rejection hook; an invalid signature or uncertain transport does not.
+
+Observation requires the exact authority scope, process, thread, async task and
+current command execution. Each synchronous `Database.execute()` call has a
+thread-local opaque marker covering its handler and rejection hooks. A nested
+command cannot borrow the outer observation, including by restoring a copied
+Python context. The marker grants no authority and is restored in `finally`.
+Query callbacks can operate without a command marker, while nested commands still
+receive a different marker.
+
+Public query entry points do not yet install their own operation boundaries.
+The hosted integration must scope every time-consuming query, including
+`WorkerControl.clock()`, so a nested query cannot sign a different nonce with
+the outer timestamp. The primitive's command marker does not establish that
+query-isolation property.
+
+Completion or callback failure consumes the turn. Awaitables and generators are
+refused; no callback may suspend or perform external I/O. After the callback,
+copied contexts and retained turn references cannot reactivate its timestamp.
+The source verifier accepts the configured synchronous cryptography provider,
+including the adapter's preloaded implementation.
+
+The emitted profile is `hosted-native-witness-v1`, distinct from every native
+profile. Current native workers reject it. Enabling it requires the complete
+exclusive-ordering adapter, source lifecycle and deployment qualification; it
+must not be disguised as a native profile to bypass that boundary.
 
 ## Native worker calibration
 

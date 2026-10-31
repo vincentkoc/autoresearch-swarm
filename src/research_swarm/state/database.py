@@ -13,6 +13,7 @@ from research_swarm.domain.evidence import Event
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
 from research_swarm.state.events import event_page
+from research_swarm.state.execution import command_execution
 from research_swarm.state.sql import (
     IntegrityViolation,
     SqlSession,
@@ -380,6 +381,7 @@ class Database:
 
         self.store.write(initialize)
 
+    @command_execution()
     def execute(
         self,
         context: CommandContext,
