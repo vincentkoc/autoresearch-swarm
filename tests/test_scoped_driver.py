@@ -32,7 +32,13 @@ from research_swarm.workers.remote_enrollment import (
     describe_worker,
     provision_worker,
 )
-from tests.cli_process import OwnedCliProcess, acknowledge_driver, require_ancestry, require_driver
+from tests.cli_process import (
+    OwnedCliProcess,
+    PipeTail,
+    acknowledge_driver,
+    require_ancestry,
+    require_driver,
+)
 from tests.test_http_delivery import serving
 from tests.test_local_pipeline import Pipeline
 from tests.test_local_pipeline import pipeline as pipeline
@@ -537,6 +543,9 @@ def controller_process(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
+    assert process.stderr is not None
+    stderr_tail = PipeTail(process.stderr)
+    process.stderr = None  # The drain owns this pipe; communicate must not read it too.
     launcher = psutil.Process(process.pid)
     launcher.create_time()
     owned = None
@@ -544,9 +553,12 @@ def controller_process(
         until = time.monotonic() + 10
         while True:
             if process.poll() is not None:
-                _, stderr = process.communicate(timeout=1)
-                details = stderr.decode("utf-8", errors="replace").replace(
-                    str(Path.home()), "<home>"
+                process.communicate(timeout=1)
+                stderr_tail.close()
+                details = (
+                    stderr_tail.tail()
+                    .decode("utf-8", errors="replace")
+                    .replace(str(Path.home()), "<home>")
                 )
                 pytest.fail("Owned HTTP controller exited before readiness: " + details[-4096:])
             if owned is None and witness.exists():
@@ -568,6 +580,11 @@ def controller_process(
             processes.append(owned)
         yield f"http://127.0.0.1:{port}"
     except BaseException as error:
+        details = stderr_tail.tail().decode("utf-8", errors="replace")
+        for path in (str(Path.home()), str(Path(__file__).resolve().parents[1])):
+            details = details.replace(path, "<redacted>")
+        if details:
+            error.add_note("Owned controller stderr: " + details[-8192:])
         try:
             with witness.with_suffix(".trace").open("rb") as stream:
                 stream.seek(0, 2)
@@ -581,15 +598,18 @@ def controller_process(
             pass
         raise
     finally:
-        if owned is None and witness.exists() and launcher.is_running():
-            with suppress(psutil.NoSuchProcess):
-                owned = OwnedCliProcess(process, require_driver(launcher, witness, nonce))
-        if owned is not None:
-            owned.close()
-        else:
-            if process.poll() is None:
-                process.kill()
-            process.communicate(timeout=5)
+        try:
+            if owned is None and witness.exists() and launcher.is_running():
+                with suppress(psutil.NoSuchProcess):
+                    owned = OwnedCliProcess(process, require_driver(launcher, witness, nonce))
+            if owned is not None:
+                owned.close()
+            else:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=5)
+        finally:
+            stderr_tail.close()
 
 
 def test_controller_readiness_rejects_an_existing_unrelated_listener(pipeline: Pipeline) -> None:

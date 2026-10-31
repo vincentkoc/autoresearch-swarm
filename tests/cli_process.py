@@ -2,16 +2,65 @@
 
 from __future__ import annotations
 
+import errno
 import faulthandler
 import json
 import os
 import subprocess
 import sys
+import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 import psutil
+
+
+class PipeTail:
+    """Drain an owned child's pipe continuously while retaining at most 64 KiB."""
+
+    def __init__(self, stream: BinaryIO) -> None:
+        self.stream = stream
+        self.chunks: deque[bytes] = deque(maxlen=16)
+        self.lock = threading.Lock()
+        self.thread = threading.Thread(target=self._drain, daemon=True)
+        self.thread.start()
+
+    def _drain(self) -> None:
+        try:
+            while chunk := self.stream.read(4096):
+                with self.lock:
+                    self.chunks.append(chunk)
+        finally:
+            self.stream.close()
+
+    def tail(self) -> bytes:
+        with self.lock:
+            return b"".join(self.chunks)
+
+    def close(self) -> None:
+        self.thread.join(timeout=5)
+        assert not self.thread.is_alive(), "Owned child's diagnostic pipe did not close"
+
+
+def read_acknowledgment(path: Path) -> dict[str, str | int] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError("Fixture acknowledgment is not an identity object")
+        return value
+    except FileNotFoundError:
+        return None
+    except PermissionError as error:
+        # Atomic publication can briefly deny a Windows reader. The caller's
+        # original deadline and complete identity comparison still apply.
+        if getattr(error, "winerror", None) in {5, 32, 33} or (
+            sys.platform == "win32" and error.errno == errno.EACCES
+        ):
+            return None
+        raise
 
 
 @dataclass
@@ -103,9 +152,8 @@ def main() -> int:
         while True:
             if time.monotonic() >= until:
                 raise TimeoutError("Fixture driver identity was not acknowledged")
-            try:
-                acknowledged = json.loads(witness.with_suffix(".ready").read_text(encoding="utf-8"))
-            except FileNotFoundError:
+            acknowledged = read_acknowledgment(witness.with_suffix(".ready"))
+            if acknowledged is None:
                 time.sleep(0.01)
             else:
                 if acknowledged != identity:
