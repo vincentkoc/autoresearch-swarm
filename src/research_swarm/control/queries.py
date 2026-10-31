@@ -20,6 +20,9 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
+    "benchmark_execution",
+    "benchmark_arm",
+    "benchmark_trial_slot",
     "policy_benchmark",
     "benchmark_plan",
     "benchmark_training",
@@ -129,6 +132,9 @@ def summarize(row: JsonObject) -> JsonObject:
         "benchmark_plan",
         "benchmark_training",
         "benchmark_seed",
+        "benchmark_execution",
+        "benchmark_arm",
+        "benchmark_trial_slot",
     }:
         result["data"] = data
     elif row["kind"] == "learning_dataset":

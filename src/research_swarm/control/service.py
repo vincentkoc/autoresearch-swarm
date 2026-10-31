@@ -10,11 +10,17 @@ from pydantic import ValidationError
 from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.backup import BackupControl
+from research_swarm.control.benchmark_execution import BenchmarkExecutionControl
+from research_swarm.control.benchmark_execution_models import StartPolicyBenchmark
 from research_swarm.control.benchmark_guard import (
     require_prepared_training_authority,
-    require_unreserved_seed,
 )
 from research_swarm.control.benchmark_models import FreezePolicyBenchmark
+from research_swarm.control.benchmark_trials import (
+    BenchmarkTrialAuthority,
+    consume_trial_slot,
+    require_trial_slot,
+)
 from research_swarm.control.benchmarks import BenchmarkControl
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
@@ -245,6 +251,18 @@ class ResearchService:
         self.proposals = ProposalControl(database)
         self.learning = LearningControl(database)
         self.benchmarks = BenchmarkControl(database)
+        self.benchmark_execution = BenchmarkExecutionControl(
+            database,
+            artifacts,
+            lambda transaction, request, identifier: self._create_campaign(
+                transaction, request, identifier=identifier
+            ),
+            self._seal_campaign,
+            self._start_campaign,
+            lambda transaction, request, authority: self._submit_trial(
+                transaction, request, benchmark_authority=authority
+            ),
+        )
         self.learning_datasets = LearningDatasetControl(database)
         self.learning_inputs = LearningInputControl(database, artifacts)
         self.learning_profiles = LearningProfileControl(database, artifacts)
@@ -457,6 +475,11 @@ class ResearchService:
         self, context: CommandContext, request: FreezePolicyBenchmark
     ) -> JsonObject:
         return self.benchmarks.freeze(context, request)
+
+    def start_policy_benchmark(
+        self, context: CommandContext, request: StartPolicyBenchmark
+    ) -> JsonObject:
+        return self.benchmark_execution.start(context, request)
 
     def qualify_trajectory_dataset(
         self, context: CommandContext, request: QualifyTrajectoryDataset
@@ -690,7 +713,11 @@ class ResearchService:
 
     @staticmethod
     def _create_campaign(
-        transaction: Transaction, request: CreateCampaign, parent_campaign_id: str | None = None
+        transaction: Transaction,
+        request: CreateCampaign,
+        parent_campaign_id: str | None = None,
+        *,
+        identifier: str | None = None,
     ) -> JsonObject:
         project = ProjectData.model_validate(transaction.get("project", request.project_id)["data"])
         revision_id = request.project_revision_id or project.current_revision_id
@@ -733,7 +760,7 @@ class ResearchService:
             input_artifacts=request.input_artifacts,
             delegation=request.delegation,
         )
-        identifier = new_id()
+        identifier = identifier or new_id()
         for reference in contract.input_artifacts.values():
             retain_source(transaction, reference, "campaign", identifier)
         row = transaction.insert(
@@ -816,50 +843,57 @@ class ResearchService:
         def seal(transaction: Transaction) -> JsonObject:
             row = transaction.get("campaign", request.campaign_id)
             check_revision(context, row)
-            campaign_transition(CampaignState(row["state"]), CampaignState.READY)
-            data = CampaignData.model_validate(row["data"])
-            self._validate_contract(transaction, data)
-            sealed = data.model_copy(
-                update={
-                    "contract_digest": record_digest(
-                        "research.campaign-contract", data.contract.model_dump(mode="json")
-                    ),
-                    "sealed_at": utc_now(),
-                }
-            )
-            updated = transaction.update(
-                "campaign",
-                row["id"],
-                expected_revision=row["revision"],
-                data=sealed.model_dump(mode="json"),
-                state=CampaignState.READY,
-            )
-            transaction.event(
-                "campaign.sealed", updated, {"contract_digest": sealed.contract_digest}
-            )
-            return updated
+            return self._seal_campaign(transaction, request.campaign_id)
 
         return self._execute(context, "campaign.seal", request, "campaign.manage", seal)
+
+    def _seal_campaign(self, transaction: Transaction, campaign_id: str) -> JsonObject:
+        row = transaction.get("campaign", campaign_id)
+        campaign_transition(CampaignState(row["state"]), CampaignState.READY)
+        data = CampaignData.model_validate(row["data"])
+        self._validate_contract(transaction, data)
+        sealed = data.model_copy(
+            update={
+                "contract_digest": record_digest(
+                    "research.campaign-contract", data.contract.model_dump(mode="json")
+                ),
+                "sealed_at": utc_now(),
+            }
+        )
+        updated = transaction.update(
+            "campaign",
+            row["id"],
+            expected_revision=row["revision"],
+            data=sealed.model_dump(mode="json"),
+            state=CampaignState.READY,
+        )
+        transaction.event("campaign.sealed", updated, {"contract_digest": sealed.contract_digest})
+        return updated
 
     def start_campaign(self, context: CommandContext, request: CampaignTarget) -> JsonObject:
         def start(transaction: Transaction) -> JsonObject:
             row = transaction.get("campaign", request.campaign_id)
             check_revision(context, row)
-            data = CampaignData.model_validate(row["data"])
-            if data.contract_digest is None:
-                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Campaign contract is not sealed")
-            campaign_transition(CampaignState(row["state"]), CampaignState.RUNNING)
-            updated = transaction.update(
-                "campaign",
-                row["id"],
-                expected_revision=row["revision"],
-                data=row["data"],
-                state=CampaignState.RUNNING,
-            )
-            transaction.event("campaign.started", updated, {})
-            return updated
+            return self._start_campaign(transaction, request.campaign_id)
 
         return self._execute(context, "campaign.start", request, "campaign.manage", start)
+
+    @staticmethod
+    def _start_campaign(transaction: Transaction, campaign_id: str) -> JsonObject:
+        row = transaction.get("campaign", campaign_id)
+        data = CampaignData.model_validate(row["data"])
+        if data.contract_digest is None:
+            raise ResearchError(ErrorCode.INVALID_TRANSITION, "Campaign contract is not sealed")
+        campaign_transition(CampaignState(row["state"]), CampaignState.RUNNING)
+        updated = transaction.update(
+            "campaign",
+            row["id"],
+            expected_revision=row["revision"],
+            data=row["data"],
+            state=CampaignState.RUNNING,
+        )
+        transaction.event("campaign.started", updated, {})
+        return updated
 
     def propose_candidate(self, context: CommandContext, request: ProposeCandidate) -> JsonObject:
         operation, scope = "candidate.propose", "candidate.propose"
@@ -922,6 +956,7 @@ class ResearchService:
         *,
         consuming_proposal_id: str | None = None,
         qualified_training_id: str | None = None,
+        benchmark_authority: BenchmarkTrialAuthority | None = None,
     ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         campaign = CampaignData.model_validate(row["data"])
@@ -937,7 +972,7 @@ class ResearchService:
             raise ResearchError(
                 ErrorCode.INVALID_TRANSITION, "Trial admission requires a running campaign"
             )
-        require_unreserved_seed(transaction, campaign.contract.protocol_digest, request.seed)
+        benchmark_trial_id = require_trial_slot(transaction, campaign, request, benchmark_authority)
         require_prepared_training_authority(transaction, campaign.contract, qualified_training_id)
         candidate = CandidateData.model_validate(
             transaction.get("candidate", request.candidate_id)["data"]
@@ -969,6 +1004,7 @@ class ResearchService:
         resolved = revision.resolved
         ArtifactCatalog.available(transaction, candidate.source_artifact)
         spec = ExperimentSpec(
+            trial_id=benchmark_trial_id or new_id(),
             workspace_id=transaction.workspace_id,
             project_id=candidate.project_id,
             campaign_id=request.campaign_id,
@@ -1051,4 +1087,6 @@ class ResearchService:
             )
             transaction.event("job.created", job, {"trial_id": spec.trial_id, "stage_id": stage.id})
         transaction.event("trial.submitted", trial, {"spec_digest": spec.spec_digest})
+        if benchmark_trial_id is not None:
+            consume_trial_slot(transaction, benchmark_trial_id)
         return trial

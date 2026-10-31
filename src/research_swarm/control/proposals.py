@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from research_swarm.control.benchmark_trials import require_ordinary_proposal
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.learning_guard import require_learning_response
 from research_swarm.control.models import CampaignData, CandidateData
@@ -117,6 +118,7 @@ class ProposalControl:
 
     def request(self, context: CommandContext, request: RequestProposal) -> JsonObject:
         def create(transaction: Transaction) -> JsonObject:
+            require_ordinary_proposal(transaction, request.campaign_id)
             campaign_row = transaction.get("campaign", request.campaign_id)
             campaign = CampaignData.model_validate(campaign_row["data"])
             controller_id, epoch = authority(transaction)

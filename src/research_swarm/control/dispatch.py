@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from research_swarm.control.acceptance_models import ExpireAcceptance
+from research_swarm.control.benchmark_execution_models import StartPolicyBenchmark
 from research_swarm.control.benchmark_models import FreezePolicyBenchmark
 from research_swarm.control.child_models import (
     CancelChildCampaign,
@@ -113,6 +114,20 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.start_benchmark": CommandDefinition(
+        StartPolicyBenchmark,
+        "start_policy_benchmark",
+        "learning.manage",
+        False,
+        "Bind the checked policy and atomically start both fixed comparator arms for every seed.",
+        additional_scopes=(
+            "campaign.manage",
+            "candidate.propose",
+            "candidate.validate",
+            "trial.submit",
+            "read",
+        ),
+    ),
     "learning.freeze_benchmark": CommandDefinition(
         FreezePolicyBenchmark,
         "freeze_policy_benchmark",

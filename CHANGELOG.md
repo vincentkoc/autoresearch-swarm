@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Bind a current learned checkpoint and atomically create both fixed benchmark arms for every held-out seed. Reuse ordinary campaign, source validation, budget and worker semantics; preallocate the full proposal and trial inventory before execution.
+- Admit comparator trials through private arm/role/seed authority and consume each slot once. Block unplanned trials, different-seed submissions and ordinary proposal requests inside benchmark arms; preserve complete setup replay after lost replies or concurrent calls.
+
 - Freeze a held-out seed protocol before policy fitting, with an exact future training admission, original research family, reward rule and equal arm caps. Reserve the learning-plan identity so requalifying the same data cannot reset fitting history.
 - Guard reserved seeds in shared trial admission and require reserved training to name its benchmark. Freeze/admission races commit one consistent owner; preserve standalone numerical training and historical command serialization.
 

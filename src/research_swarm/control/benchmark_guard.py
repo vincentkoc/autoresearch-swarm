@@ -63,16 +63,6 @@ def require_benchmark_training(
         raise ResearchError(ErrorCode.EVIDENCE_INVALIDATED, "Training benchmark binding changed")
 
 
-def require_unreserved_seed(transaction: Transaction, protocol_digest: str, seed: int) -> None:
-    case = optional_record(transaction, "benchmark_seed", benchmark_seed_key(protocol_digest, seed))
-    if case is not None:
-        raise ResearchError(
-            ErrorCode.COMPARISON_INELIGIBLE,
-            "Held-out seed requires its benchmark arm authority",
-            details={"benchmark_id": case["data"]["benchmark_id"]},
-        )
-
-
 def require_prepared_training_authority(
     transaction: Transaction, contract: CampaignContract, qualified_training_id: str | None
 ) -> None:

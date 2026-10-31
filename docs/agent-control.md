@@ -953,11 +953,11 @@ draws, because policy and proposal identities enter those draws. The fixed sign
 gate counts ties as non-wins. Rejection or inconclusive evidence is a valid result;
 do not replace the seed panel after seeing outcomes.
 
-This slice freezes and guards the protocol. Reserved seeds remain unavailable to
-ordinary trial submission until benchmark arm authority is implemented. Binding
-the learned checkpoint, executing both arms, assessing the full panel and adopting
-a policy remain separate work. The reservation proves controller-observed ordering;
-it cannot certify that no external experiment used the same data or seeds.
+Reserved seeds remain unavailable to ordinary trial submission. The benchmark
+setup below supplies narrow authority for its planned initial comparator trials.
+Held-out candidate execution, assessment and adoption remain separate work. The
+reservation proves controller-observed ordering; it cannot certify that no
+external experiment used the same data or seeds.
 
 ## Approve and admit ordinary policy training
 
@@ -1092,3 +1092,64 @@ This receipt qualifies a checked numerical update. Held-out evaluation and an
 explicit adoption decision remain separate work. Its attempt proofs do not claim
 to aggregate every historical training retry or total campaign cost; those remain
 available through the ordinary ledger.
+
+## Start the fixed benchmark arms
+
+Once the reserved training admission has a current publication, start its frozen
+benchmark inventory:
+
+```python
+from research_swarm.control.benchmark_execution_models import StartPolicyBenchmark
+
+execution = operator.command(
+    "learning.start_benchmark",
+    StartPolicyBenchmark(
+        benchmark_id=benchmark["id"],
+        proposer_id=assigned_agent_id,
+    ),
+    idempotency_key="start-policy-benchmark",
+)["result"]["data"]
+```
+
+The command requires `learning.manage`, `campaign.manage`, `candidate.propose`,
+`candidate.validate`, `trial.submit` and `read`. MCP exposes
+`research_learning_start_benchmark`. This operation admits executable work.
+
+The controller revalidates the published checkpoint, original inputs and profile,
+frozen benchmark and every seed reservation. It verifies and pins the initial
+source outside SQL, then repeats evidence checks inside one transaction. That
+transaction creates exactly two independent campaigns per seed: baseline policy
+and learned policy. Each has the same frozen research protocol, input artifacts,
+starting source, per-arm caps and two-trial stopping limit. They are independent
+budget accounts; this command does not imply parent/child funding or a workspace
+aggregate spending cap.
+
+Setup seals and starts each ordinary campaign, proposes and validates its initial
+candidate, and admits only the initial comparator trial. Ordinary workers can claim
+those jobs immediately. Normal independent evaluation and observed baseline
+promotion establish each arm's incumbent. No evaluated incumbent is fabricated
+during setup, and no proposal is issued before that evidence exists.
+
+The immutable `benchmark_execution` binds the checkpoint and complete arm-ID
+inventory. Each `benchmark_arm` fixes its side, seed, policy digest, proposer,
+campaign contract, initial candidate/validation, both trial IDs, proposal ID and
+held-out learning-plan ID. `benchmark_trial_slot` records comparator consumption
+and the reserved candidate slot. All campaigns, budgets, candidates, trials,
+slots, events and the execution binding commit together or roll back together.
+
+Private comparator authority is bound to the exact arm, execution digest, source,
+seed and unconsumed slot. It is not a field on public `SubmitTrial`. Ordinary trial
+submission inside an arm is refused even when it requests a different seed.
+Ordinary proposal requests are also refused so they cannot spend the arm's one
+reserved proposal allowance. These restrictions do not block ordinary worker,
+evaluator, pause or cancellation APIs.
+
+Retries and concurrent setup calls return the same immutable inventory. A changed
+proposer is a conflicting setup request; restarting cannot regenerate sampling
+identities or select another learned checkpoint. Historical replay remains
+available after byte-service failure. Later evidence corrections preserve work
+and costs while preventing current qualification at later decision gates.
+
+This slice starts and qualifies the comparator path. Candidate slots stay closed
+until atomic planned-proposal and held-out learning-plan binding is implemented.
+Full-panel assessment and explicit policy adoption remain separate work.
