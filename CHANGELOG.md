@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Preserve the SDK's `request` argument name when replaying captured publication
+  commands in the actual workerd fixture.
+
 - Add an actual workerd two-stage evaluation probe with a separate evaluator
   credential. Exercise manifest authorization, native scoring, independent receipt
   creation, lost replies and offline restart replay with exactly two settlements.

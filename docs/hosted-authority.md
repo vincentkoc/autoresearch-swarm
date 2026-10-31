@@ -733,6 +733,13 @@ comparison between an integer and a precision-preserving decimal timing string.
 The assertion now explicitly decodes both timing fields; this failed run is not
 a passing result-publication receipt.
 
+The follow-up at `ce192d0`,
+[CI 41201395183](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41201395183),
+passed the timing assertion and stopped at the replay fixture's use of `payload`
+instead of the SDK's `request` argument name. Workerd again passed 10 other tests.
+The fixture now preserves the actual SDK call signature; qualification still
+requires a passing end-to-end receipt.
+
 Evaluator preparation now exposes shared synchronous selection and final commit
 callbacks. Authorization recomputes the job/trial/input selection after metadata
 storage and verifies the generated manifest's exact digest and size before

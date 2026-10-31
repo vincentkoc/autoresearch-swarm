@@ -81,7 +81,7 @@ def test_native_cpu_publication_survives_lost_reply_and_workerd_restart(tmp_path
 
                 def capture(operation, payload, **kwargs):
                     if operation == "worker.publish_attempt":
-                        captured.update(payload=payload.model_dump(mode="json"), **kwargs)
+                        captured.update(request=payload.model_dump(mode="json"), **kwargs)
                     return original(operation, payload, **kwargs)
 
                 client.command = capture
@@ -99,7 +99,7 @@ def test_native_cpu_publication_survives_lost_reply_and_workerd_restart(tmp_path
                 assert 0 < int(entry.timing.caps.launch_ns) <= int(entry.timing.caps.hard_ns)
                 assert entry.outcome is not None and entry.outcome.exit_code == 0
                 assert entry.outcome.released_at is not None and entry.outcome.closure.scope_closed
-                assert captured["payload"]["report_artifact"] is not None
+                assert captured["request"]["report_artifact"] is not None
                 assert runner.resources.availability() == {"cpu": 1}
                 accepted_row = operator.get("attempt", attempt_id)
                 assert accepted_row["state"] == "succeeded"
