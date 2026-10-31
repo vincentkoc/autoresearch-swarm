@@ -21,7 +21,7 @@ from research_swarm.state.database import Database
 from tests.test_checkpoint_capture import portable_rows
 from tests.test_checkpoint_capture import sealed as sealed
 from tests.test_checkpoint_import import recovery as recovery
-from tests.test_checkpoint_import import snapshot
+from tests.test_checkpoint_import import snapshot, target_secrets
 from tests.test_checkpoint_request import imported as imported
 from tests.test_checkpoint_request import request
 from tests.test_checkpoint_schema import source as source
@@ -68,13 +68,13 @@ async def admit(e, *, store=None, **changes):
 
     options = {
         "identity": e.target.identity,
-        "credential": e.source.secrets.bootstrap,
+        "credential": target_secrets(e).bootstrap,
         "target_json": json.dumps(e.target_config),
         "election_json": e.elected,
         "crypto": e.source.crypto,
         **changes,
     }
-    return await admit_target(Gate(), open_store, e.manifest, e.source.secrets, **options)
+    return await admit_target(Gate(), open_store, e.manifest, target_secrets(e), **options)
 
 
 def context(e):

@@ -97,6 +97,7 @@ jobs:
           tests/test_hosted_recovery_execution.py
           tests/test_recovery_verification.py
           tests/test_recovery_runtime.py
+          tests/test_checkpoint_runtime.py
           tests/test_recovery_elections.py
           tests/test_logical_recovery_routes.py
           tests/test_logical_route_installation.py

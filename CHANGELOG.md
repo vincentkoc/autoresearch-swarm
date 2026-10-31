@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add private hosted target runtime preparation after logical recovery. Install
+  the elected manifest's fresh credential roster and unqualified clock provider
+  atomically, then qualify it with a new signed witness and immutable receipt.
+  Interrupted preparation resumes without credential repair; completed replies
+  replay after witness loss. Keep original evidence, credentials and accounting,
+  and leave ordinary research routing inactive until separate activation.
+
 - Add a private recovery-runtime preparation guard. It binds each fresh credential
   and clock-provider mutation to an immutable target plan, current elected admission
   and exact operation. Reused credentials, mixed capabilities and use after activation

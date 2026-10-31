@@ -50,6 +50,14 @@ def test_import_intent_digest_binds_the_fixed_target_contract():
 
 @pytest.fixture
 async def recovery(sealed, tmp_path):
+    return make_recovery(sealed, tmp_path)
+
+
+def target_secrets(e):
+    return getattr(e, "target_secrets", e.source.secrets)
+
+
+def make_recovery(sealed, tmp_path, *, configure_target=None):
     image = capture(sealed)
     raw = sealed.manifest.model_dump(mode="json")
     raw.update(namespace="restored-fixture", object_id="b" * 64)
@@ -59,7 +67,11 @@ async def recovery(sealed, tmp_path):
         activation_id=new_id(),
         control_epoch=2,
     )
-    target_manifest = DeploymentManifest.model_validate(raw)
+    target_manifest, secrets = (
+        (DeploymentManifest.model_validate(raw), None)
+        if configure_target is None
+        else configure_target(raw, sealed)
+    )
     target = FixtureStore(Database(tmp_path / "target.sqlite").store)
     target.identity = StoreIdentity("cloudflare-do", target_manifest.configuration.store_location)
 
@@ -79,7 +91,7 @@ async def recovery(sealed, tmp_path):
         target_public_key=public_key(sealed.crypto, TARGET_SEED).hex(),
         operator_id=target_manifest.provisioning_actor_id,
     )
-    return SimpleNamespace(
+    result = SimpleNamespace(
         source=sealed,
         target=target,
         manifest=target_manifest,
@@ -87,11 +99,14 @@ async def recovery(sealed, tmp_path):
         image=image,
         envelope=sign_manifest(image.manifest, SEED, crypto=sealed.crypto),
     )
+    if secrets is not None:
+        result.target_secrets = secrets
+    return result
 
 
 def restore(e, **changes):
     values = dict(
-        credential=e.source.secrets.bootstrap,
+        credential=target_secrets(e).bootstrap,
         target_seed=TARGET_SEED,
         envelope=e.envelope,
         bodies=e.image.bodies,
@@ -100,7 +115,7 @@ def restore(e, **changes):
         crypto=e.source.crypto,
     )
     values.update(changes)
-    return import_checkpoint(e.target, e.manifest, e.source.secrets, e.intent, **values)
+    return import_checkpoint(e.target, e.manifest, target_secrets(e), e.intent, **values)
 
 
 def snapshot(store):

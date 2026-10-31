@@ -2255,12 +2255,28 @@ It rechecks the recovering phase before the ordinary active-state shortcut and r
 mixed recovery or driver capabilities. A credential ID or token already in storage
 always refuses on this path, including matching, revoked or expiring rows.
 
-The adapter must commit the plan, complete fresh roster and unqualified provider in
-one transaction. Resume must verify that set without reinstalling or repairing it.
-Qualification must recheck the protected plan and roster after awaiting its witness.
-These adapter operations and subsequent activation are not implemented by the guard;
-it cannot authorize execution, fencing, scientific acceptance or activation. The
-existing native witness request preimage and ordinary credential replay are unchanged.
+`Bootstrap.checkpoint_prepare_runtime(bootstrap_credential)` now implements the
+private preparation operation. The elected target manifest must already identify
+the desired runtime; this operation cannot change it. Its assignment key must differ
+from the source authority's signing key. Actual protected signing/dispatch keys,
+witness credential and credential roster must match their configured identities.
+Source credentials and providers remain historical records.
+
+The adapter commits the plan, complete fresh roster and unqualified provider in one
+transaction. Resume verifies that set without reinstalling or repairing it. A separate
+fresh signed witness qualifies the provider; after the await, the adapter rechecks
+current elected admission, protected inputs, roster and exact provider snapshot. Provider
+qualification, an immutable preparation receipt and its event commit together. A lost
+reply replays the retained receipt without acquiring another witness, while still
+requiring current recovery custody and an unchanged usable target roster.
+
+SQLite/signed-witness tests cover interruption in both phases, partial roster rollback,
+credential collisions, changed state during the await, lost committed replies and
+ordinary-route refusal. The new private RPC still needs actual workerd qualification.
+Preparation creates neither the public deployment seal nor an active workspace gate.
+Subsequent activation remains separate work; the preparation guard cannot authorize
+execution, fencing, scientific acceptance or activation. Existing native witness
+request preimages and ordinary credential replay are unchanged.
 
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names

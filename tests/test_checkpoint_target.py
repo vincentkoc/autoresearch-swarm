@@ -19,7 +19,7 @@ from research_swarm.domain.types import new_id
 from research_swarm.state.sql import StoreIdentity
 from tests.test_checkpoint_capture import portable_rows
 from tests.test_checkpoint_capture import sealed as sealed
-from tests.test_checkpoint_import import TARGET_SEED, snapshot
+from tests.test_checkpoint_import import TARGET_SEED, snapshot, target_secrets
 from tests.test_checkpoint_import import recovery as recovery
 from tests.test_checkpoint_schema import source as source
 from tests.test_cloudflare_deployment import deployment as deployment
@@ -49,13 +49,13 @@ async def call(e, **changes):
 
     options = {
         "identity": e.target.identity,
-        "credential": e.source.secrets.bootstrap,
+        "credential": target_secrets(e).bootstrap,
         "target_json": json.dumps(e.target_config),
         "bundle_json": e.bundle,
         "crypto": e.source.crypto,
         **changes,
     }
-    return await import_target(e.state, open_store, e.manifest, e.source.secrets, **options)
+    return await import_target(e.state, open_store, e.manifest, target_secrets(e), **options)
 
 
 async def test_target_imports_once_and_reverifies_concurrent_replies(configured, monkeypatch):

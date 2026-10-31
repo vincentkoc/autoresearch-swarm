@@ -24,7 +24,7 @@ from research_swarm.state.database import encode
 from tests.test_checkpoint_capture import capture, portable_rows
 from tests.test_checkpoint_capture import sealed as sealed
 from tests.test_checkpoint_import import recovery as recovery
-from tests.test_checkpoint_import import snapshot
+from tests.test_checkpoint_import import snapshot, target_secrets
 from tests.test_checkpoint_schema import source as source
 from tests.test_checkpoint_target import call as import_call
 from tests.test_checkpoint_target import configured as configured
@@ -64,12 +64,12 @@ async def request(e, *, store=None, **changes):
 
     options = {
         "identity": e.target.identity,
-        "credential": e.source.secrets.bootstrap,
+        "credential": target_secrets(e).bootstrap,
         "target_json": json.dumps(e.target_config),
         "crypto": e.source.crypto,
         **changes,
     }
-    return await request_target(Gate(), open_store, e.manifest, e.source.secrets, **options)
+    return await request_target(Gate(), open_store, e.manifest, target_secrets(e), **options)
 
 
 def pins(e):

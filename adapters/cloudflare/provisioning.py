@@ -109,15 +109,26 @@ def _roster(sql, manifest):
     require_credentials_schema(sql)
     if sql.execute("SELECT COUNT(*) FROM credentials").one()[0] != len(manifest.credentials):
         raise ResearchError(ErrorCode.STALE_FENCE, "Prepared credential roster differs")
-    for expected in manifest.credentials:
-        row = sql.execute("SELECT * FROM credentials WHERE id=?", (expected.id,)).fetchone()
+    require_roster(sql, manifest.credentials)
+
+
+def require_roster(sql, credentials):
+    """Verify exact members without rejecting retained historical credentials."""
+    require_credentials_schema(sql)
+    for expected in credentials:
+        row = sql.execute(
+            "SELECT token_digest,workspace_id,principal FROM credentials WHERE id=? "
+            "AND typeof(token_digest)='text' AND length(CAST(token_digest AS BLOB))=64 "
+            "AND typeof(workspace_id)='text' AND length(CAST(workspace_id AS BLOB))=36 "
+            "AND typeof(principal)='text' AND length(CAST(principal AS BLOB))<=262144 "
+            "AND typeof(revoked)='integer' AND revoked=0 AND expires_at IS NULL",
+            (expected.id,),
+        ).fetchone()
         if (
             row is None
             or row["token_digest"] != expected.token_digest
             or row["workspace_id"] != expected.principal.workspace_id
             or Principal.model_validate_json(row["principal"]) != expected.principal
-            or row["revoked"]
-            or row["expires_at"] is not None
         ):
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED, "Prepared credential is unavailable"
