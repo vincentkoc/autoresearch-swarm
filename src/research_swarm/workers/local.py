@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import subprocess
 import sys
 import time
@@ -35,7 +34,6 @@ from research_swarm.engines.execution import (
 )
 from research_swarm.engines.registration import EnvironmentRegistration
 from research_swarm.projects.manifest import TimingContract
-from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.source import extract_bundle
 from research_swarm.projects.workload import (
     WorkloadContext,
@@ -49,6 +47,7 @@ from research_swarm.workers.clock_estimates import ClockSampler
 from research_swarm.workers.clock_signatures import ClockVerifier, VerifiedAssignmentTime
 from research_swarm.workers.clocks import continuous_time
 from research_swarm.workers.contracts import NativeCommand
+from research_swarm.workers.input_cache import InputCache, InputCacheLimits, MaterializedInput
 from research_swarm.workers.journal import JournalEntry, JournalState, WorkerJournal
 from research_swarm.workers.prepared import PreparedExecution
 from research_swarm.workers.resources import MachineResources, ResourceDemand
@@ -71,6 +70,7 @@ class LocalWorker:
         executable: Path | None = None,
         registration: EnvironmentRegistration | None = None,
         maximum_output_bytes: int = 256 * 1024 * 1024,
+        input_cache_limits: InputCacheLimits | None = None,
     ) -> None:
         self.client, self.worker = client, WorkerData.model_validate(worker)
         if registration is None and worker.environment_contracts is not None:
@@ -91,6 +91,11 @@ class LocalWorker:
         if self.assignment_verifier is None and self.verifier is None:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker verification key is absent")
         self.root = root.absolute()
+        self.input_cache = InputCache(
+            self.root / "input-cache",
+            worker.binding.workspace_id,
+            input_cache_limits if input_cache_limits is not None else InputCacheLimits(),
+        )
         self.registration = (
             EnvironmentRegistration.model_validate(registration)
             if registration is not None
@@ -167,33 +172,35 @@ class LocalWorker:
             )
         )
 
-    def _download(self, attempt_id: str, reference: ArtifactRef, path: Path) -> None:
-        if path.exists():
-            digest, size = hashlib.sha256(), 0
-            with SourceReader(path.parent) as reader, reader.open(path.name) as stream:
-                while chunk := stream.read(1024 * 1024):
-                    size += len(chunk)
-                    if size > reference.size_bytes:
-                        break
-                    digest.update(chunk)
-            if size != reference.size_bytes or "sha256:" + digest.hexdigest() != reference.digest:
-                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Cached worker input differs")
-            return
-        observed = (
-            self.client.worker_download(
-                WorkerArtifactRead(
-                    worker_id=self.worker.binding.worker_id,
-                    session_id=self.worker.binding.worker_session_id,
-                    attempt_id=attempt_id,
-                    artifact_id=reference.id,
-                ),
-                path,
-            )
-            if self.scoped
-            else self.client.download(reference.id, path)
+    def _download(self, attempt_id: str, reference: ArtifactRef, path: Path) -> MaterializedInput:
+        request = WorkerArtifactRead(
+            worker_id=self.worker.binding.worker_id,
+            session_id=self.worker.binding.worker_session_id,
+            attempt_id=attempt_id,
+            artifact_id=reference.id,
         )
-        if observed != reference:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Downloaded worker input differs")
+
+        def authorize() -> ArtifactRef:
+            if self.scoped:
+                return self.client.worker_input(request)
+            record = self.client.artifact(reference.id)
+            if (
+                record.state != "verified"
+                or record.workspace_id != self.worker.binding.workspace_id
+            ):
+                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Worker input is not available")
+            return record.reference
+
+        return self.input_cache.materialize(
+            reference,
+            path,
+            authorize=authorize,
+            fetch=(
+                (lambda target: self.client.worker_download(request, target))
+                if self.scoped
+                else (lambda target: self.client.download(reference.id, target))
+            ),
+        )
 
     def _verify(
         self, attempt: AttemptData, trial: TrialData

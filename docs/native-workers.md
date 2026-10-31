@@ -158,6 +158,34 @@ checks the invocation against its sealed stage. The journal uses SQLite WAL, FUL
 synchronous writes, an atomic event outbox, and one launch claim per attempt.
 Two independent supervisor processes can race. Only one can claim the execution.
 
+Each installation lazily creates `input-cache` beneath its worker root. The default
+cache holds at most 1 GiB of payload, 128 entries and 256 MiB per entry. Configure
+`LocalWorker(input_cache_limits=InputCacheLimits(...))` to change those limits;
+`max_bytes=0` disables reuse. This operational policy is separate from the signed
+environment and experiment. Recovery-only construction does not create or evict
+cache contents.
+
+Every materialization checks current authority and the complete artifact reference,
+including existing attempt files and warm hits. Scoped workers use their current
+assignment; legacy workers use their existing workspace read scope and verified
+catalog state. A lock waiter rechecks authority before using bytes. No cached
+authorization survives controller failure, revocation or an expired grant.
+
+Entries are keyed by workspace and full artifact reference, verified while copying,
+and copied into independent attempt files. Workloads cannot mutate another attempt
+through a hardlink. One native lock serializes index changes, least-recently-used
+eviction and publication. Payload capacity includes the one staging copy; the
+separately bounded index is at most 2 MiB. Content transfers happen outside the lock,
+so concurrent cold misses can download the same input twice. Oversized inputs bypass
+the cache and use the ordinary transfer contract.
+
+Corrupt shared bytes are removed and fetched again. Corrupt attempt copies remain
+errors. Invalid cache metadata, lock contention or cache storage failure bypass reuse
+without repairing unknown files or discarding a valid independent input. The internal
+materialization result records its origin, avoided transfer bytes and whether cache
+storage was unavailable. These are local observations, not measured research gains
+or controller placement authority. Cache-aware scheduling is a separate contract.
+
 The launch sequence is:
 
 ~~~text

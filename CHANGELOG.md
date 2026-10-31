@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse verified worker input bytes across attempts and restarts with fresh assignment authority, independent copies and bounded least-recently-used storage. Keep transfers outside the cache lock, recover interrupted publications, bypass unavailable disposable storage and preserve refusal of corrupt attempt inputs.
+
 - Expose typed artifact metadata in local, HTTP and async SDK clients through the existing authenticated catalog route, without downloading content or granting worker assignment authority.
 
 - Give Windows SQLite-created sidecars and backups the process user's ownership through a synchronous, thread-local creation scope. Restore the exact prior token before reuse, preserve strict admission of existing files, and identify rejected state files without exposing account identifiers.
