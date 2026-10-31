@@ -8,6 +8,7 @@ from research_swarm.storage.async_r2 import BoundedR2Configuration, ObjectBytes
 class R2BindingTransport:
     def __init__(self, bucket, module, config):
         # The deployment supplies this fixed binding. Requests never select a bucket.
+        # Convert env.ARTIFACTS with workers.python_to_rpc at the runtime boundary.
         self.bucket, self.module = bucket, module
         self.config = BoundedR2Configuration.model_validate(config)
 

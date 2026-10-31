@@ -16,7 +16,13 @@ from router_qualification import exercise as exercise_router
 from signing_qualification import exercise as exercise_signing
 from storage_qualification import exercise as exercise_storage
 from witness_qualification import exercise as exercise_witness
-from workers import DurableObject, Response, WorkerEntrypoint, import_from_javascript
+from workers import (
+    DurableObject,
+    Response,
+    WorkerEntrypoint,
+    import_from_javascript,
+    python_to_rpc,
+)
 
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -49,7 +55,9 @@ class OrderingProbe(VersionedRecord):
 class Qualification(DurableObject):
     async def r2_contract(self, case):
         module = import_from_javascript("./r2_io.mjs")
-        return json.dumps(await exercise_r2(self.env.ARTIFACTS, module, case))
+        # Pass the raw JS binding, not a PyProxy whose mapping get shadows R2.get.
+        bucket = python_to_rpc(self.env.ARTIFACTS)
+        return json.dumps(await exercise_r2(bucket, module, case))
 
     async def research_contract(self, body):
         probe = RouterProbe.model_validate_json(body)

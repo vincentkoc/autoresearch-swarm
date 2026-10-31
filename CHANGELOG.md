@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Convert the Python Workers R2 wrapper through the public SDK conversion API
+  before passing it into JavaScript. Preserve the actual bucket methods instead
+  of invoking the Python proxy's mapping lookup during a read.
+
 - Add an awaited R2 binding bridge with bounded reads, conditional writes and
   explicit uncertain outcomes on timeout. Add local workerd probes for binary
   content, the 1 MiB profile, persistent bytes and late-write retirement fences.
