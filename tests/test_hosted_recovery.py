@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import httpx
 import pytest
 
+from adapters.cloudflare.checkpoint_closure import reconcile_target_attempt
 from adapters.cloudflare.hosted_http import handle
 from adapters.cloudflare.recovery_router import ExistingRecoveryRouter
 from research_swarm.client import ResearchClient
@@ -17,7 +20,7 @@ from research_swarm.control.worker_records import AttemptData, WorkerData
 from research_swarm.domain.canonical import canonical_bytes, content_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
-from research_swarm.state.database import Database
+from research_swarm.state.database import Database, Transaction
 from research_swarm.storage.async_r2 import BoundedR2Objects
 from research_swarm.workers.clock_signatures import ClockVerifier
 from research_swarm.workers.contracts import NativeCommand
@@ -34,7 +37,7 @@ from tests.test_checkpoint_target import configured as configured
 from tests.test_cloudflare_deployment import deployment as deployment
 from tests.test_cloudflare_provisioning import bootstrap as bootstrap
 from tests.test_hosted_research import enroll_and_claim, sdk
-from tests.test_hosted_router import Gate
+from tests.test_hosted_router import FixtureStore, Gate
 from tests.test_manifest import project as project
 from tests.test_production_delivery import production as production
 
@@ -210,6 +213,221 @@ async def finish(e, target, *, key=None):
         target.model_dump(mode="json"),
         idempotency_key=key or new_id(),
     )
+
+
+def closure_request(e, submission, *, revision=None):
+    if revision is None:
+        revision = e.target.read(
+            lambda sql: sql.execute(
+                "SELECT revision FROM records WHERE kind='attempt' AND id=?",
+                (e.target_request.attempt_id,),
+            ).one()[0]
+        )
+    return {
+        "request_id": new_id(),
+        "expected_revision": revision,
+        "payload": {
+            "attempt_id": e.target_request.attempt_id,
+            "submission_id": submission["id"],
+            "expected_controller_id": e.manifest.configuration.authority.controller_id,
+            "expected_control_epoch": e.manifest.configuration.authority.control_epoch,
+            "reason": "Original native evidence proves operational closure",
+        },
+    }
+
+
+async def close_attempt(e, request, *, credential=None, store=None):
+    return strict_json_loads(
+        await reconcile_target_attempt(
+            Gate(),
+            lambda: e.target if store is None else store,
+            e.manifest,
+            e.source.secrets,
+            identity=e.target.identity,
+            credential=e.source.secrets.bootstrap if credential is None else credential,
+            target_json=json.dumps(e.target_config),
+            request_json=json.dumps(request),
+            crypto=e.source.crypto,
+            objects=e.objects,
+        )
+    )
+
+
+async def test_private_closure_settles_not_started_once_and_keeps_recovery_gate(receiver):
+    e = receiver
+    _, submitted = await upload(e)
+    before, calls = snapshot(e.target), len(e.source.witness.requests)
+    request = closure_request(e, submitted["result"])
+    closed = await close_attempt(e, request)
+    assert closed["disposition"] == "accepted"
+    result = closed["result"]
+    assert result["disposition"] == result["attempt"]["state"] == "closed_unaccepted"
+    assert result["closure"]["data"]["not_started"] is True
+    assert set(result["closure"]["data"]["consumed"].values()) == {"0"}
+    after = snapshot(e.target)
+    assert after["budget_settlements"] != before["budget_settlements"]
+    reservations = set(result["attempt"]["data"]["dispatch"]["reservation_ids"])
+    assert (
+        reservations
+        and {row["id"] for row in after["budget_reservations"] if row["state"] == "settled"}
+        == reservations
+    )
+    assert all(
+        row["state"] == "recovering" for row in after["records"] if row["kind"] == "workspace_gate"
+    )
+    assert not [
+        row
+        for row in after["records"]
+        if row["kind"] in {"run_result", "evaluation_receipt", "promotion"}
+    ]
+    assert await close_attempt(e, request) == closed
+    assert snapshot(e.target) == after
+    fresh = closure_request(e, submitted["result"], revision=result["attempt"]["revision"])
+    assert (await close_attempt(e, fresh))["result"] == result
+    assert snapshot(e.target)["budget_settlements"] == after["budget_settlements"]
+    assert len(e.source.witness.requests) == calls
+
+
+@pytest.mark.parametrize("state", [JournalState.RECEIVED, JournalState.UNKNOWN])
+async def test_unfinished_journal_never_releases_recovery_budget(receiver, state):
+    e = receiver
+    e.source.journal_path.write_bytes(
+        canonical_bytes(e.source.entry.model_copy(update={"state": state}).model_dump(mode="json"))
+    )
+    _, submitted = await upload(e)
+    before = snapshot(e.target)
+    with pytest.raises(ResearchError) as refused:
+        await close_attempt(e, closure_request(e, submitted["result"]))
+    assert refused.value.code in {ErrorCode.EXECUTION_UNKNOWN, ErrorCode.INVALID_TRANSITION}
+    after = snapshot(e.target)
+    for table in ("budget_reservations", "budget_settlements", "budget_entries", "records"):
+        assert after[table] == before[table]
+
+
+@pytest.mark.parametrize("damage", ["bootstrap", "admission", "revision", "bytes"])
+async def test_private_closure_refuses_missing_authority_or_evidence(receiver, damage):
+    e = receiver
+    _, submitted = await upload(e)
+    request = closure_request(e, submitted["result"])
+    if damage == "admission":
+        e.target.write(
+            lambda sql: sql.execute("DELETE FROM records WHERE kind='logical_recovery_election'")
+        )
+    elif damage == "revision":
+        request["expected_revision"] += 1
+    elif damage == "bytes":
+        e.objects.transport.objects.clear()
+    before, calls = snapshot(e.target), list(e.objects.transport.calls)
+    with pytest.raises(ResearchError):
+        await close_attempt(e, request, credential="wrong" if damage == "bootstrap" else None)
+    assert snapshot(e.target) == before
+    if damage != "bytes":
+        assert e.objects.transport.calls == calls
+
+
+@pytest.mark.parametrize("damage", ["admission", "submission"])
+async def test_closure_rechecks_awaited_evidence_before_accounting(receiver, monkeypatch, damage):
+    e = receiver
+    _, submitted = await upload(e)
+    request = closure_request(e, submitted["result"])
+    original = e.objects.transport.get
+    changed = []
+
+    async def read(*args, **kwargs):
+        body = await original(*args, **kwargs)
+        if damage == "admission":
+            e.target.write(
+                lambda sql: sql.execute(
+                    "DELETE FROM records WHERE kind='logical_recovery_election'"
+                )
+            )
+        else:
+            e.target.write(
+                lambda sql: sql.execute(
+                    "UPDATE records SET state='changed' WHERE kind='attempt_submission'"
+                )
+            )
+        changed.append(snapshot(e.target))
+        return body
+
+    monkeypatch.setattr(e.objects.transport, "get", read)
+    with pytest.raises(ResearchError):
+        await close_attempt(e, request)
+    assert changed
+    after = snapshot(e.target)
+    for table in ("budget_reservations", "budget_settlements", "budget_entries", "records"):
+        assert after[table] == changed[-1][table]
+
+
+async def test_independent_closure_race_has_one_settlement_and_receipt(receiver):
+    e = receiver
+    _, submitted = await upload(e)
+    request = closure_request(e, submitted["result"])
+    barrier = Barrier(2)
+
+    def race(_):
+        store = FixtureStore(Database(e.target.delegate.path).store)
+        store.identity = e.target.identity
+        barrier.wait(timeout=10)
+        return asyncio.run(close_attempt(e, request, store=store))
+
+    def run():
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            return list(pool.map(race, (0, 1)))
+
+    results = await asyncio.to_thread(run)
+    assert results[0] == results[1]
+    after = snapshot(e.target)
+    assert len([row for row in after["records"] if row["kind"] == "attempt_closure"]) == 1
+    assert len(after["budget_settlements"]) == len(e.source.entry.dispatch.reservation_ids)
+
+
+async def test_closure_rollback_keeps_budget_and_evidence_together(receiver, monkeypatch):
+    e = receiver
+    _, submitted = await upload(e)
+    request = closure_request(e, submitted["result"])
+    before = snapshot(e.target)
+    original = Transaction.event
+
+    def broken(tx, kind, *args, **kwargs):
+        original(tx, kind, *args, **kwargs)
+        if kind == "attempt.closure_reconciled":
+            raise RuntimeError("Synthetic failure after final closure event")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Transaction, "event", broken)
+        with pytest.raises(RuntimeError, match="Synthetic failure"):
+            await close_attempt(e, request)
+    assert snapshot(e.target) == before
+    assert (await close_attempt(e, request))["disposition"] == "accepted"
+
+
+async def test_lost_closure_ack_replays_but_changed_admission_still_refuses(receiver, monkeypatch):
+    e = receiver
+    _, submitted = await upload(e)
+    request = closure_request(e, submitted["result"])
+    original = Database.execute
+
+    def lost(database, context, operation, *args, **kwargs):
+        result = original(database, context, operation, *args, **kwargs)
+        if operation == "attempt.reconcile_closure":
+            raise ValueError("Synthetic lost committed closure acknowledgment")
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Database, "execute", lost)
+        with pytest.raises(ValueError, match="Synthetic lost"):
+            await close_attempt(e, request)
+    before = snapshot(e.target)
+    assert (await close_attempt(e, request))["disposition"] == "accepted"
+    assert snapshot(e.target) == before
+    e.target.write(
+        lambda sql: sql.execute("DELETE FROM records WHERE kind='logical_recovery_election'")
+    )
+    changed = snapshot(e.target)
+    with pytest.raises(ResearchError):
+        await close_attempt(e, request)
+    assert snapshot(e.target) == changed
 
 
 async def test_original_scoped_sdk_uploads_and_quarantines_journal_without_clock(receiver):

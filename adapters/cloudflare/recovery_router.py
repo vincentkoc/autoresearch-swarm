@@ -119,6 +119,7 @@ class ExistingRecoveryRouter:
             )
             instance = cls()
             instance.state, instance.configuration = state, manifest.configuration
+            instance.operator = operator
             instance.crypto, instance.objects = crypto, objects
             instance.verifier = HostedRecoveryVerifier(manifest, custody.binding)
             instance.database = Database.from_store(store, recovery_verifier=instance.verifier)

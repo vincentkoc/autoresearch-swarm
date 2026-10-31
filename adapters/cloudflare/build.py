@@ -60,6 +60,7 @@ PRODUCTION = (
     "checkpoint_turns.py",
     "checkpoint_artifacts.py",
     "checkpoint_routes.py",
+    "checkpoint_closure.py",
     "recovery_router.py",
 )
 TARGETS = {

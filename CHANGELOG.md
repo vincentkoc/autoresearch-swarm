@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add private hosted recovery closure from original journal evidence. The fixed
+  target rechecks admission and verified R2 bytes, then settles reservations and
+  writes closure evidence in one shared transaction. Exact retries preserve the
+  original acknowledgment; UNKNOWN or unfinished execution keeps funding held.
+  Closure leaves the target recovering and does not accept scientific results.
+
 - Expose original-worker recovery through a named Cloudflare `Recovery` entrypoint
   and an explicit fixed-target Durable Object RPC receiver. Preserve streamed
   requests and original credentials, bound body reads after authentication, and

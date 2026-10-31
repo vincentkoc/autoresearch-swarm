@@ -2,6 +2,7 @@
 
 from checkpoint_admission import admit_target
 from checkpoint_artifacts import read_source_artifact, restore_target_artifact
+from checkpoint_closure import reconcile_target_attempt
 from checkpoint_election import elect_source
 from checkpoint_routes import issue_target_route
 from checkpoint_source import capture_source, seal_source
@@ -115,6 +116,16 @@ async def target_checkpoint(state, env, credential, operation, *, artifact_io=Fa
 
 
 class ResearchAuthority(DurableObject):
+    async def checkpoint_closure(self, credential, request_json):
+        return await target_checkpoint(
+            self.ctx,
+            self.env,
+            credential,
+            reconcile_target_attempt,
+            artifact_io=True,
+            request_json=request_json,
+        )
+
     async def recovery_request(self, request):
         # A separate binding method is routing, not authentication. Original tokens
         # are verified by the recovery router before its bounded reader consumes bytes.
@@ -293,6 +304,20 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def checkpoint_closure(self, credential, request_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_closure(
+                credential, request_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def checkpoint_route(self, credential, request_json):
         try:

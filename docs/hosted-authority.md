@@ -2199,6 +2199,30 @@ restart, revocation, admission changes during reads, invalid journals/assignment
 and overlapping duplicate uploads. This is no-launch recovery evidence, not a
 native-execution or actual Cloudflare qualification claim.
 
+`Bootstrap.checkpoint_closure(bootstrap_credential, request_json)` is a separate
+operator operation. Its envelope contains a stable UUID `request_id`, an exact
+attempt `expected_revision`, and a `ReconcileAttempt` payload naming the original
+attempt/submission, current controller/epoch and reason. It is not exposed through
+the worker HTTP command policy. Protected bootstrap custody, the physical target
+and current logical admission are checked before cached acknowledgments.
+
+For a fresh closure the adapter reads only the original bounded journal from the
+selected R2 generation. It rechecks admission and all selected submission, worker,
+attempt and artifact records after I/O, then invokes `ClosureControl._close` inside
+the shared command transaction. Verified NOT_STARTED evidence settles with zero
+attempt/execution consumption; a verified CLOSED outcome uses its original measured
+consumption. UNKNOWN, unfinished execution or absent native exit cannot release
+funding. Reservation settlement, evidence retention, closure receipt, events and
+command acknowledgment commit together. Exact retry returns the retained response;
+a fresh request against an already closed attempt cannot charge it twice.
+
+Closure records `closed_unaccepted`, leaves the workspace recovering, and creates
+no scientific result, promotion or successor launch. SQLite/mock-R2 tests cover
+NOT_STARTED settlement, unknown/unfinished refusal, independent connection races,
+rollback after the final event, lost committed acknowledgments, changed admission
+before replay, and changed evidence during the awaited read. This private hosted
+operation still requires actual workerd and native CLOSED execution qualification.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase
