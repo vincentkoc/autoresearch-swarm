@@ -25,6 +25,8 @@ shutil.copyfile(ROOT / "witness_qualification.py", output / "witness_qualificati
 shutil.copyfile(ROOT / "research_router.py", output / "research_router.py")
 shutil.copyfile(ROOT / "artifact_router.py", output / "artifact_router.py")
 shutil.copyfile(ROOT / "hosted_http.py", output / "hosted_http.py")
+shutil.copyfile(ROOT / "http_binding.py", output / "http_binding.py")
+shutil.copyfile(ROOT / "http_io.mjs", output / "http_io.mjs")
 shutil.copyfile(ROOT / "router_qualification.py", output / "router_qualification.py")
 shutil.copyfile(ROOT / "r2_binding.py", output / "r2_binding.py")
 shutil.copyfile(ROOT / "r2_io.mjs", output / "r2_io.mjs")

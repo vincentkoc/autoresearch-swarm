@@ -55,21 +55,29 @@ export async function get(bucket, key, maxBytes) {
   if (!Number.isInteger(maxBytes) || maxBytes < 0 || maxBytes > MAX_BYTES) {
     throw new TypeError("Invalid bounded R2 read");
   }
-  return bounded(async () => {
-    const object = await bucket.get(key);
-    if (object === null) return "null";
-    if (!object.body) throw new Error("R2 object has no body");
-    const reader = object.body.getReader();
-    try {
+  let reader, closed = false;
+  try {
+    return await bounded(async () => {
+      const object = await bucket.get(key);
+      if (closed) {
+        if (object?.body) object.body.cancel().catch(() => {});
+        throw new Error("R2 read scope ended");
+      }
+      if (object === null) return "null";
+      if (!object.body) throw new Error("R2 object has no body");
+      reader = object.body.getReader();
       if (!Number.isInteger(object.size) || object.size < 0 || object.size > maxBytes) {
         throw new Error("R2 object exceeded its bound");
       }
       const metadata = metadataValue(object.customMetadata ?? {});
-      let size = 0;
+      let size = 0, chunks = 0;
       const parts = [];
       for (;;) {
+        if (closed) throw new Error("R2 read scope ended");
         const { done, value } = await reader.read();
+        if (closed) throw new Error("R2 read scope ended");
         if (done) break;
+        if (++chunks % 64 === 0) await new Promise(resolve => setTimeout(resolve, 0));
         size += value.length;
         if (size > maxBytes) throw new Error("R2 body exceeded its bound");
         for (let offset = 0; offset < value.length; offset += 8192) {
@@ -78,8 +86,11 @@ export async function get(bucket, key, maxBytes) {
       }
       if (size !== object.size) throw new Error("R2 body length differs");
       return JSON.stringify({ content_hex: parts.join(""), metadata });
-    } finally {
-      await reader.cancel();
-    }
-  });
+    });
+  } finally {
+    closed = true;
+    // A timed-out read cannot retain a consuming loop or open a late body reader.
+    // Cancellation is requested, never used as proof of provider-operation closure.
+    if (reader) reader.cancel().catch(() => {});
+  }
 }

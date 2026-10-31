@@ -21,11 +21,12 @@ export async function request(origin, path, body, timeoutMs) {
     }
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8", { fatal: true });
-    let size = 0, text = "";
+    let size = 0, chunks = 0, text = "";
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (++chunks % 64 === 0) await new Promise(resolve => setTimeout(resolve, 0));
         size += value.length;
         if (size > 16384) throw new Error("Witness fixture response exceeded its bound");
         text += decoder.decode(value, { stream: true });

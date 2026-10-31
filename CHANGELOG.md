@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Bound Workers request-body consumption by bytes and a fixed read deadline.
+  Preserve binary input, reject oversized or uncertain reads before dispatch,
+  and avoid treating requested cancellation as completed transport closure.
+  Yield between ready chunk batches so empty streams cannot starve deadlines;
+  stop R2 readers and discard late bodies when their read scope ends.
+
 - Map the bounded hosted router onto the existing SDK HTTP contract, including
   profile-specific capabilities, authenticated body consumption, exact command
   replay, complete uploads and verified downloads. Keep deployment separate.

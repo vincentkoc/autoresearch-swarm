@@ -499,6 +499,14 @@ Unit tests drive the unchanged `ResearchClient` through its actual HTTP transpor
 with a mock network boundary; a Workers ingress and real HTTP runtime probe are
 still required before claiming provider qualification for this API slice.
 
+The Workers body bridge (`http_binding.py` and `http_io.mjs`) enforces that bound
+while reading and refuses an unconfirmed read after five seconds. Ready chunk
+batches yield to the event loop so an empty-chunk producer cannot starve its
+deadline. Request cancellation is best effort; it is not closure evidence. R2
+reads also end their consuming scope at timeout and dispose of late response
+bodies. Native JavaScript tests use an independently bounded worker thread for
+the starvation regression. These stream tests do not replace workerd HTTP proof.
+
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command
