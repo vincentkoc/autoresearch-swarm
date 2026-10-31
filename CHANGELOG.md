@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expose typed artifact metadata in local, HTTP and async SDK clients through the existing authenticated catalog route, without downloading content or granting worker assignment authority.
+
 - Give Windows SQLite-created sidecars and backups the process user's ownership through a synchronous, thread-local creation scope. Restore the exact prior token before reuse, preserve strict admission of existing files, and identify rejected state files without exposing account identifiers.
 
 - Let external proposal controllers choose a retained research parent while preserving the incumbent as the independent promotion and learning comparator. Freeze archive ancestry, recheck evidence at admission, preserve issued choices across retirement and retain canonical lineage for duplicate responses.

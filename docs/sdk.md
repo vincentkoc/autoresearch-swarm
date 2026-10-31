@@ -56,6 +56,11 @@ The client methods include `command`, `capabilities`, `get`, `list`, `context`,
 `budget`, `events`, `upload_file`, `capture_project`, `register_project`, and
 `download`. `RecordQuery` supplies bounded filters and cursors for `list`.
 
+`artifact(identifier)` returns the typed artifact catalog record and current
+lifecycle state without transferring bytes. It requires workspace `read` access,
+has an async equivalent, and uses the existing artifact metadata HTTP endpoint.
+Metadata is descriptive; it does not reserve bytes or authorize a worker assignment.
+
 `worker_list(WorkerQuery)` and `worker_get(WorkerRead)` expose the narrower worker
 query contract. They also have async equivalents. A worker credential can use
 these views without obtaining generic workspace read access.

@@ -144,6 +144,9 @@ class LocalTransport:
                 context, WorkerQuery.model_validate(payload)
             )
         context.principal.require("read")
+        if operation == "artifact.get":
+            identifier = TypeAdapter(ID).validate_python(payload["id"])
+            return self.runtime.artifacts.get(context, identifier).model_dump(mode="json")
         if operation == "capabilities":
             return capabilities()
         if operation == "get":
@@ -323,6 +326,9 @@ class HTTPTransport:
             return self._request("POST", "/v1/" + operation.replace(".", "/"), json=payload)
         if operation == "capabilities":
             return self._request("GET", "/v1/capabilities")
+        if operation == "artifact.get":
+            identifier = TypeAdapter(ID).validate_python(payload["id"])
+            return self._request("GET", f"/v1/artifacts/{identifier}")
         if operation == "get":
             kind = RecordQuery(kind=payload["kind"]).kind
             identifier = TypeAdapter(ID).validate_python(payload["id"])
@@ -610,6 +616,13 @@ class ResearchClient:
             idempotency_key=idempotency_key,
         )
 
+    def artifact(self, identifier: str) -> ArtifactRecord:
+        return ArtifactRecord.model_validate(
+            self.transport.query(
+                "artifact.get", {"id": TypeAdapter(ID).validate_python(identifier)}
+            )
+        )
+
     def download(self, identifier: str, destination: Path) -> ArtifactRef:
         return self.transport.download(identifier, destination)
 
@@ -754,6 +767,9 @@ class AsyncResearchClient:
             manifest_path=manifest_path,
             revision=revision,
         )
+
+    async def artifact(self, identifier: str) -> ArtifactRecord:
+        return await asyncio.to_thread(self.client.artifact, identifier)
 
     async def download(self, identifier: str, destination: Path) -> ArtifactRef:
         return await asyncio.to_thread(self.client.download, identifier, destination)

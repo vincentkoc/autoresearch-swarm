@@ -61,6 +61,9 @@ def test_local_sdk_captures_registers_replays_and_reopens(
             )["result"]
         assert client.context(campaign["id"])["campaign"]["state"] == "running"
         source = registered["result"]["project_revision"]["data"]["source_artifact"]
+        metadata = client.artifact(source["id"])
+        assert metadata.state == "verified"
+        assert metadata.reference.model_dump(mode="json") == source
         destination = tmp_path / "download.zip"
         assert client.download(source["id"], destination).digest == source["digest"]
         with pytest.raises(FileExistsError):
@@ -90,6 +93,9 @@ def test_http_sdk_matches_control_and_replays_complete_upload(
         assert client.get("project", project["id"]) == project
         assert client.capabilities()["schema_version"] == "1.0"
         source = registered["result"]["project_revision"]["data"]["source_artifact"]
+        metadata = client.artifact(source["id"])
+        assert metadata.state == "verified"
+        assert metadata.reference.model_dump(mode="json") == source
         target = tmp_path / "http-source.zip"
         assert client.download(source["id"], target).digest == source["digest"]
         events = client.events()
@@ -103,6 +109,9 @@ def test_http_sdk_matches_control_and_replays_complete_upload(
         with pytest.raises(ResearchError) as failure:
             client.capabilities()
         assert failure.value.code == ErrorCode.AUTHORIZATION_DENIED
+        with pytest.raises(ResearchError) as revoked_metadata:
+            client.artifact(source["id"])
+        assert revoked_metadata.value.code == ErrorCode.AUTHORIZATION_DENIED
 
 
 def test_local_scoped_credential_has_no_operator_fallback(tmp_path: Path) -> None:
@@ -133,13 +142,17 @@ async def test_async_client_uses_same_command_acknowledgment(
 ) -> None:
     client = ResearchClient.local(tmp_path / "async-state")
     try:
-        project = client.register_project(research.source, idempotency_key="async-project")[
+        registered = client.register_project(research.source, idempotency_key="async-project")[
             "result"
-        ]["project"]
+        ]
+        project = registered["project"]
         request = CreateCampaign(
             project_id=project["id"], name="Async campaign", primary_metric="val_bpb", limits=LIMITS
         )
         asynchronous = AsyncResearchClient(client)
+        source = registered["project_revision"]["data"]["source_artifact"]
+        metadata = await asynchronous.artifact(source["id"])
+        assert metadata == client.artifact(source["id"])
         result = await asynchronous.command(
             "campaign.create", request, idempotency_key="async-campaign"
         )
