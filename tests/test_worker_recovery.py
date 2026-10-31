@@ -69,7 +69,62 @@ def recoverable(
             with pytest.raises(ResearchError, match="driver loss"):
                 native.execute(attempt["id"])
         entry = native.journal.get(attempt["id"])
-        assert entry.state == JournalState.CLOSED and entry.outcome is not None
+        if entry.state != JournalState.CLOSED or entry.outcome is None:
+
+            def bounded(value: str) -> str:
+                for private in (
+                    connected.bundle.token,
+                    str(root),
+                    str(pipeline.runtime.root),
+                    sys.executable,
+                ):
+                    value = value.replace(private, "<redacted>")
+                return value[:1024]
+
+            timing, outcome = entry.timing, entry.outcome
+            diagnostic = {
+                "state": entry.state.value,
+                "finding": bounded(entry.finding),
+                "clock_mode": entry.clock_mode,
+                "prepared": entry.prepared is not None,
+                "supervisor": entry.supervisor_id is not None,
+                "native": entry.native is not None,
+                "cancel_requested": entry.cancel_requested,
+                "stage_timeout_ms": entry.command.timeout_ms,
+                "timing": None
+                if timing is None
+                else {
+                    "roundtrip_ms": (
+                        int(timing.received.continuous_ns) - int(timing.sent.continuous_ns)
+                    )
+                    / 1e6,
+                    "sample_age_ms": (
+                        int(timing.qualified_at.continuous_ns) - int(timing.received.continuous_ns)
+                    )
+                    / 1e6,
+                    "launch_headroom_ms": (
+                        int(timing.caps.launch_ns) - int(timing.qualified_at.continuous_ns)
+                    )
+                    / 1e6,
+                    "maximum_roundtrip_ms": timing.reply.payload.policy.maximum_roundtrip_ms,
+                    "maximum_sample_age_ms": timing.reply.payload.policy.maximum_sample_age_ms,
+                },
+                "outcome": None
+                if outcome is None
+                else {
+                    "reason": outcome.reason,
+                    "exit_code": outcome.exit_code,
+                    "prepared_at": outcome.prepared_at,
+                    "released_at": outcome.released_at,
+                    "finished_at": outcome.finished_at,
+                    "elapsed_ms": outcome.elapsed_ms,
+                    "scope_closed": outcome.closure.scope_closed,
+                    "findings": [bounded(item) for item in outcome.closure.findings[:8]],
+                },
+            }
+            pytest.fail(
+                "Native recovery setup did not finish: " + json.dumps(diagnostic, sort_keys=True)
+            )
         assert native.resources.availability() == {"cpu": 0}
         yield Recoverable(root, connected, attempt["id"])
 

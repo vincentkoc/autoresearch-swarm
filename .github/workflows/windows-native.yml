@@ -46,3 +46,4 @@ jobs:
           tests/test_portfolio_native.py
           tests/test_r2_runtime.py
           tests/test_worker_recovery.py::test_original_driver_and_attempt_locks_are_respected
+          tests/test_recovery_routes.py::test_tampered_or_missing_original_custody_refuses_delivery
