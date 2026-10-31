@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add private status and explicit clock requalification for an already active
+  hosted deployment. Require the exact fenced provider, current operator and fixed
+  source/configuration; preserve other credential revocations and old attempts.
+  Commit the new generation, immutable management receipt and acknowledgment
+  atomically, with verified offline replay. Native tests cover original and restored
+  deployments; actual workerd qualification of these management RPCs is pending.
+
 - Extend the production recovery probe to eight startups, including an actual
   native witness restart, durable clock retirement, explicit requalification and
   lost-reply recovery while the witness is offline. Preserve the existing target

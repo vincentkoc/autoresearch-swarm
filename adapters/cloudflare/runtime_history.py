@@ -42,13 +42,20 @@ def require_qualification_identity(receipt, plan, restoration_digest, admission_
 
 
 def read_retirement(sql, plan, previous, *, crypto):
-    workspace = plan.authority.workspace_id
+    return read_provider_retirement(
+        sql, plan.authority, previous.provider, previous.provider_revision, crypto=crypto
+    )
+
+
+def read_provider_retirement(sql, authority, provider, provider_revision, *, crypto):
+    """Verify one retired provider without selecting any later lifecycle state."""
+    workspace = authority.workspace_id
     fence = TimeProviderFence.model_validate_json(
         history_record(
             sql,
             workspace,
             "time_provider_fence",
-            previous.provider.scope.provider_generation,
+            provider.scope.provider_generation,
             limit=65536,
         )["payload"]
     )
@@ -62,11 +69,11 @@ def read_retirement(sql, plan, previous, *, crypto):
         )["payload"]
     )
     if (
-        fence.provider != previous.provider
-        or fence.provider_revision != previous.provider_revision
+        provider.scope.authority != authority
+        or fence.provider != provider
+        or fence.provider_revision != provider_revision
         or retired.origin_id != fence.origin_id
-        or fence.origin_id
-        != source_origin_id(previous.provider.source, previous.provider.source_epoch)
+        or fence.origin_id != source_origin_id(provider.source, provider.source_epoch)
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Runtime retirement history differs")
     # The first retirement of a shared origin survives every later provider fence.

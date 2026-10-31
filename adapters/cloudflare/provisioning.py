@@ -198,16 +198,18 @@ def _roster(sql, manifest):
     require_roster(sql, manifest.credentials)
 
 
-def require_roster(sql, credentials):
-    """Verify exact members without rejecting retained historical credentials."""
+def require_roster(sql, credentials, *, live_ids=None):
+    """Verify exact members; by default every selected credential must remain live."""
     require_credentials_schema(sql)
     for expected in credentials:
+        live = live_ids is None or expected.id in live_ids
         row = sql.execute(
             "SELECT token_digest,workspace_id,principal FROM credentials WHERE id=? "
             "AND typeof(token_digest)='text' AND length(CAST(token_digest AS BLOB))=64 "
             "AND typeof(workspace_id)='text' AND length(CAST(workspace_id AS BLOB))=36 "
             "AND typeof(principal)='text' AND length(CAST(principal AS BLOB))<=262144 "
-            "AND typeof(revoked)='integer' AND revoked=0 AND expires_at IS NULL",
+            "AND typeof(revoked)='integer' AND revoked IN (0,1) "
+            + ("AND revoked=0 AND expires_at IS NULL" if live else ""),
             (expected.id,),
         ).fetchone()
         if (

@@ -17,6 +17,7 @@ from durable_sql import DurableObjectStore
 from ed25519 import NobleEd25519
 from hosted_http import handle, json_response
 from http_binding import HTTPBodyReader
+from provider_management import manage_provider
 from provisioning import provision
 from r2_binding import R2BindingTransport
 from recovery_router import ExistingRecoveryRouter
@@ -134,7 +135,44 @@ async def target_checkpoint(
     return result.body.decode()
 
 
+async def provider_operation(state, env, credential, *, request_json=None, read_only=True):
+    try:
+        manifest, secrets, crypto = deployment(env)
+        secrets.require_bootstrap(credential)
+        fixed_target(env.RESEARCH_AUTHORITY, manifest, actual_id=state.id)
+        if not read_only:
+            require_rpc_string(request_json)
+        identity = StoreIdentity("cloudflare-do", manifest.namespace + "/" + str(state.id))
+        return await manage_provider(
+            state,
+            lambda: DurableObjectStore.open_existing(
+                state.storage, namespace=manifest.namespace, object_id=str(state.id)
+            ),
+            manifest,
+            secrets,
+            identity=identity,
+            credential=credential,
+            crypto=crypto,
+            recovery_binding=recovery_binding(env, manifest, secrets, identity, crypto),
+            request_json=None if read_only else request_json,
+            acquire=None if read_only else witness(manifest, secrets),
+        )
+    except ResearchError as error:
+        result = runtime_failure(error, mode="query" if read_only else "command")
+    except Exception:
+        result = runtime_failure(mode="query" if read_only else "command")
+    return result.body.decode()
+
+
 class ResearchAuthority(DurableObject):
+    async def time_provider_status(self, credential):
+        return await provider_operation(self.ctx, self.env, credential)
+
+    async def requalify_time_provider(self, credential, request_json):
+        return await provider_operation(
+            self.ctx, self.env, credential, request_json=request_json, read_only=False
+        )
+
     async def checkpoint_requalify_runtime(self, credential, request_json):
         return await target_checkpoint(
             self.ctx,
@@ -356,6 +394,35 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def time_provider_status(self, credential):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).time_provider_status(
+                credential
+            )
+        except ResearchError as error:
+            result = runtime_failure(error)
+        except Exception:
+            result = runtime_failure()
+        return result.body.decode()
+
+    async def requalify_time_provider(self, credential, request_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            require_rpc_string(request_json)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).requalify_time_provider(
+                credential, request_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def checkpoint_requalify_runtime(self, credential, request_json):
         try:

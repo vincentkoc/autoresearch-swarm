@@ -307,6 +307,49 @@ E1→E2→E1 across reopening, shared origins, stale proofs, immutable evidence,
 rejection-hook rollback, query fencing and inactive workspace refusal. Native
 workers and the existing local controller continue to use their current clock.
 
+### Private management of an active deployment
+
+The production `Bootstrap` entrypoint exposes two fixed-authority methods:
+
+| Method | Contract |
+|---|---|
+| `time_provider_status(bootstrap_credential)` | Return the manifest digest and persisted provider revision, qualification state and public source/generation data. It acquires no witness and does not attest current source reachability or continuity. |
+| `requalify_time_provider(bootstrap_credential, request_json)` | Requalify exactly the selected fenced revision/generation using a fresh witness from the unchanged configured source. |
+
+The requalification request contains `request_id`, `expected_provider_revision`,
+`expected_provider_generation` and `reason`. Obtain the revision/generation from
+status after an ordinary witnessed operation detects discontinuity and commits its
+retirement. A still-qualified provider refuses replacement. Transport loss alone
+does not create retirement or authorize a new origin.
+
+Both methods require a completed deployment, fixed physical store, matching
+protected keys/configuration and the current nonexpiring provisioning operator.
+All configured credential identities must match; other credentials may remain
+revoked. Neither operation reinstalls credentials or changes their revocations.
+Sealed, restoring and recovering workspaces refuse this management path. Recovering
+targets use the separate `checkpoint_requalify_runtime` protocol below.
+
+After the bounded witness await, the mutation rechecks deployment, operator,
+credential identities and the selected provider. The shared command transaction
+commits its new provider generation, immutable `TimeProviderRequalification`, event
+and acknowledgment together. The retired epoch stays forbidden. Source identity,
+key, policy and profile changes are outside this operation.
+
+Exact accepted replay verifies bounded retained receipt/generation records, the
+original witness preimage/signature and retirement evidence without contacting the
+witness. Replay remains historical even if that provider later retires again.
+Current operator/deployment admission still applies. Initial provisioning and
+recovery activation receipts remain unchanged; restored deployments retain their
+protected recovery binding. Assignments, worker sessions, deadlines, leases and
+accounting receive no updates. Existing attempts keep their original clock domains
+and closure obligations; new work must obtain fresh calibration.
+
+SQLite/signed-witness tests cover races, lost acknowledgments, rollback, revocation,
+altered/oversized evidence and repeated source retirement. An activated-target
+integration preserves an unresolved attempt and its accounting while qualifying a
+fresh worker. Production RPCs are implemented; actual workerd qualification of
+these two management methods remains pending.
+
 ## One-use operation context
 
 `WitnessAuthorityTimeProvider.prepare()` owns a fresh pending request and an
