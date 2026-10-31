@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "source": {
+    "schema_version": "1.0",
+    "id": "00000000-0000-0000-0000-000000000001",
+    "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+    "key_id": "sha256:63bd8f30e8bda1a6b0c1723e57908c3ab4a912b89ae73e087b8758f2192cd93b",
+    "native_profile": "linux-boottime-v1",
+    "policy": {
+      "schema_version": "1.0",
+      "version": "bounded-continuous-v1",
+      "maximum_roundtrip_ms": 1000,
+      "maximum_sample_age_ms": 30000,
+      "maximum_uncertainty_ms": 2500,
+      "maximum_deadline_horizon_ms": 3600000,
+      "relative_drift_ppm": 1000,
+      "timestamp_guard_ms": 2
+    }
+  },
+  "witness": {
+    "schema_version": "1.0",
+    "algorithm": "ed25519-jcs-v1",
+    "key_id": "sha256:63bd8f30e8bda1a6b0c1723e57908c3ab4a912b89ae73e087b8758f2192cd93b",
+    "payload": {
+      "schema_version": "1.0",
+      "request": {
+        "schema_version": "1.0",
+        "protocol": "native-time-witness-v1",
+        "scope": {
+          "schema_version": "1.0",
+          "state_authority_id": "sha256:bbd46b36dce596fe4a6b34b31fae706120d75e96e79f8e0ed9a9a7cc8c076623",
+          "activation_id": "00000000-0000-0000-0000-000000000002",
+          "provider_generation": "00000000-0000-0000-0000-000000000003",
+          "workspace_id": "00000000-0000-0000-0000-000000000004",
+          "controller_id": "00000000-0000-0000-0000-000000000005",
+          "control_epoch": 1,
+          "assignment_key_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "operation_id": "00000000-0000-0000-0000-000000000006",
+        "request_digest": "sha256:bbcdd227faadfc8e13c799707c24cd8e3d0f9c48a1d12fb88ddded8ba342d3b9",
+        "nonce": "00000000-0000-0000-0000-000000000009"
+      },
+      "source_id": "00000000-0000-0000-0000-000000000001",
+      "source_epoch": "00000000-0000-0000-0000-000000000007",
+      "native_profile": "linux-boottime-v1",
+      "policy": {
+        "schema_version": "1.0",
+        "version": "bounded-continuous-v1",
+        "maximum_roundtrip_ms": 1000,
+        "maximum_sample_age_ms": 30000,
+        "maximum_uncertainty_ms": 2500,
+        "maximum_deadline_horizon_ms": 3600000,
+        "relative_drift_ppm": 1000,
+        "timestamp_guard_ms": 2
+      },
+      "authority_time_ms": 1793433333000
+    },
+    "signature": "683fe30175842305782d7b01b3f1cb7eb7bb47c1c15109f188d57276b273765251bb0ab2c53f0bff0a9997884d708aefd80c43489f44a6a546b13f1fc125c809"
+  },
+  "expected": {
+    "signing_digest": "sha256:d3e9c7d5ff501d5a43102e0f668b4b3193f60c0029faf36f98767f7a4686f702",
+    "source_key_id": "sha256:63bd8f30e8bda1a6b0c1723e57908c3ab4a912b89ae73e087b8758f2192cd93b",
+    "epoch": "f1fc37f2-b771-8b95-9229-b6e12ef463b1"
+  }
+}

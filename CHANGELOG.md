@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add native time-witness records, pinned domain-separated signatures, one-use
+  response verification and stable epoch derivation with a Python/JavaScript
+  golden fixture. These primitives do not enable hosted authority.
+
 - Specify a fully hosted authority path with native clock witnesses, serialized
   acceptance, source-epoch retirement and explicit recovery qualification. Keep
   the existing hybrid profile and mark hosted authority as unimplemented.

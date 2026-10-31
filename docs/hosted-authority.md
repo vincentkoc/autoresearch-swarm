@@ -5,6 +5,13 @@ existing [hybrid profile](cloudflare.md) remains the supported Cloudflare path.
 The original M5 requirement for authoritative Durable Object state and hosted
 recovery remains open.
 
+The witness wire records, domain-separated signatures, pinned source checks,
+one-use response verification and epoch derivation are implemented. A frozen
+public fixture is independently checked in Python and JavaScript. These
+primitives neither observe fresh time nor qualify a source. The exclusive
+operation context, persisted retirement, native service and hosted adapter
+remain to be implemented.
+
 ## Decision and boundary
 
 Keep research state, command deduplication, budgets, leases, events and outbox
@@ -148,6 +155,14 @@ encoding of a cryptographic digest can fit the existing identifier schema.
 Golden fixtures must freeze the algorithm. Do not include the operation nonce
 or worker session: a clock challenge and its assignment must share the same
 time domain while their individual bindings remain independently authenticated.
+
+The implemented v1 derivation uses `record_digest` with domain
+`research.authority-time-epoch.v1`. Its payload contains the full versioned
+`WitnessScope`, source ID/key ID/epoch, native profile and policy digest. Take
+the first 16 SHA-256 bytes, set the UUID version nibble to `8` and variant bits
+to `10`, then encode the lowercase UUID. Source keys use the separate
+`research.time-witness-public-key` digest domain. The frozen fixture is
+[`time-witness-v1.json`](../tests/conformance/time-witness-v1.json).
 
 A deterministic hash alone is insufficient. Consider source epochs
 `E1 -> E2 -> E1`: the last response must not resurrect an old grant. Persist the
