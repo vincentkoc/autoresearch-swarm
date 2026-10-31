@@ -45,7 +45,7 @@ def test_sdk_http_upload_download_replay_and_read_exclusion_in_workerd(tmp_path)
             setup = deliver(url, origin, "provision", "http-provision", artifact_profile=True)
             token = setup["operator_token"]
             with connect(url, origin, token) as client:
-                capabilities = client.query("capabilities")
+                capabilities = client.capabilities()
                 assert capabilities["profile"] == "worker-artifacts-witness-v1"
                 assert capabilities["artifacts"]["download"] == "verified-buffer"
                 missing = client.transport.http.get("/v1/missing")
