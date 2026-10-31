@@ -41,6 +41,7 @@ jobs:
           tests/test_windows_sqlite_owner.py
           tests/test_input_cache.py
           tests/test_worker_input_cache.py
+          tests/test_clock_channel.py
           tests/test_recovery_activation.py::test_real_process_exit_at_activation_has_one_recoverable_commit
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
           tests/test_portfolio_native.py

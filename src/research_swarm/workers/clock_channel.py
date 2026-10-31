@@ -383,12 +383,6 @@ class SupervisorChannel:
         self._request_lock = threading.Lock()
         self._connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._connection.set_inheritable(False)
-        try:
-            self._connection.settimeout(_remaining(self.deadline_ns))
-            self._connection.connect(("127.0.0.1", bootstrap.port))
-        except BaseException:
-            self._connection.close()
-            raise
 
     def close(self) -> None:
         self._next = 3
@@ -414,7 +408,13 @@ class SupervisorChannel:
         )
         self._next += 1
         try:
-            _send(self._connection, _pack(self.bootstrap, "request", request), self.deadline_ns)
+            payload = _pack(self.bootstrap, "request", request)
+            if request.sequence == 1:
+                # Local launch validation precedes claim. Do not consume the
+                # origin's bounded unauthenticated handshake window during it.
+                self._connection.settimeout(_remaining(self.deadline_ns))
+                self._connection.connect(("127.0.0.1", self.bootstrap.port))
+            _send(self._connection, payload, self.deadline_ns)
             reply = GateReply.model_validate(
                 _unpack(self.bootstrap, "reply", _receive(self._connection, self.deadline_ns))
             )

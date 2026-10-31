@@ -115,7 +115,10 @@ def decision(request: GateRequest) -> GateDecision:
     )
 
 
-def test_private_bootstrap_and_two_phases_cross_a_real_process(tmp_path: Path) -> None:
+@pytest.mark.parametrize("preclaim_delay", [0, 0.75])
+def test_private_bootstrap_and_two_phases_cross_a_real_process(
+    tmp_path: Path, preclaim_delay: float
+) -> None:
     bound = scope()
     server = OriginServer(bound, deadline_ns=int(bound.caps.launch_ns))
     assert not server._listener.get_inheritable()
@@ -126,11 +129,12 @@ def test_private_bootstrap_and_two_phases_cross_a_real_process(tmp_path: Path) -
         return decision(request)
 
     script = (
-        "import sys,json; from research_swarm.workers.clock_channel import "
+        "import sys,json,time; from research_swarm.workers.clock_channel import "
         "Bootstrap,ChannelScope,SupervisorChannel; "
         "from research_swarm.domain.types import new_id; "
         "b=Bootstrap.read(sys.stdin.buffer); s=ChannelScope.model_validate_json(sys.argv[1]); "
         "c=SupervisorChannel(b,s,new_id(),deadline_ns=int(s.caps.launch_ns)); "
+        f"time.sleep({preclaim_delay}); "
         "a=c.request('claim'); z=c.request('release'); "
         "print(json.dumps([a.allowed,z.allowed,a.journal_revision,z.journal_revision]))"
     )
@@ -162,6 +166,25 @@ def test_private_bootstrap_and_two_phases_cross_a_real_process(tmp_path: Path) -
     assert server._listener.fileno() == -1
     with pytest.raises(ResearchError, match="already consumed"):
         server.serve(authorize)
+
+
+def test_expired_preclaim_validation_never_opens_the_channel(monkeypatch) -> None:
+    bound = scope()
+    server = OriginServer(bound, deadline_ns=int(bound.caps.launch_ns))
+    client = SupervisorChannel(server.bootstrap, bound, new_id(), deadline_ns=server.deadline_ns)
+    try:
+        monkeypatch.setattr(channel, "_now", lambda: server.deadline_ns + 1)
+        with pytest.raises(ResearchError, match="deadline expired"):
+            client.request("claim")
+        assert client._connection.fileno() == -1
+        with pytest.raises(ResearchError, match="consumed"):
+            client.request("claim")
+        server._listener.setblocking(False)
+        with pytest.raises(BlockingIOError):
+            server._listener.accept()
+    finally:
+        client.close()
+        server.close()
 
 
 def test_stalled_unauthenticated_peer_and_wrong_key_cannot_authorize() -> None:
