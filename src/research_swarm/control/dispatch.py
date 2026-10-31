@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from research_swarm.control.acceptance_models import ExpireAcceptance
+from research_swarm.control.benchmark_assessment_models import AssessPolicyBenchmark
 from research_swarm.control.benchmark_execution_models import (
     RequestBenchmarkProposal,
     StartPolicyBenchmark,
@@ -117,6 +118,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.assess_benchmark": CommandDefinition(
+        AssessPolicyBenchmark,
+        "assess_policy_benchmark",
+        "learning.manage",
+        False,
+        "Qualify every fixed policy case and assess the complete paired reward panel.",
+        additional_scopes=("read",),
+    ),
     "learning.request_benchmark_proposal": CommandDefinition(
         RequestBenchmarkProposal,
         "request_benchmark_proposal",

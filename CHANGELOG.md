@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Assess the complete frozen held-out policy panel with the original paired sign gate. Persist raw case trajectories and exact comparator/candidate costs atomically, reject incomplete or over-budget panels, and separate historical assessment replay from current-evidence qualification.
+
 - Admit committed benchmark actions through ordinary search and worker APIs into their exact reserved trial slots. Revalidate current policy provenance after source reads, preserve failed cases, and measure precommitted duplicate or no-op sources without resampling.
 
 - Issue each benchmark arm's reserved agent proposal and freeze its exact held-out policy plan in one transaction. Recheck current training and comparator evidence, preserve ordinary request accounting, and prevent cancellation or replay from creating replacement episodes.

@@ -10,6 +10,8 @@ from pydantic import ValidationError
 from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.backup import BackupControl
+from research_swarm.control.benchmark_assessment import BenchmarkAssessmentControl
+from research_swarm.control.benchmark_assessment_models import AssessPolicyBenchmark
 from research_swarm.control.benchmark_execution import BenchmarkExecutionControl
 from research_swarm.control.benchmark_execution_models import (
     RequestBenchmarkProposal,
@@ -255,6 +257,7 @@ class ResearchService:
         self.proposals = ProposalControl(database)
         self.learning = LearningControl(database)
         self.benchmarks = BenchmarkControl(database)
+        self.benchmark_assessment = BenchmarkAssessmentControl(database)
         self.benchmark_proposals = BenchmarkProposalControl(database)
         self.benchmark_execution = BenchmarkExecutionControl(
             database,
@@ -488,6 +491,11 @@ class ResearchService:
         self, context: CommandContext, request: StartPolicyBenchmark
     ) -> JsonObject:
         return self.benchmark_execution.start(context, request)
+
+    def assess_policy_benchmark(
+        self, context: CommandContext, request: AssessPolicyBenchmark
+    ) -> JsonObject:
+        return self.benchmark_assessment.assess(context, request)
 
     def request_benchmark_proposal(
         self, context: CommandContext, request: RequestBenchmarkProposal

@@ -21,6 +21,8 @@ from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
     "benchmark_execution",
+    "benchmark_case",
+    "benchmark_assessment",
     "benchmark_proposal",
     "benchmark_arm",
     "benchmark_trial_slot",
@@ -134,6 +136,8 @@ def summarize(row: JsonObject) -> JsonObject:
         "benchmark_training",
         "benchmark_seed",
         "benchmark_execution",
+        "benchmark_case",
+        "benchmark_assessment",
         "benchmark_proposal",
         "benchmark_arm",
         "benchmark_trial_slot",

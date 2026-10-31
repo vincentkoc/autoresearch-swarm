@@ -172,10 +172,6 @@ def episode_cost(
     trial: TrialData,
     evidence: list[LearningEvidence],
 ) -> tuple[dict[str, Decimal], tuple[BudgetSettlementEvidence, ...]]:
-    if len(trial.job_ids) > MAX_EPISODE_JOBS or trial.confirmation_plan_id is not None:
-        raise ResearchError(
-            ErrorCode.CAPABILITY_UNAVAILABLE, "Learning episode exceeds its cost profile"
-        )
     if owned_reservations(transaction, request_id, request.campaign_id) != (
         request.budget_reservation_id,
     ):
@@ -189,8 +185,25 @@ def episode_cost(
             {"proposal_requests": Decimal(1)},
         )
     ]
-    campaign = CampaignData.model_validate(transaction.get("campaign", request.campaign_id)["data"])
-    admission_reservations = owned_reservations(transaction, trial_id, request.campaign_id)
+    proofs.extend(trial_settlements(transaction, trial_id, trial, evidence))
+    return summarize_costs(proofs)
+
+
+def trial_settlements(
+    transaction: Transaction,
+    trial_id: str,
+    trial: TrialData,
+    evidence: list[LearningEvidence],
+) -> list[VerifiedSettlement]:
+    if len(trial.job_ids) > MAX_EPISODE_JOBS or trial.confirmation_plan_id is not None:
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE, "Learning episode exceeds its cost profile"
+        )
+    proofs: list[VerifiedSettlement] = []
+    campaign = CampaignData.model_validate(
+        transaction.get("campaign", trial.spec.campaign_id)["data"]
+    )
+    admission_reservations = owned_reservations(transaction, trial_id, trial.spec.campaign_id)
     charged_admission = any(
         item.dimension == "trial_admissions" for item in campaign.contract.limits
     )
@@ -202,7 +215,7 @@ def episode_cost(
                 transaction,
                 reservation_id,
                 trial_id,
-                request.campaign_id,
+                trial.spec.campaign_id,
                 {"trial_admissions": Decimal(1)},
             )
         )
@@ -211,7 +224,7 @@ def episode_cost(
     for job_id in trial.job_ids:
         row = capture_record(transaction, "job", job_id, evidence)
         job = JobData.model_validate(row["data"])
-        if row["campaign_id"] != request.campaign_id or job.trial_id != trial_id:
+        if row["campaign_id"] != trial.spec.campaign_id or job.trial_id != trial_id:
             refuse("Trial job cost ownership differs")
         rows = transaction.connection.execute(
             "SELECT id FROM records WHERE workspace_id=? AND kind='attempt' AND parent_id=? "
@@ -235,6 +248,12 @@ def episode_cost(
         refuse("Episode attempt inventory is incomplete")
     for identifier in sorted(parents):
         proofs.append(attempt_cost(transaction, identifier, trial_id, trial, evidence))
+    return proofs
+
+
+def summarize_costs(
+    proofs: list[VerifiedSettlement],
+) -> tuple[dict[str, Decimal], tuple[BudgetSettlementEvidence, ...]]:
     if len({proof.settlement_id for proof in proofs}) != len(proofs):
         refuse("Episode would count a settlement more than once")
     consumed: dict[str, Decimal] = {}

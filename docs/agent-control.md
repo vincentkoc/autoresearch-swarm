@@ -1219,5 +1219,48 @@ admission cannot spend an already consumed slot.
 
 Completed cases can be qualified against their fixed policy, reward rule,
 same-seed comparator and exact settled costs. These trajectories retain the
-held-out split and remain excluded from training datasets. Full-panel assessment
-and explicit policy adoption remain separate work.
+held-out split and remain excluded from training datasets.
+
+## Assess the complete held-out panel
+
+After every declared arm has completed its comparator and candidate trials:
+
+```python
+from research_swarm.control.benchmark_assessment_models import AssessPolicyBenchmark
+
+assessment = operator.command(
+    "learning.assess_benchmark",
+    AssessPolicyBenchmark(benchmark_id=benchmark_id),
+    idempotency_key="assess-fixed-policy-panel",
+)["result"]
+```
+
+The command requires `learning.manage` and `read`; MCP exposes
+`research_learning_assess_benchmark`. There is no caller-supplied case list,
+reward, confidence threshold or direction. The controller reconstructs every
+case from the frozen inventory and qualifies the original plan, decision,
+response, admission, trial and evaluator evidence.
+
+Each case preserves the raw compared metric values and the declared episode
+reward. Its reward cost covers the candidate episode. Separate comparator cost
+proofs include all earlier comparator attempts and its trial admission. The
+combined cost must match every arm budget account, have no outstanding or
+uncertain reservations, and stay within the original cap. A case cannot hide
+an earlier failure or omit its starting-comparator cost from total reporting.
+
+One `benchmark_case` record per arm and one `benchmark_assessment` commit
+together. Missing, failed, cancelled or corrected cases block the entire
+assessment. No partial gate or fabricated failure score is published. An
+inconclusive complete panel is a valid result and does not authorize more seeds.
+
+The frozen paired sign gate compares challenger and baseline episode rewards,
+with higher reward better. Ties count as non-wins. Its exact p-value and effect
+statistics apply to this predeclared seed panel within one research family.
+The sampler includes request and campaign identities, so matching seeds do not
+imply identical policy sampling draws or common random numbers. This assessment
+does not establish transfer to a different dataset, hardware class or policy.
+
+Historical retries return the original assessment. A later decision gate must
+requalify all current evidence and compare the exact case digests; replaying an
+old successful assessment cannot bypass a correction. Policy adoption remains
+a separate explicit operation.
