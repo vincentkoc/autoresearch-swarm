@@ -1,6 +1,7 @@
 """Local-only feasibility fixture. This is not the production research API."""
 
 import asyncio
+import hashlib
 import json
 import sys
 from typing import Literal
@@ -8,10 +9,15 @@ from urllib.parse import urlparse
 from uuid import NAMESPACE_URL, uuid5
 
 from durable_sql import DurableObjectStore
+from ed25519 import NobleEd25519
 from exclusive import exclusive
+from hosted_http import failure, uncertain
+from hosted_http import handle as handle_http
+from hosted_http import route as http_route
+from http_binding import HTTPBodyReader
 from pydantic import Field
 from r2_qualification import exercise as exercise_r2
-from router_qualification import RouterProbe
+from router_qualification import RouterProbe, configuration, open_router
 from router_qualification import exercise as exercise_router
 from signing_qualification import exercise as exercise_signing
 from storage_qualification import exercise as exercise_storage
@@ -53,6 +59,62 @@ class OrderingProbe(VersionedRecord):
 
 
 class Qualification(DurableObject):
+    async def fetch(self, request):
+        # Local-only HTTP probe: synthetic state must be provisioned explicitly first.
+        module = import_from_javascript("./crypto.mjs")
+        transport = import_from_javascript("./fixture_transport.mjs")
+        bodies = import_from_javascript("./http_io.mjs")
+        r2 = import_from_javascript("./r2_io.mjs")
+        try:
+            key = (
+                "http-"
+                + hashlib.sha256(
+                    (
+                        request.method
+                        + "\0"
+                        + urlparse(request.url).path
+                        + "\0"
+                        + (request.headers.get("idempotency-key") or "")
+                    ).encode()
+                ).hexdigest()[:48]
+            )
+            probe = RouterProbe(
+                action="inspect",
+                key=key,
+                artifact_profile=True,
+                witness_origin=request.headers.get("x-fixture-witness-origin") or "",
+                r2_fault=request.headers.get("x-fixture-r2-fault") or "none",
+            )
+            crypto = NobleEd25519(module)
+            config, _ = configuration(str(self.ctx.id), crypto, artifact_profile=True)
+            router = await open_router(
+                self.ctx,
+                str(self.ctx.id),
+                probe,
+                config,
+                crypto,
+                transport,
+                bucket=python_to_rpc(self.env.ARTIFACTS),
+                r2_module=r2,
+            )
+            result = await handle_http(
+                router,
+                request.method,
+                request.url,
+                dict(request.headers),
+                HTTPBodyReader(python_to_rpc(request), bodies),
+            )
+        except ResearchError as error:
+            result = failure(error)
+        if (
+            request.headers.get("x-fixture-drop-finalize") == "true"
+            and request.method == "POST"
+            and urlparse(request.url).path.endswith("/finalize")
+            and result.status == 200
+        ):
+            return Response("{", headers={"content-type": "application/json"})
+        return Response(result.body, status=result.status, headers=dict(result.headers))
+
     async def r2_contract(self, case):
         module = import_from_javascript("./r2_io.mjs")
         # Pass the raw JS binding, not a PyProxy whose mapping get shadows R2.get.
@@ -251,6 +313,30 @@ class Default(WorkerEntrypoint):
         url = urlparse(request.url)
         if url.hostname not in {"127.0.0.1", "localhost"}:
             return Response("Local qualification only", status=403)
+        if url.path.startswith("/v1/"):
+            stub = self.env.QUALIFICATION.getByName("shared-router-contract-artifacts")
+            try:
+                kind, _, _ = http_route(request.method, request.url)
+                mode = (
+                    "upload_part"
+                    if kind == "upload"
+                    else "command"
+                    if kind in {"command", "finalize"}
+                    else "query"
+                )
+            except ResearchError as error:
+                result = failure(error)
+                return Response(result.body, status=result.status, headers=dict(result.headers))
+            except ValueError:
+                result = failure(
+                    ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid target")
+                )
+                return Response(result.body, status=result.status, headers=dict(result.headers))
+            try:
+                return await stub.fetch(request)
+            except Exception:
+                result = uncertain(mode)
+                return Response(result.body, status=result.status, headers=dict(result.headers))
         if request.method != "POST":
             return Response("Not found", status=404)
         if url.path.startswith("/r2-bytes/"):

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Exercise the unchanged Python SDK through local Workers HTTP with real DO/R2
+  state, binary and empty downloads, uncertain finalize responses, cleanup replay
+  after restart and credential revocation ordered behind an admitted read.
+
 - Bound Workers request-body consumption by bytes and a fixed read deadline.
   Preserve binary input, reject oversized or uncertain reads before dispatch,
   and avoid treating requested cancellation as completed transport closure.

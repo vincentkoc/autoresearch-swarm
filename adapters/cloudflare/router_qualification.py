@@ -56,7 +56,7 @@ class RouterProbe(VersionedRecord):
     artifact_profile: bool = Field(default=False, strict=True)
     content_hex: str = Field(default="", max_length=8192, pattern=r"^(?:[0-9a-f]{2})*$")
     offset: int = Field(default=0, strict=True, ge=0)
-    r2_fault: Literal["none", "unavailable", "lost-put", "held-put"] = "none"
+    r2_fault: Literal["none", "unavailable", "lost-put", "held-put", "held-get"] = "none"
 
 
 class UnserializedFixture:
@@ -66,7 +66,7 @@ class UnserializedFixture:
         await callback()
 
 
-def configuration(object_id, crypto):
+def configuration(object_id, crypto, *, artifact_profile=False):
     public = public_key(crypto, SEED).hex()
     source = WitnessSource(
         id=identifier("source"),
@@ -110,6 +110,17 @@ def configuration(object_id, crypto):
             },
         ),
     )
+    if artifact_profile:
+        config = HostedArtifactConfiguration(
+            **config.model_dump(exclude={"profile"}),
+            storage=BoundedR2Configuration(
+                workspace_id=config.authority.workspace_id,
+                bucket_identity="local-qualification",
+                prefix="router-artifacts-" + object_id,
+                max_object_bytes=4096,
+            ),
+            storage_limit_bytes=8192,
+        )
     return config, principals
 
 
@@ -212,6 +223,13 @@ class FixtureR2Transport(R2BindingTransport):
     async def get(self, *args, **kwargs):
         if self.probe.r2_fault == "unavailable":
             raise ResearchError(ErrorCode.TRANSPORT_UNAVAILABLE, "Fixture R2 unavailable")
+        if self.probe.r2_fault == "held-get":
+            await self.http.request(
+                self.probe.witness_origin,
+                "/storage/" + self.probe.key,
+                "{}",
+                float(self.probe.timeout_ms),
+            )
         return await super().get(*args, **kwargs)
 
     async def put(self, *args, **kwargs):
@@ -230,21 +248,11 @@ class FixtureR2Transport(R2BindingTransport):
         return result
 
 
-async def exercise(state, object_id, probe, module, transport, *, bucket=None, r2_module=None):
-    crypto = NobleEd25519(module)
-    config, principals = configuration(object_id, crypto)
+async def open_router(
+    state, object_id, probe, config, crypto, transport, *, bucket=None, r2_module=None
+):
     objects = None
-    if probe.artifact_profile:
-        config = HostedArtifactConfiguration(
-            **config.model_dump(exclude={"profile"}),
-            storage=BoundedR2Configuration(
-                workspace_id=config.authority.workspace_id,
-                bucket_identity="local-qualification",
-                prefix="router-artifacts-" + object_id,
-                max_object_bytes=4096,
-            ),
-            storage_limit_bytes=8192,
-        )
+    if config.profile == "worker-artifacts-witness-v1":
         objects = BoundedR2Objects(
             config.storage,
             FixtureR2Transport(
@@ -275,6 +283,22 @@ async def exercise(state, object_id, probe, module, transport, *, bucket=None, r
             ) from error
         return response.encode()
 
+    return await ExistingResearchRouter.open(
+        UnserializedFixture() if probe.bypass_gate else state,
+        open_store,
+        config,
+        dispatch_key=DISPATCH_KEY,
+        assignment_key=SEED,
+        crypto=crypto,
+        acquire=acquire,
+        objects=objects,
+    )
+
+
+async def exercise(state, object_id, probe, module, transport, *, bucket=None, r2_module=None):
+    crypto = NobleEd25519(module)
+    config, principals = configuration(object_id, crypto, artifact_profile=probe.artifact_profile)
+
     try:
         if probe.action == "provision":
 
@@ -282,15 +306,15 @@ async def exercise(state, object_id, probe, module, transport, *, bucket=None, r
                 return provision(state, object_id, crypto, config, principals)
 
             return await exclusive(state, setup)
-        router = await ExistingResearchRouter.open(
-            UnserializedFixture() if probe.bypass_gate else state,
-            open_store,
+        router = await open_router(
+            state,
+            object_id,
+            probe,
             config,
-            dispatch_key=DISPATCH_KEY,
-            assignment_key=SEED,
-            crypto=crypto,
-            acquire=acquire,
-            objects=objects,
+            crypto,
+            transport,
+            bucket=bucket,
+            r2_module=r2_module,
         )
         if probe.action == "command":
             result = await router.command(
@@ -318,7 +342,7 @@ async def exercise(state, object_id, probe, module, transport, *, bucket=None, r
                 router.artifacts._admit(probe.token, context)
                 _, upload = router.artifacts._upload(context, probe.payload["upload_id"])
                 blob = StoredBlob(reference=upload.reference(), generation=upload.id)
-                return {"content_hex": (await objects.read(upload.workspace_id, blob)).hex()}
+                return {"content_hex": (await router.objects.read(upload.workspace_id, blob)).hex()}
 
             result = await exclusive(state, read_bytes)
         else:
