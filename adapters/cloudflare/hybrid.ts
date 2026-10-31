@@ -6,6 +6,11 @@ import {
 } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 import { ensureWorkflow } from "./hybrid_creation";
+import {
+  RegistryConflict,
+  recoverWorkflow,
+  reserveGeneration,
+} from "./hybrid_recovery";
 import { deliveryConfiguration } from "./hybrid_transport";
 import {
   type Binding,
@@ -20,6 +25,7 @@ import {
   parseBinding,
   parseOptions,
   parseParameters,
+  parseRecovery,
   parseWork,
   readJSON,
   same,
@@ -164,40 +170,21 @@ export class DeliveryRegistry extends DurableObject<Env> {
   ): Promise<string> {
     const bindingDigest = await digest(parameters.binding);
     const configuration = await digest(gatewayConfiguration(this.env));
-    this.ctx.storage.transactionSync(() => {
-      const kv = this.ctx.storage.kv;
-      const registered = kv.get<string>("binding");
-      if (registered !== undefined && registered !== bindingDigest)
-        throw new NonRetryableError("BINDING_MISMATCH");
-      const configured = kv.get<string>("configuration");
-      if (configured !== undefined && configured !== configuration)
-        throw new NonRetryableError("GATEWAY_CONFIGURATION_CHANGED");
-      const previous =
-        predecessor === null
-          ? null
-          : kv.get<Parameters>("generation:" + predecessor.generation);
-      if (
-        predecessor !== null &&
-        (!previous ||
-          !same(previous, predecessor) ||
-          parameters.generation !== predecessor.generation + 1)
-      ) {
-        throw new NonRetryableError("GENERATION_MISMATCH");
-      }
-      const key = "generation:" + parameters.generation;
-      const existing = kv.get<Parameters>(key);
-      if (existing !== undefined && !same(existing, parameters))
-        throw new NonRetryableError("IDEMPOTENCY_CONFLICT");
-      const current = kv.get<number>("current");
-      if (existing === undefined) {
-        if (parameters.generation !== (current === undefined ? 0 : current + 1))
-          throw new NonRetryableError("GENERATION_MISMATCH");
-        kv.put("binding", bindingDigest);
-        kv.put("configuration", configuration);
-        kv.put(key, parameters);
-        kv.put("current", parameters.generation);
-      }
-    });
+    try {
+      this.ctx.storage.transactionSync(() => {
+        reserveGeneration(
+          this.ctx.storage.kv,
+          bindingDigest,
+          configuration,
+          parameters,
+          predecessor,
+        );
+      });
+    } catch (error) {
+      if (error instanceof RegistryConflict)
+        throw new NonRetryableError(error.message);
+      throw new Error("REGISTRY_STORAGE_UNAVAILABLE");
+    }
     return this.ensure(parameters);
   }
 
@@ -256,6 +243,23 @@ export class DeliveryRegistry extends DurableObject<Env> {
     // Record existence before any native call, even when the create reply was lost.
     this.ctx.storage.kv.put("observed:" + parameters.generation, true);
     return this.ctx.storage.kv.get<number>("current") === parameters.generation;
+  }
+
+  async recover(value: unknown) {
+    const request = parseRecovery(value);
+    return recoverWorkflow(
+      request,
+      await digest(request.binding),
+      await digest(gatewayConfiguration(this.env)),
+      {
+        kv: this.ctx.storage.kv,
+        transaction: (callback) => this.ctx.storage.transactionSync(callback),
+        instanceId,
+        status: async (id) =>
+          (await (await this.env.RESEARCH_FLOW.get(id)).status()).status,
+        ensure: (parameters) => this.ensure(parameters),
+      },
+    );
   }
 
   async advance(value: unknown, pendingValue: unknown): Promise<string> {
@@ -465,9 +469,12 @@ export default {
     const url = new URL(request.url);
     if (
       request.method !== "POST" ||
-      !["/adapter/start", "/adapter/status", "/adapter/wake"].includes(
-        url.pathname,
-      )
+      ![
+        "/adapter/start",
+        "/adapter/status",
+        "/adapter/wake",
+        "/adapter/recover",
+      ].includes(url.pathname)
     )
       return new Response("Not found", { status: 404 });
     if (
@@ -486,13 +493,23 @@ export default {
           ? ["binding", "options"]
           : url.pathname === "/adapter/wake"
             ? ["binding", "actor_id", "wait_id"]
-            : ["binding"],
+            : url.pathname === "/adapter/recover"
+              ? [
+                  "binding",
+                  "request_id",
+                  "expected_generation",
+                  "expected_instance_id",
+                  "reason",
+                ]
+              : ["binding"],
       );
       const owner = await registry(env, parseBinding(row.binding));
       if (url.pathname === "/adapter/start")
         return Response.json({ id: await owner.start(value) });
       if (url.pathname === "/adapter/status")
         return Response.json(await owner.status());
+      if (url.pathname === "/adapter/recover")
+        return Response.json(await owner.recover(value));
       await owner.wake(value);
       return Response.json({ accepted: true });
     } catch (error) {

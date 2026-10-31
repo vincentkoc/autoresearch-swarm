@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add explicit recovery for an errored Cloudflare Workflow through the private
+  adapter API and typed Python bridge. Preserve failed history, atomically reserve
+  one successor and recovery receipt, rediscover saved research work, and replay
+  identical recovery after lost replies or later progress. Uncertain, active,
+  paused, terminated and completed histories cannot authorize replacement.
+  Registry/SDK tests pass; the new actual workerd probe remains unqualified.
+
 - Extend actual-runtime timer qualification with a native clock restart while the
   Workflow is waiting. Require rotation under the durable fence, restart both
   runtimes, requalify explicitly, and retain the rejected delivery acknowledgment

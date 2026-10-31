@@ -8,8 +8,10 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
+from research_swarm.control.queries import RecordQuery
+from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
-from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
+from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions, workflow_id
 from research_swarm.orchestration.delivery import DeliveryKernel
 from tests.test_cloudflare_native import ROOT, build_current_sources, server
 from tests.test_cloudflare_native import pytestmark as pytestmark
@@ -38,6 +40,119 @@ def post(client, path, payload):
     response = client.post(path, json=payload)
     assert response.status_code == 200, response.text[-2000:]
     return response.json()
+
+
+def test_explicit_recovery_preserves_errored_history_and_replays_after_runtime_restart(
+    pipeline, tmp_path, monkeypatch
+):
+    build_current_sources()
+    app, drivers, connected, issued, binding = setup(pipeline, adapter="cloudflare")
+    saved = prepare(pipeline, drivers)
+    execute = DeliveryKernel.execute
+    fault, calls = [True], []
+
+    def fail_once(self, work):
+        if fault[0]:
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Synthetic delivery fault")
+        result = execute(self, work)
+        calls.append(work.record_id)
+        return result
+
+    monkeypatch.setattr(DeliveryKernel, "execute", fail_once)
+    start = {
+        "binding": binding,
+        "options": {"poll_seconds": 1, "rotate_after": 2, "request_timeout_seconds": 10},
+    }
+    with serving(app) as native_url:
+        variables = {
+            "NATIVE_DELIVERY_ORIGIN": native_url,
+            "GATEWAY_TOKEN": issued.token,
+            "CONTROL_TOKEN": CONTROL,
+            "ALLOW_LOCAL_GATEWAY": "true",
+        }
+        with (
+            server(tmp_path, sequence=1, variables=variables) as url,
+            httpx.Client(
+                base_url=url,
+                headers={"authorization": "Bearer " + CONTROL},
+                trust_env=False,
+                timeout=30,
+            ) as client,
+        ):
+            post(client, "/adapter/start", start)
+
+            def errored():
+                status = post(client, "/adapter/status", {"binding": binding})
+                return status if status["status"] == "errored" else None
+
+            failed = until(errored)
+            assert pipeline.client.get("drive_turn", saved["id"])["state"] == "prepared"
+            assert calls == []
+            assert post(client, "/adapter/start", start) == {"id": failed["id"]}
+            assert errored() == failed
+            request = {
+                "binding": binding,
+                "request_id": new_id(),
+                "expected_generation": failed["generation"],
+                "expected_instance_id": failed["id"],
+                "reason": "Resume the original saved turn after correcting delivery",
+            }
+            assert (
+                client.post(
+                    "/adapter/recover", json=request, headers={"authorization": "Bearer wrong"}
+                ).status_code
+                == 401
+            )
+            fault[0] = False
+            # Discard the accepted body. Reopening must recover its durable intent.
+            with client.stream("POST", "/adapter/recover", json=request) as response:
+                assert response.status_code == 200
+
+        with (
+            server(tmp_path, sequence=2, variables=variables) as url,
+            httpx.Client(
+                base_url=url,
+                headers={"authorization": "Bearer " + CONTROL},
+                trust_env=False,
+                timeout=30,
+            ) as client,
+        ):
+            receipt = post(client, "/adapter/recover", request)
+            assert receipt == {
+                "request_id": request["request_id"],
+                "predecessor_id": failed["id"],
+                "predecessor_generation": failed["generation"],
+                "id": workflow_id(connected.binding, failed["generation"] + 1),
+                "generation": failed["generation"] + 1,
+            }
+            assert (
+                client.post(
+                    "/adapter/recover", json={**request, "reason": "Different intent"}
+                ).status_code
+                == 409
+            )
+            assert (
+                client.post(
+                    "/adapter/recover", json={**request, "request_id": new_id()}
+                ).status_code
+                == 409
+            )
+            post(client, "/adapter/start", start)
+            until(
+                lambda: (
+                    calls and pipeline.client.get("drive_turn", saved["id"])["state"] == "settled"
+                )
+            )
+            assert set(calls) == {saved["id"]}
+            assert len(pipeline.client.list(RecordQuery(kind="report"))["items"]) == 1
+            assert len(pipeline.client.list(RecordQuery(kind="drive_receipt"))["items"]) == 1
+            assert post(client, "/adapter/recover", request) == receipt
+            assert (
+                pipeline.client.get("orchestration_binding", connected.binding.campaign_id)["data"][
+                    "pending_turn_id"
+                ]
+                is None
+            )
 
 
 def test_local_workflow_retries_rotates_and_recovers_around_real_native_evaluation(

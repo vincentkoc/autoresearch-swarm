@@ -17,6 +17,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import OrchestrationBinding
 from research_swarm.domain.orchestration_transfer import DriverStart, TransferCheckpoint
 from research_swarm.domain.orchestration_waits import WakeupDelivery
+from research_swarm.domain.types import ID
 from research_swarm.orchestration.custody import run_owned_step
 from research_swarm.orchestration.delivery import binding_reference
 from research_swarm.orchestration.delivery_models import BindingReference
@@ -94,6 +95,24 @@ class WorkflowStatus(BaseModel):
         "unavailable",
     ]
     initial_pending: GatewayWork | None
+
+
+class WorkflowRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    binding: GatewayBinding
+    request_id: ID
+    expected_generation: int = Field(strict=True, ge=0, le=999_999_999)
+    expected_instance_id: str = Field(pattern=r"^research-[0-9a-f]{64}-[0-9]{1,10}$", max_length=84)
+    reason: str = Field(min_length=1, max_length=1024)
+
+
+class WorkflowRecoveryReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    request_id: ID
+    predecessor_id: str
+    predecessor_generation: int = Field(strict=True, ge=0, le=999_999_999)
+    id: str
+    generation: int = Field(strict=True, ge=1, le=1_000_000_000)
 
 
 def workflow_id(reference: BindingReference, generation: int = 0) -> str:
@@ -240,6 +259,42 @@ class CloudflareBridge:
             raise ResearchError(
                 ErrorCode.DELIVERY_UNCERTAIN, "Wakeup acceptance was not confirmed", retryable=True
             )
+
+    async def recover(
+        self,
+        binding: BindingReference,
+        *,
+        request_id: str,
+        expected: WorkflowStatus,
+        reason: str,
+    ) -> WorkflowRecoveryReceipt:
+        if expected.status != "errored" or expected.id != workflow_id(binding, expected.generation):
+            raise ValueError("Recovery requires the selected binding's errored Workflow")
+        request = WorkflowRecoveryRequest(
+            binding=GatewayBinding.from_reference(binding),
+            request_id=request_id,
+            expected_generation=expected.generation,
+            expected_instance_id=expected.id,
+            reason=reason,
+        )
+        if not request.reason.strip():
+            raise ValueError("Recovery requires a reason")
+        result = await self._request("recover", request.model_dump(mode="json"))
+        try:
+            receipt = WorkflowRecoveryReceipt.model_validate(result)
+            if receipt.model_dump() != {
+                "request_id": request_id,
+                "predecessor_id": expected.id,
+                "predecessor_generation": expected.generation,
+                "id": workflow_id(binding, expected.generation + 1),
+                "generation": expected.generation + 1,
+            }:
+                raise ValueError("Recovery receipt identifies another successor")
+            return receipt
+        except ValueError:
+            raise ResearchError(
+                ErrorCode.DELIVERY_UNCERTAIN, "Invalid Workflow recovery receipt", retryable=True
+            ) from None
 
     async def deliver(
         self, binding: BindingReference, driver: DurableWaitDriver

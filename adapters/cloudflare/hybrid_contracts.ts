@@ -26,6 +26,13 @@ export type Parameters = {
   pending: Work | null;
   options: Options;
 };
+export type RecoveryRequest = {
+  binding: Binding;
+  request_id: string;
+  expected_generation: number;
+  expected_instance_id: string;
+  reason: string;
+};
 export const MAX_BYTES = 16 * 1024;
 
 export function isEventTimeout(error: unknown, milliseconds: number): boolean {
@@ -173,6 +180,32 @@ export function parseParameters(value: unknown): Parameters {
     generation: integer(row.generation, 0, 1_000_000_000),
     pending,
     options: parseOptions(row.options),
+  };
+}
+
+export function parseRecovery(value: unknown): RecoveryRequest {
+  const row = object(value, [
+    "binding",
+    "request_id",
+    "expected_generation",
+    "expected_instance_id",
+    "reason",
+  ]);
+  if (
+    typeof row.reason !== "string" ||
+    row.reason.trim().length === 0 ||
+    row.reason.length > 1024 ||
+    typeof row.expected_instance_id !== "string" ||
+    row.expected_instance_id.length > 84 ||
+    !/^research-[0-9a-f]{64}-[0-9]{1,10}$/.test(row.expected_instance_id)
+  )
+    throw new Error("INVALID_REFERENCE");
+  return {
+    binding: parseBinding(row.binding),
+    request_id: identifier(row.request_id),
+    expected_generation: integer(row.expected_generation, 0, 999_999_999),
+    expected_instance_id: row.expected_instance_id,
+    reason: row.reason,
   };
 }
 

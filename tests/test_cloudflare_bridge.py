@@ -9,7 +9,12 @@ from fastapi.responses import RedirectResponse, Response
 from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
-from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions, workflow_id
+from research_swarm.orchestration.cloudflare import (
+    CloudflareBridge,
+    WorkflowOptions,
+    WorkflowStatus,
+    workflow_id,
+)
 from tests.test_http_delivery import serving
 from tests.test_local_delivery import connection
 from tests.test_local_pipeline import pipeline as pipeline
@@ -18,6 +23,66 @@ from tests.test_orchestration_turns import bind
 from tests.test_orchestration_waits import driver, record, report
 
 TOKEN = "public-fixture-adapter-token-with-no-hosted-authority"
+
+
+@pytest.mark.asyncio
+async def test_explicit_workflow_recovery_replays_exact_intent_and_validates_successor(pipeline):
+    drivers = bind(pipeline, adapter="cloudflare")
+    binding = connection(pipeline, drivers).binding
+    expected = WorkflowStatus(
+        id=workflow_id(binding, 7), generation=7, status="errored", initial_pending=None
+    )
+    request_id = new_id()
+    app, requests = FastAPI(), []
+    receipt = {
+        "request_id": request_id,
+        "predecessor_id": expected.id,
+        "predecessor_generation": 7,
+        "id": workflow_id(binding, 8),
+        "generation": 8,
+    }
+    replies = [Response("Lost accepted reply", status_code=503), receipt]
+
+    @app.post("/adapter/recover")
+    async def recover(request: Request):
+        assert request.headers["authorization"] == "Bearer " + TOKEN
+        requests.append(await request.json())
+        return replies.pop(0)
+
+    with serving(app) as url:
+        async with CloudflareBridge(url, TOKEN) as bridge:
+            arguments = {
+                "request_id": request_id,
+                "expected": expected,
+                "reason": "Resume original work after fixing delivery",
+            }
+            with pytest.raises(ResearchError) as lost:
+                await bridge.recover(binding, **arguments)
+            assert lost.value.code == ErrorCode.DELIVERY_UNCERTAIN
+            accepted = await bridge.recover(binding, **arguments)
+            assert accepted.model_dump() == receipt
+            assert requests[0] == requests[1]
+            for field, value in (
+                ("request_id", new_id()),
+                ("predecessor_id", workflow_id(binding, 6)),
+                ("predecessor_generation", 6),
+                ("id", workflow_id(binding, 9)),
+                ("generation", 9),
+            ):
+                replies.append({**receipt, field: value})
+                with pytest.raises(ResearchError) as foreign:
+                    await bridge.recover(binding, **arguments)
+                assert foreign.value.code == ErrorCode.DELIVERY_UNCERTAIN
+            before = len(requests)
+            for invalid in (
+                {"expected": expected.model_copy(update={"status": "running"})},
+                {"expected": expected.model_copy(update={"id": workflow_id(binding, 6)})},
+                {"request_id": "invalid"},
+                {"reason": " "},
+            ):
+                with pytest.raises(ValueError):
+                    await bridge.recover(binding, **{**arguments, **invalid})
+            assert len(requests) == before
 
 
 @pytest.mark.asyncio

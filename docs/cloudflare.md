@@ -142,6 +142,7 @@ The adapter administration API accepts authenticated POST requests:
 | `/adapter/start` | `{binding, options}` | Reserve or verify the original start; ensure and nudge its current generation |
 | `/adapter/status` | `{binding}` | Read current generation, provider status and its immutable initial pending reference |
 | `/adapter/wake` | `{binding, actor_id, wait_id}` | Notify an existing registered Workflow; never create one |
+| `/adapter/recover` | `{binding, request_id, expected_generation, expected_instance_id, reason}` | Explicitly replace one observed errored generation with a durably reserved successor |
 
 `options` requires integer `poll_seconds` (1–60), `rotate_after` (2–128), and
 `request_timeout_seconds` (1–120). Responses and parameters contain bounded
@@ -160,6 +161,21 @@ inaccessible observed history is never recreated. Lookup failures remain
 retryable without interpreting them as permanent deletion. An unobserved creation
 can retry the exact ID/input; Workflow startup records observation before its
 first native call. Native domain records remain the permanent research ledger.
+
+Recovery requires the exact current failed instance and a stable UUID request ID.
+The adapter verifies provider status `errored`, then atomically compares the current
+generation and saves both successor parameters and the recovery receipt. Concurrent
+handoff or a different recovery wins only once. Unknown, inaccessible, active,
+paused, terminated and completed instances do not authorize recovery.
+
+The successor keeps binding and options, clears its initial pending hint, and
+rediscovers saved work from the authoritative research API. The predecessor's
+history remains intact. A retry with identical input recovers the same receipt and
+successor ID, even after later generations advance; changed input conflicts.
+`CloudflareBridge.recover(binding, request_id=..., expected=status, reason=...)`
+provides typed request/receipt validation. Retain the same expected status and
+request ID after an uncertain reply. Clock requalification remains a separate
+operator action; recovery grants no new worker execution or research authority.
 
 ## Native bridge and wakeup ownership
 
@@ -285,6 +301,12 @@ ensures the current reserved instance and sends a wake hint to its existing
 history. It does not call provider `restart()`, clear cached steps, create another
 research action, or resume a paused native campaign. Paused, terminated and
 errored provider instances are not reset by this operation.
+
+`/adapter/recover` handles an explicitly selected errored instance through a new
+generation. Pure registry and SDK tests cover concurrency, storage rollback,
+lookup refusal, lost replies and exact replay. The actual two-startup workerd
+probe requires one settled effect from the original saved turn after terminal failure;
+that new runtime qualification is pending.
 
 Wake hints do not establish readiness. Normal polling rechecks the native
 condition when hints are lost. The local fixture proves both resumed history
