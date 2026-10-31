@@ -2106,7 +2106,7 @@ the existing receipt semantics; absence permits explicit unacknowledged closure.
 Neither operation resumes a provider, launches an experiment or releases funding.
 Native adapter tests cover both branches, independent connection races, a lost
 first committed reply, restart replay and changed-owner refusal. Actual workerd
-turn-maintenance qualification remains pending.
+turn-maintenance passed at `06310f93e4f93d16bcec84c93d17f6ca275de77e`, as recorded below.
 
 The six-startup probe additionally binds a real source driver and saves a report
 turn through the SDK before sealing. After admission, the winner closes that turn
@@ -2221,7 +2221,19 @@ no scientific result, promotion or successor launch. SQLite/mock-R2 tests cover
 NOT_STARTED settlement, unknown/unfinished refusal, independent connection races,
 rollback after the final event, lost committed acknowledgments, changed admission
 before replay, and changed evidence during the awaited read. This private hosted
-operation still requires actual workerd and native CLOSED execution qualification.
+operation still requires actual workerd qualification.
+
+The native CPU recovery test now uses one `NativeWitnessSource` fixed in the
+deployment manifest before bootstrap. An ordinary scoped worker claims and prepares
+the source workload, starts a real supervisor, and retains a CLOSED journal only
+after native reconciliation and resource release. Source evidence publication is
+intercepted before any upload. The controller still sees an unresolved attempt
+when its state is sealed, imported, elected and admitted at the new target.
+With the source witness unavailable, the original credential uploads and quarantines
+that exact journal through the recovery SDK surface. Private closure records its
+original native outcome and measured consumption, settles once, and creates no
+scientific result. This path passed locally with SQLite/mock R2; its new cross-OS
+CI coverage and actual workerd recovery remain separate qualification claims.
 
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
@@ -2337,6 +2349,14 @@ passed 20 tests in 785.14 seconds. This covers elected admission, a lost accepte
 reply and byte-identical replay after the sixth startup. It predates saved-turn
 closure, source artifact export and target R2 restoration; those extensions still
 need their own passing runtime receipt.
+
+At `06310f93e4f93d16bcec84c93d17f6ca275de77e`, the
+[full qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41222253845)
+passed on all four surfaces: workerd 20 tests in 455.84 seconds; Linux 1,107 in
+241.58 seconds; macOS 1,107 in 342.94 seconds; Windows 1,101 with six explicit skips
+in 1,386.70 seconds. This qualifies saved-turn closure and replay and confirms the
+Windows newline fix. It predates source/target artifact transfer, worker route
+issuance, the named recovery receiver and private journal closure.
 
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent

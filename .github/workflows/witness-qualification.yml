@@ -94,6 +94,7 @@ jobs:
           tests/test_checkpoint_artifact_export.py
           tests/test_checkpoint_routes.py
           tests/test_hosted_recovery.py
+          tests/test_hosted_recovery_execution.py
           tests/test_recovery_verification.py
           tests/test_recovery_elections.py
           tests/test_logical_recovery_routes.py

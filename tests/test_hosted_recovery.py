@@ -42,9 +42,8 @@ from tests.test_manifest import project as project
 from tests.test_production_delivery import production as production
 
 
-@pytest.fixture
-async def source(production, tmp_path):
-    e, loop = production, asyncio.get_running_loop()
+async def claim_original(e, *, inputs=False):
+    loop = asyncio.get_running_loop()
     credentials = CredentialStore.open_existing(Database.from_store(e.store))
     principal = e.manifest.credentials[0].principal
     e.original = credentials.issue(
@@ -52,7 +51,8 @@ async def source(production, tmp_path):
         principal.model_copy(
             update={
                 "id": new_id(),
-                "scopes": {"worker.query", "worker.claim", "worker.outputs", "worker.publish"},
+                "scopes": {"worker.query", "worker.claim", "worker.outputs", "worker.publish"}
+                | ({"worker.inputs"} if inputs else set()),
             }
         ),
     )
@@ -73,6 +73,22 @@ async def source(production, tmp_path):
             return claimed, attempt, data
 
     e.claimed, attempt, e.worker = await asyncio.to_thread(claim)
+
+    def metadata(sql):
+        sql.execute(
+            "CREATE TABLE research_schema (singleton INTEGER PRIMARY KEY CHECK(singleton=1),"
+            "version INTEGER NOT NULL)"
+        )
+        sql.execute("INSERT INTO research_schema VALUES (1,3)")
+
+    e.store.write(metadata)
+    return attempt
+
+
+@pytest.fixture
+async def source(production, tmp_path):
+    e = production
+    attempt = await claim_original(e)
     grant = ClockVerifier(e.worker.assignment_authority).binding(
         attempt.assignment_time, attempt.signed_assignment
     )
@@ -97,14 +113,6 @@ async def source(production, tmp_path):
     e.journal_path = tmp_path / "original-journal.json"
     e.journal_path.write_bytes(canonical_bytes(e.entry.model_dump(mode="json")))
 
-    def metadata(sql):
-        sql.execute(
-            "CREATE TABLE research_schema (singleton INTEGER PRIMARY KEY CHECK(singleton=1),"
-            "version INTEGER NOT NULL)"
-        )
-        sql.execute("INSERT INTO research_schema VALUES (1,3)")
-
-    e.store.write(metadata)
     return e
 
 

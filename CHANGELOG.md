@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Exercise hosted recovery with a real CPU supervisor and a native witness fixed
+  before provisioning. Retain the closed original journal until after logical
+  recovery, transfer it with the original worker credential, and settle its exact
+  measured consumption once without producing a scientific result. Native adapter
+  evidence remains separate from workerd and cloud deployment qualification.
+
 - Add private hosted recovery closure from original journal evidence. The fixed
   target rechecks admission and verified R2 bytes, then settles reservations and
   writes closure evidence in one shared transaction. Exact retries preserve the
