@@ -119,137 +119,12 @@ class ProposalControl:
     def request(self, context: CommandContext, request: RequestProposal) -> JsonObject:
         def create(transaction: Transaction) -> JsonObject:
             require_ordinary_proposal(transaction, request.campaign_id)
-            campaign_row = transaction.get("campaign", request.campaign_id)
-            campaign = CampaignData.model_validate(campaign_row["data"])
-            controller_id, epoch = authority(transaction)
-            if (request.expected_controller_id, request.expected_control_epoch) != (
-                controller_id,
-                epoch,
-            ):
-                raise ResearchError(ErrorCode.STALE_FENCE, "Proposal controller authority changed")
-            if campaign_row["state"] != "running" or campaign.incumbent_eligibility != "eligible":
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Campaign cannot request research"
-                )
-            if request.expected_incumbent_revision != campaign.incumbent_revision:
-                raise ResearchError(
-                    ErrorCode.INCUMBENT_REVISION_CONFLICT, "Proposal incumbent changed"
-                )
-            if campaign.incumbent_candidate_id is None or campaign.incumbent_evaluation_id is None:
-                raise ResearchError(
-                    ErrorCode.COMPARISON_INELIGIBLE, "Research requires an evaluated incumbent"
-                )
-            evaluation = eligible_evaluation(
-                transaction, campaign.incumbent_evaluation_id, request.campaign_id, campaign
-            )
-            previous = search_state(transaction, request.campaign_id, campaign)
-            if context.expected_revision != previous["revision"]:
-                raise ResearchError(ErrorCode.REVISION_CONFLICT, "Search state revision changed")
-            state = SearchState.model_validate(previous["data"])
-            validate_portfolio_request(transaction, campaign, state, request)
-            require_funded_trials(transaction, request.campaign_id, campaign, Decimal(1))
-            slots = 1 if state.policy == "greedy" else campaign.contract.search.max_parallel_trials
-            if len(state.pending_request_ids) + len(state.active_trial_ids) >= slots:
-                raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Search slots are occupied")
-            parent = CandidateData.model_validate(
-                transaction.get("candidate", campaign.incumbent_candidate_id)["data"]
-            )
-            identifier = new_id()
-            account = BudgetLedger.account(transaction, request.campaign_id, "proposal_requests")
-            if account.unit != "count" or account.kind != BudgetKind.CUMULATIVE:
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID,
-                    "Proposal request budget must count cumulative requests",
-                )
-            reservation = BudgetLedger.reserve(
-                transaction, request.campaign_id, identifier, {"proposal_requests": Decimal(1)}
-            )
-            # This counts issued research requests, never inferred LLM calls or token billing.
-            BudgetLedger.settle(
-                transaction, reservation.id, new_id(), {"proposal_requests": Decimal(1)}
-            )
-            sequence = transaction.connection.execute(
-                "SELECT next_sequence-1 FROM workspaces WHERE id=?", (transaction.workspace_id,)
-            ).one()[0]
-            recent = transaction.connection.execute(
-                "SELECT kind,id FROM records WHERE workspace_id=? AND campaign_id=? "
-                "AND kind IN ('candidate','trial','evaluation_receipt','promotion') "
-                "ORDER BY rowid DESC LIMIT 8",
-                (transaction.workspace_id, request.campaign_id),
-            ).fetchall()
-            snapshot = {
-                "campaign": summarize(campaign_row),
-                "policy_revision": previous["revision"],
-                "pending_request_ids": list(state.pending_request_ids[:32]),
-                "pending_request_count": len(state.pending_request_ids),
-                "active_trial_ids": list(state.active_trial_ids[:32]),
-                "active_trial_count": len(state.active_trial_ids),
-                "incumbent_evaluation_id": campaign.incumbent_evaluation_id,
-                "comparison_digest": evaluation.comparison_digest,
-                "primary_metric": evaluation.metric.model_dump(mode="json"),
-                "recent_evidence": [
-                    summarize(transaction.get(item["kind"], item["id"])) for item in recent
-                ],
-                "proposal_requests_available": str(
-                    BudgetLedger.account(
-                        transaction, request.campaign_id, "proposal_requests"
-                    ).available
-                ),
-                "usage_authority": "External model usage is agent-reported, not verified billing.",
-            }
-            if len(canonical_bytes(snapshot)) > MAX_CONTEXT_BYTES:
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE, "Proposal context exceeds its bound"
-                )
-            data = ProposalRequest(
-                theme_id=request.theme_id,
-                campaign_id=request.campaign_id,
-                proposer_id=request.proposer_id,
-                controller_id=controller_id,
-                control_epoch=epoch,
-                policy_revision=previous["revision"] + 1,
-                policy_version=state.policy_version,
-                campaign_contract_digest=state.campaign_contract_digest,
-                incumbent_revision=campaign.incumbent_revision,
-                parent_candidate_id=campaign.incumbent_candidate_id,
-                parent_source=parent.source_artifact,
-                seed=request.seed,
-                instructions=request.instructions,
-                context=snapshot,
-                context_digest=record_digest("research.proposal-context", snapshot),
-                context_watermark=sequence,
-                requested_at=utc_now(),
-                budget_reservation_id=reservation.id,
-            )
-            ArtifactCatalog.retain(
+            return self._create(
                 transaction,
-                ArtifactRetention(
-                    artifact_id=parent.source_artifact.id,
-                    owner_kind="proposal_request",
-                    owner_id=identifier,
-                    purpose="parent_source",
-                ),
+                request,
+                identifier=new_id(),
+                expected_revision=context.expected_revision,
             )
-            row = transaction.insert(
-                "proposal_request",
-                identifier,
-                data.model_dump(mode="json"),
-                state="pending",
-                campaign_id=request.campaign_id,
-                parent_id=request.campaign_id,
-            )
-            updated = write_search_state(
-                transaction,
-                previous,
-                state.model_copy(
-                    update={
-                        "pending_request_ids": (*state.pending_request_ids, identifier),
-                        "request_count": state.request_count + 1,
-                    }
-                ),
-            )
-            transaction.event("proposal.requested", row, {"policy_revision": updated["revision"]})
-            return {"request": row, "search": updated}
 
         return self.database.execute(
             context,
@@ -258,6 +133,141 @@ class ProposalControl:
             "search.manage",
             create,
         )
+
+    @staticmethod
+    def _create(
+        transaction: Transaction,
+        request: RequestProposal,
+        *,
+        identifier: str,
+        expected_revision: int | None,
+    ) -> JsonObject:
+        campaign_row = transaction.get("campaign", request.campaign_id)
+        campaign = CampaignData.model_validate(campaign_row["data"])
+        controller_id, epoch = authority(transaction)
+        if (request.expected_controller_id, request.expected_control_epoch) != (
+            controller_id,
+            epoch,
+        ):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Proposal controller authority changed")
+        if campaign_row["state"] != "running" or campaign.incumbent_eligibility != "eligible":
+            raise ResearchError(ErrorCode.INVALID_TRANSITION, "Campaign cannot request research")
+        if request.expected_incumbent_revision != campaign.incumbent_revision:
+            raise ResearchError(ErrorCode.INCUMBENT_REVISION_CONFLICT, "Proposal incumbent changed")
+        if campaign.incumbent_candidate_id is None or campaign.incumbent_evaluation_id is None:
+            raise ResearchError(
+                ErrorCode.COMPARISON_INELIGIBLE, "Research requires an evaluated incumbent"
+            )
+        evaluation = eligible_evaluation(
+            transaction, campaign.incumbent_evaluation_id, request.campaign_id, campaign
+        )
+        previous = search_state(transaction, request.campaign_id, campaign)
+        if expected_revision != previous["revision"]:
+            raise ResearchError(ErrorCode.REVISION_CONFLICT, "Search state revision changed")
+        state = SearchState.model_validate(previous["data"])
+        validate_portfolio_request(transaction, campaign, state, request)
+        require_funded_trials(transaction, request.campaign_id, campaign, Decimal(1))
+        slots = 1 if state.policy == "greedy" else campaign.contract.search.max_parallel_trials
+        if len(state.pending_request_ids) + len(state.active_trial_ids) >= slots:
+            raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Search slots are occupied")
+        parent = CandidateData.model_validate(
+            transaction.get("candidate", campaign.incumbent_candidate_id)["data"]
+        )
+        account = BudgetLedger.account(transaction, request.campaign_id, "proposal_requests")
+        if account.unit != "count" or account.kind != BudgetKind.CUMULATIVE:
+            raise ResearchError(
+                ErrorCode.PROJECT_CONTRACT_INVALID,
+                "Proposal request budget must count cumulative requests",
+            )
+        reservation = BudgetLedger.reserve(
+            transaction, request.campaign_id, identifier, {"proposal_requests": Decimal(1)}
+        )
+        # This counts issued research requests, never inferred LLM calls or token billing.
+        BudgetLedger.settle(
+            transaction, reservation.id, new_id(), {"proposal_requests": Decimal(1)}
+        )
+        sequence = transaction.connection.execute(
+            "SELECT next_sequence-1 FROM workspaces WHERE id=?", (transaction.workspace_id,)
+        ).one()[0]
+        recent = transaction.connection.execute(
+            "SELECT kind,id FROM records WHERE workspace_id=? AND campaign_id=? "
+            "AND kind IN ('candidate','trial','evaluation_receipt','promotion') "
+            "ORDER BY rowid DESC LIMIT 8",
+            (transaction.workspace_id, request.campaign_id),
+        ).fetchall()
+        snapshot = {
+            "campaign": summarize(campaign_row),
+            "policy_revision": previous["revision"],
+            "pending_request_ids": list(state.pending_request_ids[:32]),
+            "pending_request_count": len(state.pending_request_ids),
+            "active_trial_ids": list(state.active_trial_ids[:32]),
+            "active_trial_count": len(state.active_trial_ids),
+            "incumbent_evaluation_id": campaign.incumbent_evaluation_id,
+            "comparison_digest": evaluation.comparison_digest,
+            "primary_metric": evaluation.metric.model_dump(mode="json"),
+            "recent_evidence": [
+                summarize(transaction.get(item["kind"], item["id"])) for item in recent
+            ],
+            "proposal_requests_available": str(
+                BudgetLedger.account(
+                    transaction, request.campaign_id, "proposal_requests"
+                ).available
+            ),
+            "usage_authority": "External model usage is agent-reported, not verified billing.",
+        }
+        if len(canonical_bytes(snapshot)) > MAX_CONTEXT_BYTES:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Proposal context exceeds its bound"
+            )
+        data = ProposalRequest(
+            theme_id=request.theme_id,
+            campaign_id=request.campaign_id,
+            proposer_id=request.proposer_id,
+            controller_id=controller_id,
+            control_epoch=epoch,
+            policy_revision=previous["revision"] + 1,
+            policy_version=state.policy_version,
+            campaign_contract_digest=state.campaign_contract_digest,
+            incumbent_revision=campaign.incumbent_revision,
+            parent_candidate_id=campaign.incumbent_candidate_id,
+            parent_source=parent.source_artifact,
+            seed=request.seed,
+            instructions=request.instructions,
+            context=snapshot,
+            context_digest=record_digest("research.proposal-context", snapshot),
+            context_watermark=sequence,
+            requested_at=utc_now(),
+            budget_reservation_id=reservation.id,
+        )
+        ArtifactCatalog.retain(
+            transaction,
+            ArtifactRetention(
+                artifact_id=parent.source_artifact.id,
+                owner_kind="proposal_request",
+                owner_id=identifier,
+                purpose="parent_source",
+            ),
+        )
+        row = transaction.insert(
+            "proposal_request",
+            identifier,
+            data.model_dump(mode="json"),
+            state="pending",
+            campaign_id=request.campaign_id,
+            parent_id=request.campaign_id,
+        )
+        updated = write_search_state(
+            transaction,
+            previous,
+            state.model_copy(
+                update={
+                    "pending_request_ids": (*state.pending_request_ids, identifier),
+                    "request_count": state.request_count + 1,
+                }
+            ),
+        )
+        transaction.event("proposal.requested", row, {"policy_revision": updated["revision"]})
+        return {"request": row, "search": updated}
 
     @staticmethod
     def _owned(transaction: Transaction, identifier: str) -> tuple[JsonObject, ProposalRequest]:

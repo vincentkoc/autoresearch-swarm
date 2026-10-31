@@ -104,65 +104,62 @@ class LearningControl:
         self.database = database
 
     def freeze(self, context: CommandContext, intent: FreezeLearningPlan) -> JsonObject:
-        def commit(transaction: Transaction) -> JsonObject:
-            digest = record_digest(
-                "research.freeze-learning-plan.v1", intent.model_dump(mode="json")
-            )
-            previous = optional_record(transaction, "learning_plan", intent.plan_id)
-            if previous is not None:
-                if LearningPlan.model_validate(previous["data"]).request_digest != digest:
-                    raise ResearchError(
-                        ErrorCode.IDEMPOTENCY_CONFLICT, "Learning plan is immutable"
-                    )
-                return previous
-            episodes = tuple(freeze_episode(transaction, item, intent) for item in intent.episodes)
-            for action, artifact in intent.action_artifacts.items():
-                ArtifactCatalog.available(transaction, artifact)
-                ArtifactCatalog.retain(
-                    transaction,
-                    ArtifactRetention(
-                        artifact_id=artifact.id,
-                        owner_kind="learning_plan",
-                        owner_id=intent.plan_id,
-                        purpose=action,
-                    ),
-                )
-            watermark = transaction.connection.execute(
-                "SELECT next_sequence-1 FROM workspaces WHERE id=?", (transaction.workspace_id,)
-            ).one()[0]
-            plan = LearningPlan(
-                request=intent,
-                request_digest=digest,
-                episodes=episodes,
-                evidence_through=watermark,
-                actor_id=context.principal.id,
-                recorded_at=utc_now(),
-            )
-            result = transaction.insert(
-                "learning_plan", intent.plan_id, plan.model_dump(mode="json"), state="immutable"
-            )
-            for episode in episodes:
-                binding = transaction.insert(
-                    "learning_episode",
-                    episode.episode_id,
-                    EpisodeBinding(
-                        plan_id=intent.plan_id, plan_digest=plan.digest, episode=episode
-                    ).model_dump(mode="json"),
-                    state="immutable",
-                    campaign_id=episode.campaign_id,
-                    parent_id=intent.plan_id,
-                )
-                transaction.event("learning.episode_bound", binding, {"plan_id": intent.plan_id})
-            transaction.event("learning.plan_frozen", result, {"episode_count": len(episodes)})
-            return result
-
         return self.database.execute(
             context,
             "learning.freeze_plan",
             intent.model_dump(mode="json"),
             "learning.manage",
-            commit,
+            lambda transaction: self._freeze(transaction, intent),
         )
+
+    @staticmethod
+    def _freeze(transaction: Transaction, intent: FreezeLearningPlan) -> JsonObject:
+        digest = record_digest("research.freeze-learning-plan.v1", intent.model_dump(mode="json"))
+        previous = optional_record(transaction, "learning_plan", intent.plan_id)
+        if previous is not None:
+            if LearningPlan.model_validate(previous["data"]).request_digest != digest:
+                raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Learning plan is immutable")
+            return previous
+        episodes = tuple(freeze_episode(transaction, item, intent) for item in intent.episodes)
+        for action, artifact in intent.action_artifacts.items():
+            ArtifactCatalog.available(transaction, artifact)
+            ArtifactCatalog.retain(
+                transaction,
+                ArtifactRetention(
+                    artifact_id=artifact.id,
+                    owner_kind="learning_plan",
+                    owner_id=intent.plan_id,
+                    purpose=action,
+                ),
+            )
+        watermark = transaction.connection.execute(
+            "SELECT next_sequence-1 FROM workspaces WHERE id=?", (transaction.workspace_id,)
+        ).one()[0]
+        plan = LearningPlan(
+            request=intent,
+            request_digest=digest,
+            episodes=episodes,
+            evidence_through=watermark,
+            actor_id=transaction.context.principal.id,
+            recorded_at=utc_now(),
+        )
+        result = transaction.insert(
+            "learning_plan", intent.plan_id, plan.model_dump(mode="json"), state="immutable"
+        )
+        for episode in episodes:
+            binding = transaction.insert(
+                "learning_episode",
+                episode.episode_id,
+                EpisodeBinding(
+                    plan_id=intent.plan_id, plan_digest=plan.digest, episode=episode
+                ).model_dump(mode="json"),
+                state="immutable",
+                campaign_id=episode.campaign_id,
+                parent_id=intent.plan_id,
+            )
+            transaction.event("learning.episode_bound", binding, {"plan_id": intent.plan_id})
+        transaction.event("learning.plan_frozen", result, {"episode_count": len(episodes)})
+        return result
 
     def commit_decision(self, context: CommandContext, intent: CommitPolicyDecision) -> JsonObject:
         def commit(transaction: Transaction) -> JsonObject:

@@ -1150,6 +1150,47 @@ identities or select another learned checkpoint. Historical replay remains
 available after byte-service failure. Later evidence corrections preserve work
 and costs while preventing current qualification at later decision gates.
 
-This slice starts and qualifies the comparator path. Candidate slots stay closed
-until atomic planned-proposal and held-out learning-plan binding is implemented.
+This operation starts and qualifies the comparator path. Use the planned-proposal
+command below after the arm's starting comparator is promoted.
+
+## Issue a planned held-out proposal
+
+Each arm can progress as soon as its own starting comparator is ready. The
+controller issues its one reserved proposal and freezes the assigned policy,
+action sources, reward rule and held-out split in the same transaction:
+
+```python
+from research_swarm.control.benchmark_execution_models import RequestBenchmarkProposal
+
+prepared = operator.command(
+    "learning.request_benchmark_proposal",
+    RequestBenchmarkProposal(arm_id=arm_id),
+    idempotency_key="prepare-held-out-arm",
+)["result"]
+request_id = prepared["data"]["proposal_request_id"]
+```
+
+The command requires `learning.manage`, `search.manage` and `read`. It derives
+the proposer, seed, request ID, plan ID and policy from the immutable arm. The
+baseline arm uses the original behavior policy; the challenger uses the checked
+learned policy. Both use the original action sources and reward contract.
+
+Before issuing work, the controller revalidates training provenance and the
+arm's exact promoted comparator trial, seed and comparison fingerprint. The
+ordinary request charge, search-state transition, source retentions, learning
+plan, episode binding and `benchmark_proposal` receipt commit together. An agent
+cannot observe a pending request without its frozen plan.
+
+The assigned proposer uses `learning.commit_decision` and `search.respond` as
+usual. Candidate responses require the committed action source. The held-out
+episode cannot become development data. The API accepts no replacement policy,
+seed or proposer at this step.
+
+Query `benchmark_proposal` for the immutable preparation receipt. MCP exposes
+`research_learning_request_benchmark_proposal`. Concurrent requests and retries
+return the same receipt without another charge. After cancellation, the receipt
+remains historical evidence; replay does not create a replacement episode.
+
+Candidate trial admission, full-panel assessment and policy adoption remain
+separate work. Preparing a proposal is not a measured policy improvement.
 Full-panel assessment and explicit policy adoption remain separate work.

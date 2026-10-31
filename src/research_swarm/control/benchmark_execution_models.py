@@ -45,3 +45,18 @@ class BenchmarkTrialSlot(VersionedRecord):
     arm_id: ID
     trial_id: ID
     role: Literal["comparator", "candidate"]
+
+
+class RequestBenchmarkProposal(VersionedRecord):
+    arm_id: ID
+
+
+class BenchmarkProposal(VersionedRecord):
+    request: RequestBenchmarkProposal
+    benchmark_id: ID
+    execution_digest: Digest
+    proposal_request_id: ID
+    learning_plan_id: ID
+    learning_plan_digest: Digest
+    actor_id: ID
+    recorded_at: Timestamp

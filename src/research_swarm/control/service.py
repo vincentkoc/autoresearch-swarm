@@ -11,11 +11,15 @@ from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.backup import BackupControl
 from research_swarm.control.benchmark_execution import BenchmarkExecutionControl
-from research_swarm.control.benchmark_execution_models import StartPolicyBenchmark
+from research_swarm.control.benchmark_execution_models import (
+    RequestBenchmarkProposal,
+    StartPolicyBenchmark,
+)
 from research_swarm.control.benchmark_guard import (
     require_prepared_training_authority,
 )
 from research_swarm.control.benchmark_models import FreezePolicyBenchmark
+from research_swarm.control.benchmark_proposals import BenchmarkProposalControl
 from research_swarm.control.benchmark_trials import (
     BenchmarkTrialAuthority,
     consume_trial_slot,
@@ -251,6 +255,7 @@ class ResearchService:
         self.proposals = ProposalControl(database)
         self.learning = LearningControl(database)
         self.benchmarks = BenchmarkControl(database)
+        self.benchmark_proposals = BenchmarkProposalControl(database)
         self.benchmark_execution = BenchmarkExecutionControl(
             database,
             artifacts,
@@ -480,6 +485,11 @@ class ResearchService:
         self, context: CommandContext, request: StartPolicyBenchmark
     ) -> JsonObject:
         return self.benchmark_execution.start(context, request)
+
+    def request_benchmark_proposal(
+        self, context: CommandContext, request: RequestBenchmarkProposal
+    ) -> JsonObject:
+        return self.benchmark_proposals.request(context, request)
 
     def qualify_trajectory_dataset(
         self, context: CommandContext, request: QualifyTrajectoryDataset

@@ -8,7 +8,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from research_swarm.control.acceptance_models import ExpireAcceptance
-from research_swarm.control.benchmark_execution_models import StartPolicyBenchmark
+from research_swarm.control.benchmark_execution_models import (
+    RequestBenchmarkProposal,
+    StartPolicyBenchmark,
+)
 from research_swarm.control.benchmark_models import FreezePolicyBenchmark
 from research_swarm.control.child_models import (
     CancelChildCampaign,
@@ -114,6 +117,14 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.request_benchmark_proposal": CommandDefinition(
+        RequestBenchmarkProposal,
+        "request_benchmark_proposal",
+        "learning.manage",
+        False,
+        "Issue the arm's reserved proposal and freeze its held-out policy plan atomically.",
+        additional_scopes=("search.manage", "read"),
+    ),
     "learning.start_benchmark": CommandDefinition(
         StartPolicyBenchmark,
         "start_policy_benchmark",
