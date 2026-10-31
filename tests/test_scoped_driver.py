@@ -14,7 +14,6 @@ from typing import Any
 
 import psutil
 import pytest
-from filelock import FileLock, Timeout
 
 from research_swarm.api.http import create_app
 from research_swarm.control.commands import SubmitTrial
@@ -748,28 +747,73 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 )["result"]
                 assert requested["disposition"] == "requested"
                 assert requested["control"]["data"]["acknowledged_at"] is None
+            marker = tmp_path / "resumed-attempt-acquired.json"
+            resumed_argv = argv
+            if not cancel_offline:
+                # Observe the actual acquisition inside the recovering worker.
+                # A parent probe would compete for this same native file lock.
+                script = """
+import json
+import os
+import sys
+from pathlib import Path
+from research_swarm.workers import local
+
+expected = Path(sys.argv[1]).resolve()
+marker = Path(sys.argv[2])
+
+class ObservedLock(local.FileLock):
+    def acquire(self, *args, **kwargs):
+        acquired = super().acquire(*args, **kwargs)
+        try:
+            if Path(self.lock_file).resolve() == expected:
+                pending = marker.with_suffix(".pending")
+                pending.write_text(
+                    json.dumps({"attempt_id": expected.stem, "pid": os.getpid()}),
+                    encoding="utf-8",
+                )
+                pending.replace(marker)
+        except BaseException:
+            self.release()
+            raise
+        return acquired
+
+local.FileLock = ObservedLock
+from research_swarm.cli import main
+raise SystemExit(main(sys.argv[3:]))
+"""
+                lock_path = root / "execution" / "locks" / f"{running.dispatch.attempt_id}.lock"
+                resumed_argv = [
+                    sys.executable,
+                    "-c",
+                    script,
+                    str(lock_path),
+                    str(marker),
+                    *argv[3:],
+                ]
             resumed = subprocess.Popen(
-                argv,
+                resumed_argv,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
             )
             if not cancel_offline:
-                lock = FileLock(
-                    root / "execution" / "locks" / f"{running.dispatch.attempt_id}.lock", timeout=0
-                )
                 until = time.monotonic() + 10
                 while True:
                     assert resumed.poll() is None and time.monotonic() < until, setup_diagnostics(
                         resumed, "resumed driver before attempt lock"
                     )
                     try:
-                        with lock:
-                            pass
-                    except Timeout:
+                        acquired = json.loads(marker.read_text(encoding="utf-8"))
+                    except FileNotFoundError:
+                        time.sleep(0.01)
+                    else:
+                        assert acquired == {
+                            "attempt_id": running.dispatch.attempt_id,
+                            "pid": resumed.pid,
+                        }
                         break
-                    time.sleep(0.01)
                 assert journal.get(running.dispatch.attempt_id).state == JournalState.RUNNING
                 release.touch()
             finish_by = time.monotonic() + 20
