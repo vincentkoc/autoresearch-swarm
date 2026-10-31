@@ -7,6 +7,7 @@ from research_swarm.domain.backup import RecoveryAdmission, RestoreReceipt, Work
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, RecoveryAuthority
+from research_swarm.state.recovery_elections import retained_election
 from research_swarm.state.sql import SqlSession, StoreIdentity
 
 ROOT_OPERATIONS = frozenset(
@@ -78,6 +79,7 @@ def require_recovery_authority(
         or (seal.backup_id, seal.control_epoch) != (receipt.backup_id, receipt.source_control_epoch)
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Recovery evidence authority changed")
+    retained_election(connection, receipt, admitted)
     owner = connection.execute(
         "SELECT 1 FROM records WHERE workspace_id=? AND kind='orchestration_owner' AND id=?",
         (workspace, context.principal.id),

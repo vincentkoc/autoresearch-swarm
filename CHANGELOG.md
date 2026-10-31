@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Bind logical recovery admission to the complete signed election envelope.
+  Recheck its immutable companion at every recovery transaction boundary, refuse
+  changed or missing proof, and keep native-only routes from bypassing deployment
+  verification. Existing native admission bytes and signature domains stay fixed.
+
 - Require an explicit recovery verifier when binding a generic state adapter.
   Verify admission against the same SQL snapshot before returning recovery
   authority; asynchronous or value-returning plugins refuse. Native SQLite keeps

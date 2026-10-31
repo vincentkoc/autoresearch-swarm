@@ -82,6 +82,19 @@ def install(routed):
     return install_recovery_route(routed.native.root, routed.signed, routed.pin)
 
 
+def test_native_route_cannot_strip_logical_election_verification(routed):
+    signed = routed.signed
+    admission = signed.route.admission.model_copy(
+        update={"logical_election_digest": "sha256:" + "a" * 64}
+    )
+    changed = signed.model_copy(
+        update={"route": signed.route.model_copy(update={"admission": admission})}
+    )
+    with pytest.raises(ResearchError) as refused:
+        verify_recovery_route(changed, routed.pin)
+    assert refused.value.code == ErrorCode.CAPABILITY_UNAVAILABLE
+
+
 def recover(routed):
     return recover_worker_attempt(
         routed.native.root, routed.native.attempt_id, route_id=routed.signed.route.route_id

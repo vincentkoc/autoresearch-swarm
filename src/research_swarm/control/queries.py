@@ -48,6 +48,7 @@ RecordKind = Literal[
     "workspace_seal",
     "backup_custody",
     "recovery_admission",
+    "logical_recovery_election",
     "recovery_activation",
     "restoration",
     "acceptance_lease",

@@ -10,7 +10,7 @@ from research_swarm.checkpoints.admission_state import reject_admission as _reje
 from research_swarm.checkpoints.admission_state import research_ids as _research_ids
 from research_swarm.checkpoints.backup import verify_backup
 from research_swarm.checkpoints.restore import RestoreCustody, RestoreIntent, _verify_completed
-from research_swarm.control.recovery_proofs import validate_claim_binding
+from research_swarm.control.recovery_proofs import require_native_admission, validate_claim_binding
 from research_swarm.control.recovery_proofs import verify_admission as verify_admission
 from research_swarm.domain.backup import (
     RecoveryAdmission,
@@ -40,6 +40,7 @@ def verify_admitted(database: Database, receipt: RestoreReceipt) -> bool:
         if row is None:
             return False
         admission = RecoveryAdmission.model_validate_json(row["payload"])
+        require_native_admission(admission)
         verify_admission(admission, receipt)
         authority = connection.execute(
             "SELECT controller_id,control_epoch FROM workspaces WHERE id=?", (receipt.workspace_id,)

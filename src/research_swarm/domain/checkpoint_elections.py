@@ -86,3 +86,7 @@ class LogicalElection(VersionedRecord):
 class SignedLogicalElection(VersionedRecord):
     election: LogicalElection
     signature: SignatureHex
+
+    @property
+    def digest(self) -> str:
+        return record_digest("research.logical-election-envelope.v1", self.model_dump(mode="json"))

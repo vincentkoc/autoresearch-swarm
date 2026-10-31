@@ -70,6 +70,13 @@ def validate_claim_binding(
         raise ResearchError(ErrorCode.STALE_FENCE, "Source claim elected another restoration")
 
 
+def require_native_admission(admission: RecoveryAdmission) -> None:
+    if admission.logical_election_digest is not None:
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE, "Logical recovery requires its deployment verifier"
+        )
+
+
 def verify_admission(
     admission: RecoveryAdmission,
     receipt: RestoreReceipt,
@@ -99,6 +106,7 @@ def verify_activation(
     *,
     crypto_provider: Ed25519Provider | None = None,
 ) -> None:
+    require_native_admission(admission)
     verify_admission(admission, receipt, crypto_provider=crypto_provider)
     if (
         activation.restoration_digest != receipt.digest

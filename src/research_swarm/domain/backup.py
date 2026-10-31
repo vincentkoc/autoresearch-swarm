@@ -160,6 +160,9 @@ class SignedRestoreClaim(VersionedRecord):
 
 class RecoveryAdmission(VersionedRecord):
     signed_claim: SignedRestoreClaim
+    logical_election_digest: Digest | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     restoration_digest: Digest
     orchestration_campaign_ids: tuple[ID, ...] = Field(max_length=10_000)
     paused_campaign_ids: tuple[ID, ...] = Field(max_length=10_000)

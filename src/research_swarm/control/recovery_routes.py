@@ -1,6 +1,6 @@
 """Public route verification starts with an independently trusted source pin."""
 
-from research_swarm.control.recovery_proofs import verify_admission
+from research_swarm.control.recovery_proofs import require_native_admission, verify_admission
 from research_swarm.crypto import Ed25519Provider, resolve_crypto, verify
 from research_swarm.domain.backup import BackupCustodyPin
 from research_swarm.domain.endpoints import controller_url
@@ -15,6 +15,7 @@ def verify_recovery_route(
     crypto_provider: Ed25519Provider | None = None,
 ) -> None:
     route = SignedWorkerRecoveryRoute.model_validate(signed).route
+    require_native_admission(route.admission)
     pin = BackupCustodyPin.model_validate(trusted_source)
     receipt = route.restoration
     if (pin.workspace_id, pin.controller_id, pin.custody_id, pin.control_epoch, pin.public_key) != (

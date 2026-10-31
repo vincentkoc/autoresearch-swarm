@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from research_swarm.control.recovery_proofs import verify_admission
+from research_swarm.control.recovery_proofs import require_native_admission, verify_admission
 from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.backup import RecoveryAdmission, RestoreReceipt
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -40,4 +40,5 @@ class NativeRecoveryVerifier:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Native recovery requires its SQLite authority"
             )
+        require_native_admission(admission)
         verify_admission(admission, receipt, crypto_provider=crypto)

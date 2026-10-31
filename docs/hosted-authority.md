@@ -2051,6 +2051,17 @@ to no recovery verifier, even if its records contain a valid native admission.
 Runtime construction owns this capability; API callers and research project
 manifests cannot enable it. This port alone does not enable hosted recovery.
 
+Logical admissions carry a target-signed `logical_election_digest` over the full
+`SignedLogicalElection`, including its outer signature, in the distinct
+`research.logical-election-envelope.v1` domain. Their companion record uses kind
+`logical_recovery_election`, the restoration ID, immutable state and revision 1,
+with no campaign or parent. Recovery guards recheck its bounded payload and digest
+against the already verified admission at the transaction boundary. The companion
+cannot replace the native claim inside the admission. Native admission omits the
+optional field entirely, retaining existing canonical bytes and signatures.
+Native-only verification, worker routes and activation refuse the logical profile
+until a deployment-aware route explicitly verifies its proof and destination.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and
