@@ -15,10 +15,17 @@ at `daee81a5b1113be2cb813e83367ca3fd6da62d36`:
 | Windows | 1,478 passed, six explicit skips | 1,641.34 seconds |
 
 This qualifies the nine-startup recovery, target preparation/activation and
-fresh-deployment clock-management probes in local workerd. The later
-active-reconciliation and timer profiles need their own runtime and platform
-receipts. The qualification job allows 45 minutes on Windows; experiment budgets
-and individual test supervision remain unchanged.
+fresh-deployment clock-management probes in local workerd.
+
+The [reconciliation/timer run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41235361544)
+at `95f313881a089b073a7560e5f4a8ddb43a492ed0` passed **21 workerd tests in
+1,051.42 seconds** and **1,522 Linux tests in 722.03 seconds**. This includes
+original CPU evidence reconciliation and a timer carried through Workflow rotation
+and authority/Workflow restart. Windows and macOS were still running when recorded.
+The later pending-wait clock-discontinuity fix and explicit errored-Workflow recovery
+need their own receipts. The qualification job allows 45 minutes on Windows and
+30 minutes for the expanded workerd suite; experiment budgets and individual test
+supervision remain unchanged.
 
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|
@@ -91,10 +98,10 @@ and individual test supervision remain unchanged.
 | Cloudflare Workflow delivery | Native gateway, immutable transport registry, bounded generations, retries and wake hints | Actual local Workflow plus CPU evaluation, lost reply, continuation, explicit start retry after restart, fencing and redirect refusal | Local emulator qualification with native notification bridge and agent facade; hosted qualification pending |
 | Cloudflare agent facade | Separate credential-free Worker, shared native command catalog, caller identity and streaming transport | Local workerd with SDK and stdio MCP, command replay, binary transfers/lengths, scopes/revocation, events, redirect refusal and bounded stalled-stream closure | Local transport qualification; immediate disconnect propagation through the emulator and hosted deployment remain separate |
 | R2 storage adapter | Immutable runtime/CLI selection, conditional generation publication, pinned native staging, verified reads and retirement fences | Simulator and SDK contracts plus actual local R2-binding restart, publication, delayed-write fencing, pins, deduplication and corruption refusal | Native runtime and local binding qualified separately from SDK request shape; hosted S3-to-R2 deployment remains unqualified |
-| Cloudflare authority | Fixed authoritative DO with separately admitted native witness; bounded research, artifact and recovery profiles | Shared kernel, production routing, native CPU execution and original-journal recovery/closure in local workerd; exact receipts in hosted-authority.md | Workers timers are not the authority clock. Production deployment, fleet/accelerator qualification and newer recovery activation/clock-management probes remain open |
+| Cloudflare authority | Fixed authoritative DO with separately admitted native witness; bounded research, artifact and recovery profiles | Shared kernel, production routing, native CPU execution and original-journal recovery/closure in local workerd; exact receipts in hosted-authority.md | Workers timers are not the authority clock. Recovery activation and clock management have local workerd proof at daee81a; production deployment and fleet/accelerator qualification remain open |
 | Hosted recovery activation and clock management | Private target preparation/activation, immutable readiness lineage and explicit fenced-clock requalification; separate active-deployment status/management | SQLite and signed-witness tests preserve credentials, original attempts/accounting and activation history across races, rollback and lost replies | Local workerd at `daee81a` qualifies nine-startup recovery plus fresh-deployment clock management; Linux also passed. Windows/macOS and deployed qualification remain separate |
 | Active hosted late-result reconciliation | Explicit profile with quarantined original evidence and scoped current-authority reconciliation; older profiles preserve their limits | Actual native CPU closure through the SQLite adapter, acceptance expiry, original grant/lease retention, one settlement, rollback, races and offline replay | Actual workerd qualification and deployed operation remain pending |
-| Hosted timer waits | Explicit timer profile with transaction-local witness time; async delivery delegates readiness to the shared wait kernel | Exact threshold/readiness time, event priority, pending retry, owner cancellation/revocation, fencing, requalification and offline replay | Actual Workflow/workerd timer qualification remains pending; UTC thresholds do not imply elapsed-duration guarantees |
+| Hosted timer waits | Explicit timer profile with transaction-local witness time; async delivery delegates readiness to the shared wait kernel | Exact threshold/readiness time, event priority, pending retry, owner cancellation/revocation, fencing, requalification and offline replay | Baseline Workflow rotation and authority/Workflow restart qualified in local workerd at 95f3138; later pending-clock-fence recovery remains unqualified. UTC thresholds do not imply elapsed-duration guarantees |
 | Controller and CPU measurement | Bounded traffic, ledger contention, replay latency and paired native throughput runner | 14 measured cells, 48 eligible CPU trials, 96 stages, 1.80× median paired throughput; interrupted-publication recovery preserves attempts | Single-host short CPU workload; no multi-host or accelerator scaling claim |
 | Native backup and recovery | Sealed export; inactive import; single-target source election; routed original evidence; exact reader/turn cleanup; signed activation and successor resealing | Real native live-worker recovery through activation/export; two successor epochs; preserved queued stages, exposure and child funding; crash/acknowledgment/byte races and ledger consistency | Local SQLite/filesystem/CPU proof; original workers and ancestors remain fenced. Physical-host disaster recovery and R2 backup remain unqualified |
 | Reward-driven numerical policy training | Typed frozen-batch contracts, categorical REINFORCE adapter and ordinary CPU trainer/protected checker | Analytic gradient, incompatible/censored batch refusal, native trainer/checker stages and deliberately altered checkpoint rejection | Native trainer verified on synthetic batches; controller-qualified data has a separate verified path. Approved profiles, admission, checked publication, held-out assessment and explicit policy adoption are implemented; a native policy win requires an actual passing gate |

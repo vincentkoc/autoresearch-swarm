@@ -5,8 +5,10 @@ execution qualified in local workerd under an explicitly admitted native witness
 No production Cloudflare deployment has been performed. The existing
 [hybrid profile](cloudflare.md) remains available; it has separate qualification.
 The full M5 exit remains open. Nine-startup recovery and fresh-deployment clock
-management have local workerd proof at `daee81a`. Later active-reconciliation and
-timer profiles need their own receipts. Deployed/fleet qualification is separate.
+management have local workerd proof at `daee81a`. Active reconciliation and timer
+rotation/runtime restart have local workerd proof at `95f3138`; pending-wait clock
+discontinuity and explicit errored-Workflow recovery are later, unqualified changes.
+Deployed/fleet qualification is separate.
 
 The witness wire records, domain-separated signatures, pinned source checks,
 one-use response verification and epoch derivation are implemented. A frozen
@@ -38,7 +40,8 @@ qualified clock may compare the unchanged UTC value; native execution caps and
 acceptance leases retain their independent authority. Earlier profiles preserve
 their event-only limits. Shared native and adapter tests cover the time boundary,
 event priority, cancellation/revocation, fencing, restart and offline replay;
-actual Workflow/workerd qualification of this new profile remains pending.
+baseline Workflow/workerd qualification is recorded below. The later clock-fence
+delivery recovery requires its own runtime receipt.
 
 Hosted wait delivery derives its reconciliation key from the wait and the current
 authoritative provider generation. A verified retirement leaves delivery pending
@@ -60,7 +63,11 @@ With the witness restored and no event
 or wake hint, it requires one timer readiness, a later cleared pending generation,
 stable reconciliation replay and unchanged original execution accounting. The
 threshold is never moved to accommodate restart latency. The three authority
-startups and two Workflow startups are collected; actual runtime proof is pending.
+startups and two Workflow startups before that new discontinuity assertion passed
+in [run 41235361544](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41235361544/job/124641442744)
+at `95f313881a089b073a7560e5f4a8ddb43a492ed0`: **21 passes in 1,051.42 seconds**.
+The stronger pending-clock-fence assertions and explicit errored-Workflow recovery
+remain pending. The earlier pass does not qualify those later changes.
 
 The optional `research-reconciliation-witness-v1` profile extends the startup
 profile with ordinary active-authority late-result handling. Select it explicitly
