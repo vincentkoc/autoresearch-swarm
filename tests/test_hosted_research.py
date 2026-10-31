@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import time
 import zipfile
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -73,7 +74,17 @@ def sdk(h, loop, *, token=None):
                 h.router, request.method, str(request.url), dict(request.headers), read
             )
 
-        result = asyncio.run_coroutine_threadsafe(deliver(), loop).result(timeout=10)
+        pending = asyncio.run_coroutine_threadsafe(deliver(), loop)
+        started = time.monotonic()
+        try:
+            result = pending.result(timeout=10)
+        except TimeoutError as error:
+            error.add_note(
+                f"Hosted fixture wait: {request.method} {request.url.path[:256]!r}; "
+                f"elapsed={time.monotonic() - started:.3f}s; limit=10s; "
+                f"future_done={pending.done()}"
+            )
+            raise
         return httpx.Response(result.status, content=result.body, headers=dict(result.headers))
 
     with ResearchClient.connect("http://127.0.0.1", token) as client:

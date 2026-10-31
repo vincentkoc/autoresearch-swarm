@@ -5,6 +5,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
+from tests import test_hosted_research
 from tests.test_hosted_result_publication import publication_diagnostic
 
 
@@ -80,3 +81,39 @@ def test_broken_diagnostic_does_not_replace_original_assertion(diagnostic):
     assert json.loads(publication_diagnostic(diagnostic.case, diagnostic.attempt)) == {
         "diagnostic_unavailable": "AttributeError"
     }
+
+
+@pytest.mark.parametrize("done", [False, True])
+def test_bridge_timeout_keeps_original_error_and_excludes_query_headers_and_body(monkeypatch, done):
+    error, calls = TimeoutError("Synthetic original timeout"), []
+
+    class Pending:
+        def result(self, *, timeout):
+            assert timeout == 10
+            raise error
+
+        def done(self):
+            return done
+
+    def schedule(coroutine, loop):
+        coroutine.close()
+        calls.append(True)
+        return Pending()
+
+    monkeypatch.setattr(test_hosted_research.asyncio, "run_coroutine_threadsafe", schedule)
+    with (
+        test_hosted_research.sdk(NS(), object(), token="synthetic-header-secret") as client,
+        pytest.raises(TimeoutError) as refused,
+    ):
+        client.transport.http.post(
+            "/v1/commands/report.create?private=synthetic-query-secret",
+            content="synthetic-body-secret",
+        )
+    assert refused.value is error and calls == [True]
+    note = error.__notes__[0]
+    assert "POST '/v1/commands/report.create'" in note
+    assert "elapsed=" in note and "limit=10s" in note and f"future_done={done}" in note
+    assert all(
+        secret not in note
+        for secret in ("synthetic-header-secret", "synthetic-query-secret", "synthetic-body-secret")
+    )
