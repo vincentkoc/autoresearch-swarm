@@ -14,6 +14,7 @@ from research_router import (
     HostedConfiguration,
     HostedEvaluationConfiguration,
     HostedInputConfiguration,
+    HostedLifecycleConfiguration,
     HostedOutputConfiguration,
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
@@ -94,8 +95,10 @@ def configuration(
     output_profile=False,
     publication_profile=False,
     evaluation_profile=False,
+    lifecycle_profile=False,
     source=None,
 ):
+    evaluation_profile = evaluation_profile or lifecycle_profile
     publication_profile = publication_profile or evaluation_profile
     output_profile = output_profile or publication_profile
     input_profile = input_profile or output_profile
@@ -157,7 +160,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedEvaluationConfiguration
+            HostedLifecycleConfiguration
+            if lifecycle_profile
+            else HostedEvaluationConfiguration
             if evaluation_profile
             else HostedPublicationConfiguration
             if publication_profile

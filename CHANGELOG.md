@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the actual workerd trial probe with independent campaign and worker
+  draining, heartbeat reply recovery, scoring while pausing, evaluator completion
+  while paused and exact lifecycle replay after restart.
+
 - Add an explicit hosted lifecycle profile for campaign drain-pause, scoped
   heartbeat/control acknowledgments and attempt cancellation intent. Keep worker
   draining independent, preserve bounded acceptance renewals without extending

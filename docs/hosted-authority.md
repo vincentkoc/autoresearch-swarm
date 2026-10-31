@@ -836,6 +836,17 @@ acceptance renewal, atomic invalid-ack refusal, post-witness revocation and
 cancellation, and exact offline replay after reopen. Actual workerd lifecycle
 qualification and provider deployment remain separate.
 
+The workerd evaluator probe now includes a separately provisioned lifecycle
+variant. It rejects new trials while pausing, rejects a fresh scoring claim while
+the worker is draining, reopens worker admission, and finishes scoring under the
+campaign drain. It checks `paused` before independent evaluator completion,
+completes that evaluation while paused, then resumes through `campaign.start`.
+A deliberately refused claim has its own idempotency key; reopening admission
+does not overwrite its rejection. A lost heartbeat response and all successful
+lifecycle commands replay after workerd restart with source and storage
+unavailable. This extension needs its own passing runtime receipt and does not
+claim running-process cancellation qualification.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query
