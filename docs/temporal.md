@@ -167,6 +167,49 @@ real native CPU trial. Each generated Workflow history is replayed with the
 default sandbox. The normal suite also checks cross-Workflow reference rejection
 and failure-data sanitation.
 
+### Saved-history compatibility
+
+The normal suite replays the immutable
+[`delivery-v1.json`](../tests/fixtures/temporal/delivery-v1.json) histories without
+a Temporal server, Activities, research controller or worker credentials:
+
+```sh
+uv run --no-sync pytest -q tests/test_temporal_history.py
+```
+
+The three recorded scenarios cover a retried accepted command, an unresolved
+wait carried across Continue-As-New and worker restart, and transferred
+checkpoint startup after a lost snapshot-creation reply. The bundle records its
+source revision, workflow source digest, SDK/CLI/server versions, workflow IDs,
+ordered run IDs and per-history byte counts and hashes. Capture uses a fixed
+public client/worker identity and inspects decoded payloads. Event IDs, times,
+payloads and continuation links are preserved.
+
+Each scenario must replay under the current default sandbox. A separate test
+workflow starts a timer where v1 scheduled its bootstrap Activity; the unchanged
+history must produce `NondeterminismError`. Import errors and missing workflow
+registrations do not satisfy that negative control. Replay executors have an
+explicit owner and close after each test.
+
+Existing fixtures are compatibility inputs. Do not regenerate them to make an
+incompatible adapter pass. Introduce deliberate workflow versioning and retain
+the implementation needed by prior histories. New coverage can be captured to
+a new path with an already installed, qualified CLI:
+
+```sh
+uv run --no-sync python -m tests.temporal_history \
+  --cli /path/to/temporal --output /path/to/new-history-bundle.json
+```
+
+The capture command runs the three original real-server tests, keeps their
+domain assertions, refuses an existing output path and checks the source is
+unchanged. It bounds each scenario to eight runs, each history to 1,024 events
+and 512 KiB, and the complete bundle to 2 MiB. Review provenance and privacy
+before adding a new bundle. Ordinary tests never write or refresh fixtures.
+
+Saved-history replay proves workflow command compatibility. The live tests
+remain the evidence for domain idempotency, native execution and recovery.
+
 Local evidence uses Temporal Python 1.35.0, CLI 1.9.1, and server 1.32.0 on macOS.
 This qualifies the exercised local provider behavior. It does not establish
 Temporal Cloud deployment, high availability, physical accelerator execution, or

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replay immutable Temporal v1 histories in the normal offline suite. Preserve actual retry, continuation and transferred-checkpoint histories with bounded capture, decoded-payload privacy checks and an incompatible-workflow negative control.
+
 - Publish periodic verified cache hints from local and scoped drivers outside heartbeat work. Replay uncertain observations, preserve shutdown ownership and consume ranked offers while retaining evaluation authorization and campaign concurrency checks.
 
 - Open the supervisor's clock channel at its first claim after local launch validation. Keep the original launch deadline and bounded unauthenticated handshake while preventing slow preparation from expiring an idle connection.

@@ -103,4 +103,4 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --locked --extra temporal --group dev --python 3.12
-      - run: uv run --no-sync pytest -q tests/test_temporal.py tests/test_temporal_contracts.py
+      - run: uv run --no-sync pytest -q tests/test_temporal.py tests/test_temporal_contracts.py tests/test_temporal_history.py
