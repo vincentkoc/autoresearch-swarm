@@ -3,11 +3,11 @@
 import pytest
 
 from research_swarm.control.observations import PublishAttempt
-from research_swarm.control.results import MAX_OBSERVATION_BYTES, decode_observation_bytes
 from research_swarm.domain.canonical import canonical_bytes, content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.observation_bytes import MAX_OBSERVATION_BYTES, decode_observation_bytes
 from research_swarm.domain.types import new_id
 from research_swarm.state.database import Transaction
 from tests.test_local_pipeline import pipeline as pipeline

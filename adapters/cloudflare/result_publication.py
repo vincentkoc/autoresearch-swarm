@@ -4,8 +4,8 @@ import asyncio
 
 from research_swarm.control.observations import PublishAttempt, evidence_roles
 from research_swarm.control.recovery_operations import require_raw_operation
-from research_swarm.control.results import decode_observation_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.observation_bytes import decode_observation_bytes
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.database import Transaction
 from research_swarm.workers.journal_records import JournalEntry

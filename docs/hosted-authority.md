@@ -725,6 +725,16 @@ settlement did not change. The source process stays alive across both controller
 incarnations. This probe requires its own passing runtime receipt; the output
 qualification above predates result acceptance.
 
+Evaluator preparation now exposes shared synchronous selection and final commit
+callbacks. Authorization recomputes the job/trial/input selection after metadata
+storage and verifies the generated manifest's exact digest and size before
+retention. Completion selects the designated evaluator's report and rechecks its
+catalog generation before the existing receipt transaction. Native authorization
+still publishes metadata through the ordinary artifact lifecycle; native
+completion holds its reader pin through commit. The common observation byte
+decoder is independent of control services. These seams do not yet expose a
+hosted evaluation command or qualify a cloud evaluator.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

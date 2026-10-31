@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Share evaluator preparation and final transactions with byte adapters. Bind the
+  generated input manifest to the selected job/trial/inputs and recheck report
+  catalog identity after reads. Preserve native upload/pin lifetimes and the
+  independent evaluator's receipt authority.
+
 - Add an actual workerd/R2 result-publication probe using a fixture-owned native
   CPU process. Check signed closure, one result and budget settlement, lost-reply
   recovery and restart replay without storage or clock access; evaluator receipts

@@ -28,33 +28,18 @@ from research_swarm.control.worker_state import settle_cancellation
 from research_swarm.control.workers import AttemptData, worker_authority
 from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.artifacts import ArtifactRecord, ArtifactRetention, StoredBlob
-from research_swarm.domain.canonical import content_digest, record_digest, strict_json_loads
+from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef, RunResult
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.lifecycle import TERMINAL_CAMPAIGNS
+from research_swarm.domain.observation_bytes import MAX_OBSERVATION_BYTES, decode_observation_bytes
 from research_swarm.domain.types import utc_now
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
 from research_swarm.workers.journal_records import JournalEntry
-
-MAX_OBSERVATION_BYTES = 1024 * 1024
-
-
-def decode_observation_bytes(reference: ArtifactRef, content: bytes) -> JsonObject:
-    """Decode one bounded observation, independently bound to its immutable reference."""
-    if reference.size_bytes > MAX_OBSERVATION_BYTES or len(content) > MAX_OBSERVATION_BYTES:
-        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Observation exceeds its size bound")
-    if len(content) != reference.size_bytes or content_digest(content) != reference.digest:
-        raise ResearchError(
-            ErrorCode.ARTIFACT_UNVERIFIED, "Observation bytes differ from reference"
-        )
-    value = strict_json_loads(content)
-    if not isinstance(value, dict):
-        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Observation must be an object")
-    return dict(value)
 
 
 class ResultControl:

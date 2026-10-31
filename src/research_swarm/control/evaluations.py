@@ -10,8 +10,8 @@ from research_swarm.control.confirmation_runtime import bound_confirmation
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.validity import EvidenceReference, invalidated
 from research_swarm.control.workers import AttemptData
-from research_swarm.domain.artifacts import ArtifactRetention
-from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
+from research_swarm.domain.artifacts import ArtifactRecord, ArtifactRetention
+from research_swarm.domain.canonical import canonical_bytes, content_digest, record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import (
     ArtifactRef,
@@ -21,12 +21,12 @@ from research_swarm.domain.evidence import (
 )
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.lifecycle import TERMINAL_CAMPAIGNS
+from research_swarm.domain.observation_bytes import MAX_OBSERVATION_BYTES, decode_observation_bytes
 from research_swarm.domain.types import ID, Digest, Name, Timestamp, VersionedRecord, utc_now
 from research_swarm.evaluation.eligibility import validate_receipt
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
-from research_swarm.state.sql import SqlSession
 
 
 class AuthorizeEvaluation(VersionedRecord):
@@ -74,9 +74,51 @@ def evaluation_inputs(transaction: Transaction, job: JobData) -> dict[str, Artif
     return inputs
 
 
+AuthorizationPreparation = tuple[JobData, TrialData, dict[str, ArtifactRef]]
+CompletionPreparation = tuple[EvaluationAuthorization, AttemptData, ArtifactRecord]
+
+
 class EvaluationControl:
     def __init__(self, database: Database, artifacts: ArtifactService) -> None:
         self.database, self.artifacts = database, artifacts
+
+    @staticmethod
+    def _authorization_in(
+        transaction: Transaction, intent: AuthorizeEvaluation
+    ) -> AuthorizationPreparation:
+        job_row = transaction.get("job", intent.job_id)
+        job = JobData.model_validate(job_row["data"])
+        if transaction.context.expected_revision != job_row["revision"]:
+            raise ResearchError(ErrorCode.REVISION_CONFLICT, "Evaluation job revision changed")
+        if (
+            job_row["state"] != "ready"
+            or job.stage.kind != "evaluate"
+            or job.current_attempt_id is not None
+        ):
+            raise ResearchError(
+                ErrorCode.INVALID_TRANSITION, "Evaluation must be authorized before execution"
+            )
+        if job.evaluation_request_id is not None:
+            raise ResearchError(ErrorCode.REVISION_CONFLICT, "Evaluation authority already exists")
+        inputs = evaluation_inputs(transaction, job)
+        trial = TrialData.model_validate(transaction.get("trial", job.trial_id)["data"])
+        return job, trial, inputs
+
+    @staticmethod
+    def input_manifest_bytes(
+        intent: AuthorizeEvaluation, prepared: AuthorizationPreparation
+    ) -> bytes:
+        _, trial, inputs = prepared
+        return canonical_bytes(
+            {
+                "schema_version": "1.0",
+                "job_id": intent.job_id,
+                "spec_digest": trial.spec.spec_digest,
+                "inputs": {
+                    name: reference.model_dump(mode="json") for name, reference in inputs.items()
+                },
+            }
+        )
 
     def authorize(self, context: CommandContext, intent: AuthorizeEvaluation) -> JsonObject:
         context.principal.require("read")
@@ -87,167 +129,140 @@ class EvaluationControl:
         )
         if previous is not None:
             return previous
-
-        def read(connection: SqlSession) -> tuple[JobData, TrialData, dict[str, ArtifactRef]]:
-            transaction = Transaction(connection, context)
-            job_row = transaction.get("job", intent.job_id)
-            job = JobData.model_validate(job_row["data"])
-            if context.expected_revision != job_row["revision"]:
-                raise ResearchError(ErrorCode.REVISION_CONFLICT, "Evaluation job revision changed")
-            if (
-                job_row["state"] != "ready"
-                or job.stage.kind != "evaluate"
-                or job.current_attempt_id is not None
-            ):
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Evaluation must be authorized before execution"
-                )
-            if job.evaluation_request_id is not None:
-                raise ResearchError(
-                    ErrorCode.REVISION_CONFLICT, "Evaluation authority already exists"
-                )
-            inputs = evaluation_inputs(transaction, job)
-            trial = TrialData.model_validate(transaction.get("trial", job.trial_id)["data"])
-            return job, trial, inputs
-
-        job, trial, inputs = self.database.store.read(read)
-        manifest_bytes = canonical_bytes(
-            {
-                "schema_version": "1.0",
-                "job_id": intent.job_id,
-                "spec_digest": trial.spec.spec_digest,
-                "inputs": {
-                    name: reference.model_dump(mode="json") for name, reference in inputs.items()
-                },
-            }
+        prepared = self.database.store.read(
+            lambda sql: self._authorization_in(Transaction(sql, context), intent)
         )
         input_manifest = self.artifacts.publish_bytes(
-            context, manifest_bytes, purpose="evaluation-input-manifest"
+            context,
+            self.input_manifest_bytes(intent, prepared),
+            purpose="evaluation-input-manifest",
         )
-
-        def authorize(transaction: Transaction) -> JsonObject:
-            row = transaction.get("job", intent.job_id)
-            campaign_row = transaction.get("campaign", row["campaign_id"])
-            if campaign_row["state"] in TERMINAL_CAMPAIGNS:
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION,
-                    "Terminal research cannot authorize new evaluation",
-                )
-            if context.expected_revision != row["revision"]:
-                raise ResearchError(ErrorCode.REVISION_CONFLICT, "Evaluation job revision changed")
-            current = JobData.model_validate(row["data"])
-            if (
-                row["state"] != "ready"
-                or current.stage.kind != "evaluate"
-                or current.current_attempt_id is not None
-            ):
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Evaluation must be authorized before execution"
-                )
-            if (
-                current.evaluation_request_id is not None
-                or evaluation_inputs(transaction, current) != inputs
-            ):
-                raise ResearchError(
-                    ErrorCode.REVISION_CONFLICT, "Evaluation authority or inputs changed"
-                )
-            campaign = CampaignData.model_validate(
-                transaction.get("campaign", row["campaign_id"])["data"]
-            )
-            project = ProjectRevisionData.model_validate(
-                transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
-            )
-            evaluator = project.resolved.manifest.evaluation
-            if evaluator.expected_members is None:
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID, "Evaluator must declare its expected panel"
-                )
-            if evaluator.measurement_trust != "authenticated":
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE,
-                    "This evaluator trust profile is not qualified",
-                )
-            if trial.execution_outcome == "closed_unaccepted":
-                raise ResearchError(
-                    ErrorCode.COMPARISON_INELIGIBLE, "Trial was closed without acceptance"
-                )
-            bound = bound_confirmation(transaction, trial)
-            if intent.exposure_class == "confirmation" and bound is None:
-                raise ResearchError(
-                    ErrorCode.COMPARISON_INELIGIBLE,
-                    "Confirmation requires a sealed plan",
-                )
-            if bound is not None and (
-                bound[0].evaluator_id != intent.evaluator_id
-                or bound[1].scoring_job_id != row["id"]
-                or current.evaluation_exposure_id != bound[1].exposure_id
-            ):
-                raise ResearchError(
-                    ErrorCode.AUTHORIZATION_DENIED, "Evaluation differs from confirmation plan"
-                )
-            request = EvaluationRequest(
-                workspace_id=transaction.workspace_id,
-                campaign_id=row["campaign_id"],
-                candidate_id=trial.candidate_id,
-                trial_id=job.trial_id,
-                input_artifact=input_manifest,
-                evaluator_id=intent.evaluator_id,
-                evaluator_contract_digest=trial.spec.evaluator_contract_digest,
-                panel_digest=record_digest(
-                    "research.evaluation-panel",
-                    {
-                        "members": evaluator.model_dump(mode="json")["expected_members"],
-                        "data_manifest_digest": trial.spec.data_manifest_digest,
-                    },
-                ),
-                comparison_class=trial.spec.comparison_class,
-                metric_schema=trial.spec.metrics,
-                expected_seed=trial.spec.seed,
-                expected_members=evaluator.expected_members,
-                exposure_class="confirmation" if bound else intent.exposure_class,
-                exposure_authorization_id=bound[1].exposure_id if bound else None,
-            )
-            assert trial.spec.spec_digest is not None
-            authorization = EvaluationAuthorization(
-                request=request,
-                job_id=intent.job_id,
-                spec_digest=trial.spec.spec_digest,
-                inputs=inputs,
-            )
-            record = transaction.insert(
-                "evaluation_request",
-                request.id,
-                authorization.model_dump(mode="json"),
-                state="authorized",
-                campaign_id=row["campaign_id"],
-                parent_id=intent.job_id,
-            )
-            for reference in (input_manifest, *inputs.values()):
-                ArtifactCatalog.available(transaction, reference)
-                ArtifactCatalog.retain(
-                    transaction,
-                    ArtifactRetention(
-                        artifact_id=reference.id,
-                        owner_kind="evaluation_request",
-                        owner_id=request.id,
-                        purpose="evaluation",
-                    ),
-                )
-            transaction.update(
-                "job",
-                row["id"],
-                expected_revision=row["revision"],
-                state="ready",
-                data=current.model_copy(update={"evaluation_request_id": request.id}).model_dump(
-                    mode="json"
-                ),
-            )
-            transaction.event("evaluation.authorized", record, {"job_id": intent.job_id})
-            return record
-
         return self.database.execute(
-            context, "evaluation.authorize", payload, "evaluation.request", authorize
+            context,
+            "evaluation.authorize",
+            payload,
+            "evaluation.request",
+            lambda transaction: self._authorize_in(transaction, intent, prepared, input_manifest),
         )
+
+    def _authorize_in(
+        self,
+        transaction: Transaction,
+        intent: AuthorizeEvaluation,
+        prepared: AuthorizationPreparation,
+        input_manifest: ArtifactRef,
+    ) -> JsonObject:
+        if self._authorization_in(transaction, intent) != prepared:
+            raise ResearchError(ErrorCode.REVISION_CONFLICT, "Evaluation preparation changed")
+        manifest_bytes = self.input_manifest_bytes(intent, prepared)
+        if input_manifest.digest != content_digest(
+            manifest_bytes
+        ) or input_manifest.size_bytes != len(manifest_bytes):
+            raise ResearchError(
+                ErrorCode.ARTIFACT_UNVERIFIED, "Evaluation manifest differs from prepared inputs"
+            )
+        job, trial, inputs = prepared
+        row = transaction.get("job", intent.job_id)
+        campaign_row = transaction.get("campaign", row["campaign_id"])
+        if campaign_row["state"] in TERMINAL_CAMPAIGNS:
+            raise ResearchError(
+                ErrorCode.INVALID_TRANSITION,
+                "Terminal research cannot authorize new evaluation",
+            )
+        current = job
+        campaign = CampaignData.model_validate(
+            transaction.get("campaign", row["campaign_id"])["data"]
+        )
+        project = ProjectRevisionData.model_validate(
+            transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
+        )
+        evaluator = project.resolved.manifest.evaluation
+        if evaluator.expected_members is None:
+            raise ResearchError(
+                ErrorCode.PROJECT_CONTRACT_INVALID, "Evaluator must declare its expected panel"
+            )
+        if evaluator.measurement_trust != "authenticated":
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE,
+                "This evaluator trust profile is not qualified",
+            )
+        if trial.execution_outcome == "closed_unaccepted":
+            raise ResearchError(
+                ErrorCode.COMPARISON_INELIGIBLE, "Trial was closed without acceptance"
+            )
+        bound = bound_confirmation(transaction, trial)
+        if intent.exposure_class == "confirmation" and bound is None:
+            raise ResearchError(
+                ErrorCode.COMPARISON_INELIGIBLE,
+                "Confirmation requires a sealed plan",
+            )
+        if bound is not None and (
+            bound[0].evaluator_id != intent.evaluator_id
+            or bound[1].scoring_job_id != row["id"]
+            or current.evaluation_exposure_id != bound[1].exposure_id
+        ):
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Evaluation differs from confirmation plan"
+            )
+        request = EvaluationRequest(
+            workspace_id=transaction.workspace_id,
+            campaign_id=row["campaign_id"],
+            candidate_id=trial.candidate_id,
+            trial_id=job.trial_id,
+            input_artifact=input_manifest,
+            evaluator_id=intent.evaluator_id,
+            evaluator_contract_digest=trial.spec.evaluator_contract_digest,
+            panel_digest=record_digest(
+                "research.evaluation-panel",
+                {
+                    "members": evaluator.model_dump(mode="json")["expected_members"],
+                    "data_manifest_digest": trial.spec.data_manifest_digest,
+                },
+            ),
+            comparison_class=trial.spec.comparison_class,
+            metric_schema=trial.spec.metrics,
+            expected_seed=trial.spec.seed,
+            expected_members=evaluator.expected_members,
+            exposure_class="confirmation" if bound else intent.exposure_class,
+            exposure_authorization_id=bound[1].exposure_id if bound else None,
+        )
+        assert trial.spec.spec_digest is not None
+        authorization = EvaluationAuthorization(
+            request=request,
+            job_id=intent.job_id,
+            spec_digest=trial.spec.spec_digest,
+            inputs=inputs,
+        )
+        record = transaction.insert(
+            "evaluation_request",
+            request.id,
+            authorization.model_dump(mode="json"),
+            state="authorized",
+            campaign_id=row["campaign_id"],
+            parent_id=intent.job_id,
+        )
+        for reference in (input_manifest, *inputs.values()):
+            ArtifactCatalog.available(transaction, reference)
+            ArtifactCatalog.retain(
+                transaction,
+                ArtifactRetention(
+                    artifact_id=reference.id,
+                    owner_kind="evaluation_request",
+                    owner_id=request.id,
+                    purpose="evaluation",
+                ),
+            )
+        transaction.update(
+            "job",
+            row["id"],
+            expected_revision=row["revision"],
+            state="ready",
+            data=current.model_copy(update={"evaluation_request_id": request.id}).model_dump(
+                mode="json"
+            ),
+        )
+        transaction.event("evaluation.authorized", record, {"job_id": intent.job_id})
+        return record
 
     def complete(self, context: CommandContext, intent: CompleteEvaluation) -> JsonObject:
         payload = intent.model_dump(mode="json")
@@ -256,32 +271,60 @@ class EvaluationControl:
         )
         if previous is not None:
             return previous
-        row = self.database.read_record(context, "evaluation_request", intent.request_id)
-        authorization = EvaluationAuthorization.model_validate(row["data"])
-        if context.principal.id != authorization.request.evaluator_id:
-            raise ResearchError(
-                ErrorCode.AUTHORIZATION_DENIED, "Principal is not the authorized evaluator"
-            )
-        attempt = AttemptData.model_validate(
-            self.database.read_record(context, "attempt", intent.attempt_id)["data"]
+        selected = self.database.store.read(
+            lambda sql: self._completion_in(Transaction(sql, context), intent)
         )
-        if attempt.report_artifact is None:
-            raise ResearchError(
-                ErrorCode.EVALUATION_INCOMPLETE, "Evaluation lacks a workload report"
+        reference = selected[2].reference
+        with self.artifacts.reader(context, reference) as stream:
+            report = WorkloadReport.model_validate(
+                decode_observation_bytes(reference, stream.read(MAX_OBSERVATION_BYTES + 1))
             )
-        with self.artifacts.reader(context, attempt.report_artifact) as stream:
-            if attempt.report_artifact.size_bytes > 1024 * 1024:
-                raise ResearchError(
-                    ErrorCode.ARTIFACT_UNVERIFIED, "Evaluation report exceeds its bound"
-                )
-            report = WorkloadReport.model_validate(strict_json_loads(stream.read(1024 * 1024 + 1)))
             return self.database.execute(
                 context,
                 "evaluation.complete",
                 payload,
                 "evaluation.publish",
-                lambda transaction: self._complete(transaction, intent, report),
+                lambda transaction: self._complete_prepared(transaction, intent, selected, report),
             )
+
+    @staticmethod
+    def _completion_in(
+        transaction: Transaction, intent: CompleteEvaluation
+    ) -> CompletionPreparation:
+        transaction.context.principal.require("read")
+        row = transaction.get("evaluation_request", intent.request_id)
+        authorization = EvaluationAuthorization.model_validate(row["data"])
+        if transaction.context.principal.id != authorization.request.evaluator_id:
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Principal is not the authorized evaluator"
+            )
+        attempt = AttemptData.model_validate(transaction.get("attempt", intent.attempt_id)["data"])
+        if attempt.report_artifact is None:
+            raise ResearchError(
+                ErrorCode.EVALUATION_INCOMPLETE, "Evaluation lacks a workload report"
+            )
+        if attempt.report_artifact.size_bytes > MAX_OBSERVATION_BYTES:
+            raise ResearchError(
+                ErrorCode.ARTIFACT_UNVERIFIED, "Evaluation report exceeds its bound"
+            )
+        record = ArtifactCatalog.available(transaction, attempt.report_artifact)
+        return authorization, attempt, record
+
+    def _complete_prepared(
+        self,
+        transaction: Transaction,
+        intent: CompleteEvaluation,
+        selected: CompletionPreparation,
+        report: WorkloadReport,
+    ) -> JsonObject:
+        current = self._completion_in(transaction, intent)
+        if (
+            current[0].model_dump(exclude={"receipt_id"})
+            != selected[0].model_dump(exclude={"receipt_id"})
+            or current[1:] != selected[1:]
+        ):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Evaluation evidence changed")
+        return self._complete(transaction, intent, report)
 
     @staticmethod
     def _complete(
