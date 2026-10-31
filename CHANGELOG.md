@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Let scoped worker cleanup finish an interrupted abort after confirmed byte
+  retirement. Complete upload and provenance states atomically, retain quota on
+  failure, and preserve the original abort acknowledgment and recovery guards.
+
 - Share worker-upload begin and publication transactions across byte adapters.
   Bind publication to the exact upload reference/generation, preserve scoped
   provenance and require checked recovery journals before pending publication.

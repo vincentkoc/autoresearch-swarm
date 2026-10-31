@@ -527,17 +527,33 @@ class WorkerOutputs:
                 return row, upload
 
             row, upload = self.database.store.read(read)
-            if row["state"] not in {"cleanup", "finalized"}:
-                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload is not published")
-            self._cleanup(
-                context,
-                request,
-                upload,
-                StoredBlob(reference=upload.reference(), generation=upload.id),
-            )
+            if row["state"] in {"aborting", "aborted"}:
+                self.database.store.read(
+                    lambda connection: self._authorize_abort_in(
+                        Transaction(connection, context), request, row
+                    )
+                )
+                if row["state"] == "aborting":
+                    self.artifacts.store.discard_upload(upload)
+                    self.artifacts.store.delete(
+                        upload.workspace_id,
+                        StoredBlob(reference=upload.reference(), generation=upload.id),
+                    )
+            elif row["state"] in {"cleanup", "finalized"}:
+                self._cleanup(
+                    context,
+                    request,
+                    upload,
+                    StoredBlob(reference=upload.reference(), generation=upload.id),
+                )
+            else:
+                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload has no cleanup intent")
 
             def acknowledge(transaction: Transaction) -> JsonObject:
                 _, _, row, _, _ = owned_upload(transaction, request)
+                if row["state"] in {"aborting", "aborted"}:
+                    self._finish_abort_in(transaction, request)
+                    return {"upload_id": upload.id, "state": "aborted"}
                 if row["state"] != "finalized":
                     raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload cleanup changed")
                 return {"upload_id": upload.id, "state": "finalized"}
@@ -550,33 +566,6 @@ class WorkerOutputs:
         context.principal.require("worker.outputs")
         request = WorkerUploadTarget.model_validate(request)
         self._check_owner(context, request)
-
-        def authorize(transaction: Transaction, row: JsonObject) -> UploadSpec:
-            receipt, data, current, upload, _ = owned_upload(transaction, request)
-            if (
-                current != row
-                or data.artifact is not None
-                or data.retention_id is not None
-                or receipt["state"] not in {"pending", "aborted"}
-                or current["state"] not in {"pending", "aborting", "aborted"}
-            ):
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Published worker output cannot be aborted"
-                )
-            return upload
-
-        def finished(transaction: Transaction) -> None:
-            receipt, _, _, _, _ = owned_upload(transaction, request)
-            if receipt["state"] == "aborted":
-                return
-            updated = transaction.update(
-                "worker_upload",
-                request.upload_id,
-                expected_revision=receipt["revision"],
-                state="aborted",
-                data=receipt["data"],
-            )
-            transaction.event("worker.upload_aborted", updated, {"upload_id": request.upload_id})
 
         with self.artifacts.store.upload_guard(context.principal.workspace_id, request.upload_id):
             previous = self.database.replay(
@@ -604,11 +593,49 @@ class WorkerOutputs:
                 scope="worker.outputs",
                 operation="worker.abort_upload",
                 payload=request.model_dump(mode="json"),
-                authorize=authorize,
+                authorize=lambda transaction, row: self._authorize_abort_in(
+                    transaction, request, row
+                ),
                 completion_operation="worker.finish_upload_abort",
                 completion_key="worker-upload-aborted:" + request.upload_id,
-                on_finish=finished,
+                on_finish=lambda transaction: self._finish_abort_in(transaction, request),
             )
+
+    @staticmethod
+    def _authorize_abort_in(
+        transaction: Transaction, request: WorkerUploadTarget, expected_row: JsonObject
+    ) -> UploadSpec:
+        receipt, data, row, upload, _ = owned_upload(transaction, request)
+        if (
+            row != expected_row
+            or data.artifact is not None
+            or data.retention_id is not None
+            or receipt["state"] not in {"pending", "aborted"}
+            or row["state"] not in {"pending", "aborting", "aborted"}
+        ):
+            raise ResearchError(
+                ErrorCode.INVALID_TRANSITION, "Published worker output cannot be aborted"
+            )
+        return upload
+
+    def _finish_abort_in(self, transaction: Transaction, request: WorkerUploadTarget) -> None:
+        """Complete both projections after byte retirement; never create an abort intent."""
+        receipt, _, row, _, _ = owned_upload(transaction, request)
+        self._authorize_abort_in(transaction, request, row)
+        if row["state"] == "aborting":
+            self.artifacts.finish_upload_in(transaction, request.upload_id, "aborting", "aborted")
+        elif row["state"] != "aborted":
+            raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload has no abort intent")
+        if receipt["state"] == "aborted":
+            return
+        updated = transaction.update(
+            "worker_upload",
+            request.upload_id,
+            expected_revision=receipt["revision"],
+            state="aborted",
+            data=receipt["data"],
+        )
+        transaction.event("worker.upload_aborted", updated, {"upload_id": request.upload_id})
 
     def _cleanup(
         self,

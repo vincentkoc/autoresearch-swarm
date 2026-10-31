@@ -305,7 +305,10 @@ def test_altered_native_grant_cannot_be_published_and_remains_abortable(recovery
     assert recovery.operator.get("worker_upload", target.upload_id)["state"] == "aborted"
 
 
-def test_abort_after_native_settlement_retries_failed_physical_cleanup(recovery, monkeypatch):
+@pytest.mark.parametrize("completion", ["worker.abort_upload", "worker.cleanup_upload"])
+def test_abort_after_native_settlement_retries_failed_physical_cleanup(
+    recovery, monkeypatch, completion
+):
     target = begin(recovery.worker, recovery.target, b"unfinished")
     _, submission = upload(
         recovery, run_attempt(recovery.native.journal, recovery.target.attempt_id)
@@ -324,10 +327,15 @@ def test_abort_after_native_settlement_retries_failed_physical_cleanup(recovery,
                 "worker.abort_upload", target, idempotency_key="abort-after-close"
             )
     assert store.delete == original
-    reply = recovery.worker.command(
+    key = "abort-after-close" if completion == "worker.abort_upload" else "cleanup-after-close"
+    reply = recovery.worker.command(completion, target, idempotency_key=key)
+    assert reply["result"]["state"] == (
+        "aborting" if completion == "worker.abort_upload" else "aborted"
+    )
+    original = recovery.worker.command(
         "worker.abort_upload", target, idempotency_key="abort-after-close"
     )
-    assert reply["result"]["state"] == "aborting"  # Replay the original intent, finish cleanup.
+    assert original["result"]["state"] == "aborting"
     assert recovery.operator.get("worker_upload", target.upload_id)["state"] == "aborted"
 
 

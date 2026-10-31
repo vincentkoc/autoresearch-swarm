@@ -65,6 +65,15 @@ deletions. It conservatively reserves the full upload size. Directory, lock-file
 database, and filesystem allocation overhead are separate operational capacity.
 These counters are not a filesystem quota or a measurement of exclusive disk blocks.
 
+Workers can use `worker.cleanup_upload` to finish either duplicate publication or
+an interrupted abort using only `worker.outputs`. Cleanup cannot create an abort
+intent for a pending upload. An abort keeps its quota reservation until staging
+and the exact unpublished generation are retired; the cleanup transaction then
+marks both the upload and its worker provenance aborted. A failed deletion or
+transaction leaves cleanup retryable under the same key. The original abort
+acknowledgment remains unchanged even after cleanup finishes. Recovery retains
+the original-session and bounded-journal restrictions.
+
 The controller owns its artifact root. Candidate code must not have write access.
 Native file locks coordinate trusted processes. They are not a sandbox for hostile
 code running as the controller's operating-system user. POSIX publication syncs

@@ -28,6 +28,7 @@ from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import new_id
 from research_swarm.state.artifacts import BeginUpload
+from research_swarm.state.database import Transaction
 from research_swarm.workers.local import LocalWorker
 from tests.test_http_delivery import serving
 from tests.test_local_pipeline import Pipeline
@@ -398,9 +399,11 @@ def test_scoped_worker_aborts_partial_upload_without_generic_artifact_authority(
         client.transport.worker_append(upload, 0, b"partial")
 
 
+@pytest.mark.parametrize("completion", ["worker.abort_upload", "worker.cleanup_upload"])
 def test_worker_abort_failure_keeps_quota_and_exact_retry_finishes_cleanup(
     pipeline: Pipeline,
     monkeypatch: pytest.MonkeyPatch,
+    completion: str,
 ) -> None:
     client, _, _, target = output_client(pipeline)
     upload = begin(client, target, b"incomplete")
@@ -428,8 +431,13 @@ def test_worker_abort_failure_keeps_quota_and_exact_retry_finishes_cleanup(
         delete(*args)
 
     monkeypatch.setattr(artifacts.store, "delete", finish)
-    result = client.command("worker.abort_upload", upload, idempotency_key="abort")
-    assert client.command("worker.abort_upload", upload, idempotency_key="abort") == result
+    key = "abort" if completion == "worker.abort_upload" else "cleanup"
+    result = client.command(completion, upload, idempotency_key=key)
+    assert client.command(completion, upload, idempotency_key=key) == result
+    original = client.command("worker.abort_upload", upload, idempotency_key="abort")
+    assert original["result"]["state"] == "aborting"
+    if completion == "worker.cleanup_upload":
+        assert result["result"] == {"upload_id": upload.upload_id, "state": "aborted"}
     assert len(calls) == 2
     assert upload_state(client, upload)["state"] == "aborted"
     assert artifacts.occupancy(context)["staging_reserved_bytes"] == 0
@@ -437,6 +445,64 @@ def test_worker_abort_failure_keeps_quota_and_exact_retry_finishes_cleanup(
         pipeline.runtime.database.read_record(context, "worker_upload", upload.upload_id)["state"]
         == "aborted"
     )
+    assert pipeline.client.budget(pipeline.campaign["id"]) == before
+
+
+@pytest.mark.parametrize("failure", ["retirement", "receipt"])
+def test_abort_cleanup_failure_keeps_both_projections_and_acknowledgment_atomic(
+    pipeline: Pipeline, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    client, _, _, target = output_client(pipeline)
+    upload = begin(client, target, b"retained")
+    client.transport.worker_append(upload, 0, b"retained")
+    store = pipeline.runtime.artifacts.store
+
+    def unavailable(*args: Any, **kwargs: Any) -> None:
+        raise OSError("Synthetic retirement failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "delete", unavailable)
+        with pytest.raises(OSError, match="retirement failure"):
+            client.command("worker.abort_upload", upload, idempotency_key="abort")
+
+    update = Transaction.update
+
+    def interrupted(transaction: Transaction, kind: str, *args: Any, **kwargs: Any) -> Any:
+        result = update(transaction, kind, *args, **kwargs)
+        if kind == "worker_upload":
+            raise OSError("Synthetic receipt failure")
+        return result
+
+    with monkeypatch.context() as patch:
+        if failure == "retirement":
+            patch.setattr(store, "delete", unavailable)
+        else:
+            patch.setattr(Transaction, "update", interrupted)
+        with pytest.raises(OSError, match=failure + " failure"):
+            client.command("worker.cleanup_upload", upload, idempotency_key="cleanup")
+    assert upload_state(client, upload)["state"] == "aborting"
+    assert pipeline.client.get("worker_upload", upload.upload_id)["state"] == "pending"
+    with pipeline.runtime.database.connect() as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM commands WHERE idempotency_key='cleanup'"
+            ).fetchone()[0]
+            == 0
+        )
+    result = client.command("worker.cleanup_upload", upload, idempotency_key="cleanup")
+    assert result["result"]["state"] == "aborted"
+    assert pipeline.client.get("worker_upload", upload.upload_id)["state"] == "aborted"
+    assert upload_state(client, upload)["state"] == "aborted"
+
+
+def test_cleanup_cannot_create_an_abort_intent(pipeline: Pipeline) -> None:
+    client, _, _, target = output_client(pipeline)
+    upload = begin(client, target, b"pending")
+    with pytest.raises(ResearchError) as refused:
+        client.command("worker.cleanup_upload", upload, idempotency_key="premature")
+    assert refused.value.code == ErrorCode.INVALID_TRANSITION
+    assert upload_state(client, upload)["state"] == "pending"
+    assert pipeline.client.get("worker_upload", upload.upload_id)["state"] == "pending"
 
 
 def test_materialized_but_unpublished_worker_generation_remains_abortable(
@@ -531,10 +597,16 @@ def test_completed_worker_abort_replays_after_enrollment_revocation(pipeline: Pi
     client, worker, _, target = output_client(pipeline)
     upload = begin(client, target, b"unused")
     accepted = client.command("worker.abort_upload", upload, idempotency_key="abort")
+    cleaned = client.command("worker.cleanup_upload", upload, idempotency_key="cleanup")
+    assert cleaned["result"]["state"] == "aborted"
     revoke_worker(pipeline, worker)
     assert client.command("worker.abort_upload", upload, idempotency_key="abort") == accepted
+    assert client.command("worker.cleanup_upload", upload, idempotency_key="cleanup") == cleaned
     with pytest.raises(ResearchError) as denied:
         client.command("worker.abort_upload", upload, idempotency_key="new-abort")
+    assert denied.value.code == ErrorCode.STALE_FENCE
+    with pytest.raises(ResearchError) as denied:
+        client.command("worker.cleanup_upload", upload, idempotency_key="new-cleanup")
     assert denied.value.code == ErrorCode.STALE_FENCE
 
 
