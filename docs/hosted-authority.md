@@ -665,6 +665,13 @@ the unchanged SDK, restricted scopes, historical ownership, verification faults,
 revocation, cancellation, ordering, retry and quota retention. Actual workerd output
 qualification and result/evaluator publication remain separate work.
 
+The workerd qualification now includes a separately provisioned output-profile
+case. It uploads through the unchanged SDK against real R2, loses committed
+publication and cleanup responses, retires duplicate and abandoned generations,
+then replays those commands after an owned workerd restart with storage and the
+native source unavailable. The synthetic artifacts do not claim to be valid model
+results. A passing run receipt is required before calling this runtime qualified.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the actual native-witness workerd/R2 probe to scoped output publication,
+  duplicate and abort cleanup, lost responses, and exact SDK replay after restart.
+  Keep provider qualification separate from the passing local adapter tests.
+
 - Add an explicit hosted output profile with the existing scoped SDK upload
   routes. Verify complete R2 generations before shared publication, retain
   attempt/role provenance across deduplication, and finish abort/duplicate

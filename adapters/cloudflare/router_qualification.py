@@ -13,6 +13,7 @@ from research_router import (
     HostedArtifactConfiguration,
     HostedConfiguration,
     HostedInputConfiguration,
+    HostedOutputConfiguration,
     HostedResearchConfiguration,
     dispatch_key_digest,
 )
@@ -75,8 +76,10 @@ def configuration(
     artifact_profile=False,
     research_profile=False,
     input_profile=False,
+    output_profile=False,
     source=None,
 ):
+    input_profile = input_profile or output_profile
     research_profile = research_profile or input_profile
     public = public_key(crypto, SEED).hex()
     source = source or WitnessSource(
@@ -97,7 +100,8 @@ def configuration(
             workspace_id=identifier("router-workspace"),
             scopes={"worker.query", "worker.publish"}
             | ({"worker.claim"} if research_profile else set())
-            | ({"worker.inputs"} if input_profile else set()),
+            | ({"worker.inputs"} if input_profile else set())
+            | ({"worker.outputs"} if output_profile else set()),
         ),
     )
     config = HostedConfiguration(
@@ -125,7 +129,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedInputConfiguration
+            HostedOutputConfiguration
+            if output_profile
+            else HostedInputConfiguration
             if input_profile
             else (HostedResearchConfiguration if research_profile else HostedArtifactConfiguration)
         )

@@ -10,6 +10,7 @@ from research_router import (
     ExistingResearchRouter,
     HostedConfiguration,
     HostedInputConfiguration,
+    HostedOutputConfiguration,
     HostedResearchConfiguration,
 )
 from router_qualification import DISPATCH_KEY, NAMESPACE, configuration, prepare_provision
@@ -32,6 +33,7 @@ class NativeProbe(VersionedRecord):
     origin: str | None = Field(default=None, max_length=256)
     research_profile: bool = Field(default=False, strict=True)
     input_profile: bool = Field(default=False, strict=True)
+    output_profile: bool = Field(default=False, strict=True)
 
 
 class NativeFixtureR2(R2BindingTransport):
@@ -61,7 +63,10 @@ async def open_native_router(
     async def load():
         def read(sql):
             config = TypeAdapter(
-                HostedConfiguration | HostedResearchConfiguration | HostedInputConfiguration
+                HostedConfiguration
+                | HostedResearchConfiguration
+                | HostedInputConfiguration
+                | HostedOutputConfiguration
             ).validate_json(
                 sql.execute("SELECT payload FROM hosted_authority_config WHERE singleton=1").one()[
                     0
@@ -112,6 +117,7 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
                 source=probe.source,
                 research_profile=probe.research_profile,
                 input_profile=probe.input_profile,
+                output_profile=probe.output_profile,
             )
             if probe.action == "describe":
                 return config.model_dump(mode="json")
