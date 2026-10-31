@@ -63,6 +63,7 @@ PRODUCTION = (
     "checkpoint_routes.py",
     "checkpoint_closure.py",
     "checkpoint_runtime.py",
+    "checkpoint_requalification.py",
     "checkpoint_activation.py",
     "activation_cut.py",
     "activation_history.py",

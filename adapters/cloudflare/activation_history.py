@@ -10,16 +10,17 @@ from research_swarm.domain.recovery_runtime import (
     HostedActivationRuntime,
     HostedRecoveryActivation,
     RecoveryRuntimePlan,
-    RuntimePreparationReceipt,
 )
 from research_swarm.state.recovery_elections import retained_election
 
 if __package__:
     from .checkpoint_anchor import read_anchor_marker
     from .checkpoint_history import history_record, saved_import
+    from .runtime_history import read_qualification
 else:
     from checkpoint_anchor import read_anchor_marker
     from checkpoint_history import history_record, saved_import
+    from runtime_history import read_qualification
 
 
 @dataclass(frozen=True)
@@ -69,8 +70,15 @@ def require_completed_activation(sql, manifest, binding, expected_digest, *, cry
     plan = RecoveryRuntimePlan.model_validate_json(
         history_record(sql, workspace, "recovery_runtime_plan", restore_id)["payload"]
     )
-    prepared = RuntimePreparationReceipt.model_validate_json(
-        history_record(sql, workspace, "recovery_runtime_preparation", restore_id)["payload"]
+    prepared = read_qualification(
+        sql,
+        plan,
+        generation=activation.final_witness.payload.request.scope.provider_generation,
+        restoration_digest=receipt.digest,
+        admission_digest=record_digest(
+            "research.recovery-admission-envelope.v1", admission.model_dump(mode="json")
+        ),
+        crypto=crypto,
     )
     expected_plan = RecoveryRuntimePlan(
         restore_id=restore_id,

@@ -11,7 +11,11 @@ from research_swarm.control.recovery_authority import recovery_authority
 from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.domain.errors import ResearchError
 from research_swarm.domain.identity import CommandContext, RecoveryRuntimeGuard
-from research_swarm.domain.recovery_runtime import RecoveryRuntimeCredential, RecoveryRuntimePlan
+from research_swarm.domain.recovery_runtime import (
+    RecoveryRuntimeCredential,
+    RecoveryRuntimePlan,
+    RequalifyRecoveryRuntime,
+)
 from research_swarm.domain.types import new_id
 from research_swarm.state.database import Transaction, _request_digest
 from research_swarm.state.recovery_runtime import PLAN_KIND
@@ -301,6 +305,52 @@ def test_preparation_guard_cannot_authorize_unrelated_mutation(runtime, operatio
                 request_digest=_request_digest(context, operation, {}),
             )
         )
+
+
+@pytest.mark.parametrize("damage", [None, "revision", "leaf", "mixed", "active"])
+def test_requalification_root_requires_its_exact_plan_and_command(runtime, damage):
+    r = runtime
+    name = "workspace.requalify_runtime"
+    data = RequalifyRecoveryRuntime(
+        request_id=new_id(),
+        expected_provider_revision=3,
+        previous_qualification_digest="sha256:" + "a" * 64,
+        reason="Explicit target runtime requalification",
+    ).model_dump(mode="json")
+    context = guarded(r, name, data, context=r.context.model_copy(update={"expected_revision": 3}))
+    if damage == "revision":
+        context = guarded(
+            r, name, data, context=context.model_copy(update={"expected_revision": 4})
+        )
+    elif damage == "leaf":
+        context = guarded(r, "time_provider.requalify", data, context=context)
+    elif damage == "mixed":
+        context._recovery_activation = object()
+    elif damage == "active":
+        r.database.store.write(
+            lambda sql: sql.execute("UPDATE records SET state='active' WHERE kind='workspace_gate'")
+        )
+    before = snapshot(r.database.store)
+
+    def check():
+        return r.database.store.read(
+            lambda sql: require_workspace_mutation(
+                sql,
+                context.principal.workspace_id,
+                name,
+                context=context,
+                authority=r.database.authority_identity,
+                payload=data,
+                request_digest=_request_digest(context, name, data),
+            )
+        )
+
+    if damage is None:
+        check()
+    else:
+        with pytest.raises(ResearchError):
+            check()
+    assert snapshot(r.database.store) == before
 
 
 @pytest.mark.parametrize("damage", [None, "leaf", "plan", "admission", "active"])

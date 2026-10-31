@@ -6,7 +6,7 @@ from typing import Any
 from research_swarm.domain.backup import RecoveryAdmission
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.recovery_runtime import RecoveryRuntimePlan
+from research_swarm.domain.recovery_runtime import RecoveryRuntimePlan, RequalifyRecoveryRuntime
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.state.database import _request_digest
 from research_swarm.state.recovery_guard import recovery_record, require_recovery_authority
@@ -19,6 +19,7 @@ OPERATIONS = frozenset(
         "time_provider.register",
         "time_provider.requalify",
         "time_provider.fence",
+        "workspace.requalify_runtime",
     }
 )
 
@@ -86,6 +87,12 @@ def require_recovery_runtime(
             "source": plan.source.model_dump(mode="json"),
         }:
             raise ResearchError(ErrorCode.STALE_FENCE, "Runtime provider registration differs")
+    elif operation == "workspace.requalify_runtime":
+        request = RequalifyRecoveryRuntime.model_validate(payload)
+        if context.expected_revision != request.expected_provider_revision:
+            raise ResearchError(
+                ErrorCode.REVISION_CONFLICT, "Runtime requalification revision differs"
+            )
     else:
         # TimeProviders independently verifies the exact current snapshot, witness
         # signature, nonce, request preimage and unretired source before writing.

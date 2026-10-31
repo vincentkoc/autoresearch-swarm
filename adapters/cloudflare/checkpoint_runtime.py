@@ -30,6 +30,7 @@ if __package__:
     from .exclusive import exclusive
     from .provisioning import exists, require_roster
     from .research_router import dispatch_key_digest
+    from .runtime_history import read_qualification
 else:
     from checkpoint_admission import HostedRecoveryVerifier
     from checkpoint_import import verify_target_configuration
@@ -38,6 +39,7 @@ else:
     from exclusive import exclusive
     from provisioning import exists, require_roster
     from research_router import dispatch_key_digest
+    from runtime_history import read_qualification
 
 OPERATION = "workspace.prepare_runtime"
 RECEIPT_KIND = "recovery_runtime_preparation"
@@ -113,7 +115,7 @@ def require_bounded_provider(sql, workspace, identifier):
         raise ResearchError(ErrorCode.STALE_FENCE, "Prepared runtime provider is unavailable")
 
 
-def inspect_preparation(sql, context, plan, registry, authority):
+def inspect_preparation(sql, context, plan, registry, authority, *, allow_requalified=False):
     require_recovery_authority(sql, context, registry.store, authority)
     workspace = context.principal.workspace_id
     saved = saved_record(sql, workspace, PLAN_KIND, plan.restore_id)
@@ -130,6 +132,15 @@ def inspect_preparation(sql, context, plan, registry, authority):
             raise ResearchError(ErrorCode.STALE_FENCE, "Runtime qualification receipt is absent")
         return current, None
     receipt = RuntimePreparationReceipt.model_validate_json(row["payload"])
+    if allow_requalified:
+        receipt = read_qualification(
+            sql,
+            plan,
+            generation=current.data.scope.provider_generation,
+            restoration_digest=authority.restoration_digest,
+            admission_digest=authority.admission_digest,
+            crypto=registry.crypto_provider,
+        )
     if (
         current.state != "qualified"
         or receipt.plan_digest != plan.digest

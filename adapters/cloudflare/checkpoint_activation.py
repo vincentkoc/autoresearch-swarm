@@ -214,7 +214,9 @@ async def activate_target(
             restoration, admission = verifier.read_admission(
                 sql, authority=store.identity, context=context, crypto=crypto
             )
-            current, prepared = inspect_preparation(sql, context, plan, registry, authority)
+            current, prepared = inspect_preparation(
+                sql, context, plan, registry, authority, allow_requalified=True
+            )
             if prepared is None:
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE, "Target runtime is unprepared"
@@ -277,7 +279,7 @@ async def activate_target(
                         ErrorCode.STALE_FENCE, "Protected activation inputs changed"
                     )
                 current, prepared = inspect_preparation(
-                    sql, context, plan, registry, selected.authority
+                    sql, context, plan, registry, selected.authority, allow_requalified=True
                 )
                 if (
                     current != selected.provider

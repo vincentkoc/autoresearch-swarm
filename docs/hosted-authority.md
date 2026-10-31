@@ -2270,7 +2270,27 @@ key; the first preparation remains keyed by restore ID. No mutable latest pointe
 or overwrite is needed. A bounded history reader resolves at most 16 successors,
 verifies each predecessor and signed source-retirement observation, and rejects
 repeated epochs. Admission can reserve one remaining lineage slot before I/O.
-This proof slice does not yet expose the explicit requalification command.
+`Bootstrap.checkpoint_requalify_runtime(bootstrap_credential, request_json)` is the
+explicit private command. Its request contains `request_id`,
+`expected_provider_revision`, `previous_qualification_digest` and bounded `reason`.
+The target must remain recovering, its selected provider must be fenced, and its
+protected plan, admission and fresh credential roster must still match. A new epoch
+of the same pinned source may qualify; changing its source identity, signing key,
+profile or policy requires a different recovery plan.
+
+Before witness I/O, the adapter verifies the predecessor and its authenticated
+retirement and reserves a lineage slot. After the await it rechecks that selection.
+Provider qualification, immutable successor receipt, event and command acknowledgment
+commit atomically. Concurrent intents cannot consume the same fenced revision twice.
+An exact accepted retry while recovering verifies and returns the original receipt
+without another witness. Missing or altered history refuses; credentials are never
+reinstalled or repaired. The original preparation operation remains unchanged.
+
+Activation selects the current qualified generation through this immutable lineage.
+Completed activation verification selects the generation bound by its final witness,
+so later provider changes cannot replace its historical readiness evidence. The
+requalification RPC has SQLite/signed-witness race, rollback, lost-reply, retired-epoch
+and activation-chain coverage; actual workerd qualification remains separate.
 
 `Bootstrap.checkpoint_prepare_runtime(bootstrap_credential)` now implements the
 private preparation operation. The elected target manifest must already identify
@@ -2291,8 +2311,8 @@ SQLite/signed-witness tests cover interruption in both phases, partial roster ro
 credential collisions, changed state during the await, lost committed replies and
 ordinary-route refusal. The new private RPC still needs actual workerd qualification.
 Preparation creates neither the public deployment seal nor an active workspace gate.
-Subsequent activation remains separate work; the preparation guard cannot authorize
-execution, fencing, scientific acceptance or activation. Existing native witness
+Subsequent activation uses the separate operation described below; preparation cannot
+authorize execution, scientific acceptance or activation. Existing native witness
 request preimages and ordinary credential replay are unchanged.
 
 `HostedRecoveryActivation` is a separate signed evidence format, with its own profile

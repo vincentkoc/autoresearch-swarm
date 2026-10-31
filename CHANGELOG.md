@@ -2,11 +2,18 @@
 
 ## Unreleased
 
+- Add private hosted runtime requalification for an elected target whose pinned
+  clock restarted before activation. Verify its fenced predecessor, acquire a fresh
+  witness, and commit one new generation, immutable receipt and acknowledgment
+  atomically. Preserve credentials and the original preparation; exact accepted
+  retries work offline while recovering. Activation and historical verification
+  follow the selected immutable lineage. Actual workerd qualification is separate.
+
 - Define immutable recovery-runtime requalification requests and receipts, selected
   by provider generation. Verify bounded predecessor and signed retirement history
   back to the original preparation; reject missing links, altered fences, repeated
   epochs and more than 16 successors. Original preparation and activation proof
-  bytes remain unchanged. The explicit requalification command is separate work.
+  bytes remain unchanged.
 
 - Extend the production workerd recovery probe to seven startups. Freeze separate
   target runtimes and native witnesses before election, restore the full artifact
