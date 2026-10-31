@@ -584,6 +584,70 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
         release = None
         supervisor = None
 
+        def setup_diagnostics(process: Any, phase: str) -> str:
+            def bounded(value: Any) -> str:
+                text = value.decode(errors="replace") if isinstance(value, bytes) else str(value)
+                for private in (
+                    connected.bundle.token,
+                    str(root),
+                    str(pipeline.runtime.root),
+                    sys.executable,
+                ):
+                    text = text.replace(private, "<redacted>")
+                return text[:1024]
+
+            result: dict[str, Any] = {"phase": phase, "returncode": process.poll(), "attempts": []}
+            if process.poll() is not None:
+                try:
+                    output, error_output = process.communicate(timeout=2)
+                    result["stderr"] = bounded(error_output)
+                    if len(output) > 128 * 1024:
+                        result["stdout"] = "CLI response exceeded diagnostic bound"
+                    else:
+                        reply = json.loads(output)
+                        result["driver"] = {
+                            "state": reply.get("state"),
+                            "observation_count": reply.get("observation_count"),
+                            "recent_attempts": reply.get("recent_attempts", [])[:8],
+                            "findings": [bounded(item) for item in reply.get("findings", [])[:8]],
+                        }
+                except Exception as error:
+                    result["output_error"] = type(error).__name__
+            try:
+                records = pipeline.client.list(
+                    RecordQuery(kind="attempt", campaign_id=pipeline.campaign["id"], limit=8)
+                )["items"]
+                for row in records:
+                    item: dict[str, Any] = {"id": row["id"], "controller_state": row["state"]}
+                    try:
+                        entry = journal.get(row["id"])
+                        item.update(
+                            {
+                                "state": entry.state.value,
+                                "finding": bounded(entry.finding),
+                                "clock_mode": entry.clock_mode,
+                                "native": entry.native is not None,
+                                "prepared": entry.prepared is not None,
+                                "outcome": None
+                                if entry.outcome is None
+                                else {
+                                    "reason": entry.outcome.reason,
+                                    "exit_code": entry.outcome.exit_code,
+                                    "elapsed_ms": entry.outcome.elapsed_ms,
+                                    "scope_closed": entry.outcome.closure.scope_closed,
+                                    "findings": [
+                                        bounded(item) for item in entry.outcome.closure.findings[:8]
+                                    ],
+                                },
+                            }
+                        )
+                    except Exception as error:
+                        item["journal_error"] = type(error).__name__
+                    result["attempts"].append(item)
+            except Exception as error:
+                result["records_error"] = type(error).__name__
+            return json.dumps(result, sort_keys=True)
+
         def diagnostics(phase: str) -> str:
             def read(call: Any) -> Any:
                 try:
@@ -654,7 +718,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 running = next(
                     (entry for entry in entries if entry.state == JournalState.RUNNING), None
                 )
-                assert first.poll() is None and time.monotonic() < until, entries
+                assert first.poll() is None and time.monotonic() < until, setup_diagnostics(
+                    first, "first driver before running"
+                )
                 time.sleep(0.01)
             assert running.native is not None
             assert running.prepared is not None
@@ -664,7 +730,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             output_root = Path(running.prepared.context.output_root)
             release = output_root / "payload-release"
             while not (output_root / "payload-finished").exists():
-                assert first.poll() is None and time.monotonic() < until
+                assert first.poll() is None and time.monotonic() < until, setup_diagnostics(
+                    first, "first driver before payload marker"
+                )
                 time.sleep(0.01)
             first.kill()  # Only the driver process created by this test.
             first.communicate(timeout=5)
@@ -693,7 +761,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 )
                 until = time.monotonic() + 10
                 while True:
-                    assert resumed.poll() is None and time.monotonic() < until
+                    assert resumed.poll() is None and time.monotonic() < until, setup_diagnostics(
+                        resumed, "resumed driver before attempt lock"
+                    )
                     try:
                         with lock:
                             pass

@@ -226,7 +226,15 @@ async def test_two_registered_workers_refill_a_slot_while_original_native_scope_
                         RecordQuery(kind=kind, campaign_id=campaign_id, limit=12)
                     )["items"]
                 )
-                for kind in ("proposal_request", "policy_transition", "trial", "job", "attempt")
+                for kind in (
+                    "proposal_request",
+                    "policy_transition",
+                    "trial",
+                    "job",
+                    "attempt",
+                    "search_observation",
+                    "promotion",
+                )
             }
             native = []
             attempts = records["attempt"] if isinstance(records["attempt"], list) else []
@@ -386,8 +394,17 @@ async def test_two_registered_workers_refill_a_slot_while_original_native_scope_
                 )
 
             request_c = await until(next_request, advance=True)
-            assert request_c["data"]["parent_candidate_id"] == trial_b["data"]["candidate_id"]
-            assert request_c["data"]["incumbent_revision"] == 2
+            completed_b = controller.get("trial", trial_b["id"])
+            assert completed_b["data"]["execution_outcome"] == "succeeded", (
+                f"Candidate B failed before replacement ancestry: {diagnostics()}"
+            )
+            assert completed_b["data"]["evaluation_status"] == "valid", (
+                f"Candidate B lacks valid evaluation: {diagnostics()}"
+            )
+            assert request_c["data"]["parent_candidate_id"] == trial_b["data"]["candidate_id"], (
+                f"Candidate B did not become the replacement parent: {diagnostics()}"
+            )
+            assert request_c["data"]["incumbent_revision"] == 2, diagnostics()
             await respond(request_c, "c", 0.20, marker_c, release_c)
             await until(marker_c.exists, advance=True, request_id=request_c["id"])
             identity_c = json.loads(marker_c.read_text(encoding="utf-8"))
