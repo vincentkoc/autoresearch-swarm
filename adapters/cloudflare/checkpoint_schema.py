@@ -59,7 +59,20 @@ def require_checkpoint_schema(sql, manifest):
             for ordinal, (row, expected) in enumerate(zip(rows, fields, strict=True))
         ):
             raise unsupported()
-    versions = sql.execute("SELECT singleton,version FROM research_schema LIMIT 2").fetchall()
-    if len(versions) != 1 or (versions[0][0], versions[0][1]) != (1, SCHEMA_VERSION):
+        if sql.execute(f"SELECT COUNT(*) FROM (SELECT 1 FROM {name} LIMIT 2)").one()[0] != 1:
+            raise unsupported()
+        predicates = []
+        for field, kind, _, _ in fields:
+            predicates.append(f"typeof({field})!='{kind.lower()}'")
+            if kind == "TEXT":
+                bound = 71 if field == "digest" else 8 if field == "state" else 256 * 1024
+                predicates.append(f"length(CAST({field} AS BLOB))>{bound}")
+        if (
+            sql.execute(f"SELECT 1 FROM {name} WHERE {' OR '.join(predicates)} LIMIT 1").fetchone()
+            is not None
+        ):
+            raise unsupported()
+    versions = sql.execute("SELECT singleton,version FROM research_schema LIMIT 2").one()
+    if (versions[0], versions[1]) != (1, SCHEMA_VERSION):
         raise unsupported()
     require_deployment_in(sql, manifest)

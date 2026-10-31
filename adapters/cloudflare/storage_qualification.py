@@ -2,9 +2,14 @@
 
 from durable_sql import MAX_SAFE_INTEGER, DurableObjectStore
 
+from research_swarm.checkpoints.capture import CaptureLimits, capture_rows, preflight_rows
+from research_swarm.checkpoints.image_format import row_values
 from research_swarm.checkpoints.image_schema import require_portable_image_schema
 from research_swarm.control.auth import CredentialStore
+from research_swarm.domain.canonical import content_digest
+from research_swarm.domain.checkpoint_images import LogicalChunk
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.types import new_id
 from research_swarm.state import schema as migrations
 from research_swarm.state.database import SCHEMA
 from research_swarm.state.sql import IntegrityViolation
@@ -78,6 +83,7 @@ def roundtrip(store):
     assert store.read(lambda sql: sql.execute("SELECT version FROM research_schema").one()[0]) == 3
     store.write(CredentialStore.initialize_in)
     store.read(require_portable_image_schema)
+    checkpoint_capture(store)
     return {
         "binary_null": True,
         "rows": True,
@@ -85,7 +91,50 @@ def roundtrip(store):
         "constraints": True,
         "synchronous_scope": True,
         "checkpoint_schema": True,
+        "checkpoint_capture": True,
     }
+
+
+def checkpoint_capture(store):
+    workspace, snapshot, actor, backup = (new_id() for _ in range(4))
+    raw = ' {"x":1,"x":2,"text":"e\u0301"}\n'
+
+    def seed(sql):
+        sql.execute("INSERT INTO workspaces(id,controller_id) VALUES (?,?)", (workspace, new_id()))
+        for key in ("\U00010000", "\ue000", "\0"):
+            sql.execute(
+                "INSERT INTO commands VALUES (?,?,?,?,?,?,?)",
+                (workspace, actor, key, content_digest(b"request"), new_id(), raw, "created"),
+            )
+        sql.execute(
+            "INSERT INTO recovery_snapshots VALUES (?,?,?,?,?,?,?,?)",
+            (workspace, snapshot, actor, 0, "expires", None, None, "{}"),
+        )
+        sql.execute(
+            "INSERT INTO recovery_items VALUES (?,?,?,?,?,?)",
+            (workspace, snapshot, 0, content_digest(b"\0\xff"), 2, b"\0\xff"),
+        )
+
+    store.write(seed)
+
+    def read(sql, page_rows):
+        limits = CaptureLimits(page_rows=page_rows)
+        return capture_rows(
+            sql, backup_id=backup, inventory=preflight_rows(sql, limits), limits=limits
+        )
+
+    first = store.read(lambda sql: read(sql, 1))
+    assert first == store.read(lambda sql: read(sql, 8))
+    rows = {"commands": [], "recovery_items": []}
+    for body in first.bodies:
+        chunk = LogicalChunk.model_validate_json(body)
+        if chunk.table in rows:
+            rows[chunk.table].extend(
+                row_values(chunk.table, row) for row in chunk.rows if row[0] == workspace
+            )
+    assert [row[2] for row in rows["commands"]] == ["\0", "\ue000", "\U00010000"]
+    assert all(row[5] == raw for row in rows["commands"])
+    assert rows["recovery_items"][0][-1] == b"\0\xff"
 
 
 class ReadOnlyStorage:

@@ -49,6 +49,7 @@ PRODUCTION = (
     "runtime.py",
     "delivery_registry.py",
     "checkpoint_schema.py",
+    "checkpoint_capture.py",
 )
 TARGETS = {
     "qualification": (".generated", "local-qualification-v1\n", "entry.py", QUALIFICATION),

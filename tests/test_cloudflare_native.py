@@ -246,6 +246,7 @@ def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp
                 assert response.json() and all(value is True for value in response.json().values())
                 if case == "roundtrip":
                     assert response.json()["checkpoint_schema"] is True
+                    assert response.json()["checkpoint_capture"] is True
         accepted = exercise(url, key="accepted")
         assert accepted["state"] == "accepted"
         assert accepted["counts"] == {"effects": 1, "fences": 0, "acknowledgments": 1}

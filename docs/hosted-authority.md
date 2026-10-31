@@ -1538,15 +1538,17 @@ including after target revocation, but grants no live delivery authority.
 SQLite/HTTP harness tests cover a real post-bootstrap source upload and campaign,
 registration races, one saved report across a lost reply and reopen, offline
 replay, credential aliases, revoked/expiring/changed credentials, revocation while
-awaiting a witness or reading a body, retirement and static collisions. Actual
-workerd qualification of this extension is still required.
+awaiting a witness or reading a body, retirement and static collisions.
 
 The production workerd probe now includes that route: ordinary campaign creation,
 dedicated binding and API registration, followed by a separate actual Workflow.
 It requires the accepted saved-turn receipt while the Workflow is running, before
 any manual delivery replay. After stopping it and restarting the authority, both
-registration and delivery replay without a witness. This extension still needs
-its own exact-revision runtime receipt; the earlier production receipt predates it.
+registration and delivery replay without a witness. This extension passed with
+19 actual workerd tests in 610.48 seconds at
+`da25f340de6cd53d4d55f4159ceea5d31bb1f9b5` in
+[qualification 41211517897](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41211517897).
+This is a local workerd receipt, not a deployed-account qualification.
 
 This release retains a fixed credential roster. A new campaign or transfer needs
 unused preprovisioned driver and gateway actors. Adding actors or rotating tokens
@@ -1716,6 +1718,39 @@ It checks metadata layouts, schema version and the complete provisioning seal in
 the caller's SQL snapshot. Native tests cover drift and retained revocations; the
 workerd storage probe now exercises the exact bounded PRAGMA queries. Its new
 runtime receipt remains pending.
+
+The internal `checkpoint_capture.capture_checkpoint()` source port captures a
+complete image in one consistent `StateStore.read()` callback. It authenticates
+the deployment's current, nonexpiring root provisioning credential, checks the
+physical store and full deployment seal, and requires an externally supplied
+custody pin. It checks the persisted provider's complete authority and configured
+source without requesting a new witness. Qualified and unqualified clock history
+remain evidence; capture grants neither state execution nor requalification.
+
+Before reading portable payloads, scalar SQL queries check bounded row counts,
+cell types and conservative JSON size estimates. TEXT length uses UTF-8 bytes,
+including embedded NUL. Metadata and operator projections are bounded separately
+before parsing. The initial source profile permits 4 MiB of encoded chunks, 4,096
+rows, 128 KiB chunks, a 64 KiB conservative row bound, 1,024 chunks and a 128 KiB
+manifest. It reads at most eight rows per query. These source limits are narrower
+than the wire format and may reject an image whose actual escaped encoding would
+fit. They bound capture allocations, not total runtime RSS; workerd still needs
+qualification of the complete source path.
+
+Explicit columns and binary primary-key pagination preserve raw TEXT/BLOB values.
+Chunk boundaries depend on encoded rows, not page size. No cursor survives the
+synchronous callback, and the result retains encoded chunks instead of a second
+complete decoded database. Capture writes no records, uses no R2 access and
+exports no deployment secrets. The caller may sign its manifest with the separately
+held source custody key. Publication must still verify artifacts and revalidate
+the source after external I/O. This internal port is not yet a public backup API,
+an inactive importer, a source election service or an activation path.
+
+Native tests verify deterministic byte preservation, independent-connection
+snapshot isolation, changed authority/custody refusals, revoked operators, clock
+outages and every source bound. The workerd storage probe additionally exercises
+the shared preflight and pagination code with Unicode ordering, embedded NUL and
+binary cells; that extension's runtime receipt is pending.
 
 `checkpoints.cut.inspect_sealed_cut()` provides read-only relational inspection
 through the shared SQL port. It checks the sole workspace, authority and seal,

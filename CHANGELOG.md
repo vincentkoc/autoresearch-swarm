@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Capture sealed hosted state in one consistent SQL snapshot with scalar size/type
+  preflight, bounded binary-key pagination and deterministic chunks. Preserve raw
+  text, binary data, credential revocation and clock history without acquiring a
+  fresh witness. Enforce explicit source custody and the current operator; capture
+  grants no artifact-availability, restore election or activation authority.
+
 - Require complete application-state admission before logical checkpoint export.
   Check portable column, key, uniqueness and foreign-key metadata, reject unknown
   tables, views, triggers and generated columns, and verify deployment metadata in
