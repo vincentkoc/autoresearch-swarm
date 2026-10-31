@@ -3,26 +3,22 @@
 This is the completion ledger for the design contract. Pending means unproven,
 not implicitly supported.
 
-The latest all-platform pass is
-[`d111b841d242771a3de6fece8180d94860c7270b`](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41227545377):
-20 workerd tests, 1,317 Linux tests, 1,317 macOS tests and 1,311 Windows tests
-with six explicit skips. Its recovery probe ends at original journal closure.
-Newer preparation, activation and clock-management probes require their own
-runtime receipts; current source alone does not extend that qualification.
-The newer [seven-startup run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41230138489)
-at `448765365258d108dacb07f42f5275e0113f59cc` passed workerd, Linux and macOS,
-including actual target preparation and activation. Windows reached 91% progress
-before the 30-minute job cancellation and has no passing verdict for that revision.
-The qualification job now allows 45 minutes on Windows; experiment budgets and
-individual test supervision remain unchanged.
+The latest all-platform pass is the
+[clock-recovery run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41233958516)
+at `daee81a5b1113be2cb813e83367ca3fd6da62d36`:
 
-The [clock-recovery run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41233958516)
-at `daee81a5b1113be2cb813e83367ca3fd6da62d36` has completed its workerd job
-with 20 passes in 676.22 seconds and Linux with 1,484 passes in 640.23 seconds.
-This qualifies the nine-startup recovery and fresh-deployment clock-management
-probes in local workerd. Windows and macOS had no final verdict when this receipt
-was recorded. The later active-reconciliation and timer profiles need their own
-runtime and platform receipts.
+| Runtime | Result | Duration |
+|---|---|---|
+| workerd | 20 passed | 676.22 seconds |
+| Linux | 1,484 passed | 640.23 seconds |
+| macOS | 1,484 passed | 543.59 seconds |
+| Windows | 1,478 passed, six explicit skips | 1,641.34 seconds |
+
+This qualifies the nine-startup recovery, target preparation/activation and
+fresh-deployment clock-management probes in local workerd. The later
+active-reconciliation and timer profiles need their own runtime and platform
+receipts. The qualification job allows 45 minutes on Windows; experiment budgets
+and individual test supervision remain unchanged.
 
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|

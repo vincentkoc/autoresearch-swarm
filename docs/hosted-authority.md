@@ -2712,10 +2712,11 @@ activation, a second clock restart under active authority, offline management
 replay and recalibration of the same fresh worker. Its separate production probe
 verifies active-clock management for a fresh deployment while preserving initial
 provisioning and rejected-command history. Both use actual local workerd and
-native witnesses. The Linux job passed **1,484 tests in 640.23 seconds**.
+native witnesses. The Linux job passed **1,484 tests in 640.23 seconds**, macOS
+passed **1,484 in 543.59 seconds**, and Windows passed **1,478 with six explicit
+skips in 1,641.34 seconds**. The complete run is green.
 
-Windows and macOS were unresolved when this receipt was recorded. These job
-results do not qualify the later active-reconciliation/timer profiles, an actual
+These results do not qualify the later active-reconciliation/timer profiles, an actual
 Cloudflare account deployment, physical GPU execution or scientific improvement.
 
 1. Freeze witness schemas, signatures, epoch derivation and one-use operation
