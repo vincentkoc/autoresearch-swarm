@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a fixed-authority production Worker and a separate named bootstrap RPC
+  entrypoint. Verify actual object routing and the complete deployment seal on
+  normal opens, preserve revocation, and initialize only empty bootstrap storage.
+  Public HTTP cannot select fixture routes, another object or provisioning inputs.
+
 - Add resumable private provisioning with atomic prepared and completed phases.
   Authenticate bootstrap and physical identity before opening state, freeze the
   manifest and credential roster, then admit one fresh witness before publishing

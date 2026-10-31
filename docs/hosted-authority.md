@@ -1329,8 +1329,7 @@ the `RESEARCH_AUTHORITY` and `ARTIFACTS` binding names, the startup-profile
 configuration, witness origin/timeout, credential roster and optional exact
 delivery registrations. Its canonical digest covers this entire configuration,
 including routing fields outside `HostedStartupConfiguration.digest`. A production
-provisioner must persist that complete seal and every normal reopen must verify
-it; the current input-contract slice does not yet implement that lifecycle.
+provisioner persists that complete seal and every normal reopen verifies it.
 
 The loader checks physical store identity, assignment/dispatch key agreement,
 credential digests and workspace/scope agreement. The provisioning actor must
@@ -1346,10 +1345,9 @@ fragment. Local workerd tests may opt into loopback through an explicit loader
 argument, which is not an API request field. Input and roster sizes are bounded.
 Golden digests and native tests cover mismatched identity, credentials, scopes,
 registrations, malformed input and mutation resistance. These checks establish
-configuration consistency. The receiving DO still needs to compare its actual ID,
-the public Worker must verify its named-object resolution, and deployment must
-qualify the physical bucket binding. No resources, secrets or routes are deployed
-by this module.
+configuration consistency. The production entrypoint verifies both the receiving
+DO's actual ID and named-object resolution. Deployment must still qualify the
+physical bucket binding. No resources, secrets or routes are deployed by this module.
 
 `CredentialStore.initialize_in()` and `install_in()` can participate in one
 owner-controlled SQL write alongside provisioning intent and source registration.
@@ -1376,13 +1374,43 @@ credentials are not recreated. Completed bootstrap replay returns the original
 admission receipt without contacting the source or reinstalling credentials.
 That historical receipt is not a statement of current source availability.
 `require_deployment()` provides a read-only full-manifest/configuration seal check
-for the future production entrypoint. Runtime named-object resolution and the
-empty-store factory remain that entrypoint's responsibilities.
+for the production entrypoint. Its bootstrap store factory initializes only empty
+storage and uses current-schema read-only admission for existing state; it never
+migrates an existing authority.
 
 Native SQLite tests cover interrupted phases, source outage, concurrent resume,
 changed roster/manifest, revocation after the witness, foreign-state refusal,
 cancellation and completed offline replay. These tests do not qualify workerd
 provisioning, an operator bootstrap route, or a deployed controller.
+
+`production.py` separates `Default.fetch`, `ResearchAuthority` and the named
+`Bootstrap.provision(credential)` entrypoint. Public requests resolve only the
+manifest's authority name, require the namespace-derived ID to match, and forward
+to that object. The receiver checks its actual ID again. Unknown HTTP paths,
+including fixture probes and deployment provisioning, refuse before opening state.
+The full immutable deployment seal is checked inside the router's existing gate.
+Normal opens do not contact or requalify the source, initialize tables, migrate
+schemas, install credentials or repair missing state. Existing credential
+revocation remains effective after reopen.
+
+An operator service binding selects `entrypoint: "Bootstrap"` and invokes
+`await env.RESEARCH_BOOTSTRAP.provision(credential)`. Both this entrypoint and the
+DO authenticate the separate bootstrap secret; neither accepts a replacement
+manifest, target, roster or witness origin from the caller. Returned JSON contains
+only an admission receipt or a sanitized error. `Bootstrap.fetch` refuses HTTP.
+The production loader and witness transport require HTTPS; local fixture headers
+cannot alter them. Named entrypoints share the Worker's environment and are a
+callable capability boundary, not separate secret environments. A deployment that
+requires secret isolation must place a public facade in another Worker and give
+it only the research service binding.
+[Cloudflare named Python entrypoints](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/rpc/#named-entrypoints),
+[RPC capability visibility](https://developers.cloudflare.com/workers/runtime-apis/rpc/visibility/).
+
+Native SQLite runtime tests cover missing/prepared state, exact manifest sealing,
+offline reopen, retained revocation, fixed object resolution, ineffective fixture
+headers, excluded routes and sanitized recovery responses. The entrypoint still
+needs its production bundle and actual workerd named-RPC qualification. These
+tests do not establish deployed service routing, bucket identity or clock behavior.
 
 ## Native worker calibration
 

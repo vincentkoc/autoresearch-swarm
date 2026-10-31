@@ -126,6 +126,17 @@ class DurableObjectStore:
         self.write(lambda sql: self._initialize(sql, schema))
 
     @classmethod
+    def open_for_provisioning(cls, storage, *, namespace, object_id, schema):
+        """Private bootstrap only: initialize empty storage; never migrate existing state."""
+        rows = storage.sql.exec(
+            "SELECT name FROM sqlite_master "
+            "WHERE substr(name,1,7)!='sqlite_' AND substr(name,1,5)!='__cf_' LIMIT 1"
+        )
+        if next(iter(rows.raw()), None) is not None:
+            return cls.open_existing(storage, namespace=namespace, object_id=object_id)
+        return cls(storage, namespace=namespace, object_id=object_id, schema=schema)
+
+    @classmethod
     def open_existing(cls, storage, *, namespace, object_id):
         """Open current provisioned state; ordinary requests never initialize or migrate."""
         instance = cls.__new__(cls)

@@ -70,6 +70,8 @@ jobs:
           tests/test_cloudflare_deployment.py
           tests/test_credential_installation.py
           tests/test_cloudflare_provisioning.py
+          tests/test_cloudflare_runtime.py
+          tests/test_cloudflare_store_open.py
           tests/test_cli_encoding.py tests/test_agent_research_cycle.py
           tests/test_supervision.py
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
