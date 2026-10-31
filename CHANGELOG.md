@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a separate workerd research-admission probe using real R2, a native witness,
+  ordinary SDK requests and a scoped CPU worker. Exercise lost acknowledgments,
+  outage replay, owned runtime restart and independent native deadline validation.
+
 - Add an explicit hosted research-admission profile from ordinary source bundles
   through signed CPU claims. Reuse native project, campaign, candidate, trial and
   budget transactions; verify R2 source bytes before the fresh witness and retain

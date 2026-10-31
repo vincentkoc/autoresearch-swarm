@@ -226,6 +226,23 @@ The original source-lifecycle test passed at `07c4cc4` in
 seven runtime tests passed in 182.36 seconds. That receipt includes the real native
 source and durable fencing; it predates the explicit worker-admission extension.
 
+`test_cloudflare_research_admission.py` uses a separately provisioned
+`research-admission-witness-v1` object, actual R2 and an actual native witness.
+The unchanged SDK uploads an ordinary project, registers its immutable contract,
+seals and starts a campaign, validates a candidate and submits its job graph.
+A scoped worker receives a signed CPU claim. Lost trial and claim responses are
+replayed with both byte storage and the native source unavailable, including
+after an owned workerd restart. The worker independently verifies assignment and
+time signatures and computes native deadline caps from a fresh sample. Protected
+evaluator changes cannot enter an executable trial.
+
+The fixture uses a separate object name and persisted configuration; request
+headers cannot upgrade an existing profile. The source endpoint and R2 binding
+come from explicit fixture provisioning. Local fault headers, public fixture
+credentials and setup routes are not production interfaces. This probe establishes
+no worker execution, output publication, evaluator completion or cloud deployment.
+Its runtime result must be recorded separately after qualification.
+
 ## Agent API facade
 
 `wrangler.facade.jsonc` selects the separate credential-free research API facade.

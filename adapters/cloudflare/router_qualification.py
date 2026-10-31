@@ -12,6 +12,7 @@ from research_router import (
     ExistingResearchRouter,
     HostedArtifactConfiguration,
     HostedConfiguration,
+    HostedResearchConfiguration,
     dispatch_key_digest,
 )
 from witness_qualification import SEED, identifier
@@ -66,7 +67,9 @@ class UnserializedFixture:
         await callback()
 
 
-def configuration(object_id, crypto, *, artifact_profile=False, source=None):
+def configuration(
+    object_id, crypto, *, artifact_profile=False, research_profile=False, source=None
+):
     public = public_key(crypto, SEED).hex()
     source = source or WitnessSource(
         id=identifier("source"),
@@ -84,7 +87,8 @@ def configuration(object_id, crypto, *, artifact_profile=False, source=None):
         Principal(
             id=identifier("router-worker-principal"),
             workspace_id=identifier("router-workspace"),
-            scopes={"worker.query", "worker.publish"},
+            scopes={"worker.query", "worker.publish"}
+            | ({"worker.claim"} if research_profile else set()),
         ),
     )
     config = HostedConfiguration(
@@ -110,16 +114,19 @@ def configuration(object_id, crypto, *, artifact_profile=False, source=None):
             },
         ),
     )
-    if artifact_profile:
-        config = HostedArtifactConfiguration(
+    if artifact_profile or research_profile:
+        profile_type = (
+            HostedResearchConfiguration if research_profile else HostedArtifactConfiguration
+        )
+        config = profile_type(
             **config.model_dump(exclude={"profile"}),
             storage=BoundedR2Configuration(
                 workspace_id=config.authority.workspace_id,
                 bucket_identity="local-qualification",
                 prefix="router-artifacts-" + object_id,
-                max_object_bytes=4096,
+                max_object_bytes=1024**2 if research_profile else 4096,
             ),
-            storage_limit_bytes=8192,
+            storage_limit_bytes=4 * 1024**2 if research_profile else 8192,
         )
     return config, principals
 

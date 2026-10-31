@@ -91,7 +91,13 @@ class Qualification(DurableObject):
             if request.headers.get("x-fixture-native-source") == "true":
                 native_transport = import_from_javascript("./witness_io.mjs")
                 router = await open_native_router(
-                    self.ctx, str(self.ctx.id), crypto, native_transport
+                    self.ctx,
+                    str(self.ctx.id),
+                    crypto,
+                    native_transport,
+                    bucket=python_to_rpc(self.env.ARTIFACTS),
+                    r2_module=r2,
+                    r2_unavailable=request.headers.get("x-fixture-r2-fault") == "unavailable",
                 )
             else:
                 config, _ = configuration(str(self.ctx.id), crypto, artifact_profile=True)
@@ -115,10 +121,16 @@ class Qualification(DurableObject):
         except ResearchError as error:
             result = failure(error)
         if (
-            request.headers.get("x-fixture-drop-finalize") == "true"
-            and request.method == "POST"
-            and urlparse(request.url).path.endswith("/finalize")
+            request.method == "POST"
             and result.status == 200
+            and (
+                (
+                    request.headers.get("x-fixture-drop-finalize") == "true"
+                    and urlparse(request.url).path.endswith("/finalize")
+                )
+                or urlparse(request.url).path
+                == "/v1/commands/" + (request.headers.get("x-fixture-drop-command") or "")
+            )
         ):
             return Response("{", headers={"content-type": "application/json"})
         return Response(result.body, status=result.status, headers=dict(result.headers))
@@ -128,7 +140,13 @@ class Qualification(DurableObject):
         transport = import_from_javascript("./witness_io.mjs")
         return json.dumps(
             await exercise_native_router(
-                self.ctx, str(self.ctx.id), NativeProbe.model_validate_json(body), crypto, transport
+                self.ctx,
+                str(self.ctx.id),
+                NativeProbe.model_validate_json(body),
+                crypto,
+                transport,
+                bucket=python_to_rpc(self.env.ARTIFACTS),
+                r2_module=import_from_javascript("./r2_io.mjs"),
             )
         )
 
@@ -336,6 +354,8 @@ class Default(WorkerEntrypoint):
                 if request.headers.get("x-fixture-native-source") == "true"
                 else "shared-router-contract-artifacts"
             )
+            if request.headers.get("x-fixture-research-profile") == "true":
+                name = "shared-native-research-admission"
             stub = self.env.QUALIFICATION.getByName(name)
             try:
                 kind, _, _ = http_route(request.method, request.url)
@@ -366,7 +386,11 @@ class Default(WorkerEntrypoint):
             if len(text.encode()) > 4096:
                 return Response("Request too large", status=413)
             probe = NativeProbe.model_validate_json(text)
-            stub = self.env.QUALIFICATION.getByName("shared-native-router-contract")
+            stub = self.env.QUALIFICATION.getByName(
+                "shared-native-research-admission"
+                if probe.research_profile
+                else "shared-native-router-contract"
+            )
             return Response(
                 await stub.native_contract(probe.model_dump_json()),
                 headers={"content-type": "application/json"},

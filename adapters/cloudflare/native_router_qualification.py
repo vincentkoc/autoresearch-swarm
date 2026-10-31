@@ -4,8 +4,9 @@ from typing import Literal
 
 from durable_sql import DurableObjectStore
 from exclusive import exclusive
-from pydantic import Field
-from research_router import ExistingResearchRouter, HostedConfiguration
+from pydantic import Field, TypeAdapter
+from r2_binding import R2BindingTransport
+from research_router import ExistingResearchRouter, HostedConfiguration, HostedResearchConfiguration
 from router_qualification import DISPATCH_KEY, NAMESPACE, configuration, prepare_provision
 from witness_binding import WitnessHTTPTransport
 from witness_qualification import SEED
@@ -15,6 +16,7 @@ from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.time_witnesses import WitnessSource
 from research_swarm.domain.types import VersionedRecord
 from research_swarm.state.database import Transaction
+from research_swarm.storage.async_r2 import BoundedR2Objects
 
 CONSUMER = "public_fixture_consumer_" + "x" * 32
 
@@ -23,9 +25,28 @@ class NativeProbe(VersionedRecord):
     action: Literal["describe", "provision", "inspect", "requalify"]
     source: WitnessSource | None = None
     origin: str | None = Field(default=None, max_length=256)
+    research_profile: bool = Field(default=False, strict=True)
 
 
-async def open_native_router(state, object_id, crypto, transport):
+class NativeFixtureR2(R2BindingTransport):
+    def __init__(self, *args, unavailable=False):
+        super().__init__(*args)
+        self.unavailable = unavailable
+
+    async def get(self, *args, **kwargs):
+        if self.unavailable:
+            raise ResearchError(ErrorCode.TRANSPORT_UNAVAILABLE, "Fixture R2 unavailable")
+        return await super().get(*args, **kwargs)
+
+    async def put(self, *args, **kwargs):
+        if self.unavailable:
+            raise ResearchError(ErrorCode.TRANSPORT_UNAVAILABLE, "Fixture R2 unavailable")
+        return await super().put(*args, **kwargs)
+
+
+async def open_native_router(
+    state, object_id, crypto, transport, *, bucket=None, r2_module=None, r2_unavailable=False
+):
     def open_store():
         return DurableObjectStore.open_existing(
             state.storage, namespace=NAMESPACE, object_id=object_id
@@ -33,7 +54,7 @@ async def open_native_router(state, object_id, crypto, transport):
 
     async def load():
         def read(sql):
-            config = HostedConfiguration.model_validate_json(
+            config = TypeAdapter(HostedConfiguration | HostedResearchConfiguration).validate_json(
                 sql.execute("SELECT payload FROM hosted_authority_config WHERE singleton=1").one()[
                     0
                 ]
@@ -47,6 +68,19 @@ async def open_native_router(state, object_id, crypto, transport):
 
     config, origin = await exclusive(state, load)
     acquire = WitnessHTTPTransport(transport, origin, CONSUMER, allow_loopback=True)
+    objects = (
+        BoundedR2Objects(
+            config.storage,
+            NativeFixtureR2(
+                bucket,
+                r2_module,
+                config.storage,
+                unavailable=r2_unavailable,
+            ),
+        )
+        if isinstance(config, HostedResearchConfiguration)
+        else None
+    )
     return await ExistingResearchRouter.open(
         state,
         open_store,
@@ -55,15 +89,18 @@ async def open_native_router(state, object_id, crypto, transport):
         assignment_key=SEED,
         crypto=crypto,
         acquire=acquire,
+        objects=objects,
     )
 
 
-async def exercise(state, object_id, probe, crypto, transport):
+async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r2_module=None):
     try:
         if probe.action in {"describe", "provision"}:
             if probe.source is None:
                 raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Native source is required")
-            config, principals = configuration(object_id, crypto, source=probe.source)
+            config, principals = configuration(
+                object_id, crypto, source=probe.source, research_profile=probe.research_profile
+            )
             if probe.action == "describe":
                 return config.model_dump(mode="json")
             acquire = WitnessHTTPTransport(transport, probe.origin, CONSUMER, allow_loopback=True)
@@ -75,7 +112,9 @@ async def exercise(state, object_id, probe, crypto, transport):
                 return complete(await acquire(request))
 
             return await exclusive(state, setup)
-        router = await open_native_router(state, object_id, crypto, transport)
+        router = await open_native_router(
+            state, object_id, crypto, transport, bucket=bucket, r2_module=r2_module
+        )
         _, principals = configuration(object_id, crypto, source=router.configuration.source)
 
         async def control():

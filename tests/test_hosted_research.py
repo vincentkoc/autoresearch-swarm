@@ -166,7 +166,8 @@ def enrollment(principal_id, policy_digest, **changes):
     }
 
 
-def enroll_and_claim(client, admitted, principal_id):
+def enroll_and_claim(client, admitted, principal_id, *, worker_client=None):
+    worker_client = worker_client or client
     caps = client.capabilities()
     assert caps["execution"] == "cpu-claim-only"
     enrolled = client.command(
@@ -177,13 +178,13 @@ def enroll_and_claim(client, admitted, principal_id):
     worker = WorkerData.model_validate(enrolled["data"])
     sampler = ClockSampler(worker.assignment_authority, clock_admission=worker.clock_admission)
     waiting = sampler.begin()
-    estimate = waiting.complete(client.worker_clock(waiting.challenge))
+    estimate = waiting.complete(worker_client.worker_clock(waiting.challenge))
     claim = {
         "worker_id": worker.binding.worker_id,
         "session_id": worker.binding.worker_session_id,
         "job_id": admitted.job["id"],
     }
-    claimed = client.command(
+    claimed = worker_client.command(
         "worker.claim_job",
         claim,
         idempotency_key="claim",
