@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Specify a fully hosted authority path with native clock witnesses, serialized
+  acceptance, source-epoch retirement and explicit recovery qualification. Keep
+  the existing hybrid profile and mark hosted authority as unimplemented.
+
 - Replay immutable Temporal v1 histories in the normal offline suite. Preserve actual retry, continuation and transferred-checkpoint histories with bounded capture, decoded-payload privacy checks and an incompatible-workflow negative control.
 
 - Publish periodic verified cache hints from local and scoped drivers outside heartbeat work. Replay uncertain observations, preserve shutdown ownership and consume ranked offers while retaining evaluation authorization and campaign concurrency checks.

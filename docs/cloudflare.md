@@ -37,6 +37,11 @@ unqualified. Its SQL and signing adapters remain useful, but a complete hosted
 authority requires a separately designed and qualified time contract. The hybrid
 route must not be reported as completion of that original deployment profile.
 
+The [hosted authority implementation design](hosted-authority.md) keeps domain
+state in a Durable Object and obtains native clock witnesses from a separate
+service. It defines serialized acceptance, epoch retirement and the required
+qualification slices. This design is not enabled hosted support.
+
 ## Native delivery gateway
 
 `create_delivery_app` exposes four bounded operations around the existing
