@@ -7,7 +7,7 @@ import asyncio
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import httpx
 
@@ -17,6 +17,20 @@ from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.runtime import LocalRuntime, read_private
+
+
+def _emit_json(value: Any, *, stream: TextIO | None = None) -> None:
+    """Emit canonical UTF-8 JSON regardless of the terminal or pipe's text encoding."""
+    target = stream if stream is not None else sys.stdout
+    payload = canonical_bytes(value) + b"\n"
+    buffer = getattr(target, "buffer", None)
+    if buffer is None:
+        target.write(payload.decode("utf-8"))
+    else:
+        target.flush()
+        buffer.write(payload)
+        buffer.flush()
+    target.flush()
 
 
 def parser() -> argparse.ArgumentParser:
@@ -518,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     activation_request,
                 )
-                print(canonical_bytes(result).decode("utf-8"))
+                _emit_json(result)
                 return 0
             if args.backup_action == "route":
                 if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
@@ -539,7 +553,7 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     request,
                 )
-                print(canonical_bytes(route.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(route.model_dump(mode="json"))
                 return 0
             if args.backup_action == "admit":
                 if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
@@ -561,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.path,
                     elected,
                 )
-                print(canonical_bytes(admitted).decode("utf-8"))
+                _emit_json(admitted)
                 return 0
             if args.backup_action == "request-claim":
                 if args.state_dir or args.token_file:
@@ -574,7 +588,7 @@ def main(argv: list[str] | None = None) -> int:
                     restore_id=args.restore_id,
                     expected_digest=args.digest,
                 )
-                print(canonical_bytes(proof.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(proof.model_dump(mode="json"))
                 return 0
             if args.backup_action == "claim":
                 if args.state_dir is None or not (args.state_dir / "identity.json").is_file():
@@ -596,7 +610,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.path,
                     proof,
                 )
-                print(canonical_bytes(claimed.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(claimed.model_dump(mode="json"))
                 return 0
             if args.backup_action == "restore":
                 if args.state_dir or args.token_file:
@@ -609,7 +623,7 @@ def main(argv: list[str] | None = None) -> int:
                     restore_id=args.restore_id,
                     expected_digest=args.digest,
                 )
-                print(canonical_bytes(receipt.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(receipt.model_dump(mode="json"))
                 return 0
             if args.backup_action == "export":
                 runtime = LocalRuntime.open(args.state_dir)
@@ -626,13 +640,11 @@ def main(argv: list[str] | None = None) -> int:
                 if args.state_dir or args.token_file:
                     raise ValueError("Backup verification does not open controller state")
                 manifest = verify_backup(args.path, expected_digest=args.digest).manifest
-            print(
-                canonical_bytes(
-                    {
-                        "manifest_digest": manifest.digest,
-                        "manifest": manifest.model_dump(mode="json"),
-                    }
-                ).decode("utf-8")
+            _emit_json(
+                {
+                    "manifest_digest": manifest.digest,
+                    "manifest": manifest.model_dump(mode="json"),
+                }
             )
             return 0
         if args.action == "engine":
@@ -658,7 +670,7 @@ def main(argv: list[str] | None = None) -> int:
                     timeout_ms=args.timeout_ms,
                     probe_directory=args.probe_dir,
                 )
-                print(canonical_bytes(observation.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(observation.model_dump(mode="json"))
                 return 0 if observation.status == "available" else 3
             else:
                 if args.engine_action == "register":
@@ -680,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
                     registered = read_registration(args.file)
                     verify_registration(registered)
                 result = registered.public_description()
-            print(canonical_bytes(result).decode("utf-8"))
+            _emit_json(result)
             return 0
         if args.action == "worker" and args.worker_action in {
             "describe",
@@ -698,11 +710,7 @@ def main(argv: list[str] | None = None) -> int:
                 from research_swarm.workers.remote_replacement import install_replacement
 
                 worker = install_replacement(args.original_worker_dir, args.worker_dir, args.bundle)
-                print(
-                    canonical_bytes(
-                        {"state": "installed", "worker": worker.model_dump(mode="json")}
-                    ).decode("utf-8")
-                )
+                _emit_json({"state": "installed", "worker": worker.model_dump(mode="json")})
                 return 0
             if args.worker_action == "recover":
                 from research_swarm.workers.recovery import recover_worker_attempt
@@ -710,7 +718,7 @@ def main(argv: list[str] | None = None) -> int:
                 report = recover_worker_attempt(
                     args.worker_dir, args.attempt, route_id=args.route_id
                 )
-                print(canonical_bytes(report.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(report.model_dump(mode="json"))
                 return 0 if report.delivery_state in {"quarantined", "controller_terminal"} else 3
             if args.worker_action == "install-recovery-route":
                 from research_swarm.domain.backup import BackupCustodyPin
@@ -727,14 +735,12 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     BackupCustodyPin.model_validate(_request(args.source_pin)),
                 )
-                print(
-                    canonical_bytes(
-                        {
-                            "state": "installed",
-                            "route_id": installed.signed.route.route_id,
-                            "route_digest": installed.signed.digest,
-                        }
-                    ).decode("utf-8")
+                _emit_json(
+                    {
+                        "state": "installed",
+                        "route_id": installed.signed.route.route_id,
+                        "route_digest": installed.signed.digest,
+                    }
                 )
                 return 0
             if args.worker_action == "describe":
@@ -754,7 +760,7 @@ def main(argv: list[str] | None = None) -> int:
                     if args.clock_admission
                     else None,
                 )
-                print(canonical_bytes(description.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(description.model_dump(mode="json"))
             else:
                 with connect_worker(args.worker_dir, bundle_path=args.bundle) as enrollment:
                     if args.worker_action == "start":
@@ -767,15 +773,13 @@ def main(argv: list[str] | None = None) -> int:
                                 maximum_backoff_ms=args.maximum_backoff_ms,
                             ).run(once=args.once)
                         )
-                        print(canonical_bytes(outcome.model_dump(mode="json")).decode("utf-8"))
+                        _emit_json(outcome.model_dump(mode="json"))
                         return 3 if outcome.state in {"blocked", "disconnected"} else 0
-                    print(
-                        canonical_bytes(
-                            {
-                                "state": "connected",
-                                "worker": enrollment.worker.worker.model_dump(mode="json"),
-                            }
-                        ).decode("utf-8")
+                    _emit_json(
+                        {
+                            "state": "connected",
+                            "worker": enrollment.worker.worker.model_dump(mode="json"),
+                        }
                     )
             return 0
         if args.action in {"init", "serve"}:
@@ -791,7 +795,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime = LocalRuntime.open(args.state_dir, storage_config=storage)
             runtime.principal(args.token_file).require("service.manage")
             if args.action == "init":
-                print(canonical_bytes(runtime.identity.model_dump(mode="json")).decode("utf-8"))
+                _emit_json(runtime.identity.model_dump(mode="json"))
                 return 0
             import uvicorn
 
@@ -820,7 +824,7 @@ def main(argv: list[str] | None = None) -> int:
                 make_mcp(client, authorize_local_capture=capture).run(transport="stdio")
                 return 0
             result = _execute(client, args)
-            print(canonical_bytes(result).decode("utf-8"))
+            _emit_json(result)
             if args.action in {"worker", "run"} and result["state"] in {"blocked", "needs_review"}:
                 return 3
             if args.action == "evaluation" and result["state"] in {
@@ -843,13 +847,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 3
         return 0
     except ResearchError as error:
-        print(canonical_bytes(error.as_dict()).decode("utf-8"), file=sys.stderr)
+        _emit_json(error.as_dict(), stream=sys.stderr)
         return 2
     except (ValueError, OSError, httpx.RequestError) as error:
         failure = ResearchError(
             ErrorCode.PROJECT_CONTRACT_INVALID, "Operation failed: " + type(error).__name__
         )
-        print(canonical_bytes(failure.as_dict()).decode("utf-8"), file=sys.stderr)
+        _emit_json(failure.as_dict(), stream=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130

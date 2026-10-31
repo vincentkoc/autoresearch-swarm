@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Write CLI JSON responses and errors as canonical UTF-8 bytes. Redirected Windows
+  output no longer turns a successfully replayed report containing Unicode into
+  an encoding failure; text-only in-process capture remains supported.
+
 - Extend the native-source workerd qualification with separately provisioned
   scoped input transfers for ordinary source and a named campaign artifact.
   Record the passing admission-only runtime receipt without widening its claim.
