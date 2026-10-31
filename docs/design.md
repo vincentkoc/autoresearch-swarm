@@ -1444,11 +1444,11 @@ The adapter contract specifies observable behavior. It does not require identica
 | Primitive | Local | Temporal-backed | Cloudflare-backed |
 |---|---|---|---|
 | API | Local Python service. | Same research API. | Workers-hosted facade or equivalent. |
-| Domain authority | SQLite. | SQLite for small deployments or a transactional server store. | SQLite Durable Object authority, initially per workspace/lab. |
+| Domain authority | SQLite. | SQLite for small deployments or a transactional server store. | Supported profile: qualified native controller through an authenticated gateway. Proposed authoritative Durable Object profile remains unsupported. |
 | Artifacts | Filesystem. | Filesystem or object storage. | R2 or another supported object store. |
 | Dispatch/waits | Persisted intents plus asyncio. | Workflows/Activities and external completion or signals. | Workflows and external events. |
 | Native compute | Local or remote worker. | Same worker protocol. | Same worker protocol. |
-| Query projection | Domain queries. | Domain queries or reporting projection. | Object-local queries, optional D1 projection. |
+| Query projection | Domain queries. | Domain queries or reporting projection. | Native domain queries through the facade; optional reporting projection. |
 | Additional queue | Not required. | Temporal task routing. | Optional Queues, not required initially. |
 
 A hosted provider can be adopted without adopting its agent framework.
@@ -1492,14 +1492,20 @@ around the native authority. The original hosted-authority exit criteria remain
 unmet; this is not an implicit UTC fallback or a claim of equivalent qualification.
 See [the implemented boundary and gateway](cloudflare.md).
 
-The recommended lean hosted shape is:
+The implemented hybrid shape is:
 
 - Workers for API and MCP access.
-- A SQLite-backed Durable Object for authoritative workspace transitions.
+- The qualified native controller for authoritative workspace transitions.
+- A Durable Object for the transport registry, without domain execution authority.
 - R2 for artifacts.
-- Workflows for durable orchestration.
+- Workflows for durable delivery against saved domain intents.
 - Optional D1 for cross-campaign reporting.
 - Optional Queues for additional dispatch buffering.
+
+The original fully hosted profile and its later exit criteria remain a design
+exception requiring an independently qualified authority-time contract. The
+hybrid implementation does not satisfy those criteria. No UTC fallback is
+permitted, and this clarification does not authorize a hosted deployment.
 
 Keep all campaigns that share a resource under one compatible reservation authority. Do not split a shared device's lease and budget across unrelated objects without a new coordination design.
 

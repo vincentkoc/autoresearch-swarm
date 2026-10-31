@@ -955,10 +955,10 @@ gate counts ties as non-wins. Rejection or inconclusive evidence is a valid resu
 do not replace the seed panel after seeing outcomes.
 
 Reserved seeds remain unavailable to ordinary trial submission. The benchmark
-setup below supplies narrow authority for its planned initial comparator trials.
-Held-out candidate execution, assessment and adoption remain separate work. The
-reservation proves controller-observed ordering; it cannot certify that no
-external experiment used the same data or seeds.
+commands below authorize planned comparator and candidate execution, complete
+panel assessment and explicit policy adoption. Reservation proves
+controller-observed ordering; it cannot certify that no external experiment
+used the same data or seeds.
 
 ## Approve and admit ordinary policy training
 
@@ -1089,8 +1089,8 @@ byte-service failure. Server consumers must call `require_current_training`
 before relying on that receipt as current evidence; it revalidates research data,
 execution, settlements, checker eligibility and publication bindings.
 
-This receipt qualifies a checked numerical update. Held-out evaluation and an
-explicit adoption decision remain separate work. Its attempt proofs do not claim
+This receipt qualifies a checked numerical update. Held-out evaluation and
+explicit adoption use the separate commands below. Its attempt proofs do not claim
 to aggregate every historical training retry or total campaign cost; those remain
 available through the ordinary ledger.
 

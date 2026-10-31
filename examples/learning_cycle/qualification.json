@@ -1,0 +1,1136 @@
+{
+  "definition": {
+    "claim": "One predeclared seed panel against a weak categorical prior; zero LLM calls.",
+    "definition": {
+      "action_rates": [
+        0.6,
+        0.05
+      ],
+      "baseline_logits": [
+        -0.55,
+        0.55
+      ],
+      "development_seeds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "future_probe_seed": 201,
+      "gate": {
+        "confidence": 0.95,
+        "minimum_effect": 0,
+        "schema_version": "1.0",
+        "seeds": [
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109,
+          110,
+          111,
+          112,
+          113,
+          114,
+          115,
+          116
+        ],
+        "version": "paired-sign-v1"
+      },
+      "reward_scale": 0.1,
+      "schema_version": "1.0",
+      "training_rate": 10
+    },
+    "digest": "sha256:e7018d6d7eb66ea3c059894f60cb46ea1c1b2bfb3886f5d89d9b56e95e789cc7",
+    "execution_fingerprint": "sha256:989d46fa028d1d39de2c9929d7a02c91a2ae45b74c7e217818275a3c5107d96a",
+    "implementation": {
+      "package/__init__.py": "sha256:03c4aa748ef3e8448f4143ea7b4703631f0afc9f3a182754cc117871252b30d3",
+      "package/__main__.py": "sha256:13e751acca9f2263e57a167c6ebb5844ec6ccfb8658c49dfa04291af19f177e4",
+      "package/api/__init__.py": "sha256:816b0614cf3243e539f24b9be0dd41068a8329820d2a5864552e9a8f7a3ea4b1",
+      "package/api/delivery.py": "sha256:882a3df047abc0c539a9d0a5059c8fe95b890a87b5406424c785738d193bda6c",
+      "package/api/http.py": "sha256:7e3660abd7c29fedd14761546430ae6b31019316e9ff2947a708b60322f1b7d4",
+      "package/api/mcp.py": "sha256:83b2c2da7fd82d1cac786bec2a1f53d762629cf15aab9dac225ef08f59b653de",
+      "package/checkpoints/__init__.py": "sha256:824fccc6ea87dcc9fe0a81f64cb595714411644a7bf584744bf7a4b873723851",
+      "package/checkpoints/activation.py": "sha256:b6c9ed0bf0fbd15cc77db1671cfc4fc920c4fcb6e61ebf76ae17b0855a8f50d1",
+      "package/checkpoints/admission.py": "sha256:707efb7ac6b0fe58b3548f47094d655433036fd599c8e17cdb69aaf4d0c32f70",
+      "package/checkpoints/backup.py": "sha256:581d861109a70e42b0caf6590e7fa36f10e5e2a38e2bf3fc492d399d7f032266",
+      "package/checkpoints/claims.py": "sha256:28165ecd2347cabb58ea66611ed986e3da76b2a7531e0f80af63a088f0991652",
+      "package/checkpoints/files.py": "sha256:6f483fd88dd68116f409417a36de6eb0878ff83bb2044ef9a41bf17bee2fa87e",
+      "package/checkpoints/lifecycle.py": "sha256:9dcd24451729ce8ed5b72adc864d19f06efe7d5572f4febf3ce61a2e1a9cc9cc",
+      "package/checkpoints/preservation.py": "sha256:42312134dac5b7876ce945977ee4f91c4c04a67db34a1546152e0dc48b999f8f",
+      "package/checkpoints/restore.py": "sha256:87e340082945a9ee5202ba961215cde0946701339ed20997dac9dcbcfb652beb",
+      "package/checkpoints/routes.py": "sha256:243a730c403a5919e0a864cf15294af010ac21bfae5e16428f52d040ed7e62f6",
+      "package/cli.py": "sha256:306569fe56d587b945e4407893c548b56f76fa83ad592a3b5d6934cb7f0f5989",
+      "package/client.py": "sha256:a053bde9990ebd2148c7d148c4e079de5189332969c0e647a5da9d09d64bb1b2",
+      "package/control/__init__.py": "sha256:ef4e650a83cf377028542baa087882c3e7198be2d7d5484b20a2bb86d713211c",
+      "package/control/acceptance.py": "sha256:772e0c8f3f29cb10f157e876b1e9d9180b1da8b9bd31dd2e8608699d10ee436f",
+      "package/control/acceptance_models.py": "sha256:81e459e358e1d52989b2bb7a2f0686aae5039e3324ddc812ac99253a1c2c07c3",
+      "package/control/activation_accounting.py": "sha256:44dd527bc6e0466962ed3353eca59d5b257159ce35b9f6deda2210bd0acdfea1",
+      "package/control/activation_view.py": "sha256:76e1eb2594bc8df7c42f75711894aee7ea987a99f1e372aee10af76e09a8ac1c",
+      "package/control/auth.py": "sha256:f130a22cb302be43ef874c26935f7e3d303d492bc04665cbc021b2a97ebe4d90",
+      "package/control/authority_clock.py": "sha256:2bb3f357d3320900d2607b0cc7d83727358b3c46de8a74997105a0caecc1202a",
+      "package/control/backup.py": "sha256:c6a617efe5805de6cdc3108eea8cf3111ad40328858223ee7421cc5051bee52a",
+      "package/control/benchmark_admission.py": "sha256:6604f4aeba865b9c9027e62eeba761eb69d77fb8ca6ff5f9d1d0adf30a8e105e",
+      "package/control/benchmark_assessment.py": "sha256:ae5c7fd02522808b49ead8b31b0da51073e58c669890d6893615034317314658",
+      "package/control/benchmark_assessment_models.py": "sha256:0ec3c7c1e0f9901984f08a54cb1085235214866b4398c89728c5b190f5b8d373",
+      "package/control/benchmark_execution.py": "sha256:276625f609a14a5dfa7cf314008a5508bc7a363fa77030536293089c211a722e",
+      "package/control/benchmark_execution_models.py": "sha256:413b9a6e987eb4d5130dd30e25a950712be2e6703ce4731358cf50342fc5baa9",
+      "package/control/benchmark_guard.py": "sha256:0231d163ecf368889bde3abbbb01ed024bb3b4e0020a819a40d5ca5d2c3541f3",
+      "package/control/benchmark_models.py": "sha256:0f0bf85412732ce3d55b23e827635b080b979186d0a3668f0527564f0796fb1e",
+      "package/control/benchmark_proposals.py": "sha256:b12049bc9fa0a919ef150a1c007c3d8aeee17bb4b7f29d013016a912c7e29eef",
+      "package/control/benchmark_trials.py": "sha256:3b78f8180f39c5383fad83cb931e4675523e8a26aef6ef5ccdb53c473e2ae246",
+      "package/control/benchmarks.py": "sha256:de6d78d25109d9e64bc05dfa7b87ff5b74ef4cda29a5652765240d7aabdf20a0",
+      "package/control/campaigns.py": "sha256:13e9723d7ff546eddf5a9ebd2c104e8228a911fef87bbcd0c4f85827b1925e66",
+      "package/control/candidates.py": "sha256:77e61713e0fb339e72b7415c35a9c948e0713cbeaa01efcecddda38d8ec3a2aa",
+      "package/control/child_models.py": "sha256:239f2ff6108a6843952adf47f523c653817346bfe5413c7e6b81fa106ffba523",
+      "package/control/children.py": "sha256:235ecb588fe8f40621344338680f255accc15e030099922894a3cb04ddf130bb",
+      "package/control/closure.py": "sha256:f79015a40ea1a1c447d21c49940eeef6a2af5a143371bbb3e77aec6e53f1caea",
+      "package/control/commands.py": "sha256:b27b1b1bba53e39f9cbcb372ac727f1600bdb366068a378f2db2cd3d1070f4d3",
+      "package/control/comparisons.py": "sha256:4052bafbc0485f3db2d265a50449348d5dd81c359f4345c6ec048e59c8f3ef60",
+      "package/control/completion_models.py": "sha256:6106a2f29f0bc4b77c1f8a2e70121e23fa7f3c495a55ae890de3168d0dc3ea93",
+      "package/control/confirmation.py": "sha256:6fd156932669f5f5df4ce5b5485314144848472cf2c9e1c54ea3c633e52df77c",
+      "package/control/confirmation_assessment.py": "sha256:e70436cb32909e2924d47267a1c922066e4ac604c1da952e0b5dab302e699178",
+      "package/control/confirmation_models.py": "sha256:c6633ac497ef3108a318218cfc92d062ce77e7935d477ca1c499e6cf3d32ea84",
+      "package/control/confirmation_runtime.py": "sha256:fac88ee252119fae70fc05fc807caeb61f85d4250a8e1694c031ce63e2bdb82c",
+      "package/control/dispatch.py": "sha256:c1373ae454076c0123e670627adb7c4282c7e9cfca2f3383a3e9ba52d09484fd",
+      "package/control/evaluations.py": "sha256:bdd11e5b5d6aa0ce2f9e85a9b748c78aeb11c447a343c6ac7bbe8ea94cd05071",
+      "package/control/funding_views.py": "sha256:00349088dcd8ccc6c7f34704ec96c6fbc64ce9327f0ca2c507a8644223393fd4",
+      "package/control/import_models.py": "sha256:e38f88f27dee09f2e15e967ac9bde9070593f0e48b032a3ac9a0f63d4e44b21f",
+      "package/control/imports.py": "sha256:0dea27f3c3357adb259e7779613eba26c57274332c55a9c4505becd9279a84ba",
+      "package/control/learning.py": "sha256:f0118a8c54660a885e8f14e383756a89384407e6c1f0e0acf35de90fac31e4ad",
+      "package/control/learning_admission.py": "sha256:fa97ae8cd9a8f1b8a2e9e9fac139022d5638eac54bea691bddd6acc8cb086a1f",
+      "package/control/learning_costs.py": "sha256:82dc08fa36c8ad34e845415fbaf6ebe17f0de5db9fbd97b3e46ccf5a0c2cd8a0",
+      "package/control/learning_datasets.py": "sha256:868af6c87d6ea774b12e9f44fe675ea5e1fe2210066a91fb7d3b4bcafe3edbff",
+      "package/control/learning_evidence.py": "sha256:7e35440ad7a8c9034a730ac32ddf5220ca7ebc7ee01285f306baa89484d34218",
+      "package/control/learning_guard.py": "sha256:a250a765c2d2db8186fb187571b19e085f7819bf38514fa504e66d849a015ecb",
+      "package/control/learning_inputs.py": "sha256:2ef760d04aef00d0515ebefaaab917907aacfe3c7cda7e943e74b1818ee351c3",
+      "package/control/learning_models.py": "sha256:ca44d67e9eb78dd1946a9b3895c328c7af9f407de977cd81e972efd82710bc7d",
+      "package/control/learning_profiles.py": "sha256:6c6d31503ac7dc0702126cba418089d11600ed09f167fe477f466cb16d47573d",
+      "package/control/learning_publication.py": "sha256:e512eedb2d31795e69c9f14bb0d4b4c926e7c1d1a173a329df2dc9eccb0bc607",
+      "package/control/learning_training_evidence.py": "sha256:739f519ee2eac1d77073483aff16f5abf158c1a1ca465ddbc614364b9fbef731",
+      "package/control/learning_training_models.py": "sha256:ac6a4746420aec44ba9332a5361c37d8e1e456d47a73fae73369faa883dc1a63",
+      "package/control/models.py": "sha256:e5d9be8d981233c6975ee0b46ab4d3de5db18f98f045f87748b2b7e36151a44f",
+      "package/control/obligations.py": "sha256:4a226ee2f3f8bc9534d79ceb7b6d539b4fa6e1453eac0805a523b4cf955f1bdf",
+      "package/control/observation_models.py": "sha256:896ce2f776b1810d26646910115c00308d459c424a4b15cfa520f5361fb0a787",
+      "package/control/observations.py": "sha256:0e43cf1e3a545407c8107bef8f65b0a2a12426bbdb99b89ef5d6404db90c2ead",
+      "package/control/orchestration.py": "sha256:3dfa9ac59c1fe8fa71a4f72b56ccc966e850e0f17b0617d28d11e77d85a28cea",
+      "package/control/orchestration_models.py": "sha256:60c211eea8ad9afadad579cec44386f8a78a19b7a0677acfab93dcd6ac529041",
+      "package/control/orchestration_transfer.py": "sha256:c29f8d27601d8a0fcd1640163ce31da5af1891b5a4c51994b5401d59fdeeff04",
+      "package/control/orchestration_waits.py": "sha256:a0db2d66bfcbf908c7e14c51f665569717fe9f35182895cef3ecde2b54a75e05",
+      "package/control/policy_adoption.py": "sha256:1c9eebfcb0a678a036e871fe29a4a0b475b8e23b276161556322c405d340a3c9",
+      "package/control/policy_guard.py": "sha256:4fe439c5c40b3167eb5b2841333dd003320ca8d4bb804eba82163b9e36542ab0",
+      "package/control/policy_models.py": "sha256:5caea0044996ecd3ceb0b6dc1af8f025617e8e116033a9740efe4f86e0d73b3a",
+      "package/control/portfolio.py": "sha256:b3757dcc1a4b33da40db4e8a0afe972d71c8dfb5396144e3b8b6257633a245ff",
+      "package/control/preflight.py": "sha256:ef8f3f53f6c65d0c036a68625d1cfb4cce9c98082714fff65892a5c946a3cbf9",
+      "package/control/promotions.py": "sha256:08b617096ae3c33ce637123994a8d558e5a5052edce6ca76b37d0d1c9a34cfaa",
+      "package/control/proposals.py": "sha256:f21be0846b34c83964c324ed3df999a09ca5b4a642ee1dcd43f6ffb4962c3cf7",
+      "package/control/queries.py": "sha256:932e6dace3f6c32630e549972a51880936ab60e096c933db9aef4e68ed6bbc04",
+      "package/control/reconciliation.py": "sha256:6416a2b90ccfb3dc077010074bff9376c5c3a6d85246bfbc83ce5586faad0df4",
+      "package/control/recovery_authority.py": "sha256:48d8495853ba4c686791ce10939232196390f910538cd462ba8a922f63cd5985",
+      "package/control/recovery_operations.py": "sha256:2e24a7eb4bb372acbb85861f8abdaa9b53b9ebbcb1977fbab8967f3f12476905",
+      "package/control/recovery_proofs.py": "sha256:2c9d8e08de4191a857b0440887ac88dfddddc0cc7c0873fcba8cf0ad25479acd",
+      "package/control/recovery_readers.py": "sha256:12c5b7c4601b95f6a6b00518eb9cbb4707eabbd5af292a11f0c35e6ed5b8dc69",
+      "package/control/recovery_routes.py": "sha256:47a6cb6afe093bc0ebce81093d280311c4d82d591d7221291d1d90be0f8a5b06",
+      "package/control/recovery_turns.py": "sha256:434cd5325256f1829e62c213bc386acdea7a8e023975f91dfe993a7f2d4aa69e",
+      "package/control/reports.py": "sha256:d7c26d7201a70060bb883e1ab5a38a691fcb86c93be4f394b3e0cfe49026d6aa",
+      "package/control/results.py": "sha256:ae1cdb383d075f55b54034da3eeb1349e4563955b05ba71a2dcfda1765bcfaff",
+      "package/control/scientific_completion.py": "sha256:c6672e3e5d6cef6ab8cbe192ccfaded489661c4c0cfe0931b91a5d2c26d77faf",
+      "package/control/search_admission.py": "sha256:84233193969ef4054f7c8b5ceac121219377f693902d1480d5534289198dd345",
+      "package/control/search_models.py": "sha256:0094cc646ce8dc83022f16846d36e2187f311a691a421ad09cd597d0ca6a9531",
+      "package/control/search_observations.py": "sha256:7454c50f2e90a8d25cfba7268e4816b3c4e8da9002b33cdbaa08a24c35eee623",
+      "package/control/search_selection.py": "sha256:c4f69a918108d0ed779b9fe08b8bb939ccfeb95aa5847c06bc2fb64db57e8d51",
+      "package/control/service.py": "sha256:6a7eff5a39308aec6194ba9350af4cf1617dee5dac68d0bace536ea08925b8d3",
+      "package/control/settlements.py": "sha256:3e394cf0953d64adbdd0448bf74111fab546662545f8fbf0a0bf88c853e86324",
+      "package/control/time_authority.py": "sha256:1f6c5e70d536a230137442b92612304ab882f93303efa23ec6097dcb77ab86c3",
+      "package/control/transfer_view.py": "sha256:e7176d25d27aab1bd5983c8edbf47189e7df79b865e85fa7c5bf30ccc2ca491d",
+      "package/control/trial_allowance.py": "sha256:e669e4d6a462ce070ec2a1b855c5f6eb72059491a99d131a985d119eee3f869d",
+      "package/control/validity.py": "sha256:a5e04a00fe3c9d0ee6fac899675d2723ebfb52d8b6b846684dd4c13654e047f8",
+      "package/control/wait_models.py": "sha256:784c70b9f3232037b1f7274a2cdb93be9f0ef38acf7e8ec4f553bf26f6af82f9",
+      "package/control/worker_artifacts.py": "sha256:82195df3d1cc6de089988ceeec342e46303cecc6ad20d6cbd86eb72d91d7a05c",
+      "package/control/worker_lifecycle.py": "sha256:c5c38d6a9c1ee97de750c24378cccbb5715a95907564c9cc0736ace75aabccc3",
+      "package/control/worker_outputs.py": "sha256:e3a082ee321c0ad619c8d6e6329a9bcccafd76feee6891a4f22c7b828d09d01e",
+      "package/control/worker_queries.py": "sha256:fd91df00d8e5987fada48002ff01949322d0c33c4823b7bdc4d30ab0c3f9be5f",
+      "package/control/worker_records.py": "sha256:05734108099695e4a9b8dfaa1587569f9ed79be3936660688d9e1a39912bb9d3",
+      "package/control/worker_sessions.py": "sha256:a279061dd8bebefded04fecca5b6b010ef9687fed981a52c5e446757c9be9d8b",
+      "package/control/worker_state.py": "sha256:0e932d4c702821a93c3ba8f1a9f390f5ca26e1b7b8c91eccf337bedfe32f085d",
+      "package/control/worker_turnover.py": "sha256:32b17a0bdf4d17551b4ca3c02bf16325a5fe5e792e2e3b66a5232bba8fe628dd",
+      "package/control/workers.py": "sha256:899d174a1b4500175f95dd74fac2c0899499c81a7674fd0d9ce1c9827e78c662",
+      "package/crypto.py": "sha256:f84716b92432f06ab3a85b34f9f6e4e22232dfd086438d877781231009bc6e54",
+      "package/crypto_native.py": "sha256:81f4c1b4bb18fc16be74939247b032aa04c737a7ffded78694f69e8edb28afa7",
+      "package/domain/__init__.py": "sha256:54b6caa271cf8a3d5423b368a0b306bd13f44117a1bc74388227d8840324f786",
+      "package/domain/acknowledgments.py": "sha256:6aba25d7b5a4bf8b4f00cf3ed643c380c69347292fc9e97b320fac6d39f1e71a",
+      "package/domain/artifacts.py": "sha256:f92fa563fbc56693da3b13776e04aa5c7a7e4315b976933ff2186ae54742da26",
+      "package/domain/assignments.py": "sha256:f308a90eea84d78bcaa5903ebbf6bbbdf245d38e3786a9fc15aa8740379d8f82",
+      "package/domain/backup.py": "sha256:3fe12011c65f62dc45bac86be8595df41606d0d5b05fe8b50f950492ec160d3f",
+      "package/domain/budgets.py": "sha256:345aed19183c075d6a7f24059a7a3098db85e69c03dea5e48d87be55f5b21cf2",
+      "package/domain/canonical.py": "sha256:276f0c64c9e5ae8e92bb3e25aae7374742a1722200f30df967286cc0527c80b4",
+      "package/domain/clocks.py": "sha256:dcaa1e14bf7eee473996b067bc31e28fae5eb5febf684a3477f079a67ef85049",
+      "package/domain/controls.py": "sha256:5a366b6c026657d403e84d9b18989b6024b1c681a02bc97e8f4fc87e26ce525e",
+      "package/domain/endpoints.py": "sha256:e719111754f01b6bf3d0b282523bab232db58bfffd0708e7d0587b0a950ff6dd",
+      "package/domain/errors.py": "sha256:01c8e4e994ac289fea2bcdf519a87065346ac029de3533b222f73719d5a15f0a",
+      "package/domain/event_recovery.py": "sha256:9726b43d874e073eb3a0996d70bbdc6758f31d3a676fc31047d6247ef1630585",
+      "package/domain/evidence.py": "sha256:e40f932e36700fec2d511f9ee9afacd0c5a179c17c4e12e43df277a2b50afb58",
+      "package/domain/experiments.py": "sha256:0d4a5996352fdfa7c2002f64676babae0cf45664e5373a6ee7b400bbb0b31c05",
+      "package/domain/funding.py": "sha256:38808692171db6b0f9e651b8875dbb53c3db098c22476622c23dae666420ae95",
+      "package/domain/identity.py": "sha256:ca8bda377da85f578733848f428013a15afcfaf4ea77baa2bb3f843957c2d341",
+      "package/domain/learning.py": "sha256:967af844d63410f2c4979d9c6db2879a4d516cd07b6c903ded6d32f439a85f8d",
+      "package/domain/lifecycle.py": "sha256:c99009b44d1aba7325bf78c2b4fd7571b1304de86bcd1cdb51c224abf645c573",
+      "package/domain/orchestration.py": "sha256:83a5edd54953cf6a5be1e0d0e4a27ba96245dcc98594a72f5db1bcb3557ff6d0",
+      "package/domain/orchestration_transfer.py": "sha256:71ceaf7efc369f8b10e3e42caa571e240ca847122fd7171399b37481ed4c5da4",
+      "package/domain/orchestration_waits.py": "sha256:7721ad5632ea78c6098e88220ff3e82a5e230bb7dbe9041711ae05b8b728ac60",
+      "package/domain/recovery_routes.py": "sha256:0ef0e258712d58777cc3a7f47e9ad79265f5d96c455975d6e0d54063e6c8af0c",
+      "package/domain/types.py": "sha256:04c9bc120104d4f2a0b21464342206500b47743149361014b6c97adfa6311efd",
+      "package/domain/workers.py": "sha256:9be16c9cdcb7ac9fbd1a1d094d3896a668bf14c5c6d32daa584487abf2ec6ca4",
+      "package/engines/__init__.py": "sha256:e5945ef9f0451ce04972616bf7252f8534d04d1671f4df4ec3f072c77aad7957",
+      "package/engines/_launch.py": "sha256:ca9374edbf67c9a3de9f451b2a355717bab099c502d6f04de068cb6c60908e68",
+      "package/engines/_probe.py": "sha256:7ec795635a02d0900318300d61d60b5980b3c93b92597da879d073eb9b779bed",
+      "package/engines/adapter.py": "sha256:88995b9a396520498b3a87deaae873fecd95588fbadc0beeccbb77c2da8cdfbb",
+      "package/engines/custody.py": "sha256:49af536d5dd44dd3c53d60235707a187324c6f0eea01a4ca23ab728ed101aad4",
+      "package/engines/execution.py": "sha256:de3a02ad6b1d4ec64ea98b6ae5aaf0daede95921631a951ab50346617140ed1f",
+      "package/engines/models.py": "sha256:3ae7f7e5f373c7006e1763a2b6c051dd8526f7b51a4e88f50fff012399fdca57",
+      "package/engines/probe.py": "sha256:e6224480adf422221f1101b5cbdf1d44642183ce69fcbfeb25adec373e5f8b3b",
+      "package/engines/registration.py": "sha256:a6d0e7b5e528a6bdaff3ed8107315aac62727ce5cd9fc16e3fc7d9360c982741",
+      "package/engines/registry.py": "sha256:5b25f3549bbc76661c089c009473511ec7551eaa80daa23f7a89f62bbc97e838",
+      "package/evaluation/__init__.py": "sha256:5f7579f6f829e2739483d668c603310e13a6d50b3d468f131111faa9bca3112e",
+      "package/evaluation/eligibility.py": "sha256:3e2db746043ae7c8fc522d80ff1067dbaf79d4d0267c0c2fb38cabcbbe2c022a",
+      "package/evaluation/statistics.py": "sha256:c404f4916d88ba455661e753bcdb3bf7e5d5ee2d635dfa9a119803a211332b5b",
+      "package/learning/__init__.py": "sha256:0846a77a8e1508d63ee6a0b95f3769ff74cdc1c6bdc6f1198de6238d3910dfee",
+      "package/learning/reinforce.py": "sha256:661a2898340d3368f01c070eafe341bebfc43db82db64dce21c09bca6738bc7a",
+      "package/orchestration/__init__.py": "sha256:9f8b3072461043be2c767a2f50f60721490310f25bc01f98d03f72546ffd9dfa",
+      "package/orchestration/bootstrap.py": "sha256:cac0f3891eb17a00ed55fe4e34fc1258a2f38483e13cef99684e379f0ea445df",
+      "package/orchestration/cloudflare.py": "sha256:68d4b532414ed2ddc61a68c72b8ad25c6d30de34cff8399e962a117a43a4531a",
+      "package/orchestration/custody.py": "sha256:51be1cf0005fca13efddb240ab5de1d7217e38c2a94ce9a0fb052c74cba90be9",
+      "package/orchestration/delivery.py": "sha256:4d945a2da94d5d09aaaf131e9ff1223ac20f66c93fa222d6798c2363776bd8e5",
+      "package/orchestration/delivery_models.py": "sha256:2877f2b2e1598602a5e987474d4ec8c6236270912f3aef977c48283d5bb522d3",
+      "package/orchestration/evaluation.py": "sha256:56597d70a8a5bd71d4844bf41a0442e4f8e5881ff34767b8cd31192b3276a13c",
+      "package/orchestration/gateway_models.py": "sha256:7de902935ca97fca83c986ea2bda494ad8f1f62abb9adc73d54cf4a2a1827a4d",
+      "package/orchestration/intents.py": "sha256:d35fa438686228b3aab5354cdcb16ba124f43eba50787945986aad4b7b66c890",
+      "package/orchestration/local.py": "sha256:f95e079297e88180f3a9e6535130a274da1c96eb0c4e376ae71352abb108a7d6",
+      "package/orchestration/local_delivery.py": "sha256:519210a3144542c05913f4d04beb34f21fedb051527cb0f7e168cd7a7924ff2b",
+      "package/orchestration/run.py": "sha256:a31a9f544324f80a6eb8a4b58c2040712a7e7962f20822387ca48c6a4b083815",
+      "package/orchestration/scoped.py": "sha256:01c21ac192d13e14c4b2f919656bdf9d404d871f59b1dc3cdf8b82a6e3128a95",
+      "package/orchestration/search.py": "sha256:2dfc2940df0d6d5b52783497600d90bfe718f3c3c591e008ac15558eda90019f",
+      "package/orchestration/startup.py": "sha256:bfbf886b1a267ed8883d935bc584b9d1a6737d0d488f88798085a2cf2d9ebce6",
+      "package/orchestration/temporal/__init__.py": "sha256:aa7928e4a062f53e7777b39ded7ec02beb4c20cf6e0a5e4ce01042dcb7d62482",
+      "package/orchestration/temporal/activities.py": "sha256:0a035c340ff7d997cde54414bb36175f3ccecbaaa29bc063cf4867c7170512b0",
+      "package/orchestration/temporal/bridge.py": "sha256:ba8f86f8f9de36952fa1d7627e19359e1cc36f0444d041995cbc4b281571e8a2",
+      "package/orchestration/temporal/models.py": "sha256:9ea6c48cdcc747511dbf26c1480dc0241323f7d1ea20c3e1bf67f702cb1336b8",
+      "package/orchestration/temporal/runtime.py": "sha256:c4d5a099a9bc800577168169bfd669742cc4c2baffdf80ce0bd67d602b010346",
+      "package/orchestration/temporal/workflow.py": "sha256:f5c747e92a2a2772bd03174730238d588a10f918a78cd9698014450531f7ad56",
+      "package/orchestration/turns.py": "sha256:8617e14214b6f7d6399e5881eff79aac9792af1a262e57d7c87727746bb1b619",
+      "package/orchestration/waits.py": "sha256:3e7ddc33b96012530636facb0155c568c4af401b0a1214fb6da26e553f4771ac",
+      "package/orchestration/worker_controls.py": "sha256:43ec3174a6ef1b34988aa5c88726c270eb1ad62c903a6de40ee6900b3e3f8c92",
+      "package/projects/__init__.py": "sha256:37a9457ba8a065d55564dbb41fbc22abf55ca35d60378189f78a42bc16f297d4",
+      "package/projects/capture.py": "sha256:21937b5e2552e848842e353c6248c77d44a7ade593db7de2d873d273c4e220a1",
+      "package/projects/manifest.py": "sha256:0a13fd9159c3bf291cf2be63fc715e91adfe67dcc4d3ad56fe96d44af881c9db",
+      "package/projects/native_files.py": "sha256:b0861dea6489105aec83fcf4047cc7735642633a26036d44e9135820ceb9e1fe",
+      "package/projects/source.py": "sha256:170eeaecc655c4974276cb74bf55fe01fb911674b7a61b450433b69a32229e9a",
+      "package/projects/workload.py": "sha256:a318f3ffbdf57272efe0bc6a41d1bcafa5f60ac4122db91c149796a8e1d79f54",
+      "package/recovery.py": "sha256:06e20e76b7a6958ce74e81b94d17a195f347e302a8b1db106f98da06fb94babb",
+      "package/runtime.py": "sha256:166f87069e138d3f8d04e9b36e5e5531286f0c8aea9e1e7f02dffd49ee3ca431",
+      "package/search/__init__.py": "sha256:6b97b496ea10f0912f3e9ab9612f42edeea1a3787f92168ea89368ea4f4e5065",
+      "package/search/common.py": "sha256:5579ee57a9596d7a310ebcdb4ec31d84dc86e7f2487d40d29afac82056d2c1ba",
+      "package/search/greedy.py": "sha256:6c3ed934ba6f04739ecc4b66904c70b83438de003511f9e0a8d49293251e1c20",
+      "package/search/portfolio.py": "sha256:041b0ed0647e2ce3b33f3e8c472bc378af5cfd34cde2fe159f80573dd501b3fc",
+      "package/state/__init__.py": "sha256:95dd371336d611b257b2735157128cdd2cf7d999a53a688cab9844a5a68f49de",
+      "package/state/artifacts.py": "sha256:148374f9f9ca9ce83b5e0c0f727683cd83a024f65639ea3e25863ac0da099ab4",
+      "package/state/byte_operations.py": "sha256:2cc34726cf090593667581711ead673d284c8e3f4a8ba9c90e75481dae09869c",
+      "package/state/database.py": "sha256:44f292275d773997cbf91ab3587e4f998c2cbaa21bdef889a701d0724c88a438",
+      "package/state/drive_closures.py": "sha256:134fe18b430f7f6211e08cf5f5cc141be3918381ae6c4e37d4178af2b545a5b5",
+      "package/state/drive_guard.py": "sha256:37bc23fa286963df0068dfd25edc4bf3478c53b11644808084b10bae9e85bdba",
+      "package/state/event_recovery.py": "sha256:845043d42eadf9576e61654e16bdcabeea758f377ce34ae800394111f8bb49e2",
+      "package/state/events.py": "sha256:b6fe47149d31c25d71cafec5fd7bdb80831b733c2feebb0d3c40b511ee9ba4ff",
+      "package/state/funding.py": "sha256:20f73f9dd85091bd73a00d1abdbb8fa9492faa812b32c552db3cf7e21bf4b312",
+      "package/state/identity.py": "sha256:f9872cf4bbfe43b4636ce09d993c8219c6df46959b4d8a9f08411327d427f893",
+      "package/state/ledger.py": "sha256:5fcb6fa8cd24166db7ba7448a8665b9d54c8afdba412423930482c3d94327113",
+      "package/state/migrations.py": "sha256:a2aa0d5eaa83825db53d48364a44c59f8bbd4e7aa84e66833b075bc75c789240",
+      "package/state/private_files.py": "sha256:490b6bd0310e3bace906504dfe53acd8331dbed52d1cceeca63c4f29185d15e7",
+      "package/state/process_identity.py": "sha256:30f911869af61694e5384b7669df86e77d2712ea866e40ae77a702b30c72c092",
+      "package/state/reader_sessions.py": "sha256:9bf774511d8bfe96cf693fce161fd6e42cdfdeb23157e7fd9fadfd59d0a17de6",
+      "package/state/recovery_activation.py": "sha256:03c424f9e3cc397fb787aff76dbfe3ea8ebb69f1c222986526cff5fc4cabdf43",
+      "package/state/recovery_guard.py": "sha256:fe5529b60c7ab33d249a939eae07a043fb4b7afc55b35602ddfae86c2e1195e9",
+      "package/state/recovery_readers.py": "sha256:85b26b7f073cce1dbd2d415ac4d9c425beed4bddcaa4149133b524e91f4a5b9b",
+      "package/state/recovery_turns.py": "sha256:e9646e78943b434342370648a3de025be8be8b3f3f3ba54ee307037162d2a5b4",
+      "package/state/schema.py": "sha256:1b39aaa4ded760b66b99c05b50fa94631494a600c3f4db6713fd326b3aaaa6db",
+      "package/state/sql.py": "sha256:bf6174fa80a91741a08c81519118fa0be05bb931635832c9337c2bd79b758db3",
+      "package/state/sqlite.py": "sha256:d49c4d23795a7268acadc7cff79c4b5a105fe713907e1b6c200a0d2f91d8a767",
+      "package/state/waits.py": "sha256:cbfb3e9311aa657222e6321887741c3b42e02bb982c1a0828681ac517b701cd0",
+      "package/state/windows_privacy.py": "sha256:9a79357093551a850e73ec6e2dfd7ce6f0eb32a8d3ceb8163e14e210215a9fcc",
+      "package/state/workspace_gate.py": "sha256:3b9ef04ad23ec29ac6aee8c18acb55363ef68aefc42518facba15320199ca659",
+      "package/storage/__init__.py": "sha256:a7590fd2e9ff867290aa3201bc8f7f69b2d54e267d4d0bd1c782a5d85ab58393",
+      "package/storage/base.py": "sha256:ade6a134c299b6aaffc4f9d0c8da5a0a602975a325c7f90e7a23a809a446b694",
+      "package/storage/config.py": "sha256:44dfeff3b7113b5f003759b45a15d0d589d2f7af8c05eb247e5fbad1438d549f",
+      "package/storage/filesystem.py": "sha256:e5404c75b47388af2544730c03f58dacea960d663d7d7d7e0a22f1de4b3b5c88",
+      "package/storage/r2.py": "sha256:18f29671bac40df3fec2f1245e6ee58973256b9d741dbb211d3bd28772e77a12",
+      "package/storage/r2_config.py": "sha256:ee760c28b4051801448df085cd048f4e56354b78885d86b40de8dd3b1705b29e",
+      "package/storage/r2_transport.py": "sha256:581a6a87fd9994979e426d3227824315ddf851d24ddb74b7596698fd193494b0",
+      "package/workers/__init__.py": "sha256:36cf6d803a31b895ecc98592fc33fbae1ab66b619ef7f0a06e2470afde0cedae",
+      "package/workers/_bootstrap.py": "sha256:59e042cc787922876924ea0bea0672f785d1436554cc6e8d2ebf50af80c4e40c",
+      "package/workers/_posix.py": "sha256:f7874a6a6c29dc1fd5948214134320c1de44108f66ecbd0d21c0fcdd944d235c",
+      "package/workers/_windows.py": "sha256:c05455fbe13c5be1af5ee6c8aa236bb610f49d69e0803c611fe45cd510c22644",
+      "package/workers/authority.py": "sha256:9d0aebf6744592b5bddec361c439d4bee77921a374a2ad0b7839ec6b3d956621",
+      "package/workers/clock_channel.py": "sha256:b249a5f95e91befdbfd821e0c87b2f0512bd7abf2d2376e9cf45101e15fbf822",
+      "package/workers/clock_estimates.py": "sha256:27b360a80c59fb79f3a9a9fba058c5524325546a8f96a7cd23ae90691906071e",
+      "package/workers/clock_signatures.py": "sha256:b8ce2471d546af851004c50fbcf096b84325a1ca32efdfb7e806d94b31e62483",
+      "package/workers/clocks.py": "sha256:2f4952ddbc7979e7b5b5de1158a9d5085753f19a3e76e88f6c94ec983c84b654",
+      "package/workers/contracts.py": "sha256:7740394a762144387108542bb9577dadf617b475b008422da66d05c6282fd453",
+      "package/workers/control_inbox.py": "sha256:e3bab72a4b1c838df9a036fed09d2e3f1953da755d1b3e66e1724d519c927317",
+      "package/workers/engine_binding.py": "sha256:88c3b41323bd07f54e6b9c83824fd17d8d068e1f36e1b07e270d7a47ee7cf3bf",
+      "package/workers/journal.py": "sha256:2f2bca66de16f6d16802d062ec74c61b260ba0de92f38cbd0f27f319bcc2f54e",
+      "package/workers/journal_records.py": "sha256:822291c7e9101e440da454af9ab204e86c33f3a93f566a2f918f4b3ce9d64985",
+      "package/workers/local.py": "sha256:c0927fdbb2a827b6ad4fe25c50c9d49d1810676cbc4a90a392ed0bd53273cf55",
+      "package/workers/local_enrollment.py": "sha256:9f6aea6fea239a8c995cc549bc50c9ad5db7a4cb273ca66d431c479aa3c73e99",
+      "package/workers/prepared.py": "sha256:f4a366eec2171b4c574f2ee3c8281d15e373ddcfc2cc3472da909fe19a0642ee",
+      "package/workers/recovery.py": "sha256:b862ed40966fa2d3c192384f77b58ef26ea2ccd75634be6da12b13ee5b08cb50",
+      "package/workers/recovery_routes.py": "sha256:73f5f887aa42b15205e94c76287a318767529bd257a33f414775514228d04ed1",
+      "package/workers/remote_enrollment.py": "sha256:298f05b9e91a637d4b97c440ff5c3baa1f4f619a449b9a03f85c3fbff7849b01",
+      "package/workers/remote_replacement.py": "sha256:8716340d856d912ec0903672da1213866a14c94db923d5b07deb5d45ee011c36",
+      "package/workers/resources.py": "sha256:b7ecef6571c6218e51286dc6c3640493af4e55e249b8dad7009051b16b703e56",
+      "package/workers/signatures.py": "sha256:e63e379d10c334dc62ddd48a9d6b1c1d3610a8f224ff894b7f7474cc150dab51",
+      "package/workers/supervision.py": "sha256:d2fcb73bbf052fa60d9e214b9bb7bd30f4f47d0d635ba49472a556e795185bfc",
+      "package/workers/supervisor.py": "sha256:e1914895f14aaef301a3ed320d3d2bd09c82e30d83f2e39397c2e7addad7f0c0",
+      "package/workers/timed_launch.py": "sha256:0b9d7f2dfa59a64af6e82db47c81ad466f2695e59049fe734508f2e28d5ca22e",
+      "package/workers/timed_supervision.py": "sha256:9af3b90052fcc12d901829a9e67f54417614e2abbd4a4ab8974dfd7815ee0331"
+    },
+    "projects": {
+      "cpu_bigram/common.py": "sha256:48fbec9c5d76f92f307a05214be328cd1067a877de3dab80804977a51d2a17a7",
+      "cpu_bigram/dataset.json": "sha256:7c4d362bc710238a71ad2a74fb5c456e3e1b20e665ad7a53462bad9fe1adf281",
+      "cpu_bigram/environment.json": "sha256:0b42c6e9094d916f0430b529daac954dec91120f34fe8a3b1e7cdfef404a8125",
+      "cpu_bigram/evaluate.py": "sha256:550da40bdb13c82c700cff5cc2fa7a0624a7af979cf19267cf62449e43b88837",
+      "cpu_bigram/research.toml": "sha256:462ef89641de6007c363c48cca5ca7a262e8ad63f5a299e10ff1cb728029b871",
+      "cpu_bigram/research_mlx.toml": "sha256:e7a9871dab2caddd5aece1d21bfdc1dc195dfdf0e268b198fbf23ea0edf2b80b",
+      "cpu_bigram/train.py": "sha256:bf0335a7064499d19369cdb233e5ffe4ab17fb98622ff3ef2051d6917500facf",
+      "cpu_bigram/train_mlx.py": "sha256:88a3f73f61864de8912156b66754491e6338d9b5c1c2a73ba5efce70edacb472",
+      "cpu_policy_learning/common.py": "sha256:d4516b925dd28415383089f9eb6589db8906133b9ab024298872ecbe525404ac",
+      "cpu_policy_learning/environment.json": "sha256:5b2ff176cbe23c64a950747fc09719cbf9819feeb7251663df07229bebf7f3d7",
+      "cpu_policy_learning/research.toml": "sha256:6e5ba8bceab47110365e8c37732838b429085d1a54a6b5da5cea8f22a3853b45",
+      "cpu_policy_learning/train.py": "sha256:23b545952d654c31dea4b2ce8109ec6976310f7dcbc9dcb1f0674a821c4a5bff",
+      "cpu_policy_learning/training.json": "sha256:d8d5ebf9858c08a4c39436e56cfc1187714ab988ec8fbb0ac627ab92859c3f85",
+      "cpu_policy_learning/verify.py": "sha256:45511dabbb48481f9a6dc7deca9b9c94e55a1ae89baa675c58c16f669a95c65c"
+    },
+    "runner": "sha256:953870f022c05a0e64e9302aa9274686a8e3f1f680a73c2d65ddb7e46d6bb57a"
+  },
+  "environment": {
+    "machine": "arm64",
+    "python": "3.12.13",
+    "release": "25.4.0",
+    "system": "Darwin"
+  },
+  "recorded_at": "2026-10-31T04:59:35.837795+00:00",
+  "result": {
+    "adoption": null,
+    "all_campaigns_consumed": {
+      "attempts": "164",
+      "execution_ms": "36990",
+      "proposal_requests": "41",
+      "trial_admissions": "82"
+    },
+    "attempt_states": {
+      "succeeded": 164
+    },
+    "baseline_policy": {
+      "actions": [
+        {
+          "id": "fast",
+          "schema_version": "1.0",
+          "source_digest": "sha256:63f2292a6132e50642aaa97d168be821dfbb8a125284dbd2e1cacbf6cef95282"
+        },
+        {
+          "id": "slow",
+          "schema_version": "1.0",
+          "source_digest": "sha256:fd44f5f2e58de7534dce3e0f99e6f5bea8227b7faf516647db17519ea06c8e9d"
+        }
+      ],
+      "logits": [
+        -0.55,
+        0.55
+      ],
+      "parent_digest": null,
+      "profile": "categorical-softmax-v1",
+      "schema_version": "1.0"
+    },
+    "benchmark_consumed": {
+      "attempts": "128",
+      "execution_ms": "29090",
+      "proposal_requests": "32",
+      "trial_admissions": "64"
+    },
+    "benchmark_id": "c124aedc-96f7-505f-83da-98863ac20b84",
+    "cases": [
+      {
+        "action": "slow",
+        "candidate_value": 1.5822283444467196,
+        "case_digest": "sha256:8b0b50b0b1075351d69fb8cffe39755fdc5e526832d88f9ddf0ccd51fe0212cf",
+        "comparator_value": 1.6529021539955573,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "971",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.7067380954883773,
+        "seed": 108,
+        "side": "challenger",
+        "trial_id": "fa724e11-f737-4065-9612-b7f926830698"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5796472561784116,
+        "case_digest": "sha256:5f48207c7174b0b326185e5700755aae39523f93d518d39688da651c9af500e4",
+        "comparator_value": 1.6414039419118054,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "896",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.6175668573339377,
+        "seed": 103,
+        "side": "challenger",
+        "trial_id": "239f44c5-25f0-40c7-915f-782cc6fe3d8a"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5796376010112347,
+        "case_digest": "sha256:972f73a178b8ac981479b4bf64e1ebc3582e9222a05d8f08fefaec470fb8559a",
+        "comparator_value": 1.6195557333778923,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "891",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.3991813236665753,
+        "seed": 107,
+        "side": "baseline",
+        "trial_id": "1fb7419e-7049-4af8-8981-ba55df5d8bb7"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5844558683263026,
+        "case_digest": "sha256:0ed57fbf14fe6614bd8964d0f3fd5e85f3ce9437532fe01c10838205a4d8a35b",
+        "comparator_value": 1.6247070142011897,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "902",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.40251145874887095,
+        "seed": 110,
+        "side": "baseline",
+        "trial_id": "1ceef6ac-1f5e-479c-9779-395c7cd9e6a4"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5760140094309136,
+        "case_digest": "sha256:05ec9c313933402afb810c635db0639ce1f2e553b04564b31e66610642bedb97",
+        "comparator_value": 1.6389738817713466,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "919",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.6295987234043299,
+        "seed": 114,
+        "side": "challenger",
+        "trial_id": "0bb5f6b7-1635-45ca-9711-980854a160b1"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5778210260727528,
+        "case_digest": "sha256:242b52f816721e53d07591fb5e7ffc565a078124ac09aacfda77ff4948c1b72b",
+        "comparator_value": 1.6288698452224109,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "870",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.5104881914965809,
+        "seed": 101,
+        "side": "challenger",
+        "trial_id": "ac6dd3e9-9bee-477e-8f79-d38af4ffa1a3"
+      },
+      {
+        "action": "fast",
+        "candidate_value": 1.7033175176293816,
+        "case_digest": "sha256:c5dbcc69a40789a926504d01a33a761b922dcda586641cae708f0cb51f5dd75b",
+        "comparator_value": 1.6075151079566434,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "904",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": -0.9580240967273812,
+        "seed": 111,
+        "side": "baseline",
+        "trial_id": "3272117a-4a75-4721-ab3a-2bda7ad81aad"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5804152992384488,
+        "case_digest": "sha256:1267cabedb97e66c2cb9d2385ac85074dcda63123018d74bcdcef6ed30a80f97",
+        "comparator_value": 1.6208124848881131,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "909",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.40397185649664324,
+        "seed": 105,
+        "side": "baseline",
+        "trial_id": "7052f16a-3cfc-4e6b-b25c-66adff70dc9c"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5793670312215626,
+        "case_digest": "sha256:c28b61bafd33f16ff52cfe25ec191e0f9d772da5d6f9465ae8a8b3856a2bd628",
+        "comparator_value": 1.6038690006276417,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "889",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.24501969406079072,
+        "seed": 104,
+        "side": "challenger",
+        "trial_id": "dd1d1583-31ca-43dd-951f-9d7075017a66"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5804782806177862,
+        "case_digest": "sha256:0cd191528e73cff13d9e3babacb6d537df09c57ce2cc5ca8d950b0c6ed65358b",
+        "comparator_value": 1.6220287735350731,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "885",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.41550492917286963,
+        "seed": 109,
+        "side": "baseline",
+        "trial_id": "f9a9d8e6-384d-4eb8-b5ec-0aedb7820c94"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5833316156336714,
+        "case_digest": "sha256:1ffbd0c8da1d2c5ef6ad6191a216628ea54297500a3aa095821e89fc5cd52e97",
+        "comparator_value": 1.6322862354949093,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "927",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.48954619861237836,
+        "seed": 112,
+        "side": "baseline",
+        "trial_id": "41eb135a-f5e8-4045-adf7-666e1233e2af"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.583107098879546,
+        "case_digest": "sha256:5cb642245c148c98a47a94e7dc525f7c829a5bf026a3289a17080c7aa5c46551",
+        "comparator_value": 1.6121587160925708,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "891",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.2905161721302485,
+        "seed": 113,
+        "side": "challenger",
+        "trial_id": "78242360-e215-44ef-a349-cb7e0f4e56de"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5805976493025224,
+        "case_digest": "sha256:f799776b20378c27236c00a7e95ba4f66497e66d0e8fcf8dee20410153a0de5f",
+        "comparator_value": 1.607627020501117,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "887",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.270293711985945,
+        "seed": 105,
+        "side": "challenger",
+        "trial_id": "6de4706b-7836-47b6-8125-e93640b0d7b8"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.581318234320575,
+        "case_digest": "sha256:2f2d64aff953517411deef4e077edabe7c240a759908ba3d558f07cfd95c91db",
+        "comparator_value": 1.6149915217259079,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "901",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.3367328740533293,
+        "seed": 116,
+        "side": "baseline",
+        "trial_id": "834f244b-e09d-4e30-93da-6018d7a7475d"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5824260953710392,
+        "case_digest": "sha256:7d3371b04e196b1808f4c557368ce186a39c7a1bf0a01f2ec5dd236c88935eb5",
+        "comparator_value": 1.5990889766399856,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "912",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.1666288126894644,
+        "seed": 116,
+        "side": "challenger",
+        "trial_id": "13e78c87-f4e8-4400-a49e-bf2cf3f744e1"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5790812938739385,
+        "case_digest": "sha256:03181ef5446293f94fbff470e6bf07ce3f3298e3694995d8da597b72af0f861b",
+        "comparator_value": 1.6128068671411393,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "914",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.33725573267200826,
+        "seed": 106,
+        "side": "challenger",
+        "trial_id": "b3de2b62-d775-4c24-be4a-7cfbfed69549"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.583476477001628,
+        "case_digest": "sha256:8492c52cbc88dc9136b1eb7652345c45db31f33593b32c640f41e470bb7cd68a",
+        "comparator_value": 1.6393335728225336,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "916",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.5585709582090548,
+        "seed": 113,
+        "side": "baseline",
+        "trial_id": "f1cd9509-af25-4704-a430-fda5c9271c80"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5822939352011491,
+        "case_digest": "sha256:99b1bca05921d4f37e52620cbc550c7dd1920bee82663cff87f9560b92d31bdd",
+        "comparator_value": 1.6329477350280885,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "896",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.506537998269394,
+        "seed": 101,
+        "side": "baseline",
+        "trial_id": "73135a49-d15c-4de7-92ba-d3af8162b9f2"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5811887668392612,
+        "case_digest": "sha256:21be6c8107e23dc87b4815f38927d99a4aca0a734feaf9d9b43ae52b85291f09",
+        "comparator_value": 1.6314856584526416,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "958",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.5029689161338036,
+        "seed": 106,
+        "side": "baseline",
+        "trial_id": "74c6d4c9-4213-4a88-87dd-66a5af099ad3"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.584639352175859,
+        "case_digest": "sha256:ab068ba028a5af6ed0fcc538cddd1f7fb2f5da3ce0c6baf9ec70e1664cc5e1dc",
+        "comparator_value": 1.6407731657268492,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "879",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.5613381355099012,
+        "seed": 115,
+        "side": "challenger",
+        "trial_id": "e5c747b1-1ce5-49d8-8837-6cef9818c7f7"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5797239635224887,
+        "case_digest": "sha256:4eaf14051f78559278b74dbb7fd11b0da008a286c5a03ac8dee173b9a65ebe44",
+        "comparator_value": 1.6172687228051252,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "924",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.37544759282636564,
+        "seed": 102,
+        "side": "baseline",
+        "trial_id": "60edf0fd-581e-4240-95e8-baeb5aea4468"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.579052226227357,
+        "case_digest": "sha256:fd171ade841cdd2d6bccf96975a3518f1821959d7f80cdf5418c07fda86e10a9",
+        "comparator_value": 1.6673542597855022,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "886",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.8830203355814525,
+        "seed": 110,
+        "side": "challenger",
+        "trial_id": "01b37602-f0ac-4d72-a299-ec1d94232997"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5786373684692483,
+        "case_digest": "sha256:183a0bbf4da6da0c2a71695e74ff79dc550b85aaa67fcf13e2d4c77f14d260e0",
+        "comparator_value": 1.6474514718508055,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "918",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.6881410338155725,
+        "seed": 109,
+        "side": "challenger",
+        "trial_id": "0ca9f569-2a70-4772-b517-ebc9b3309dea"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5759875541741666,
+        "case_digest": "sha256:49856cedb624b40beace04cf6c5973ed1ac0ea33a3fce89ab25f83475bfd1ca7",
+        "comparator_value": 1.6243325154708452,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "905",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.48344961296678646,
+        "seed": 104,
+        "side": "baseline",
+        "trial_id": "a85b08d1-ff01-4fdd-84c1-c53b3e3c612f"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5777062421564847,
+        "case_digest": "sha256:f29e30e2f5a16bd962981337ea17b416a623aa9089fb883c6cfa73c409125a90",
+        "comparator_value": 1.6263310364308217,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "885",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.4862479427433697,
+        "seed": 114,
+        "side": "baseline",
+        "trial_id": "4f318536-c2d7-444e-b893-65c571aa5821"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5796829394432108,
+        "case_digest": "sha256:0eeb19eac6b532cfa25c0d17d5d547275d4affbf69c8e3cf287b37478485e1f9",
+        "comparator_value": 1.6407699651800987,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "917",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.6108702573688785,
+        "seed": 111,
+        "side": "challenger",
+        "trial_id": "742d8757-3113-439e-b434-0975cb3ec315"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5831055331138268,
+        "case_digest": "sha256:3e280aae48ff426bfd7a34cbd8d8fc26a696091a5dafc1d58a718e74d1ae34fd",
+        "comparator_value": 1.6468391822982202,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "923",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.6373364918439339,
+        "seed": 108,
+        "side": "baseline",
+        "trial_id": "62f3a11e-776f-4ab8-87e6-76a1ded4010f"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.58478102597961,
+        "case_digest": "sha256:132587f091f9665711f01b233937fdfc638798a542611a825b0132fd7b34c9ab",
+        "comparator_value": 1.6484847965865355,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "890",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.6370377060692545,
+        "seed": 102,
+        "side": "challenger",
+        "trial_id": "4f0925c5-a449-4539-9cd2-31723d22f516"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5805547909283284,
+        "case_digest": "sha256:c264581d1c00ca16b833887bcb336f1d0e8eac1e42373861f588b477ef8d82bf",
+        "comparator_value": 1.6251142091927269,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "920",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.44559418264398465,
+        "seed": 112,
+        "side": "challenger",
+        "trial_id": "23c2f274-5c5f-42bc-8a96-7a85b79d1020"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5790559535087711,
+        "case_digest": "sha256:8d95544e9997305fce215a5da7bd978948ac2a9a3d4fbcae962cec04e706bd66",
+        "comparator_value": 1.6446371508857205,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "926",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.6558119737694934,
+        "seed": 107,
+        "side": "challenger",
+        "trial_id": "e8a33326-77db-4806-b425-bf7fac4c0464"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.5820368621298317,
+        "case_digest": "sha256:80b9eede04eed3f4ddf2551ec5d8fae9a7eb8f0a9f217b5b2f2be5292f0615b9",
+        "comparator_value": 1.6496707771007832,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "986",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.676339149709515,
+        "seed": 103,
+        "side": "baseline",
+        "trial_id": "03ab9fa9-6d6d-4704-a6f5-30a6cb12411a"
+      },
+      {
+        "action": "slow",
+        "candidate_value": 1.576359187077468,
+        "case_digest": "sha256:fd51b8191a46c5f07d2143850a3fb0ad12b54dbfea8d1cc12cd8452b03fdaf21",
+        "comparator_value": 1.6266747375757427,
+        "consumed": {
+          "attempts": "4",
+          "execution_ms": "893",
+          "proposal_requests": "1",
+          "trial_admissions": "2"
+        },
+        "reward": 0.5031555049827463,
+        "seed": 115,
+        "side": "baseline",
+        "trial_id": "015c1805-84fd-4a31-a9a3-86ccd0f88d2b"
+      }
+    ],
+    "claims": [
+      "native CPU; sequential execution; zero LLM calls",
+      "one predeclared held-out seed panel; same tiny synthetic workload",
+      "weak baseline; no general policy superiority or parallel scaling claim",
+      "historical result replay; current use still requires controller evidence checks"
+    ],
+    "definition_digest": "sha256:e7018d6d7eb66ea3c059894f60cb46ea1c1b2bfb3886f5d89d9b56e95e789cc7",
+    "development": [
+      {
+        "action": "fast",
+        "reward": 0.03950251940889826,
+        "seed": 1,
+        "trajectory_digest": "sha256:c51f678e9c2926745504e449c3f8d3b5c4b5054634d346f24462b63d7e90c5fe"
+      },
+      {
+        "action": "slow",
+        "reward": 0.5969971968890553,
+        "seed": 2,
+        "trajectory_digest": "sha256:a999f10b6f416dbcbcae856533d143313942fb06ee5ec34305ac2f4a3b0086df"
+      },
+      {
+        "action": "slow",
+        "reward": 0.7491802305496176,
+        "seed": 3,
+        "trajectory_digest": "sha256:77b7cf1db569a486f4701b8a6349b7e2f071c4315fe28d4491b1600f25c889e6"
+      },
+      {
+        "action": "slow",
+        "reward": 0.8317920180124672,
+        "seed": 4,
+        "trajectory_digest": "sha256:c8b4ed3c5cd6c47124dd06f63ecf9a78b6e9d804e1873909983d02fcfb9f346d"
+      },
+      {
+        "action": "fast",
+        "reward": -1,
+        "seed": 5,
+        "trajectory_digest": "sha256:dbe2364e59f91970591caea58f68a4917d8f53e28cdb55a424d50d1e9c2db2f3"
+      },
+      {
+        "action": "slow",
+        "reward": 0.6525247820916436,
+        "seed": 6,
+        "trajectory_digest": "sha256:eedb7e3312025d833ec10b82248386835e0631044c8d67bd9a8cfd54f3aec043"
+      },
+      {
+        "action": "slow",
+        "reward": 0.49423948704086174,
+        "seed": 7,
+        "trajectory_digest": "sha256:e0c9d7b0a603743a6120cbe2ee06dbe1a1baf9c7e47be16bded58ee29e07a118"
+      },
+      {
+        "action": "slow",
+        "reward": 0.4345137854109393,
+        "seed": 8,
+        "trajectory_digest": "sha256:2bd0838d586c6c6ad5e89749c9c8f99c9d8f792d5e7431b670aeadb8d246199f"
+      }
+    ],
+    "execution_fingerprint": "sha256:989d46fa028d1d39de2c9929d7a02c91a2ae45b74c7e217818275a3c5107d96a",
+    "future_probe": {
+      "binding": {
+        "adoption_id": null,
+        "binding_digest": "sha256:94cd037dce2301087e7abb161ec73aaabcdd4905930bef26bad08a1ea0e62bdd",
+        "reference": {
+          "binding_id": "cf179a30-8e7e-5f2b-8ee7-3d5c9af05a49",
+          "policy_digest": "sha256:a081ef40001fd22061ed4b5879afd8b6bc255acf01ab5a371b41b0ccc28da3db",
+          "revision": 1,
+          "schema_version": "1.0"
+        },
+        "schema_version": "1.0"
+      },
+      "candidate_executed": false,
+      "decision": {
+        "action_id": "fast",
+        "behavior_policy_digest": "sha256:a081ef40001fd22061ed4b5879afd8b6bc255acf01ab5a371b41b0ccc28da3db",
+        "campaign_id": "c782fce2-d0f2-4ea0-ae53-3560b79df0e0",
+        "context_digest": "sha256:66c78c5fb3297b1b0f1c88c17fd7548128673f4d69083064b3e6ff18cc9d6035",
+        "draw": 0.07232620128057088,
+        "episode_id": "bcea1979-41a8-4734-af30-321cf5e6cf44",
+        "probabilities": [
+          0.2497398944048824,
+          0.7502601055951177
+        ],
+        "proposal_request_id": "bcea1979-41a8-4734-af30-321cf5e6cf44",
+        "sampling": "sha256-categorical-v1",
+        "schema_version": "1.0",
+        "seed": 201,
+        "source_digest": "sha256:63f2292a6132e50642aaa97d168be821dfbb8a125284dbd2e1cacbf6cef95282"
+      },
+      "plan_id": "d67e6c09-4ea1-5b16-811e-44dbf56fffe3"
+    },
+    "gate": {
+      "alpha": {
+        "denominator": "20",
+        "numerator": "1",
+        "schema_version": "1.0"
+      },
+      "expected_pairs": 16,
+      "mean_improvement": {
+        "denominator": "320000000000000000",
+        "numerator": "40728818086239299",
+        "schema_version": "1.0"
+      },
+      "median_improvement": {
+        "denominator": "10000000000000000",
+        "numerator": "310664118771709",
+        "schema_version": "1.0"
+      },
+      "missing_seeds": [],
+      "observed_pairs": 16,
+      "outcome": "inconclusive",
+      "p_value": {
+        "denominator": "65536",
+        "numerator": "26333",
+        "schema_version": "1.0"
+      },
+      "reason": "fixed_panel_threshold_not_met",
+      "schema_version": "1.0",
+      "ties": 0,
+      "wins": 9
+    },
+    "pairs": [
+      {
+        "candidate": 0.5104881914965809,
+        "comparator": 0.506537998269394,
+        "schema_version": "1.0",
+        "seed": 101
+      },
+      {
+        "candidate": 0.6370377060692545,
+        "comparator": 0.37544759282636564,
+        "schema_version": "1.0",
+        "seed": 102
+      },
+      {
+        "candidate": 0.6175668573339377,
+        "comparator": 0.676339149709515,
+        "schema_version": "1.0",
+        "seed": 103
+      },
+      {
+        "candidate": 0.24501969406079072,
+        "comparator": 0.48344961296678646,
+        "schema_version": "1.0",
+        "seed": 104
+      },
+      {
+        "candidate": 0.270293711985945,
+        "comparator": 0.40397185649664324,
+        "schema_version": "1.0",
+        "seed": 105
+      },
+      {
+        "candidate": 0.33725573267200826,
+        "comparator": 0.5029689161338036,
+        "schema_version": "1.0",
+        "seed": 106
+      },
+      {
+        "candidate": 0.6558119737694934,
+        "comparator": 0.3991813236665753,
+        "schema_version": "1.0",
+        "seed": 107
+      },
+      {
+        "candidate": 0.7067380954883773,
+        "comparator": 0.6373364918439339,
+        "schema_version": "1.0",
+        "seed": 108
+      },
+      {
+        "candidate": 0.6881410338155725,
+        "comparator": 0.41550492917286963,
+        "schema_version": "1.0",
+        "seed": 109
+      },
+      {
+        "candidate": 0.8830203355814525,
+        "comparator": 0.40251145874887095,
+        "schema_version": "1.0",
+        "seed": 110
+      },
+      {
+        "candidate": 0.6108702573688785,
+        "comparator": -0.9580240967273812,
+        "schema_version": "1.0",
+        "seed": 111
+      },
+      {
+        "candidate": 0.44559418264398465,
+        "comparator": 0.48954619861237836,
+        "schema_version": "1.0",
+        "seed": 112
+      },
+      {
+        "candidate": 0.2905161721302485,
+        "comparator": 0.5585709582090548,
+        "schema_version": "1.0",
+        "seed": 113
+      },
+      {
+        "candidate": 0.6295987234043299,
+        "comparator": 0.4862479427433697,
+        "schema_version": "1.0",
+        "seed": 114
+      },
+      {
+        "candidate": 0.5613381355099012,
+        "comparator": 0.5031555049827463,
+        "schema_version": "1.0",
+        "seed": 115
+      },
+      {
+        "candidate": 0.1666288126894644,
+        "comparator": 0.3367328740533293,
+        "schema_version": "1.0",
+        "seed": 116
+      }
+    ],
+    "plan_id": "09afdf7b-7e0a-594a-8448-01b98bfce8f5",
+    "result_digest": "sha256:be585a68ab3c68ace9947f0dfc9d60b54c575fa31f154f41c24d02443342c70f",
+    "schema_version": "1.0",
+    "training": {
+      "bindings_digest": "sha256:6e6e75deb63299e9c3ac7a1b9a9e55192ea832512f7a026e0096f784e1a4ff6a",
+      "policy": {
+        "actions": [
+          {
+            "id": "fast",
+            "schema_version": "1.0",
+            "source_digest": "sha256:63f2292a6132e50642aaa97d168be821dfbb8a125284dbd2e1cacbf6cef95282"
+          },
+          {
+            "id": "slow",
+            "schema_version": "1.0",
+            "source_digest": "sha256:fd44f5f2e58de7534dce3e0f99e6f5bea8227b7faf516647db17519ea06c8e9d"
+          }
+        ],
+        "logits": [
+          -2.624321268628237,
+          2.624321268628237
+        ],
+        "parent_digest": "sha256:a081ef40001fd22061ed4b5879afd8b6bc255acf01ab5a371b41b0ccc28da3db",
+        "profile": "categorical-softmax-v1",
+        "schema_version": "1.0"
+      },
+      "update_digest": "sha256:f6558716598849800564781a97041f1817e603ab3fc978762c44c3f489bd40e9",
+      "update_error": 8.881784197001252e-16
+    },
+    "trial_states": {
+      "succeeded": 82
+    },
+    "wall_elapsed_seconds": 114.06331896781921
+  },
+  "schema_version": "1.0",
+  "scope": "One unmodified predeclared native CPU panel; historical replay added no trials, attempts or decisions. Baseline weakness was an initial assumption, not an established property.",
+  "source_commit": "1dbf864ff6ed952219c85e5bfb2b7d52a40b0495"
+}

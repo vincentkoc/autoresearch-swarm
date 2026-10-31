@@ -12,10 +12,10 @@ paired held-out policy comparisons (two research trials per arm), and one future
 binding probe. It makes no LLM calls. This example runs sequentially; separate
 worker qualification covers parallel execution.
 
-`definition.json` freezes the seeds, two learning-rate actions, weak baseline
+`definition.json` freezes the seeds, two learning-rate actions, initial baseline
 logits, reward scaling, training rate and gate before execution. The initial
-categorical policy favors the slower action. The trainer makes one REINFORCE
-update from controller-qualified development evidence. The controller reserves
+categorical policy favors the lower learning-rate action. The trainer makes one
+REINFORCE update from controller-qualified development evidence. The controller reserves
 the held-out panel before admitting training and assesses every original arm.
 Failed or missing cases block assessment; the runner does not replace them.
 
@@ -45,3 +45,25 @@ Run the smaller native recovery check with:
 ~~~sh
 RESEARCH_BENCHMARK_TESTS=1 uv run pytest tests/test_learning_cycle_example.py
 ~~~
+
+## Recorded native result
+
+[Qualification evidence](qualification.json) pins the complete definition and
+implementation hashes at [commit 1dbf864](https://github.com/vincentkoc/autoresearch-swarm/commit/1dbf864ff6ed952219c85e5bfb2b7d52a40b0495).
+The unmodified default panel completed in 114.06 seconds on native macOS ARM64
+with Python 3.12.13: 82 successful trials, 164 successful stages, 36,990 settled
+execution milliseconds and no unresolved budget reservations. Historical replay
+created no new trials, attempts or decisions.
+
+The independent checker measured an update error of approximately `8.88e-16`.
+The learned policy won 9 of 16 held-out pairs. Its one-sided sign-test p-value
+was `26333 / 65536` (approximately `0.40181`), so the fixed 95% gate returned
+**inconclusive**. The baseline remained active; the future plan pinned revision
+1. No panel was replaced or rerun to obtain a passing result.
+
+The original definition called the baseline weak. That was an assumption,
+not a measured property; the evidence preserves the original wording without
+endorsing it. Action names `fast` and `slow` identify learning rates `0.6` and
+`0.05`, not measured throughput. This result qualifies execution and rejection
+behavior, not a statistically demonstrated policy improvement or native adoption
+of a winning policy.

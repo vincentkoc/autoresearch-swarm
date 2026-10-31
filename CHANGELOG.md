@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record the unchanged native learning panel and its inconclusive result: 82 successful trials, 164 stages, 9/16 held-out wins and no policy adoption. Reconcile learning status and document the supported Cloudflare hybrid profile while preserving the unmet fully hosted authority criterion.
+
 - Add a reproducible native learning-cycle example using the public agent API, complete frozen development and held-out panels, checked policy training, conditional adoption and a future binding probe. Preserve command envelopes and exact costs across replay without resampling failed cases.
 
 - Add explicit research-policy bindings and adoption with a dedicated scope, full current-evidence checks and atomic revision fencing. Pin binding snapshots in new learning plans, preserve prior plans across advancement, and recheck corrected adoption ancestry before new decisions, admissions or training data qualification.
