@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Decode precision-preserving timing strings before numeric assertions in the
+  actual workerd execution probe. Keep the signed wire representation unchanged.
+
 - Share evaluator preparation and final transactions with byte adapters. Bind the
   generated input manifest to the selected job/trial/inputs and recheck report
   catalog identity after reads. Preserve native upload/pin lifetimes and the

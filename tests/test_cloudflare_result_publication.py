@@ -96,7 +96,7 @@ def test_native_cpu_publication_survives_lost_reply_and_workerd_restart(tmp_path
                 entry = runner.journal.get(attempt_id)
                 assert entry.state == JournalState.CLOSED
                 assert entry.native is not None and entry.timing is not None
-                assert 0 < entry.timing.caps.launch_ns <= entry.timing.caps.hard_ns
+                assert 0 < int(entry.timing.caps.launch_ns) <= int(entry.timing.caps.hard_ns)
                 assert entry.outcome is not None and entry.outcome.exit_code == 0
                 assert entry.outcome.released_at is not None and entry.outcome.closure.scope_closed
                 assert captured["payload"]["report_artifact"] is not None

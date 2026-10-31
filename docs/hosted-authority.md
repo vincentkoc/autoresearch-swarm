@@ -725,6 +725,14 @@ settlement did not change. The source process stays alive across both controller
 incarnations. This probe requires its own passing runtime receipt; the output
 qualification above predates result acceptance.
 
+The first publication run at `6833bdb`,
+[CI 41200844689](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41200844689),
+passed 410 targeted tests on Linux/macOS and 406 on Windows with four skips.
+Workerd passed 10 tests but the new publication test stopped at a fixture
+comparison between an integer and a precision-preserving decimal timing string.
+The assertion now explicitly decodes both timing fields; this failed run is not
+a passing result-publication receipt.
+
 Evaluator preparation now exposes shared synchronous selection and final commit
 callbacks. Authorization recomputes the job/trial/input selection after metadata
 storage and verifies the generated manifest's exact digest and size before
