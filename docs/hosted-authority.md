@@ -49,6 +49,17 @@ rollback, revocation/CAS/catalog races, unknown execution and offline replay.
 This is adapter proof on SQLite, not actual workerd or deployed qualification.
 The separate recovery receiver remains journal-only and cannot accept research.
 
+`test_cloudflare_reconciliation.py` adds a three-startup production-entrypoint
+probe with a scoped CPU worker, real TLS witness and R2. It closes the original
+native process before restarting the witness, explicitly requalifies the active
+provider, preserves the first publication rejection and uses a separate command
+identity to observe the old acceptance epoch's refusal. It then drops accepted
+submission and reconciliation responses and replays them after workerd restart
+with the witness unavailable. The assertions preserve the original journal,
+assignment, lease evidence and accounting, with one result and no evaluator receipt.
+The probe is collected and its fixture fault injection is tested; actual runtime
+execution remains pending.
+
 Keep research state, command deduplication, budgets, leases, events and outbox
 effects in one SQLite Durable Object authority. Use a small native service to
 observe time. On Cloudflare, that service can run in a Container. It must not

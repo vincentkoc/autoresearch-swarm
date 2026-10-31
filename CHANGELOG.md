@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a production workerd reconciliation probe with a real CPU worker and TLS
+  clock source. Restart/requalify the clock without replacing the original attempt,
+  retain the first rejected command, quarantine original evidence, lose accepted
+  submission/reconciliation replies, and replay after reopening with the witness
+  offline. Fixture checks pass; actual runtime qualification remains pending.
+
 - Add an explicit hosted active-reconciliation profile. Original workers can
   quarantine bounded evidence, and scoped operators can reconcile proven closure
   under current authority. Preserve original grants and expired-lease evidence,

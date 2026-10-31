@@ -123,6 +123,20 @@ export default {
         );
       }
     }
+    const lostCommand = request.headers.get("x-fixture-drop-command");
+    if (
+      request.method === "POST" &&
+      ["worker.submit_evidence", "attempt.reconcile"].includes(lostCommand) &&
+      url.pathname === `/v1/commands/${lostCommand}`
+    ) {
+      const response = await env.RESEARCH_API.fetch(request);
+      if (!response.ok) return response;
+      const value = await response.clone().json();
+      if (value.disposition !== "accepted") return response;
+      return new Response("{", {
+        headers: { "content-type": "application/json" },
+      });
+    }
     return env.RESEARCH_API.fetch(request);
   },
 };

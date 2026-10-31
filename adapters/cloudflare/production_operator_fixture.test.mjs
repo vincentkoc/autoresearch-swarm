@@ -3,6 +3,38 @@ import test from "node:test";
 
 import operator from "./production_operator_fixture.mjs";
 
+for (const operation of ["worker.submit_evidence", "attempt.reconcile"]) {
+  test(`${operation} loses only a matching accepted command response`, async () => {
+    let body = { disposition: "accepted", result: { id: "synthetic" } };
+    let status = 200;
+    let calls = 0;
+    const env = {
+      RESEARCH_API: {
+        fetch: async () => {
+          calls += 1;
+          return Response.json(body, { status });
+        },
+      },
+    };
+    const call = (path = operation) =>
+      operator.fetch(
+        new Request(`http://127.0.0.1/v1/commands/${path}`, {
+          method: "POST",
+          body: "{}",
+          headers: { "x-fixture-drop-command": operation },
+        }),
+        env,
+      );
+    assert.equal(await (await call()).text(), "{");
+    assert.deepEqual(await (await call("report.create")).json(), body);
+    body = { disposition: "rejected", error: { code: "REVISION_CONFLICT" } };
+    assert.deepEqual(await (await call()).json(), body);
+    status = 403;
+    assert.equal((await call()).status, 403);
+    assert.equal(calls, 4);
+  });
+}
+
 test("fresh provider status uses one private argument and preserves default denial", async () => {
   const calls = [];
   const env = {
