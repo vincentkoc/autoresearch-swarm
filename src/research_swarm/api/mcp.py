@@ -60,9 +60,16 @@ def tool_result(call: Callable[[], Any], *, compact: bool = True) -> CallToolRes
         payload = reply.model_dump(mode="json")
         encoded = canonical_bytes(payload)
         if len(encoded) > MAX_TOOL_BYTES:
+            details: dict[str, Any] = {
+                "response_limit_bytes": MAX_TOOL_BYTES,
+                "response_bytes": len(encoded),
+            }
+            if isinstance(reply.result, dict) and reply.result.get("kind") == "report":
+                details["record"] = summarize(reply.result)
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE,
                 "Tool response exceeds 128 KiB. Request a summary, smaller page, or HTTP detail",
+                details=details,
             )
         return CallToolResult(
             content=[TextContent(type="text", text=encoded.decode("utf-8"))],

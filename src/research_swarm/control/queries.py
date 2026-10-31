@@ -149,6 +149,21 @@ def summarize(row: JsonObject) -> JsonObject:
         "benchmark_trial_slot",
     }:
         result["data"] = data
+    elif row["kind"] == "report":
+        snapshot = data["snapshot"]
+        result["data"] = {
+            "report_digest": data["report_digest"],
+            "captured_at": snapshot["captured_at"],
+            "evidence_through": snapshot["evidence_through"],
+            "campaign_revision": snapshot["campaign_revision"],
+            "detail_available": True,
+            "detail": {
+                "kind": "report",
+                "id": row["id"],
+                "http_path": f"/v1/records/report/{row['id']}",
+                "required_scope": "read",
+            },
+        }
     elif row["kind"] == "learning_dataset":
         result["data"] = {
             "plan_id": data["plan_id"],

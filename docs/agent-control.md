@@ -165,6 +165,17 @@ The actual incumbent and any suspension remain separate; historical selections
 never authorize rollback. Corrections affect new captures without rewriting old
 reports or issuing new assessments.
 
+Report summaries preserve the report digest, capture timestamp, event watermark
+and captured campaign revision. The `detail` reference names the report and its
+relative HTTP path, `/v1/records/report/{id}`; it requires the normal `read` scope
+on a configured HTTP service. It neither starts a server nor grants access.
+MCP command acknowledgments retain their command and report IDs even when the
+full report exceeds the 128 KiB tool response limit. An oversized explicit detail
+read returns `CAPABILITY_UNAVAILABLE` with the same bounded summary and byte
+counts. Read the complete report through the SDK or authenticated HTTP API and
+verify its `report_digest`; retrying the original command key returns the same
+immutable capture.
+
 ## Durable external proposals
 
 A proposal request assigns research work to one principal. It freezes an eligible

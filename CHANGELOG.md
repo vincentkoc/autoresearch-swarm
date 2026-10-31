@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve report digests, capture watermarks and authenticated detail references in bounded agent summaries. Large MCP detail reads return useful navigation without losing successful command identities or changing the stored report.
+
 - Group reported observed scores by exact comparison identity and qualify confirmed selections against their full frozen evidence panels. Preserve policy and baseline lineages, exclude uncommitted or corrected evidence, and leave best-confirmed claims unset when history is incomplete instead of inventing a cross-plan scalar ranking.
 
 - Capture research scope, declared stopping rules, committed baseline evidence, source lineage and file digests, trial outcomes, historical execution profiles and open resource obligations in immutable reports. Pin selection evidence outside recent-history windows, expose truncation explicitly, and reject oversized reports without partial publication.
