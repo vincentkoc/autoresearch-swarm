@@ -16,6 +16,7 @@ function request(action, { letter = "a", drop = false } = {}) {
       request_json: '{"backup_id":"fixture"}',
       election_json: "synthetic-signed-election",
       turn_json: "synthetic-saved-turn",
+      route_json: '{"route_id":"fixture-route"}',
       artifact_json:
         '{"artifact_id":"artifact","generation":"generation","backup_id":"backup","manifest_digest":"image"}',
     }),
@@ -209,6 +210,49 @@ test("target turn closure preserves failure and fixed-target routing", async () 
   const refused = await operator.fetch(request("turn", { drop: true }), env);
   assert.equal(refused.status, 409);
   assert.deepEqual(await refused.json(), { error: { code: "STALE_FENCE" } });
+});
+
+test("route issuance uses only its fixed target and drops only matching accepted proof", async () => {
+  const proof = {
+    target_signature: "fixture",
+    logical_election: { signature: "fixture" },
+    route: { route_id: "fixture-route" },
+  };
+  const accepted = { disposition: "accepted", result: { data: proof } };
+  const env = {
+    TARGET_A_BOOTSTRAP: { checkpoint_route: () => assert.fail("Wrong target") },
+    TARGET_B_BOOTSTRAP: {
+      checkpoint_route: async (credential, payload) => {
+        assert.equal(credential, "target-credential");
+        assert.equal(payload, '{"route_id":"fixture-route"}');
+        return JSON.stringify(accepted);
+      },
+    },
+  };
+  const call = (drop = false) =>
+    operator.fetch(request("route", { letter: "b", drop }), env);
+  assert.deepEqual(await (await call()).json(), accepted);
+  assert.equal(await (await call(true)).text(), "{");
+  for (const invalid of [
+    { error: { code: "STALE_FENCE" } },
+    {
+      ...accepted,
+      result: { data: { ...proof, route: { route_id: "other" } } },
+    },
+  ]) {
+    env.TARGET_B_BOOTSTRAP.checkpoint_route = async () =>
+      JSON.stringify(invalid);
+    const result = await call(true);
+    assert.equal(result.status, 409);
+    assert.deepEqual(await result.json(), invalid);
+  }
+});
+
+test("default route issuance cannot reach private bootstrap", async () => {
+  const result = await operator.fetch(request("default-route"), {
+    TARGET_A_API: {},
+  });
+  assert.deepEqual(await result.json(), { denied: true });
 });
 
 test("default target turn cannot enter private recovery", async () => {

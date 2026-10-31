@@ -17,7 +17,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|artifact|default-artifact|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|artifact|default-artifact|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -97,23 +97,31 @@ export default {
         },
       );
     }
-    if (action === "admit" || action === "turn") {
-      const result =
-        action === "admit"
-          ? await bootstrap.checkpoint_admit(
-              input.credential,
-              input.election_json,
-            )
-          : await bootstrap.checkpoint_turn(input.credential, input.turn_json);
+    if (["admit", "turn", "route"].includes(action)) {
+      const operations = {
+        admit: () =>
+          bootstrap.checkpoint_admit(input.credential, input.election_json),
+        turn: () =>
+          bootstrap.checkpoint_turn(input.credential, input.turn_json),
+        route: () =>
+          bootstrap.checkpoint_route(input.credential, input.route_json),
+      };
+      const result = await operations[action]();
       if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
         const value = JSON.parse(result);
         if (
           value.disposition !== "accepted" ||
           (action === "admit"
             ? typeof value.result?.data?.logical_election_digest !== "string"
-            : !["settled", "closed_unacknowledged"].includes(
-                value.result?.turn?.state,
-              ))
+            : action === "route"
+              ? typeof value.result?.data?.target_signature !== "string" ||
+                typeof value.result?.data?.logical_election?.signature !==
+                  "string" ||
+                value.result?.data?.route?.route_id !==
+                  JSON.parse(input.route_json).route_id
+              : !["settled", "closed_unacknowledged"].includes(
+                  value.result?.turn?.state,
+                ))
         ) {
           return new Response(result, { status: 409 });
         }
@@ -130,6 +138,7 @@ export default {
       action === "default-request" ||
       action === "default-admit" ||
       action === "default-turn" ||
+      action === "default-route" ||
       action === "default-artifact"
     ) {
       try {
@@ -139,6 +148,8 @@ export default {
           await api.checkpoint_request(input.credential);
         else if (action === "default-admit")
           await api.checkpoint_admit(input.credential, input.election_json);
+        else if (action === "default-route")
+          await api.checkpoint_route(input.credential, input.route_json);
         else if (action === "default-artifact")
           await api.checkpoint_artifact(
             input.credential,

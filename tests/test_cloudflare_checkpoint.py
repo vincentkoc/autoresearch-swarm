@@ -14,6 +14,7 @@ from research_swarm.checkpoints.elections import verify_election, verify_electio
 from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.client import ResearchClient
 from research_swarm.control.recovery_proofs import verify_admission
+from research_swarm.control.recovery_routes import verify_logical_recovery_route
 from research_swarm.crypto import public_key
 from research_swarm.domain.backup import BackupCustodyPin, RecoveryAdmission, RestoreReceipt
 from research_swarm.domain.canonical import content_digest
@@ -22,6 +23,7 @@ from research_swarm.domain.checkpoint_elections import (
     SignedLogicalElectionRequest,
 )
 from research_swarm.domain.checkpoint_images import LogicalImportIntent, SignedLogicalCheckpoint
+from research_swarm.domain.recovery_routes import SignedWorkerRecoveryRoute
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import write_private
@@ -37,7 +39,7 @@ from tests.test_cloudflare_production import (
     post,
 )
 from tests.test_cloudflare_router import pytestmark as pytestmark
-from tests.test_hosted_research import admit
+from tests.test_hosted_research import admit, enroll_and_claim
 from tests.test_http_delivery import serving, tls_certificate
 from tests.test_manifest import project as project
 from tests.test_time_witnesses import source
@@ -106,6 +108,7 @@ def target_call(
     election=None,
     turn=None,
     artifact=None,
+    route=None,
 ):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
@@ -116,6 +119,7 @@ def target_call(
             "election_json": json.dumps(election),
             "turn_json": json.dumps(turn),
             "artifact_json": json.dumps(artifact),
+            "route_json": json.dumps(route),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -256,6 +260,7 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                     expected_revision=binding["revision"],
                 )["result"]
             assert saved_turn["state"] == "prepared"
+            claimed, _ = enroll_and_claim(operator, admitted, manifest["provisioning_actor_id"])
             endpoint.mode = "unavailable"
             witness_calls = len(endpoint.requests)
             seal = {
@@ -514,6 +519,49 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 RestoreReceipt.model_validate(receipts[winner]),
                 crypto_provider=deployment[2],
             )
+            route_request = {
+                "route_id": new_id(),
+                "attempt_id": claimed["result"]["id"],
+                "credential_id": manifest["credentials"][0]["id"],
+                "source_controller_url": "https://source.example",
+                "destination_url": "https://target.example",
+            }
+
+            def route_call(letter, *, action="route", credential=None, drop=False):
+                return target_call(
+                    http,
+                    letter,
+                    action,
+                    credential or target_secrets[letter]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    route=route_request,
+                    drop=drop,
+                )
+
+            assert route_call(winner, action="default-route").json() == {"denied": True}
+            assert "error" in route_call(loser).json()
+            assert (
+                route_call(winner, credential="wrong").json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            assert route_call(winner, drop=True).text == "{"
+            accepted_route = route_call(winner).text
+            route_result = json.loads(accepted_route)
+            assert route_result["disposition"] == "accepted"
+            signed_route = SignedWorkerRecoveryRoute.model_validate(route_result["result"]["data"])
+            verify_logical_recovery_route(
+                signed_route, image.source_custody, crypto_provider=deployment[2]
+            )
+            assert signed_route.route.attempt_id == claimed["result"]["id"]
+            assert (
+                signed_route.route.binding.worker_session_id
+                == claimed["result"]["data"]["dispatch"]["worker_session_id"]
+            )
+            assert signed_route.route.restoration == RestoreReceipt.model_validate(receipts[winner])
+            assert signed_route.logical_election == SignedLogicalElection.model_validate(
+                outcomes[winner]
+            )
             turn_request = {
                 "request_id": new_id(),
                 "operation": "orchestration.close_turn",
@@ -623,6 +671,18 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 election=outcomes[winner],
             )
             assert repeated.text == accepted_admission
+            assert (
+                target_call(
+                    http,
+                    winner,
+                    "route",
+                    target_secrets[winner]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    route=route_request,
+                ).text
+                == accepted_route
+            )
             assert (
                 target_call(
                     http,

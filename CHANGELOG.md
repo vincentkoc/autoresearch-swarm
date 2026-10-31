@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extend production workerd recovery qualification with an actual SDK worker claim.
+  Preserve that attempt through the source cut, issue its signed route only at the
+  elected target, lose the accepted reply, and replay it after restart. Verify the
+  original session, full election, target receipt and public/wrong-target refusal.
+
 - Issue original-worker recovery routes through private fixed-target RPC after
   hosted election and admission. Bind current deployment, original custody and
   non-expiring credential to a narrow issuance guard. Commit one immutable route,

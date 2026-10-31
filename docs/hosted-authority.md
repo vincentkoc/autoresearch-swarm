@@ -2139,6 +2139,14 @@ attempt through seal/import/election/admission/issuance, rollback after event
 creation, credential changes after guard minting and restart replay. Actual
 workerd issuance qualification and hosted journal delivery remain pending.
 
+The six-startup production probe now creates an SDK worker claim before sealing,
+preserves the unresolved attempt through both imports, and issues its route at
+the admitted winner. It validates the full signature chain, original session and
+restoration receipt, refuses public/wrong-target/wrong-credential calls, loses an
+accepted reply and requires exact replay after restart. This exercises route
+issuance without launching the claimed payload or delivering a native journal.
+The added assertions require a new workerd qualification receipt.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase
