@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Let original workers install and reopen routes carrying a full logical election
+  proof. Verify independently pinned source custody, all election signatures,
+  admission and destination signatures before network access. Preserve native wire
+  bytes, original installation/journal identity and immutable route IDs. Hosted
+  route issuance and delivery still require their separate runtime implementation.
+
 - Extend the six-startup workerd probe through real source R2 export and elected
   target restoration. Verify content hashes, fixed bindings, public and wrong-target
   refusal, lost successful replies and exact replay after restarting all Workers.

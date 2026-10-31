@@ -1,5 +1,6 @@
 """Public route verification starts with an independently trusted source pin."""
 
+from research_swarm.checkpoints.elections import verify_election
 from research_swarm.control.recovery_proofs import require_native_admission, verify_admission
 from research_swarm.crypto import Ed25519Provider, resolve_crypto, verify
 from research_swarm.domain.backup import BackupCustodyPin
@@ -14,8 +15,53 @@ def verify_recovery_route(
     *,
     crypto_provider: Ed25519Provider | None = None,
 ) -> None:
-    route = SignedWorkerRecoveryRoute.model_validate(signed).route
-    require_native_admission(route.admission)
+    signed = SignedWorkerRecoveryRoute.model_validate(signed)
+    require_native_admission(signed.route.admission)
+    if signed.logical_election is not None:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Native route contains a logical election")
+    _verify_bound_route(signed, trusted_source, crypto_provider=crypto_provider)
+
+
+def verify_logical_recovery_route(
+    signed: SignedWorkerRecoveryRoute,
+    trusted_source: BackupCustodyPin,
+    *,
+    crypto_provider: Ed25519Provider | None = None,
+) -> None:
+    """Verify offline source delegation, not the destination's current runtime state."""
+    signed = SignedWorkerRecoveryRoute.model_validate(signed)
+    trusted_source = BackupCustodyPin.model_validate(trusted_source)
+    route, election = signed.route, signed.logical_election
+    if (
+        election is None
+        or election.digest != route.admission.logical_election_digest
+        or election.election.signed_claim != route.admission.signed_claim
+        or election.election.signed_request.request.intent.operator_id
+        != route.admission.operator_id
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Logical route election binding differs")
+    _verify_bound_route(signed, trusted_source, crypto_provider=crypto_provider)
+    delegation = election.election.signed_request.request
+    # These deployment fields are delegated by the source signature. They are not
+    # independent runtime pins; the receiving controller must check its actual deployment.
+    verify_election(
+        election,
+        expected_intent=delegation.intent,
+        expected_backup_id=route.restoration.backup_id,
+        expected_source=delegation.source_authority,
+        expected_deployment_digest=delegation.source_deployment_digest,
+        expected_custody=trusted_source,
+        crypto=crypto_provider,
+    )
+
+
+def _verify_bound_route(
+    signed: SignedWorkerRecoveryRoute,
+    trusted_source: BackupCustodyPin,
+    *,
+    crypto_provider: Ed25519Provider | None,
+) -> None:
+    route = signed.route
     pin = BackupCustodyPin.model_validate(trusted_source)
     receipt = route.restoration
     if (pin.workspace_id, pin.controller_id, pin.custody_id, pin.control_epoch, pin.public_key) != (

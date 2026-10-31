@@ -313,6 +313,22 @@ credential ID, selected journal, and existing journal/registry identities under
 the original enrollment, driver and attempt locks. Reopening a route repeats
 those checks before any connection. Missing native stores are not recreated.
 
+Signed routes may additionally carry `logical_election`. This complete source
+election envelope must match the digest signed into the target admission. Native
+route serialization omits the field and retains its existing bytes and digest.
+The native verifier rejects logical proofs; worker installation explicitly selects
+the logical verifier when the envelope is present. Removing it cannot downgrade a
+logical admission into native trust.
+
+Offline logical verification checks all four election signatures against the
+independently supplied source custody pin, then admission and route signatures.
+The source authenticates the target intent and deployment identity as a delegation;
+these are not independently observed runtime facts. The receiving controller must
+also verify its actual deployment and current recovery admission. The route still
+binds the original worker session, credential, attempt, installation and destination,
+and cannot authorize execution. Installing and reopening such proofs is supported;
+hosted issuance and journal delivery remain separate implementation steps.
+
 The original enrollment URL, token, driver identity and pending recovery intent
 remain unchanged. Each route gets a separate delivery directory, identity digest,
 upload key and submission key. A target acknowledgment resolves only that target's

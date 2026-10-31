@@ -4,7 +4,10 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from research_swarm.control.recovery_routes import verify_recovery_route
+from research_swarm.control.recovery_routes import (
+    verify_logical_recovery_route,
+    verify_recovery_route,
+)
 from research_swarm.domain.backup import BackupCustodyPin
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -17,6 +20,15 @@ from research_swarm.workers.remote_enrollment import RemoteWorkerBundle, _instal
 from research_swarm.workers.resources import MachineResources
 
 MAX_ROUTE_BYTES = 4 * 1024 * 1024
+
+
+def _verify_proof(signed: SignedWorkerRecoveryRoute, trusted_source: BackupCustodyPin) -> None:
+    verifier = (
+        verify_logical_recovery_route
+        if signed.logical_election is not None
+        else verify_recovery_route
+    )
+    verifier(signed, trusted_source)
 
 
 class InstalledRecoveryRoute(VersionedRecord):
@@ -40,7 +52,7 @@ def _bind(
     journal: WorkerJournal,
     resources: MachineResources,
 ) -> InstalledRecoveryRoute:
-    verify_recovery_route(signed, trusted_source)
+    _verify_proof(signed, trusted_source)
     route = signed.route
     entry = journal.get(attempt_id)
     _authenticate(entry, bundle)
@@ -76,7 +88,7 @@ def install_recovery_route(
 ) -> InstalledRecoveryRoute:
     signed = SignedWorkerRecoveryRoute.model_validate(signed)
     trusted_source = BackupCustodyPin.model_validate(trusted_source)
-    verify_recovery_route(signed, trusted_source)
+    _verify_proof(signed, trusted_source)
     with original_recovery_lock(root, signed.route.attempt_id) as original:
         bundle, journal, resources, _ = original_stores(original)
         installed = _bind(

@@ -6,6 +6,7 @@ from pydantic import Field
 
 from research_swarm.domain.backup import RecoveryAdmission, RestoreReceipt
 from research_swarm.domain.canonical import record_digest
+from research_swarm.domain.checkpoint_elections import SignedLogicalElection
 from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.domain.workers import WorkerBinding
 
@@ -34,6 +35,9 @@ class WorkerRecoveryRoute(RecoveryRouteRequest):
 class SignedWorkerRecoveryRoute(VersionedRecord):
     route: WorkerRecoveryRoute
     target_signature: str = Field(pattern=r"^[0-9a-f]{128}$")
+    logical_election: SignedLogicalElection | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @property
     def digest(self) -> str:
