@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend the six-startup workerd recovery probe with a real original CPU execution,
+  journal transfer through the named recovery ingress, quarantine, and private
+  operational closure. Verify lost closure replies and exact upload/submission/closure
+  replay after restart. The fixture refuses mismatched receipts and preserves failures;
+  this new provider-runtime sequence is pending qualification.
+
 - Exercise hosted recovery with a real CPU supervisor and a native witness fixed
   before provisioning. Retain the closed original journal until after logical
   recovery, transfer it with the original worker credential, and settle its exact

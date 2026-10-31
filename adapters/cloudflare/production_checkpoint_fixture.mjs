@@ -26,7 +26,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|artifact|default-artifact|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|closure|default-closure|artifact|default-artifact|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -106,6 +106,30 @@ export default {
         },
       );
     }
+    if (action === "closure") {
+      const result = await bootstrap.checkpoint_closure(
+        input.credential,
+        input.closure_json,
+      );
+      if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
+        const value = JSON.parse(result);
+        if (
+          value.disposition !== "accepted" ||
+          value.result?.disposition !== "closed_unaccepted" ||
+          value.result?.attempt?.id !==
+            JSON.parse(input.closure_json).payload.attempt_id ||
+          typeof value.result?.closure?.id !== "string"
+        ) {
+          return new Response(result, { status: 409 });
+        }
+        return new Response("{", {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(result, {
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (["admit", "turn", "route"].includes(action)) {
       const operations = {
         admit: () =>
@@ -148,6 +172,7 @@ export default {
       action === "default-admit" ||
       action === "default-turn" ||
       action === "default-route" ||
+      action === "default-closure" ||
       action === "default-artifact"
     ) {
       try {
@@ -159,6 +184,8 @@ export default {
           await api.checkpoint_admit(input.credential, input.election_json);
         else if (action === "default-route")
           await api.checkpoint_route(input.credential, input.route_json);
+        else if (action === "default-closure")
+          await api.checkpoint_closure(input.credential, input.closure_json);
         else if (action === "default-artifact")
           await api.checkpoint_artifact(
             input.credential,

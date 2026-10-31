@@ -149,5 +149,6 @@ async def test_native_closed_journal_crosses_recovery_and_settles_original_consu
         if row["kind"] in {"run_result", "evaluation_receipt", "promotion"}
     ]
     assert await close_attempt(e, request) == closed
+    assert await upload(e) == (reference, submitted)
     assert snapshot(e.target) == after
     assert len(e.source.witness.requests) == calls

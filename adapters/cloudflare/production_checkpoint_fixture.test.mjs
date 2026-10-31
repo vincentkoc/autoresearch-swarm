@@ -17,6 +17,7 @@ function request(action, { letter = "a", drop = false } = {}) {
       election_json: "synthetic-signed-election",
       turn_json: "synthetic-saved-turn",
       route_json: '{"route_id":"fixture-route"}',
+      closure_json: '{"payload":{"attempt_id":"original-attempt"}}',
       artifact_json:
         '{"artifact_id":"artifact","generation":"generation","backup_id":"backup","manifest_digest":"image"}',
     }),
@@ -435,4 +436,65 @@ test("recovery gateway does not consume a request refused by the receiver", asyn
   );
   assert.equal(reply.status, 401);
   assert.equal(forwarded.bodyUsed, false);
+});
+
+test("private closure drops only the matching accepted operational receipt", async () => {
+  let calls = 0;
+  const accepted = {
+    disposition: "accepted",
+    result: {
+      disposition: "closed_unaccepted",
+      attempt: { id: "original-attempt" },
+      closure: { id: "receipt" },
+    },
+  };
+  const env = {
+    TARGET_B_BOOTSTRAP: {
+      async checkpoint_closure(credential, payload) {
+        calls++;
+        assert.equal(credential, "target-credential");
+        assert.deepEqual(JSON.parse(payload), {
+          payload: { attempt_id: "original-attempt" },
+        });
+        return JSON.stringify(accepted);
+      },
+    },
+  };
+  assert.equal(
+    await (
+      await operator.fetch(request("closure", { letter: "b", drop: true }), env)
+    ).text(),
+    "{",
+  );
+  assert.deepEqual(
+    await (
+      await operator.fetch(request("closure", { letter: "b" }), env)
+    ).json(),
+    accepted,
+  );
+  assert.equal(calls, 2);
+  accepted.result.attempt.id = "different-attempt";
+  assert.equal(
+    (await operator.fetch(request("closure", { letter: "b", drop: true }), env))
+      .status,
+    409,
+  );
+});
+
+test("closure failure and default-route refusal cannot masquerade as lost success", async () => {
+  const result = await operator.fetch(request("closure", { drop: true }), {
+    TARGET_A_BOOTSTRAP: {
+      async checkpoint_closure() {
+        return '{"error":{"code":"EXECUTION_UNKNOWN"}}';
+      },
+    },
+  });
+  assert.equal(result.status, 409);
+  assert.equal((await result.json()).error.code, "EXECUTION_UNKNOWN");
+  assert.deepEqual(
+    await (
+      await operator.fetch(request("default-closure"), { TARGET_A_API: {} })
+    ).json(),
+    { denied: true },
+  );
 });

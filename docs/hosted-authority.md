@@ -2235,6 +2235,17 @@ original native outcome and measured consumption, settles once, and creates no
 scientific result. This path passed locally with SQLite/mock R2; its new cross-OS
 CI coverage and actual workerd recovery remain separate qualification claims.
 
+The six-startup production workerd probe now carries that CPU path across real
+Durable Object and R2 bindings. Before sealing, its original worker executes under
+the already admitted native witness, closes its native scope and retains its journal
+without publishing to the source. After election, the SDK transfers and quarantines
+the exact journal through the named recovery ingress. Private closure must report
+the original outcome and consumption; public, losing-target and wrong-bootstrap
+calls refuse. The fixture drops only a matching accepted closure response. After
+restarting every Worker, the original upload, submission and closure acknowledgments
+must replay unchanged, while historical attempt reads show `closed_unaccepted`.
+This extension remains pending actual workerd qualification.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase

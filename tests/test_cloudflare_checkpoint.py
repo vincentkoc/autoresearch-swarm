@@ -13,11 +13,14 @@ from research_swarm.api.time_witnesses import create_time_witness_app, witness_c
 from research_swarm.checkpoints.elections import verify_election, verify_election_request
 from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.client import ResearchClient
+from research_swarm.control.observations import PublishAttempt
 from research_swarm.control.recovery_proofs import verify_admission
 from research_swarm.control.recovery_routes import verify_logical_recovery_route
+from research_swarm.control.worker_outputs import WorkerOutputIntent
+from research_swarm.control.worker_records import WorkerData
 from research_swarm.crypto import public_key
 from research_swarm.domain.backup import BackupCustodyPin, RecoveryAdmission, RestoreReceipt
-from research_swarm.domain.canonical import content_digest
+from research_swarm.domain.canonical import canonical_bytes, content_digest
 from research_swarm.domain.checkpoint_elections import (
     SignedLogicalElection,
     SignedLogicalElectionRequest,
@@ -28,6 +31,8 @@ from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import write_private
 from research_swarm.workers.clocks import native_clock
+from research_swarm.workers.journal_records import JournalState
+from research_swarm.workers.local import LocalWorker
 from tests.test_cloudflare_deployment import deployment as deployment
 from tests.test_cloudflare_native import ROOT, build_current_sources, server
 from tests.test_cloudflare_native_source import Endpoint
@@ -40,6 +45,7 @@ from tests.test_cloudflare_production import (
 )
 from tests.test_cloudflare_router import pytestmark as pytestmark
 from tests.test_hosted_research import admit, enroll_and_claim
+from tests.test_hosted_result_publication import TRAIN
 from tests.test_http_delivery import serving, tls_certificate
 from tests.test_manifest import project as project
 from tests.test_time_witnesses import source
@@ -110,6 +116,7 @@ def target_call(
     turn=None,
     artifact=None,
     route=None,
+    closure=None,
 ):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
@@ -121,6 +128,7 @@ def target_call(
             "turn_json": json.dumps(turn),
             "artifact_json": json.dumps(artifact),
             "route_json": json.dumps(route),
+            "closure_json": json.dumps(closure),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -222,6 +230,11 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             ResearchClient.connect(url, operator_token) as operator,
         ):
             assert "receipt" in post(http, secrets["bootstrap"]).json()
+            (project / "train.py").write_text(TRAIN)
+            project_manifest = project / "research.toml"
+            project_manifest.write_text(
+                project_manifest.read_text().replace("timeout_ms = 1000", "timeout_ms = 10000")
+            )
             admitted = admit(operator, project)
             assert operator.get("job", admitted.job["id"])["state"] == "ready"
             driver_credential, evaluator_credential = manifest["credentials"][2:]
@@ -261,7 +274,32 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                     expected_revision=binding["revision"],
                 )["result"]
             assert saved_turn["state"] == "prepared"
-            claimed, _ = enroll_and_claim(operator, admitted, manifest["provisioning_actor_id"])
+            claimed, _ = enroll_and_claim(
+                operator,
+                admitted,
+                manifest["provisioning_actor_id"],
+                project_ids=[admitted.project["id"]],
+            )
+            worker = WorkerData.model_validate(
+                operator.get("worker", claimed["result"]["data"]["dispatch"]["worker_id"])["data"]
+            )
+            runner = LocalWorker(
+                operator,
+                worker,
+                root=tmp_path / "original-worker",
+                machine_registry=tmp_path / "original-machine" / "resources.sqlite",
+            )
+
+            def retain_original(entry):
+                assert entry.state == JournalState.CLOSED and entry.native is not None
+                assert entry.outcome is not None and entry.outcome.closure.scope_closed
+                assert entry.outcome.released_at is not None and entry.outcome.exit_code == 0
+                return entry
+
+            runner._publish = retain_original
+            original_journal = runner.execute(claimed["result"]["id"])
+            journal_path = tmp_path / "original-closed-journal.json"
+            journal_path.write_bytes(canonical_bytes(original_journal.model_dump(mode="json")))
             endpoint.mode = "unavailable"
             witness_calls = len(endpoint.requests)
             seal = {
@@ -701,6 +739,69 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 == DeploymentManifest.model_validate(targets[winner]).configuration.storage.digest
             )
 
+            output_intent = WorkerOutputIntent(
+                worker_id=worker.binding.worker_id,
+                session_id=worker.binding.worker_session_id,
+                attempt_id=original_journal.dispatch.attempt_id,
+                role="journal",
+            )
+            with ResearchClient.connect(
+                url + f"/fixture/recovery-{winner}", operator_token
+            ) as recovered_worker:
+                journal_reference = recovered_worker.worker_upload_file(
+                    output_intent, journal_path, idempotency_key="original-journal"
+                )
+                evidence = PublishAttempt(
+                    attempt_id=original_journal.dispatch.attempt_id,
+                    journal_artifact=journal_reference,
+                )
+                submitted = recovered_worker.command(
+                    "worker.submit_evidence", evidence, idempotency_key="original-evidence"
+                )
+                assert submitted["result"]["state"] == "quarantined"
+            closure_request = {
+                "request_id": new_id(),
+                "expected_revision": historical_attempt["revision"],
+                "payload": {
+                    "attempt_id": original_journal.dispatch.attempt_id,
+                    "submission_id": submitted["result"]["id"],
+                    "expected_controller_id": receipts[winner]["controller_id"],
+                    "expected_control_epoch": receipts[winner]["target_control_epoch"],
+                    "reason": "Original native CPU process closed before the source cut",
+                },
+            }
+
+            def closure_call(letter, *, action="closure", credential=None, drop=False):
+                return target_call(
+                    http,
+                    letter,
+                    action,
+                    credential or target_secrets[letter]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    closure=closure_request,
+                    drop=drop,
+                )
+
+            assert closure_call(winner, action="default-closure").json() == {"denied": True}
+            assert "error" in closure_call(loser).json()
+            assert (
+                closure_call(winner, credential="wrong").json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            assert closure_call(winner, drop=True).text == "{"
+            accepted_closure = closure_call(winner).text
+            settled = json.loads(accepted_closure)["result"]
+            assert settled["attempt"]["state"] == "closed_unaccepted"
+            assert settled["closure"]["data"][
+                "native_outcome"
+            ] == original_journal.outcome.model_dump(mode="json")
+            assert settled["closure"]["data"]["consumed"] == {
+                "attempts": "1",
+                "execution_ms": str(original_journal.outcome.elapsed_ms),
+            }
+            assert len(endpoint.requests) == witness_calls
+
         with (
             server(tmp_path, sequence=6, **options) as url,
             httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
@@ -721,7 +822,34 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 json=historical_request,
             )
             assert restored_history.status_code == 200, restored_history.text
-            assert restored_history.json() == historical_attempt
+            assert restored_history.json() == settled["attempt"]
+            assert (
+                target_call(
+                    http,
+                    winner,
+                    "closure",
+                    target_secrets[winner]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    closure=closure_request,
+                ).text
+                == accepted_closure
+            )
+            with ResearchClient.connect(
+                url + f"/fixture/recovery-{winner}", operator_token
+            ) as recovered_worker:
+                assert (
+                    recovered_worker.worker_upload_file(
+                        output_intent, journal_path, idempotency_key="original-journal"
+                    )
+                    == journal_reference
+                )
+                assert (
+                    recovered_worker.command(
+                        "worker.submit_evidence", evidence, idempotency_key="original-evidence"
+                    )
+                    == submitted
+                )
             assert (
                 target_call(
                     http,
