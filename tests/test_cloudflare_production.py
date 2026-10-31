@@ -1,5 +1,6 @@
 """Actual production Python entrypoint, private service RPC, HTTPS witness and R2."""
 
+import asyncio
 import copy
 import json
 import re
@@ -12,11 +13,18 @@ from adapters.cloudflare.deployment import authority_id
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.client import ResearchClient
 from research_swarm.control.queries import RecordQuery
+from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.orchestration import DriveAction, OrchestrationBinding
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
+from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
+from research_swarm.orchestration.delivery_contract import binding_reference
+from research_swarm.orchestration.gateway_models import GatewayBinding
+from research_swarm.orchestration.turns import DurableTurnDriver
 from research_swarm.runtime import write_private
 from research_swarm.workers.clocks import native_clock
 from tests.test_cloudflare_deployment import deployment as deployment
+from tests.test_cloudflare_hybrid import CONTROL, until
 from tests.test_cloudflare_native import ROOT, build_current_sources, server
 from tests.test_cloudflare_native_source import Endpoint
 from tests.test_cloudflare_router import pytestmark as pytestmark
@@ -74,6 +82,87 @@ def post(client, credential, *, drop=False, default=False):
     )
     assert result.status_code == 200, result.text[:1000]
     return result
+
+
+def drive_new_campaign(operator, http, url, manifest, secrets, admitted, directory):
+    """A separate real Workflow must produce the receipt before any client replay."""
+    _, gateway, driver, evaluator = manifest["credentials"]
+    config = content_digest(b"production-workflow-driver")
+    campaign = operator.get("campaign", admitted.campaign["id"])
+    bound = operator.command(
+        "orchestration.bind",
+        {
+            "campaign_id": campaign["id"],
+            "adapter": "cloudflare-workflows",
+            "configuration_digest": config,
+            "routes": {
+                "control": driver["principal"]["id"],
+                "evaluator": evaluator["principal"]["id"],
+            },
+        },
+        idempotency_key="production-binding",
+        expected_revision=campaign["revision"],
+    )["result"]
+    intent = {
+        "campaign_id": campaign["id"],
+        "epoch": 1,
+        "configuration_digest": config,
+        "gateway_credential_id": gateway["id"],
+        "route_credentials": {"control": driver["id"], "evaluator": evaluator["id"]},
+    }
+    registration = operator.command(
+        "orchestration.register_delivery",
+        intent,
+        idempotency_key="production-registration",
+        expected_revision=0,
+    )
+    assert registration["result"]["id"] == gateway["principal"]["id"]
+    reference = binding_reference(OrchestrationBinding.model_validate(bound["data"]))
+    with ResearchClient.connect(url, secrets["credentials"][driver["id"]]) as control:
+        turn = DurableTurnDriver(
+            control, campaign["id"], epoch=1, configuration_digest=config
+        ).prepare_turn(
+            1,
+            lambda: DriveAction(
+                operation="report.create",
+                payload={"campaign_id": campaign["id"]},
+                idempotency_key="production-driven-report",
+            ),
+        )
+    headers = {"authorization": "Bearer " + secrets["credentials"][gateway["id"]]}
+    pending = http.post(
+        "/v1/delivery/inspect",
+        json=GatewayBinding.from_reference(reference).model_dump(mode="json"),
+        headers=headers,
+    )
+    assert pending.status_code == 200 and pending.json()["work"]["record_id"] == turn["id"]
+    directory.mkdir()
+    variables = {
+        "AUTHORITY_PROFILE": "hosted-do-witness-v1",
+        "HOSTED_DELIVERY_ORIGIN": url,
+        "GATEWAY_TOKEN": secrets["credentials"][gateway["id"]],
+        "CONTROL_TOKEN": CONTROL,
+        "ALLOW_LOCAL_GATEWAY": "true",
+    }
+    with server(directory, sequence=1, variables=variables) as workflow_url:
+
+        async def start():
+            async with CloudflareBridge(workflow_url, CONTROL) as bridge:
+                return await asyncio.gather(
+                    *(
+                        bridge.start(reference, WorkflowOptions(poll_seconds=1, rotate_after=2))
+                        for _ in range(3)
+                    )
+                )
+
+        identifiers = asyncio.run(start())
+        assert identifiers == [identifiers[0]] * 3
+        until(lambda: operator.get("drive_turn", turn["id"])["state"] != "prepared")
+        receipts = operator.list(RecordQuery(kind="drive_receipt", campaign_id=campaign["id"]))[
+            "items"
+        ]
+        assert len(receipts) == 1 and receipts[0]["data"]["disposition"] == "accepted"
+    return intent, registration, pending.json()["work"], headers
 
 
 def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
@@ -150,8 +239,13 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
             report = operator.command(
                 "report.create", report_request, idempotency_key="production-report"
             )
+            delivery_intent, registration, work, gateway_headers = drive_new_campaign(
+                operator, http, url, manifest, secrets, admitted, tmp_path / "workflow"
+            )
             endpoint.mode = "unavailable"
             requests = len(endpoint.requests)
+            delivered = http.post("/v1/delivery/execute", json=work, headers=gateway_headers)
+            assert delivered.status_code == 200 and delivered.json()["disposition"] == "accepted"
             assert (
                 operator.command(
                     "report.create", report_request, idempotency_key="production-report"
@@ -185,6 +279,19 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
             assert post(http, secrets["bootstrap"]).json()["receipt"] == receipt
             assert (
                 operator.command(
+                    "orchestration.register_delivery",
+                    delivery_intent,
+                    idempotency_key="production-registration",
+                    expected_revision=0,
+                )
+                == registration
+            )
+            assert (
+                http.post("/v1/delivery/execute", json=work, headers=gateway_headers).json()
+                == delivered.json()
+            )
+            assert (
+                operator.command(
                     "report.create", report_request, idempotency_key="production-report"
                 )
                 == report
@@ -193,7 +300,7 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
             reports = operator.list(
                 RecordQuery(kind="report", campaign_id=admitted.campaign["id"])
             )["items"]
-            assert len(reports) == 1 and reports[0]["id"] == report["result"]["id"]
+            assert len(reports) == 2 and report["result"]["id"] in {row["id"] for row in reports}
             assert len(endpoint.requests) == requests
 
         changed = copy.deepcopy(manifest)

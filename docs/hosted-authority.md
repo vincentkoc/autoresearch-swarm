@@ -1533,6 +1533,13 @@ replay, credential aliases, revoked/expiring/changed credentials, revocation whi
 awaiting a witness or reading a body, retirement and static collisions. Actual
 workerd qualification of this extension is still required.
 
+The production workerd probe now includes that route: ordinary campaign creation,
+dedicated binding and API registration, followed by a separate actual Workflow.
+It requires the accepted saved-turn receipt while the Workflow is running, before
+any manual delivery replay. After stopping it and restarting the authority, both
+registration and delivery replay without a witness. This extension still needs
+its own exact-revision runtime receipt; the earlier production receipt predates it.
+
 This release retains a fixed credential roster. A new campaign or transfer needs
 unused preprovisioned driver and gateway actors. Adding actors or rotating tokens
 requires a separate credential lifecycle implementation; changing or resealing

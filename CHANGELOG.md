@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extend production workerd qualification with post-bootstrap campaign binding,
+  durable gateway registration, and a separate actual Workflow delivering a saved
+  report. Verify its accepted receipt before client replay, then restart the
+  authority and replay both registration and delivery during a witness outage.
+
 - Resolve production delivery registrations after campaigns are created. Keep the
   deployment seal unchanged, admit only exact current credentials from its fixed
   roster, reject overlapping static/durable registrations, and recheck delegation
