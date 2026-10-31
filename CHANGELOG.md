@@ -6,7 +6,8 @@
   architecture instead of relying on stripped processor environment variables.
   Preserve native architecture under emulation, environment isolation and strict
   descriptor validation. Add a focused Python 3.11–3.13 Windows qualification path
-  for registration and registered worker execution.
+  for registration and registered worker execution. All three versions passed
+  58 tests with one POSIX-only skip at `cb3779b`; [receipts](docs/engines.md#windows-qualification).
 
 - Add explicit recovery for an errored Cloudflare Workflow through the private
   adapter API and typed Python bridge. Preserve failed history, atomically reserve

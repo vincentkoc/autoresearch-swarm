@@ -20,6 +20,25 @@ CUDA, ROCm, and MPS workloads remain separately unqualified.
 Existing CPU workers keep their original enrollment and signed-record interpretation;
 registering a new environment does not replace an active worker.
 
+## Windows qualification
+
+The [engine qualification run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41242674788)
+passed at `cb3779b7121c4fb05cc251109da8582eb4ef946c`:
+
+| Python | Result | Duration |
+|---|---|---|
+| 3.11 | 58 passed, one POSIX-only skip | 182.97 seconds |
+| 3.12 | 58 passed, one POSIX-only skip | 165.78 seconds |
+| 3.13 | 58 passed, one POSIX-only skip | 139.30 seconds |
+
+This covers native architecture probing, parent-environment exclusion, selected
+virtual environments, registered CPU stages and HTTP workers, concurrent worker
+refill, publication recovery, replacement and missing-interpreter recovery.
+Python 3.11 previously failed because its platform helper depended on stripped
+environment variables. The native query fixes that failure; bootstrap test
+helpers now also use the production supervisor's isolated environment.
+This run does not qualify accelerator workloads or a physical multi-host fleet.
+
 ## Probe an installed interpreter
 
 ~~~sh
