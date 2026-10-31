@@ -13,7 +13,14 @@ from research_swarm.state.recovery_guard import recovery_record, require_recover
 from research_swarm.state.sql import SqlSession, StoreIdentity
 
 PLAN_KIND = "recovery_runtime_plan"
-OPERATIONS = frozenset({"credential.install", "time_provider.register", "time_provider.requalify"})
+OPERATIONS = frozenset(
+    {
+        "credential.install",
+        "time_provider.register",
+        "time_provider.requalify",
+        "time_provider.fence",
+    }
+)
 
 
 def require_recovery_runtime(

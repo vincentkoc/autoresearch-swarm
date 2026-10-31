@@ -17,7 +17,9 @@ from research_swarm.state.database import Transaction, _request_digest
 from research_swarm.state.recovery_runtime import PLAN_KIND
 from research_swarm.state.sql import StoreIdentity
 from research_swarm.state.time_providers import (
+    ProviderChanged,
     TimeProviders,
+    fencing_payload,
     qualification_payload,
     registration_payload,
 )
@@ -282,7 +284,7 @@ def test_preparation_cannot_mix_with_other_capabilities(runtime, other):
 
 @pytest.mark.parametrize(
     "operation",
-    ["worker.claim", "time_provider.fence", "workspace.activate_recovery", "artifact.begin_upload"],
+    ["worker.claim", "workspace.activate_recovery", "artifact.begin_upload"],
 )
 def test_preparation_guard_cannot_authorize_unrelated_mutation(runtime, operation):
     r = runtime
@@ -299,6 +301,67 @@ def test_preparation_guard_cannot_authorize_unrelated_mutation(runtime, operatio
                 request_digest=_request_digest(context, operation, {}),
             )
         )
+
+
+@pytest.mark.parametrize("damage", [None, "leaf", "plan", "admission", "active"])
+def test_runtime_retirement_is_bound_and_cannot_reactivate_old_source(runtime, damage):
+    r = runtime
+    current = register(r)
+    current = qualify(r, *qualification(r, current))
+    context = r.context.model_copy(
+        update={"command_id": new_id(), "expected_revision": current.revision}
+    )
+    data, name = {"plan_digest": r.plan.digest}, "runtime.activate"
+    operation, pending = r.registry.prepare(context, current, name, data)
+    value = payload(pending.request).model_copy(update={"source_epoch": new_id()})
+    proof = pending.complete(encoded(WitnessSigner(pending.source, SEED).sign(value)))
+    with pytest.raises(ProviderChanged) as changed:
+        r.database.store.read(
+            lambda sql: r.registry.check(
+                Transaction(sql, context), operation, proof, name=name, payload=data
+            )
+        )
+    leaf = fencing_payload(changed.value.evidence, name, data)
+    owned = guarded(r, "time_provider.fence", leaf, context=context)
+    if damage == "leaf":
+        owned._recovery_runtime = replace(
+            owned._recovery_runtime, request_digest="sha256:" + "0" * 64
+        )
+    elif damage == "plan":
+        owned._recovery_runtime = replace(owned._recovery_runtime, plan_digest="sha256:" + "0" * 64)
+    elif damage == "admission":
+        r.database.store.write(
+            lambda sql: sql.execute(
+                "UPDATE records SET state='mutable' WHERE kind='recovery_admission'"
+            )
+        )
+    elif damage == "active":
+        r.database.store.write(
+            lambda sql: sql.execute("UPDATE records SET state='active' WHERE kind='workspace_gate'")
+        )
+    before = snapshot(r.database.store)
+
+    def fence():
+        return r.database.store.write(
+            lambda sql: r.registry.fence(
+                Transaction(sql, owned), changed.value.evidence, name=name, payload=data
+            )
+        )
+
+    if damage is not None:
+        with pytest.raises(ResearchError):
+            fence()
+        assert snapshot(r.database.store) == before
+        return
+    retired = fence()
+    assert retired.state == "unqualified" and retired.revision == current.revision + 1
+    after = snapshot(r.database.store)
+    assert len([row for row in after["records"] if row["kind"] == "time_source_retirement"]) == 1
+    assert after["commands"] == before["commands"]
+    # qualification() emits the original epoch. Its durable retirement is final.
+    with pytest.raises(ResearchError):
+        qualify(r, *qualification(r, retired))
+    assert snapshot(r.database.store) == after
 
 
 @pytest.mark.parametrize("change", ["activation", "source", "epoch"])

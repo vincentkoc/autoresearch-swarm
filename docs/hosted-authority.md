@@ -2255,6 +2255,14 @@ It rechecks the recovering phase before the ordinary active-state shortcut and r
 mixed recovery or driver capabilities. A credential ID or token already in storage
 always refuses on this path, including matching, revoked or expiring rows.
 
+The guard also permits retirement of that exact planned clock provider after an
+authenticated discontinuity. The retirement leaf includes the expected provider,
+original operation/request and signed observation; normal provider checks still
+verify the current snapshot and proof binding. Retirement preserves the recovering
+gate and does not consume an activation intent. Its immutable source retirement
+prevents an old epoch from qualifying again if it later reappears. Mixed capabilities,
+changed admission/plan and use after activation still refuse.
+
 `Bootstrap.checkpoint_prepare_runtime(bootstrap_credential)` now implements the
 private preparation operation. The elected target manifest must already identify
 the desired runtime; this operation cannot change it. Its assignment key must differ

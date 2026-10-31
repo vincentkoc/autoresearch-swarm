@@ -90,6 +90,15 @@ class ProviderDiscontinuity:
     observed: SignedTimeWitness
 
 
+def fencing_payload(
+    evidence: ProviderDiscontinuity, name: str, payload: Mapping[str, Any]
+) -> JsonObject:
+    return {
+        **qualification_payload(evidence.operation, name, payload),
+        "observed": evidence.observed.model_dump(mode="json"),
+    }
+
+
 class ProviderChanged(ResearchError):
     def __init__(self, evidence: ProviderDiscontinuity) -> None:
         super().__init__(ErrorCode.STALE_FENCE, "Admitted time source changed")
@@ -349,6 +358,11 @@ class TimeProviders:
             transaction.workspace_id,
             "time_provider.fence",
             context=transaction.context,
+            authority=self.store,
+            payload=(gate_payload := fencing_payload(evidence, name, payload)),
+            request_digest=_request_digest(
+                transaction.context, "time_provider.fence", gate_payload
+            ),
         )
         expected = operation.expected
         if expected.state != "qualified" or expected.data.source_epoch is None:

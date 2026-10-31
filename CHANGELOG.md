@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Permit clock retirement during recovery only with an exact runtime-plan guard
+  binding the provider snapshot, operation and authenticated discontinuity. Keep
+  the target inactive and retain source retirement without consuming an activation
+  intent. A retired clock epoch cannot qualify again, even if it reappears.
+
 - Verify completed hosted recovery against protected source/target pins on ordinary
   reopen and later checkpoint export. Bind the deployment receipt to the signed
   activation and historical runtime, retain old credential revocations, and verify
