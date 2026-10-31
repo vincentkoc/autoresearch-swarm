@@ -78,6 +78,7 @@ jobs:
           tests/test_checkpoint_capture.py
           tests/test_checkpoint_fingerprint.py
           tests/test_checkpoint_import.py
+          tests/test_checkpoint_wire.py
           tests/test_inactive_transform.py
           tests/test_cloudflare_runtime.py
           tests/test_production_delivery.py

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Define one bounded ASCII RPC transport for signed checkpoint envelopes and
+  ordered chunks. Enforce the complete 6 MiB message cap before parsing and the
+  source byte limits before decoding; transport does not verify or authorize import.
+
 - Report bounded, redacted native execution and publication findings when hosted
   training fixture setup fails. Keep experiment deadlines and clock thresholds
   unchanged; an unsuccessful attempt now retains useful failure evidence in CI.

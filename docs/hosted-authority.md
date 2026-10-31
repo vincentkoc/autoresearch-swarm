@@ -1772,6 +1772,23 @@ bundles, but rejects a conflicting history row when present. Native schema,
 integrity, private-file and operator-token checks remain in the native wrapper.
 The inspector does not read artifact bytes or authorize restoration.
 
+## Bounded private checkpoint transport
+
+The private RPC transport in `checkpoint_wire.py` carries the signed envelope
+and ordered chunks as canonical base64 fields in one ASCII JSON string. It caps
+the complete string at 6 MiB before parsing, rejects duplicate/unknown fields and
+noncanonical base64, and enforces the source profile's envelope, chunk, count and
+aggregate byte limits before decoded allocations. The codec preserves opaque
+bytes; the importer remains responsible for signature, identity and SQL validation.
+
+Cloudflare documents a 32 MiB serialized RPC limit and structured-cloneable values
+for Python/JavaScript service calls. This profile uses a string to avoid transferring
+Python models, tuples or proxies. The maximum source byte profile fits below the
+6 MiB cap in native tests. This establishes encoding feasibility; near-limit memory
+and the full private RPC path still need actual workerd qualification.
+Sources: [RPC limits](https://developers.cloudflare.com/workers/runtime-apis/rpc/#limitations),
+[Python RPC](https://developers.cloudflare.com/changelog/post/2026-08-03-python-javascript-rpc/).
+
 ## Shared inactive restore transaction
 
 `checkpoints.inactive.restore_inactive_in()` extracts the existing native restore
