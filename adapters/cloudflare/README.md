@@ -156,6 +156,15 @@ both runtime tests passed in 41.82 seconds, including the gate-bypass negative
 control and expired-response completion check. This qualifies the local fixture's
 ordering boundary, not native-clock rate or deployed hosted authority.
 
+The actual shared-service router, open-only storage and both earlier fixtures
+passed at `d548332` in
+[workerd qualification 41192503736](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41192503736)
+on 2026-10-31: three tests passed in 69.88 seconds. The router has its own
+separate-object negative control that bypasses construction and operation gates.
+Its normal route preserves authenticated replay after source fencing and an
+owned process restart. This remains synthetic local runtime evidence; it does
+not activate production transport, artifact custody or hosted worker admission.
+
 The opt-in native test exercises the shared kernel, storage boundary, full owned
 process restart and eight contending HTTP deliveries. CPU tests cover callback
 failure propagation and native counter exhaustion. These are infrastructure

@@ -392,9 +392,18 @@ reader ownership; it exposes no artifact, execution or restore route.
 Native tests cover this wiring against real SQLite and synchronous native crypto,
 including source fencing, canceled acquisition, credential revocation and restart
 replay. Their async gate is a test fixture, not evidence of Durable Object event
-ordering. Qualification of this actual router in workerd is a separate gate from
-the already qualified low-level SQL and witness-ordering probes. Production
-provisioning, authenticated transport and hosted worker admission remain disabled.
+ordering. The actual router then passed local workerd qualification at
+`d548332f5cac0e2f5ca9fe96cbf3fe06d3bfb078` in
+[run 41192503736](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41192503736)
+on 2026-10-31: all three runtime tests passed in 69.88 seconds. The router probe
+holds an external witness, observes a separately submitted read and verifies
+committed enrollment before that read succeeds. A separate-object bypass removes
+both router gates and must expose the missing worker before enrollment commits.
+It also checks signed queries, timeout retry, source fencing, exact replay after
+process restart, current credentials and absence of native SQLite/crypto/PID
+imports. Timestamps and credentials remain synthetic; production provisioning,
+authenticated transport, artifact custody and hosted worker admission remain
+disabled. This evidence does not qualify the runtime's 30-second reset path.
 
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
