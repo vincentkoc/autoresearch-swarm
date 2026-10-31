@@ -372,6 +372,30 @@ database tampering, credential activity, row integrity, or the separate immutabl
 authority configuration; the router must still check its configuration and
 resolve current credentials for every request.
 
+`adapters/cloudflare/research_router.py` supplies the initial shared-service
+integration, `ExistingResearchRouter`. Opening and every operation use the same
+exclusive gate. An explicit provisioner must already have persisted the immutable
+configuration row, credentials, workspace and provider lifecycle. The configuration
+binds physical store location, logical activation, workspace/controller epoch,
+assignment public key, dispatch-key digest, witness source/policy and initial
+credential-manifest digest. Reopening never reinstalls or requalifies them.
+
+The profile admits calibrated `worker.enroll`, `worker.set_admission` and
+`worker.cache_advertise` through the existing command catalog and `ResearchService`.
+Current authentication and scopes precede exact acknowledgment replay; replay
+precedes time-source access. Fresh commands repeat ownership checks in the shared
+transaction after witness acquisition. `worker.clock` and offer-list queries have
+their own witnessed scope. Worker record, pending, historical-pending and control
+reads remain time-free. The adapter uses an unavailable byte port and opaque
+reader ownership; it exposes no artifact, execution or restore route.
+
+Native tests cover this wiring against real SQLite and synchronous native crypto,
+including source fencing, canceled acquisition, credential revocation and restart
+replay. Their async gate is a test fixture, not evidence of Durable Object event
+ordering. Qualification of this actual router in workerd is a separate gate from
+the already qualified low-level SQL and witness-ordering probes. Production
+provisioning, authenticated transport and hosted worker admission remain disabled.
+
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command

@@ -1,0 +1,286 @@
+"""Bounded shared-service router for an already provisioned hosted authority.
+
+This adapter is not a deployed controller. Its initial profile excludes artifact
+I/O, worker execution and expiring credentials. The caller supplies the runtime
+gate, existing-store opener, synchronous crypto and bounded witness transport.
+"""
+
+import asyncio
+import hashlib
+from typing import Literal
+
+from pydantic import ValidationError
+
+from research_swarm.control.auth import CredentialStore
+from research_swarm.control.dispatch import dispatch_command, validate_command_input
+from research_swarm.control.service import ResearchService
+from research_swarm.control.witness_commands import WitnessExecutionBoundary
+from research_swarm.control.witness_time import WitnessAuthorityTimeProvider
+from research_swarm.control.worker_lifecycle import operator_worker
+from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
+from research_swarm.control.workers import worker_authority
+from research_swarm.crypto import public_key
+from research_swarm.domain.assignments import PublicKeyHex, signing_key_id
+from research_swarm.domain.canonical import record_digest, strict_json_loads
+from research_swarm.domain.clocks import ClockChallenge
+from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.identity import CommandContext
+from research_swarm.domain.time_witnesses import WitnessAuthorityScope, WitnessSource
+from research_swarm.domain.types import Digest, Name, VersionedRecord, new_id
+from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
+from research_swarm.state.database import Database, Transaction
+from research_swarm.state.reader_sessions import OpaqueReaderOwnership
+from research_swarm.state.schema_contracts import require_table
+from research_swarm.state.time_providers import TimeProviders
+
+if __package__:
+    from .exclusive import exclusive
+else:
+    from exclusive import exclusive
+
+
+COMMANDS = frozenset({"worker.enroll", "worker.set_admission", "worker.cache_advertise"})
+QUERIES = frozenset({"worker.clock", "worker.list", "worker.get"})
+ACQUISITION_TIMEOUT_SECONDS = 10
+
+
+class HostedConfiguration(VersionedRecord):
+    profile: Literal["worker-control-witness-v1"] = "worker-control-witness-v1"
+    store_backend: Literal["cloudflare-do"] = "cloudflare-do"
+    store_location: Name
+    authority: WitnessAuthorityScope
+    source: WitnessSource
+    assignment_public_key: PublicKeyHex
+    dispatch_key_digest: Digest
+    credential_manifest_digest: Digest
+
+    @property
+    def digest(self):
+        return record_digest("research.hosted-configuration", self.model_dump(mode="json"))
+
+
+def dispatch_key_digest(key):
+    if not isinstance(key, bytes) or len(key) < 32:
+        raise ValueError("Hosted dispatch key must contain at least 32 bytes")
+    return "sha256:" + hashlib.sha256(b"research.hosted-dispatch-key-v1\0" + key).hexdigest()
+
+
+def unavailable(message="Operation is outside the hosted worker-control profile"):
+    return ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, message)
+
+
+def validated(model, payload):
+    try:
+        return model.model_validate(payload)
+    except ValidationError as error:
+        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid hosted request") from error
+
+
+class UnavailableBytes:
+    """A programming error is visible before this profile can acquire byte custody."""
+
+    def refuse(self, *args, **kwargs):
+        raise unavailable("Artifact bytes are outside the hosted worker-control profile")
+
+    upload_guard = begin = progress = append = finalize = verify = reader = fetch = refuse
+    discard_upload = delete = refuse
+
+
+class ExistingResearchRouter:
+    @classmethod
+    async def open(
+        cls, state, open_store, configuration, *, dispatch_key, assignment_key, crypto, acquire
+    ):
+        """Open only: provisioning, credentials and source qualification must already exist."""
+
+        async def construct():
+            config = HostedConfiguration.model_validate(configuration)
+            store = open_store()
+            if (
+                (store.identity.backend, store.identity.location)
+                != (config.store_backend, config.store_location)
+                or public_key(crypto, assignment_key).hex() != config.assignment_public_key
+                or signing_key_id(config.assignment_public_key)
+                != config.authority.assignment_key_id
+                or dispatch_key_digest(dispatch_key) != config.dispatch_key_digest
+            ):
+                raise ResearchError(ErrorCode.STALE_FENCE, "Hosted authority configuration differs")
+            instance = cls()
+            instance.state, instance.configuration = state, config
+            instance.acquire = acquire
+            instance.registry = TimeProviders(store.identity, crypto_provider=crypto)
+            provider = WitnessAuthorityTimeProvider(store.identity)
+            instance.boundary = WitnessExecutionBoundary(instance.registry, provider)
+            instance.database = Database.from_store(store, execution_boundary=instance.boundary)
+            instance._check_configuration()
+            instance.credentials = CredentialStore.open_existing(instance.database)
+            artifacts = ArtifactService(
+                instance.database, UnavailableBytes(), reader_ownership=OpaqueReaderOwnership()
+            )
+            instance.service = ResearchService(
+                instance.database,
+                artifacts,
+                dispatch_key=dispatch_key,
+                assignment_key=assignment_key,
+                authority_time_provider=provider,
+                crypto_provider=crypto,
+            )
+            instance.queries = WorkerQueries(instance.database, instance.service.worker_locality)
+            return instance
+
+        return await exclusive(state, construct)
+
+    def _check_configuration(self):
+        def check(sql):
+            require_table(
+                sql, "hosted_authority_config", "singleton digest payload", ("singleton",)
+            )
+            rows = sql.execute(
+                "SELECT singleton,digest,payload FROM hosted_authority_config"
+            ).fetchall()
+            config = self.configuration
+            if (
+                len(rows) != 1
+                or rows[0]["singleton"] != 1
+                or rows[0]["digest"] != config.digest
+                or strict_json_loads(rows[0]["payload"]) != config.model_dump(mode="json")
+            ):
+                raise ResearchError(ErrorCode.STALE_FENCE, "Hosted authority configuration differs")
+            current = sql.execute(
+                "SELECT controller_id,control_epoch FROM workspaces WHERE id=?",
+                (config.authority.workspace_id,),
+            ).fetchone()
+            if current is None or (current["controller_id"], current["control_epoch"]) != (
+                config.authority.controller_id,
+                config.authority.control_epoch,
+            ):
+                raise ResearchError(ErrorCode.STALE_FENCE, "Hosted controller authority changed")
+
+        self.database.store.read(check)
+
+    def _context(self, token, *, idempotency_key, expected_revision=None):
+        self._check_configuration()
+        principal = self.credentials.resolve(token, allow_expiring=False)
+        if principal.workspace_id != self.configuration.authority.workspace_id:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Credential workspace differs")
+        return validated(
+            CommandContext,
+            {
+                "principal": principal,
+                "idempotency_key": idempotency_key,
+                "expected_revision": expected_revision,
+            },
+        )
+
+    async def _witnessed(self, context, operation, payload, perform):
+        snapshot = self.database.store.read(
+            lambda sql: self.registry.load(Transaction(sql, context), self.configuration.authority)
+        )
+        if snapshot.data.source != self.configuration.source:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Hosted witness source differs")
+        with self.boundary.prepare(context, snapshot, operation, payload) as turn:
+            owner = asyncio.current_task()
+            timeout = asyncio.timeout(ACQUISITION_TIMEOUT_SECONDS)
+            try:
+                async with timeout:
+                    response = await self.acquire(turn.request)
+                if timeout.expired():
+                    # A transport may suppress cancellation and still return bytes.
+                    raise TimeoutError("Witness response arrived after its deadline")
+            except TimeoutError as error:
+                raise ResearchError(
+                    ErrorCode.TRANSPORT_UNAVAILABLE, "Witness acquisition timed out", retryable=True
+                ) from error
+            if owner is None or owner.cancelling():
+                raise asyncio.CancelledError("Witness owner was cancelled")
+            turn.complete(response)
+            if owner.cancelling():
+                raise asyncio.CancelledError("Witness owner was cancelled")
+            # No I/O or await is permitted from completion through the shared commit.
+            return perform()
+
+    def _preflight_command(self, context, operation, request):
+        def check(sql):
+            transaction = Transaction(sql, context)
+            if operation == "worker.enroll":
+                if request.clock_mode != "bounded-continuous-v1":
+                    raise unavailable("Hosted enrollment requires calibrated authority time")
+                for identifier in request.project_ids or ():
+                    transaction.get("project", identifier)
+            elif operation == "worker.set_admission":
+                operator_worker(transaction, request.binding)
+            else:
+                worker = worker_authority(
+                    transaction, request.binding.worker_id, request.binding.worker_session_id
+                )
+                if worker.binding != request.binding:
+                    raise ResearchError(ErrorCode.STALE_FENCE, "Cache hint binding differs")
+                if worker.clock_mode != "bounded-continuous-v1":
+                    raise unavailable("Hosted cache hints require calibrated authority time")
+                for reference in request.references:
+                    ArtifactCatalog.available(transaction, reference)
+
+        self.database.store.read(check)
+
+    async def command(self, token, operation, payload, *, idempotency_key, expected_revision=None):
+        async def execute():
+            context = self._context(
+                token, idempotency_key=idempotency_key, expected_revision=expected_revision
+            )
+            if operation not in COMMANDS:
+                raise unavailable()
+            definition, request = validate_command_input(context, operation, payload)
+            # These three encodings match their kernel payloads. Local enrollment
+            # has a legacy omission and is intentionally outside this profile.
+            if operation == "worker.enroll" and request.clock_mode != "bounded-continuous-v1":
+                raise unavailable("Hosted enrollment requires calibrated authority time")
+            normalized = request.model_dump(mode="json")
+            previous = self.database.replay(context, operation, normalized, definition.scope)
+            if previous is not None:
+                return previous
+            self._preflight_command(context, operation, request)
+            return await self._witnessed(
+                context,
+                operation,
+                normalized,
+                lambda: dispatch_command(self.service, context, operation, normalized),
+            )
+
+        return await exclusive(self.state, execute)
+
+    async def query(self, token, operation, payload):
+        async def read():
+            context = self._context(token, idempotency_key=new_id())
+            if operation == "worker.get":
+                return self.queries.get(context, validated(WorkerRead, payload))
+            if operation == "worker.list":
+                request = validated(WorkerQuery, payload)
+                if request.kind != "offers":
+                    return self.queries.list(context, request)
+                self.queries.validate_list(context, request)
+                worker = self.database.store.read(
+                    lambda sql: worker_authority(
+                        Transaction(sql, context), request.worker_id, request.session_id
+                    )
+                )
+                if worker.clock_mode != "bounded-continuous-v1":
+                    raise unavailable("Hosted offers require calibrated authority time")
+                return await self._witnessed(
+                    context,
+                    operation,
+                    request.model_dump(mode="json"),
+                    lambda: self.queries.list(context, request),
+                )
+            if operation == "worker.clock":
+                request = validated(ClockChallenge, payload)
+                self.service.workers.validate_clock(context, request)
+                result = await self._witnessed(
+                    context,
+                    operation,
+                    request.model_dump(mode="json"),
+                    lambda: self.service.worker_clock(context, request),
+                )
+                return result.model_dump(mode="json")
+            raise unavailable()
+
+        return await exclusive(self.state, read)

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a bounded hosted worker-control router over the shared research service.
+  Bind provisioned configuration to physical state and signing identities, check
+  current credentials inside the exclusive gate, and replay exact outcomes before
+  witness acquisition. Keep artifact execution and production activation outside
+  this initial adapter profile.
+
 - Open provisioned Durable Object state and credentials without schema creation,
   migration or repair. Refuse missing versions, required tables, columns and keys;
   preserve current credential revocation and keep explicit initialization separate.
