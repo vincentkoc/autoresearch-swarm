@@ -587,6 +587,12 @@ ancestry, single attempts, policy consumption, final closure, and restored
 capacity. Gates precede active training; this demonstrates asynchronous native
 workload overlap, not concurrent training throughput or physical fleet scaling.
 
+A separate HTTP integration test releases two independent, scoped proposer
+clients from a shared barrier. Both responses persist, replay with their original
+command identities and leave accounting unchanged on redelivery. Neither agent
+can answer the other's request. Both distinct candidates then enter the same
+portfolio through the ordinary admission API.
+
 ## Allocate bounded child campaigns
 
 Before sealing a delegating campaign, set `delegation.max_depth` and declare

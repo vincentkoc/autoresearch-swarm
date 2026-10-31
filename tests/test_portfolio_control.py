@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from research_swarm.api.http import create_app
 from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.commands import CampaignTarget, SubmitTrial
 from research_swarm.control.models import (
@@ -33,6 +34,7 @@ from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
 from tests.support import ResearchFixture
 from tests.test_evaluation_driver import role
+from tests.test_http_delivery import serving
 from tests.test_local_pipeline import Pipeline
 from tests.test_local_pipeline import pipeline as pipeline
 from tests.test_promotions import assess, commit
@@ -134,6 +136,79 @@ def two_candidates(pipeline: Pipeline, tmp_path: Path) -> list[dict[str, Any]]:
         admit(pipeline, request["id"], revision=2 + index)["result"]["trial"]
         for index, request in enumerate(requests)
     ]
+
+
+@pytest.mark.parametrize("pipeline", [portfolio_options()], indirect=True)
+def test_independent_agents_submit_and_replay_concurrent_http_responses(
+    pipeline: Pipeline, tmp_path: Path
+) -> None:
+    baseline(pipeline)
+    requests = [issue(pipeline, 0, 0)["request"], issue(pipeline, 1, 1)["request"]]
+    credentials, responses = [], []
+    for index, request in enumerate(requests):
+        actor = Principal(
+            id=request["data"]["proposer_id"],
+            workspace_id=pipeline.runtime.identity.workspace_id,
+            scopes=frozenset({"proposal.respond"}),
+        )
+        credentials.append(pipeline.runtime.credentials.issue(pipeline.runtime.principal(), actor))
+        source = tmp_path / f"agent-{index}"
+        shutil.copytree(pipeline.source, source)
+        train = source / "train.py"
+        content = train.read_text(encoding="utf-8")
+        assert content.count("LEARNING_RATE = 0.0") == 1
+        train.write_text(
+            content.replace("LEARNING_RATE = 0.0", f"LEARNING_RATE = {(index + 1) / 10}"),
+            encoding="utf-8",
+        )
+        artifact = pipeline.client.capture_project(source, idempotency_key=f"source-{index}")
+        responses.append(
+            RespondToProposal(
+                request_id=request["id"],
+                outcome="candidate",
+                source_artifact=artifact,
+                hypothesis=f"Independent agent hypothesis {index}",
+            )
+        )
+    assert requests[0]["data"]["proposer_id"] != requests[1]["data"]["proposer_id"]
+    barrier = threading.Barrier(2)
+    with serving(create_app(pipeline.runtime.service, pipeline.runtime.credentials)) as url:
+
+        def submit(index: int) -> dict[str, Any]:
+            with ResearchClient.connect(url, credentials[index].token) as agent:
+                barrier.wait(timeout=10)
+                return agent.command(
+                    "search.respond", responses[index], idempotency_key="independent-response"
+                )
+
+        with ResearchClient.connect(url, credentials[0].token) as first_agent:
+            with pytest.raises(ResearchError) as foreign:
+                first_agent.command(
+                    "search.respond", responses[1], idempotency_key="foreign-response"
+                )
+            assert foreign.value.code == ErrorCode.AUTHORIZATION_DENIED
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            accepted = list(pool.map(submit, range(2)))
+        budget = pipeline.client.budget(pipeline.campaign["id"])
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            replayed = list(pool.map(submit, range(2)))
+        assert replayed == accepted
+        assert pipeline.client.budget(pipeline.campaign["id"]) == budget
+    assert accepted[0]["command_id"] != accepted[1]["command_id"]
+    for index, response in enumerate(accepted):
+        assert response["result"]["id"] == requests[index]["id"]
+        assert response["result"]["data"]["responder_id"] == requests[index]["data"]["proposer_id"]
+        assert response["result"]["data"]["request"] == responses[index].model_dump(mode="json")
+    assert len(pipeline.client.list(RecordQuery(kind="proposal_response"))["items"]) == 2
+    admitted = [
+        admit(pipeline, request["id"], revision=2 + index)["result"]
+        for index, request in enumerate(requests)
+    ]
+    assert all(item["transition"]["data"]["outcome"] == "admitted" for item in admitted)
+    assert len({item["candidate"]["id"] for item in admitted}) == 2
+    assert set(admitted[-1]["search"]["data"]["active_trial_ids"]) == {
+        item["trial"]["id"] for item in admitted
+    }
 
 
 def test_existing_search_configuration_bytes_and_ordered_portfolio_identity() -> None:
