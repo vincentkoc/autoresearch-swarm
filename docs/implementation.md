@@ -3,12 +3,18 @@
 This is the completion ledger for the design contract. Pending means unproven,
 not implicitly supported.
 
-The latest completed hosted qualification is
+The latest all-platform pass is
 [`d111b841d242771a3de6fece8180d94860c7270b`](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41227545377):
 20 workerd tests, 1,317 Linux tests, 1,317 macOS tests and 1,311 Windows tests
 with six explicit skips. Its recovery probe ends at original journal closure.
 Newer preparation, activation and clock-management probes require their own
 runtime receipts; current source alone does not extend that qualification.
+The newer [seven-startup run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41230138489)
+at `448765365258d108dacb07f42f5275e0113f59cc` passed workerd, Linux and macOS,
+including actual target preparation and activation. Windows reached 91% progress
+before the 30-minute job cancellation and has no passing verdict for that revision.
+The qualification job now allows 45 minutes on Windows; experiment budgets and
+individual test supervision remain unchanged.
 
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|
@@ -82,7 +88,7 @@ runtime receipts; current source alone does not extend that qualification.
 | Cloudflare agent facade | Separate credential-free Worker, shared native command catalog, caller identity and streaming transport | Local workerd with SDK and stdio MCP, command replay, binary transfers/lengths, scopes/revocation, events, redirect refusal and bounded stalled-stream closure | Local transport qualification; immediate disconnect propagation through the emulator and hosted deployment remain separate |
 | R2 storage adapter | Immutable runtime/CLI selection, conditional generation publication, pinned native staging, verified reads and retirement fences | Simulator and SDK contracts plus actual local R2-binding restart, publication, delayed-write fencing, pins, deduplication and corruption refusal | Native runtime and local binding qualified separately from SDK request shape; hosted S3-to-R2 deployment remains unqualified |
 | Cloudflare authority | Fixed authoritative DO with separately admitted native witness; bounded research, artifact and recovery profiles | Shared kernel, production routing, native CPU execution and original-journal recovery/closure in local workerd; exact receipts in hosted-authority.md | Workers timers are not the authority clock. Production deployment, fleet/accelerator qualification and newer recovery activation/clock-management probes remain open |
-| Hosted recovery activation and clock management | Private target preparation/activation, immutable readiness lineage and explicit fenced-clock requalification; separate active-deployment status/management | SQLite and signed-witness tests preserve credentials, original attempts/accounting and activation history across races, rollback and lost replies | Run above qualifies recovery ingress and closure. Actual preparation/activation and the later eight/nine-startup clock-management sequences await newer workerd receipts |
+| Hosted recovery activation and clock management | Private target preparation/activation, immutable readiness lineage and explicit fenced-clock requalification; separate active-deployment status/management | SQLite and signed-witness tests preserve credentials, original attempts/accounting and activation history across races, rollback and lost replies | The seven-startup workerd run qualifies preparation and activation; its Windows matrix did not finish. Later eight/nine-startup and fresh-deployment clock-management probes await newer runtime receipts |
 | Controller and CPU measurement | Bounded traffic, ledger contention, replay latency and paired native throughput runner | 14 measured cells, 48 eligible CPU trials, 96 stages, 1.80× median paired throughput; interrupted-publication recovery preserves attempts | Single-host short CPU workload; no multi-host or accelerator scaling claim |
 | Native backup and recovery | Sealed export; inactive import; single-target source election; routed original evidence; exact reader/turn cleanup; signed activation and successor resealing | Real native live-worker recovery through activation/export; two successor epochs; preserved queued stages, exposure and child funding; crash/acknowledgment/byte races and ledger consistency | Local SQLite/filesystem/CPU proof; original workers and ancestors remain fenced. Physical-host disaster recovery and R2 backup remain unqualified |
 | Reward-driven numerical policy training | Typed frozen-batch contracts, categorical REINFORCE adapter and ordinary CPU trainer/protected checker | Analytic gradient, incompatible/censored batch refusal, native trainer/checker stages and deliberately altered checkpoint rejection | Native trainer verified on synthetic batches; controller-qualified data has a separate verified path. Approved profiles, admission, checked publication, held-out assessment and explicit policy adoption are implemented; a native policy win requires an actual passing gate |

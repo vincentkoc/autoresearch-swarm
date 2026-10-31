@@ -4,8 +4,9 @@ Status: staged implementation with fixed-profile authoritative Durable Object
 execution qualified in local workerd under an explicitly admitted native witness.
 No production Cloudflare deployment has been performed. The existing
 [hybrid profile](cloudflare.md) remains available; it has separate qualification.
-The full M5 exit remains open. New recovery activation and clock-management probes
-must obtain their own runtime receipts, and deployed/fleet qualification is separate.
+The full M5 exit remains open. The seven-startup activation path has a workerd pass;
+later clock-management probes need their own receipts. Deployed/fleet qualification
+is separate.
 
 The witness wire records, domain-separated signatures, pinned source checks,
 one-use response verification and epoch derivation are implemented. A frozen
@@ -17,9 +18,8 @@ and persisted retirement are locally verified. A one-use synchronous operation
 context is implemented. Wire validity does not qualify a deployment. Local
 workerd qualifies the awaited ordering bridge, bounded worker/artifact routing,
 native source lifecycle and the bounded research/recovery paths recorded below.
-Ordinary research admission has explicit capability limits. Later target activation
-and clock-management qualification and authenticated production deployment remain
-open. The private HTTP source
+Ordinary research admission has explicit capability limits. Later clock-management
+qualification and authenticated production deployment remain open. The private HTTP source
 transport does not establish Container routing.
 
 ## Decision and boundary
@@ -2365,7 +2365,8 @@ requiring current recovery custody and an unchanged usable target roster.
 
 SQLite/signed-witness tests cover interruption in both phases, partial roster rollback,
 credential collisions, changed state during the await, lost committed replies and
-ordinary-route refusal. The new private RPC still needs actual workerd qualification.
+ordinary-route refusal. The seven-startup receipt below also qualifies the private
+preparation RPC in actual workerd; later clock-requalification changes need newer proof.
 Preparation creates neither the public deployment seal nor an active workspace gate.
 Subsequent activation uses the separate operation described below; preparation cannot
 authorize execution, scientific acceptance or activation. Existing native witness
@@ -2444,8 +2445,9 @@ SQLite/mock-R2 tests exercise transaction faults after retirement/deployment/eve
 generated-row bounds, lost responses, concurrent operation gates, cancellation,
 byte failures, quota, admission/credential/provider drift and durable clock retirement.
 They also exercise original journal quarantine/closure, ordinary SDK research with a
-fresh epoch-2 worker, and target reseal/export. Actual workerd preparation/activation
-and separately authorized cloud deployment remain unqualified.
+fresh epoch-2 worker, and target reseal/export. The seven-startup receipt below
+qualifies actual workerd preparation/activation. Newer clock-management paths and
+separately authorized cloud deployment remain unqualified.
 
 The production probe now extends to nine startups. It fixes distinct assignment,
 dispatch, bootstrap, API-credential and witness-consumer material for both targets
@@ -2618,6 +2620,21 @@ transfer/quarantine and private closure across six startups. Native tests includ
 target preparation, but that revision's workerd probe does not call its private
 preparation RPC. Actual target preparation, activation and requalification require
 newer qualification receipts.
+
+At `448765365258d108dacb07f42f5275e0113f59cc`, the
+[seven-startup qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41230138489)
+passed workerd with 20 tests in 798.09 seconds, Linux with 1,410 in 563.74 seconds,
+and macOS with 1,410 in 616.57 seconds. This is actual private target preparation
+and activation, offline acknowledgment replay, ordinary API access, old-token
+refusal and fresh worker enrollment/calibration across restart. It predates the
+immutable requalification lineage and both clock-management RPCs.
+
+Windows did not finish that run: the job reached its 30-minute limit after the
+last complete progress line showed 91%, with no ordinary test-failure summary.
+Cancellation interrupted pytest, so this is neither a Windows pass nor a diagnosed
+product regression. The Windows qualification allowance increases to 45 minutes;
+individual test/experiment limits are unchanged. The newer complete suite must
+produce its own matrix verdict.
 
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent
