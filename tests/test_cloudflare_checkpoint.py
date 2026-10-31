@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 
 import httpx
+import pytest
 
 from adapters.cloudflare.checkpoint_wire import MAX_RPC_BYTES, decode_checkpoint
 from adapters.cloudflare.deployment import DeploymentManifest, authority_id
@@ -28,12 +29,14 @@ from research_swarm.domain.checkpoint_elections import (
     SignedLogicalElectionRequest,
 )
 from research_swarm.domain.checkpoint_images import LogicalImportIntent, SignedLogicalCheckpoint
+from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.recovery_routes import SignedWorkerRecoveryRoute
 from research_swarm.domain.recovery_runtime import (
     RequalifyRecoveryRuntime,
     RuntimePreparationReceipt,
     RuntimeRequalificationReceipt,
 )
+from research_swarm.domain.time_providers import RequalifyTimeProvider, TimeProviderRequalification
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import write_private
@@ -128,6 +131,7 @@ def target_call(
     closure=None,
     activation=None,
     requalification=None,
+    provider=None,
 ):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
@@ -142,6 +146,7 @@ def target_call(
             "closure_json": json.dumps(closure),
             "activation_json": json.dumps(activation),
             "requalification_json": json.dumps(requalification),
+            "provider_json": json.dumps(provider),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -868,6 +873,7 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 drop=False,
                 activation=None,
                 requalification=None,
+                provider=None,
             ):
                 return target_call(
                     http,
@@ -879,6 +885,7 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                     drop=drop,
                     activation=activation,
                     requalification=requalification,
+                    provider=provider,
                 )
 
             assert runtime_call(winner, "default-prepare-runtime").json() == {"denied": True}
@@ -1214,11 +1221,131 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 fresh_worker.assignment_authority, clock_admission=fresh_worker.clock_admission
             )
             pending = sampler.begin()
-            pending.complete(current.worker_clock(pending.challenge))
+            original_estimate = pending.complete(current.worker_clock(pending.challenge))
             assert len(target_endpoints[winner].requests) > activated_witness_calls
             assert (
                 current.command("worker.enroll", enroll, idempotency_key="new-target-worker")
                 == enrolled
+            )
+            assert (
+                runtime_call(winner, "activate", activation=activation_request).text
+                == accepted_activation
+            )
+            assert checkpoint(http, secrets["bootstrap"], capture, capture=True).text == captured
+            assert len(endpoint.requests) == witness_calls
+            calls_before_status = len(target_endpoints[winner].requests)
+            status = runtime_call(winner, "provider-status").json()
+            assert (
+                status["manifest_digest"]
+                == DeploymentManifest.model_validate(targets[winner]).digest
+            )
+            assert status["provider"]["state"] == "qualified"
+            assert status["provider"]["data"] == successor.provider.model_dump(mode="json")
+            assert len(target_endpoints[winner].requests) == calls_before_status
+            target_endpoints[winner].restart()
+            failed_challenge = sampler.begin().challenge
+            with pytest.raises(ResearchError) as changed:
+                current.worker_clock(failed_challenge)
+            assert changed.value.code == ErrorCode.STALE_FENCE
+            active_restart_epoch = target_endpoints[winner].responses[-1].payload.source_epoch
+            assert active_restart_epoch != restarted_epoch
+            retired_active_calls = len(target_endpoints[winner].requests)
+            assert retired_active_calls == calls_before_status + 1
+            fenced_status = runtime_call(winner, "provider-status").json()["provider"]
+            assert fenced_status["state"] == "unqualified"
+            assert fenced_status["revision"] == status["provider"]["revision"] + 1
+            assert fenced_status["data"] == status["provider"]["data"]
+            provider_request = RequalifyTimeProvider(
+                request_id=new_id(),
+                expected_provider_revision=fenced_status["revision"],
+                expected_provider_generation=fenced_status["data"]["scope"]["provider_generation"],
+                reason="Explicit active-provider recovery after native witness restart",
+            ).model_dump(mode="json")
+            for action in ("provider-status", "requalify-provider"):
+                assert runtime_call(
+                    winner, "default-" + action, provider=provider_request
+                ).json() == {"denied": True}
+                assert (
+                    runtime_call(
+                        winner, action, credential="wrong", provider=provider_request
+                    ).json()["error"]["code"]
+                    == "AUTHORIZATION_DENIED"
+                )
+                assert "error" in runtime_call(loser, action, provider=provider_request).json()
+            assert len(target_endpoints[winner].requests) == retired_active_calls
+            assert (
+                runtime_call(
+                    winner, "requalify-provider", provider=provider_request, drop=True
+                ).text
+                == "{"
+            )
+            managed_witness_calls = len(target_endpoints[winner].requests)
+            assert managed_witness_calls == retired_active_calls + 1
+            target_endpoints[winner].mode = "unavailable"
+
+        with (
+            server(tmp_path, sequence=9, **options) as url,
+            httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
+            ResearchClient.connect(url + f"/fixture/authority-{winner}", fresh_token) as current,
+        ):
+            managed_reply = runtime_call(
+                winner, "requalify-provider", provider=provider_request
+            ).text
+            reply = json.loads(managed_reply)
+            assert reply["disposition"] == "accepted"
+            managed = TimeProviderRequalification.model_validate(reply["result"]["data"])
+            assert managed.request.model_dump(mode="json") == provider_request
+            assert managed.previous.model_dump(mode="json") == fenced_status["data"]
+            assert managed.provider_revision == fenced_status["revision"] + 1
+            assert (
+                managed.provider.scope.provider_generation
+                != managed.previous.scope.provider_generation
+            )
+            assert managed.provider.source_epoch == active_restart_epoch
+            assert managed.provider.source == managed.previous.source
+            assert managed.provider.scope.authority == managed.previous.scope.authority
+            assert (
+                managed.configuration_digest
+                == DeploymentManifest.model_validate(targets[winner]).configuration.digest
+            )
+            assert (
+                runtime_call(winner, "requalify-provider", provider=provider_request).text
+                == managed_reply
+            )
+            assert runtime_call(winner, "provider-status").json()["provider"] == {
+                "revision": managed.provider_revision,
+                "state": "qualified",
+                "data": managed.provider.model_dump(mode="json"),
+            }
+            assert (
+                runtime_call(winner, "activate", activation=activation_request).text
+                == accepted_activation
+            )
+            assert (
+                current.get("attempt", original_journal.dispatch.attempt_id) == settled["attempt"]
+            )
+            assert current.get("campaign", admitted.campaign["id"])["state"] == "paused"
+            assert current.list(RecordQuery(kind="run_result"))["items"] == []
+            assert len(target_endpoints[winner].requests) == managed_witness_calls
+            target_endpoints[winner].mode = "normal"
+            fresh_sampler = ClockSampler(
+                fresh_worker.assignment_authority, clock_admission=fresh_worker.clock_admission
+            )
+            fresh_pending = fresh_sampler.begin()
+            repaired_estimate = fresh_pending.complete(
+                current.worker_clock(fresh_pending.challenge)
+            )
+            assert (
+                repaired_estimate.verified.reply.payload.clock_epoch
+                != original_estimate.verified.reply.payload.clock_epoch
+            )
+            assert len(target_endpoints[winner].requests) == managed_witness_calls + 1
+            assert (
+                current.command("worker.enroll", enroll, idempotency_key="new-target-worker")
+                == enrolled
+            )
+            assert (
+                current.get("attempt", original_journal.dispatch.attempt_id) == settled["attempt"]
             )
             assert (
                 runtime_call(winner, "activate", activation=activation_request).text

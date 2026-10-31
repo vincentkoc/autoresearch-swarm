@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend the production recovery probe to nine startups. An ordinary worker clock
+  request discovers a second native witness restart after target activation; private
+  status and active-provider requalification recover it. Replay the lost reply
+  offline after restart and recalibrate the same worker while preserving original
+  attempt and activation history. Fixture checks pass; actual workerd is pending.
+
 - Add private status and explicit clock requalification for an already active
   hosted deployment. Require the exact fenced provider, current operator and fixed
   source/configuration; preserve other credential revocations and old attempts.

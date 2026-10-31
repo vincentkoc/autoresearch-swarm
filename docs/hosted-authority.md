@@ -2435,7 +2435,7 @@ They also exercise original journal quarantine/closure, ordinary SDK research wi
 fresh epoch-2 worker, and target reseal/export. Actual workerd preparation/activation
 and separately authorized cloud deployment remain unqualified.
 
-The production probe now extends to eight startups. It fixes distinct assignment,
+The production probe now extends to nine startups. It fixes distinct assignment,
 dispatch, bootstrap, API-credential and witness-consumer material for both targets
 before signing their import intents. Independent native witness endpoints remain
 alive across Worker restarts while the original source witness stays unavailable.
@@ -2451,9 +2451,20 @@ original activation request and loses its accepted reply. Startup eight repeats 
 activation reply offline, checks ordinary API history and original-token refusal,
 then reenables its witness to enroll and calibrate a fresh target worker. The final
 activation witness must name the requalified generation and native source epoch.
+Startup eight then restarts the active target witness again. An ordinary
+`worker.clock` request must discover and durably fence the new discontinuity. Private
+status supplies the selected revision/generation; explicit active-provider
+requalification loses its acknowledgment. Startup nine replays it offline, verifies
+the new provider and unchanged activation/attempt history, then recalibrates the same
+enrolled worker into the new controller clock epoch. No configuration or credentials
+change between witness restarts.
+
 Only fixed local fixture bindings expose these test routes; production public
-routing is unchanged. Fixture and native regression checks pass; this eight-startup
-sequence still requires its actual workerd run.
+routing is unchanged. Fixture and native regression checks pass; this nine-startup
+sequence still requires its actual workerd run. The added active-management path
+targets a recovered deployment. It does not qualify management of a separately
+provisioned fresh deployment or preservation of a live native attempt; those remain
+separate from the native adapter tests.
 
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names

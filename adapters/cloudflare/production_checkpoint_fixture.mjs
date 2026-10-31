@@ -34,7 +34,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|closure|default-closure|artifact|default-artifact|prepare-runtime|default-prepare-runtime|requalify-runtime|default-requalify-runtime|activate|default-activate|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|closure|default-closure|artifact|default-artifact|prepare-runtime|default-prepare-runtime|requalify-runtime|default-requalify-runtime|provider-status|default-provider-status|requalify-provider|default-requalify-provider|activate|default-activate|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -60,7 +60,22 @@ export default {
       Number.parseInt(pair, 16),
     );
     const input = JSON.parse(new TextDecoder().decode(bytes));
-    if (["prepare-runtime", "requalify-runtime", "activate"].includes(action)) {
+    if (action === "provider-status") {
+      return new Response(
+        await bootstrap.time_provider_status(input.credential),
+        {
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+    if (
+      [
+        "prepare-runtime",
+        "requalify-runtime",
+        "requalify-provider",
+        "activate",
+      ].includes(action)
+    ) {
       const operations = {
         "prepare-runtime": () =>
           bootstrap.checkpoint_prepare_runtime(input.credential),
@@ -68,6 +83,11 @@ export default {
           bootstrap.checkpoint_requalify_runtime(
             input.credential,
             input.requalification_json,
+          ),
+        "requalify-provider": () =>
+          bootstrap.requalify_time_provider(
+            input.credential,
+            input.provider_json,
           ),
         activate: () =>
           bootstrap.checkpoint_activate(
@@ -82,12 +102,16 @@ export default {
           action === "prepare-runtime"
             ? typeof value.receipt?.plan_digest === "string" &&
               value.receipt?.provider_revision >= 1
-            : action === "requalify-runtime"
+            : ["requalify-runtime", "requalify-provider"].includes(action)
               ? value.disposition === "accepted" &&
                 typeof value.result?.data?.provider?.scope
                   ?.provider_generation === "string" &&
                 value.result?.data?.request?.request_id ===
-                  JSON.parse(input.requalification_json).request_id
+                  JSON.parse(
+                    action === "requalify-runtime"
+                      ? input.requalification_json
+                      : input.provider_json,
+                  ).request_id
               : value.disposition === "accepted" &&
                 value.result?.data?.profile ===
                   "hosted-recovery-activation-v1" &&
@@ -225,6 +249,8 @@ export default {
       action === "default-closure" ||
       action === "default-prepare-runtime" ||
       action === "default-requalify-runtime" ||
+      action === "default-provider-status" ||
+      action === "default-requalify-provider" ||
       action === "default-activate" ||
       action === "default-artifact"
     ) {
@@ -245,6 +271,13 @@ export default {
           await api.checkpoint_requalify_runtime(
             input.credential,
             input.requalification_json,
+          );
+        else if (action === "default-provider-status")
+          await api.time_provider_status(input.credential);
+        else if (action === "default-requalify-provider")
+          await api.requalify_time_provider(
+            input.credential,
+            input.provider_json,
           );
         else if (action === "default-activate")
           await api.checkpoint_activate(

@@ -20,6 +20,7 @@ function request(action, { letter = "a", drop = false } = {}) {
       closure_json: '{"payload":{"attempt_id":"original-attempt"}}',
       activation_json: '{"request_id":"activation-request"}',
       requalification_json: '{"request_id":"requalification-request"}',
+      provider_json: '{"request_id":"provider-request"}',
       artifact_json:
         '{"artifact_id":"artifact","generation":"generation","backup_id":"backup","manifest_digest":"image"}',
     }),
@@ -503,6 +504,19 @@ test("closure failure and default-route refusal cannot masquerade as lost succes
 
 for (const [action, method, accepted] of [
   [
+    "requalify-provider",
+    "requalify_time_provider",
+    {
+      disposition: "accepted",
+      result: {
+        data: {
+          request: { request_id: "provider-request" },
+          provider: { scope: { provider_generation: "active-new-generation" } },
+        },
+      },
+    },
+  ],
+  [
     "prepare-runtime",
     "checkpoint_prepare_runtime",
     { receipt: { plan_digest: "plan", provider_revision: 2 } },
@@ -545,6 +559,8 @@ for (const [action, method, accepted] of [
             assert.equal(payload, '{"request_id":"activation-request"}');
           if (action === "requalify-runtime")
             assert.equal(payload, '{"request_id":"requalification-request"}');
+          if (action === "requalify-provider")
+            assert.equal(payload, '{"request_id":"provider-request"}');
           return JSON.stringify(value);
         },
       },
@@ -562,7 +578,7 @@ for (const [action, method, accepted] of [
       assert.equal(reply.status, 409);
       assert.deepEqual(await reply.json(), invalid);
     }
-    if (action === "requalify-runtime") {
+    if (["requalify-runtime", "requalify-provider"].includes(action)) {
       value = structuredClone(accepted);
       value.result.data.request.request_id = "different-request";
       const reply = await call(true);
@@ -607,4 +623,32 @@ test("ordinary target forwarding preserves caller credentials and never selects 
     },
   );
   assert.equal(await reply.text(), "active");
+});
+
+test("provider status reaches only the fixed private authority and preserves refusal", async () => {
+  let value = { provider: { state: "unqualified", revision: 3 } };
+  const env = {
+    TARGET_A_BOOTSTRAP: {
+      time_provider_status: () => assert.fail("Wrong target"),
+    },
+    TARGET_B_BOOTSTRAP: {
+      async time_provider_status(credential) {
+        assert.equal(credential, "target-credential");
+        return JSON.stringify(value);
+      },
+    },
+  };
+  const call = () =>
+    operator.fetch(request("provider-status", { letter: "b" }), env);
+  assert.deepEqual(await (await call()).json(), value);
+  value = { error: { code: "AUTHORIZATION_DENIED" } };
+  assert.deepEqual(await (await call()).json(), value);
+  assert.deepEqual(
+    await (
+      await operator.fetch(request("default-provider-status"), {
+        TARGET_A_API: {},
+      })
+    ).json(),
+    { denied: true },
+  );
 });
