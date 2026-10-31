@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extend the production workerd probe through elected-target admission and a
+  sixth runtime startup. Verify the target signature, wrong-target and public
+  refusal, lost accepted replies, exact restart replay and continued execution
+  refusal. The fixture preserves unexpected failures instead of hiding them.
+
 - Admit an elected hosted target through private fixed-target RPC. Verify the
   pristine import, full election and protected deployment, then atomically retain
   proof, fence drivers, drain campaigns and acknowledge the transition. Replays

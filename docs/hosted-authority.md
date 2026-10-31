@@ -2083,6 +2083,14 @@ campaign fencing, retained funding and pending turns. Production workerd admissi
 qualification remains pending. Ordinary hosted routers still refuse this target;
 evidence delivery, artifact restoration and activation require separate support.
 
+The production qualification probe now uses a sixth runtime startup to replay
+admission after a deliberately lost accepted reply. It verifies the target's
+signature and complete election digest, refuses the losing target and public
+entrypoint, and checks that provisioning, import, request generation and ordinary
+router access cannot reopen the recovering target. Its fixture drops only a
+recognized accepted admission; unexpected failures remain visible. This probe
+requires a new passing workerd receipt before hosted runtime qualification.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and

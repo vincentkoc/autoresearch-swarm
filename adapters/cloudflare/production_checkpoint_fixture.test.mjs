@@ -14,6 +14,7 @@ function request(action, { letter = "a", drop = false } = {}) {
       credential: "target-credential",
       source_credential: "source-credential",
       request_json: '{"backup_id":"fixture"}',
+      election_json: "synthetic-signed-election",
     }),
     headers: drop ? { "x-fixture-drop-bootstrap": "true" } : {},
   });
@@ -138,6 +139,44 @@ test("default target request has no private fallback", async () => {
     TARGET_A_API: {},
   });
   assert.deepEqual(await result.json(), { denied: true });
+});
+
+test("target admission uses only its fixed binding and hides only accepted replies", async () => {
+  const accepted = {
+    disposition: "accepted",
+    result: { data: { logical_election_digest: "fixture" } },
+  };
+  const env = {
+    TARGET_B_BOOTSTRAP: {
+      checkpoint_admit: async (credential, election) => {
+        assert.equal(credential, "target-credential");
+        assert.equal(election, "synthetic-signed-election");
+        return JSON.stringify(accepted);
+      },
+    },
+  };
+  const reply = await operator.fetch(request("admit", { letter: "b" }), env);
+  assert.deepEqual(await reply.json(), accepted);
+  const lost = await operator.fetch(
+    request("admit", { letter: "b", drop: true }),
+    env,
+  );
+  assert.equal(await lost.text(), "{");
+  env.TARGET_B_BOOTSTRAP.checkpoint_admit = async () =>
+    '{"error":{"code":"STALE_FENCE"}}';
+  const refused = await operator.fetch(
+    request("admit", { letter: "b", drop: true }),
+    env,
+  );
+  assert.equal(refused.status, 409);
+  assert.deepEqual(await refused.json(), { error: { code: "STALE_FENCE" } });
+});
+
+test("default target admission has no private fallback", async () => {
+  const reply = await operator.fetch(request("default-admit"), {
+    TARGET_A_API: {},
+  });
+  assert.deepEqual(await reply.json(), { denied: true });
 });
 
 test("target capabilities forward only the fixed public route", async () => {

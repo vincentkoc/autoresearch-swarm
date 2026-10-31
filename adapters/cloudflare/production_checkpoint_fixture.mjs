@@ -17,7 +17,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -66,11 +66,38 @@ export default {
         },
       );
     }
-    if (action === "default-import" || action === "default-request") {
+    if (action === "admit") {
+      const result = await bootstrap.checkpoint_admit(
+        input.credential,
+        input.election_json,
+      );
+      if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
+        const value = JSON.parse(result);
+        if (
+          value.disposition !== "accepted" ||
+          typeof value.result?.data?.logical_election_digest !== "string"
+        ) {
+          return new Response(result, { status: 409 });
+        }
+        return new Response("{", {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(result, {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (
+      action === "default-import" ||
+      action === "default-request" ||
+      action === "default-admit"
+    ) {
       try {
         if (action === "default-import")
           await api.checkpoint_import(input.credential, "{}");
-        else await api.checkpoint_request(input.credential);
+        else if (action === "default-request")
+          await api.checkpoint_request(input.credential);
+        else await api.checkpoint_admit(input.credential, input.election_json);
         return Response.json({ denied: false });
       } catch {
         return Response.json({ denied: true });

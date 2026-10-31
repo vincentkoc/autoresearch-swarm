@@ -13,8 +13,9 @@ from research_swarm.api.time_witnesses import create_time_witness_app, witness_c
 from research_swarm.checkpoints.elections import verify_election, verify_election_request
 from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.client import ResearchClient
+from research_swarm.control.recovery_proofs import verify_admission
 from research_swarm.crypto import public_key
-from research_swarm.domain.backup import BackupCustodyPin
+from research_swarm.domain.backup import BackupCustodyPin, RecoveryAdmission, RestoreReceipt
 from research_swarm.domain.checkpoint_elections import (
     SignedLogicalElection,
     SignedLogicalElectionRequest,
@@ -92,13 +93,16 @@ def target_binding(manifest, source_custody, digest, seed, crypto):
     }
 
 
-def target_call(http, letter, action, credential, source_credential, capture, *, drop=False):
+def target_call(
+    http, letter, action, credential, source_credential, capture, *, drop=False, election=None
+):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
         json={
             "credential": credential,
             "source_credential": source_credential,
             "request_json": json.dumps(capture),
+            "election_json": json.dumps(election),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -417,6 +421,99 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                     assert repeated.text == responses[letter].text
                 else:
                     assert repeated.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+                assert (
+                    http.get(
+                        f"/fixture/target-{letter}/capabilities",
+                        headers={"authorization": "Bearer " + operator_token},
+                    ).status_code
+                    != 200
+                )
+            assert checkpoint(http, secrets["bootstrap"], capture, capture=True).text == captured
+            assert len(endpoint.requests) == witness_calls
+
+            def admission_call(letter, *, action="admit", credential=None, drop=False):
+                return target_call(
+                    http,
+                    letter,
+                    action,
+                    credential or target_secrets[letter]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    drop=drop,
+                    election=outcomes[winner],
+                )
+
+            assert admission_call(winner, action="default-admit").json() == {"denied": True}
+            assert (
+                admission_call(winner, credential="wrong").json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            assert admission_call(loser).json()["error"]["code"] == "STALE_FENCE"
+            assert admission_call(winner, drop=True).text == "{"
+            accepted_admission = admission_call(winner).text
+            result = json.loads(accepted_admission)
+            assert result["disposition"] == "accepted", result
+            admitted_recovery = RecoveryAdmission.model_validate(result["result"]["data"])
+            assert (
+                admitted_recovery.logical_election_digest
+                == SignedLogicalElection.model_validate(outcomes[winner]).digest
+            )
+            assert admitted.campaign["id"] in admitted_recovery.paused_campaign_ids
+            verify_admission(
+                admitted_recovery,
+                RestoreReceipt.model_validate(receipts[winner]),
+                crypto_provider=deployment[2],
+            )
+
+        with (
+            server(tmp_path, sequence=6, **options) as url,
+            httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
+        ):
+            repeated = target_call(
+                http,
+                winner,
+                "admit",
+                target_secrets[winner]["bootstrap"],
+                secrets["bootstrap"],
+                capture,
+                election=outcomes[winner],
+            )
+            assert repeated.text == accepted_admission
+            for action in ("request", "provision"):
+                assert (
+                    "error"
+                    in target_call(
+                        http,
+                        winner,
+                        action,
+                        target_secrets[winner]["bootstrap"],
+                        secrets["bootstrap"],
+                        capture,
+                    ).json()
+                )
+            assert (
+                "error"
+                in target_call(
+                    http,
+                    winner,
+                    "import",
+                    target_secrets[winner]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                ).json()["result"]
+            )
+            assert (
+                target_call(
+                    http,
+                    loser,
+                    "request",
+                    target_secrets[loser]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                ).json()
+                == requests[loser]
+            )
+            for letter in ("a", "b"):
                 assert (
                     http.get(
                         f"/fixture/target-{letter}/capabilities",
