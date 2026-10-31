@@ -83,7 +83,85 @@ def roundtrip(store):
     }
 
 
+class ReadOnlyStorage:
+    """Make attempted initialization visible even when it would roll back."""
+
+    def __init__(self, storage):
+        self.delegate = storage
+        self.sql = self
+
+    def exec(self, statement, *parameters):
+        assert statement.lstrip().startswith(("SELECT ", "PRAGMA "))
+        assert not statement.lstrip().startswith("PRAGMA ") or "=" not in statement
+        return self.delegate.sql.exec(statement, *parameters)
+
+    def transactionSync(self, callback):
+        return self.delegate.transactionSync(callback)
+
+
+def existing_state(storage, object_id, case):
+    def reopen():
+        return DurableObjectStore.open_existing(
+            ReadOnlyStorage(storage), namespace="local-storage-contract", object_id=object_id
+        )
+
+    if case != "existing-empty":
+        store = open_store(storage, object_id)
+        store.write(
+            lambda sql: sql.execute(
+                "INSERT INTO workspaces(id,controller_id) VALUES ('workspace','controller')"
+            )
+        )
+        store.write(
+            lambda sql: sql.execute(
+                "INSERT INTO commands VALUES "
+                "('workspace','actor','key','digest','command',?, 'time')",
+                ('{"result":{"historical":true}}',),
+            )
+        )
+        mutations = {
+            "existing-current": None,
+            "existing-old": "UPDATE research_schema SET version=1",
+            "existing-column": "ALTER TABLE recovery_snapshots DROP COLUMN expired_at",
+            "existing-index": "DROP INDEX acceptance_leases",
+            "existing-marker": "DELETE FROM research_schema",
+        }
+        statement = mutations[case]
+        if statement:
+            store.write(lambda sql: sql.execute(statement))
+
+    def metadata():
+        return [
+            tuple(row)
+            for row in storage.sql.exec(
+                "SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY name"
+            ).raw()
+        ]
+
+    before = metadata()
+    if case == "existing-current":
+        opened = reopen()
+        assert opened.identity == store.identity
+    else:
+        error = expect(ResearchError, reopen)
+        assert error.code == ErrorCode.SCHEMA_UNSUPPORTED
+    assert metadata() == before
+    if case != "existing-empty":
+        assert store.read(lambda sql: sql.execute("SELECT response FROM commands").one()[0]) == (
+            '{"result":{"historical":true}}'
+        )
+    if case == "existing-old":
+        assert (
+            store.read(lambda sql: sql.execute("SELECT version FROM research_schema").one()[0]) == 1
+        )
+        open_store(storage, object_id)  # Explicit provisioning still owns migration.
+        reopen()
+    return {"read_only": True, "preserved": True, "contract": True}
+
+
 def exercise(storage, object_id, case):
+    if case.startswith("existing-"):
+        return existing_state(storage, object_id, case)
     if case == "foreign-state":
         storage.sql.exec("CREATE TABLE sqlitexlegacy (value TEXT)")
         error = expect(ResearchError, lambda: open_store(storage, object_id))

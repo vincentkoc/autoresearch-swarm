@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Open provisioned Durable Object state and credentials without schema creation,
+  migration or repair. Refuse missing versions, required tables, columns and keys;
+  preserve current credential revocation and keep explicit initialization separate.
+
 - Share command scope/schema validation with adapter preflight, and let runtimes
   without qualified UTC explicitly refuse expiring credentials before reading
   time. Preserve native credential expiry and command-dispatch behavior.

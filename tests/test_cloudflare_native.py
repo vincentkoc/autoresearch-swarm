@@ -210,7 +210,18 @@ def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp
                 "acknowledgments": 1,
             }
             qualify_shared_signing(client, url)
-            for case in ("roundtrip", "unknown-version", "foreign-state", "migration-rollback"):
+            for case in (
+                "roundtrip",
+                "unknown-version",
+                "foreign-state",
+                "migration-rollback",
+                "existing-empty",
+                "existing-current",
+                "existing-old",
+                "existing-column",
+                "existing-index",
+                "existing-marker",
+            ):
                 response = client.post(url + "/storage/" + case)
                 assert response.status_code == 200, response.text[-3000:]
                 assert response.json() and all(value is True for value in response.json().values())

@@ -361,6 +361,17 @@ Native resolution retains its existing default expiry behavior. The hosted
 router must explicitly select this stricter mode inside its exclusive gate;
 this helper does not enable a hosted route or claim expiring-token support.
 
+Ordinary hosted construction must use `DurableObjectStore.open_existing()` and
+`CredentialStore.open_existing()`. These paths issue only metadata reads: they
+require the current version, service tables, columns, primary keys and required
+indexes, plus credential token uniqueness and its workspace foreign key. They
+refuse missing or incompatible state without creating tables, migrating versions,
+changing foreign-key mode, or installing credentials. Explicit provisioning owns
+the initializing constructors. Structural admission does not verify arbitrary
+database tampering, credential activity, row integrity, or the separate immutable
+authority configuration; the router must still check its configuration and
+resolve current credentials for every request.
+
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command

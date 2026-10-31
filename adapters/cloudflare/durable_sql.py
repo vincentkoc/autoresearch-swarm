@@ -8,6 +8,11 @@ from pyodide.ffi import JsException, jsnull, to_js
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.state.schema import SCHEMA_VERSION, apply_schema
+from research_swarm.state.schema_contracts import (
+    require_research_schema,
+    require_table,
+    unsupported,
+)
 from research_swarm.state.sql import IntegrityViolation, StoreIdentity
 
 MAX_SAFE_INTEGER = 2**53 - 1
@@ -119,6 +124,23 @@ class DurableObjectStore:
         # Foreign-key enforcement cannot be enabled from within a transaction.
         storage.sql.exec("PRAGMA foreign_keys=ON")
         self.write(lambda sql: self._initialize(sql, schema))
+
+    @classmethod
+    def open_existing(cls, storage, *, namespace, object_id):
+        """Open current provisioned state; ordinary requests never initialize or migrate."""
+        instance = cls.__new__(cls)
+        instance.storage = storage
+        instance.identity = StoreIdentity("cloudflare-do", f"{namespace}/{object_id}")
+
+        def validate(sql):
+            require_table(sql, "research_schema", "singleton version", ("singleton",))
+            versions = sql.execute("SELECT singleton,version FROM research_schema").fetchall()
+            if len(versions) != 1 or (versions[0][0], versions[0][1]) != (1, SCHEMA_VERSION):
+                raise unsupported()
+            require_research_schema(sql)
+
+        instance.read(validate)
+        return instance
 
     def _initialize(self, sql, schema):
         if sql.execute("PRAGMA foreign_keys").one()[0] != 1:

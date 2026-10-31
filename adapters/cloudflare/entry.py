@@ -248,7 +248,18 @@ class Default(WorkerEntrypoint):
             )
         if url.path.startswith("/storage/"):
             case = url.path.removeprefix("/storage/")
-            if case not in {"roundtrip", "unknown-version", "foreign-state", "migration-rollback"}:
+            if case not in {
+                "roundtrip",
+                "unknown-version",
+                "foreign-state",
+                "migration-rollback",
+                "existing-empty",
+                "existing-current",
+                "existing-old",
+                "existing-column",
+                "existing-index",
+                "existing-marker",
+            }:
                 return Response("Not found", status=404)
             stub = self.env.QUALIFICATION.getByName("storage-contract-" + case)
             return Response(

@@ -13,6 +13,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import ID, Timestamp, new_id, utc_now
 from research_swarm.state.database import Database, encode
+from research_swarm.state.schema_contracts import require_credentials_schema
 from research_swarm.state.sql import SqlSession
 from research_swarm.state.workspace_gate import require_workspace_mutation
 
@@ -36,6 +37,14 @@ class CredentialStore:
             )""")
 
         database.store.write(initialize)
+
+    @classmethod
+    def open_existing(cls, database: Database) -> CredentialStore:
+        """Open provisioned credentials without creating, replacing or repairing state."""
+        database.store.read(require_credentials_schema)
+        instance = cls.__new__(cls)
+        instance.database = database
+        return instance
 
     def issue(
         self, issuer: Principal, principal: Principal, *, expires_at: str | None = None
