@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an actual workerd transfer probe with distinct successor credentials,
+  bounded authority/budget inspection, target receipt recovery, lost transfer
+  replies and offline restart replay. Keep queued work and pending startup
+  visible without claiming successor execution or deployment qualification.
+
 - Add an explicit hosted transfer profile that verifies bounded R2 evidence
   before the shared atomic ownership change. Preserve queued work, native authority
   and budgets, reconcile saved target acknowledgments without redelivery, and keep

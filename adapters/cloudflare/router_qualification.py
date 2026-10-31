@@ -21,6 +21,7 @@ from research_router import (
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
     HostedScientificConfiguration,
+    HostedTransferConfiguration,
     dispatch_key_digest,
 )
 from witness_qualification import SEED, identifier
@@ -53,6 +54,7 @@ OPERATOR_TOKEN, WORKER_TOKEN = "rsw_" + "O" * 43, "rsw_" + "W" * 43
 EVALUATOR_TOKEN = "rsw_" + "E" * 43
 DRIVER_TOKEN = "rsw_" + "D" * 43
 GATEWAY_TOKEN = "rsw_" + "G" * 43
+SUCCESSOR_TOKEN, NEXT_EVALUATOR_TOKEN = "rsw_" + "S" * 43, "rsw_" + "F" * 43
 DELIVERY_CONFIG = content_digest(b"workerd-workflow-delivery")
 DISPATCH_KEY = b"\x00" * 32
 
@@ -86,9 +88,19 @@ def fixture_credentials(principals):
     count = len(principals)
     return tuple(
         zip(
-            ("operator", "worker", "evaluator", "driver", "gateway")[:count],
+            ("operator", "worker", "evaluator", "driver", "gateway", "successor", "next_evaluator")[
+                :count
+            ],
             principals,
-            (OPERATOR_TOKEN, WORKER_TOKEN, EVALUATOR_TOKEN, DRIVER_TOKEN, GATEWAY_TOKEN)[:count],
+            (
+                OPERATOR_TOKEN,
+                WORKER_TOKEN,
+                EVALUATOR_TOKEN,
+                DRIVER_TOKEN,
+                GATEWAY_TOKEN,
+                SUCCESSOR_TOKEN,
+                NEXT_EVALUATOR_TOKEN,
+            )[:count],
             strict=True,
         )
     )
@@ -107,8 +119,10 @@ def configuration(
     lifecycle_profile=False,
     scientific_profile=False,
     orchestration_profile=False,
+    transfer_profile=False,
     source=None,
 ):
+    orchestration_profile = orchestration_profile or transfer_profile
     scientific_profile = scientific_profile or orchestration_profile
     lifecycle_profile = lifecycle_profile or scientific_profile
     evaluation_profile = evaluation_profile or lifecycle_profile
@@ -168,6 +182,19 @@ def configuration(
                 scopes={"orchestration.deliver"},
             ),
         )
+    if transfer_profile:
+        principals += (
+            Principal(
+                id=identifier("router-successor-principal"),
+                workspace_id=principals[0].workspace_id,
+                scopes={"read", "orchestration.drive", "report.create"},
+            ),
+            Principal(
+                id=identifier("router-next-evaluator-principal"),
+                workspace_id=principals[0].workspace_id,
+                scopes={"read", "orchestration.drive", "evaluation.publish"},
+            ),
+        )
     config = HostedConfiguration(
         store_location=f"{NAMESPACE}/{object_id}",
         authority=WitnessAuthorityScope(
@@ -194,7 +221,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedOrchestrationConfiguration
+            HostedTransferConfiguration
+            if transfer_profile
+            else HostedOrchestrationConfiguration
             if orchestration_profile
             else HostedScientificConfiguration
             if scientific_profile
@@ -336,6 +365,13 @@ def provisioned(principals):
         result.update(driver_token=DRIVER_TOKEN, driver_id=principals[3].id)
     if len(principals) >= 5:
         result.update(gateway_token=GATEWAY_TOKEN, gateway_id=principals[4].id)
+    if len(principals) >= 7:
+        result.update(
+            successor_token=SUCCESSOR_TOKEN,
+            successor_id=principals[5].id,
+            next_evaluator_token=NEXT_EVALUATOR_TOKEN,
+            next_evaluator_id=principals[6].id,
+        )
     return result
 
 

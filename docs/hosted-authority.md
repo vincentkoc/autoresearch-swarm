@@ -1091,9 +1091,11 @@ At `c24779e74b36dfb7e9cde1d611ba718e93eb57cb`,
 [CI 41205018578](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41205018578)
 passed TypeScript checking but failed Prettier on `hybrid.ts`. The Node and workerd
 integration steps were not reached. Commit `13930d0` formats that condition; it
-needs a clean CI formatting receipt and the actual runtime probe remains pending.
+was insufficient: CI 41206168329 rejected its continuation indentation too.
+Commit `2573d8f` applies pinned Prettier 3.9.10 and passes the full local adapter
+format check. The actual runtime probe remains pending.
 The same run passed 478 native adapter tests on Linux in 265.82 seconds and on
-macOS in 175.43 seconds; Windows was still running at this checkpoint.
+macOS in 175.43 seconds; Windows subsequently passed too.
 
 ### Transfer preparation boundary
 
@@ -1144,7 +1146,17 @@ mutation; and keep an assigned retiring evaluator until actual native scoring an
 its independent receipt complete. The successor receives pending startup records.
 Automatic snapshot recovery and `acknowledge_start` remain unavailable in this
 profile, so transfer acceptance does not claim executable successor recovery.
-Actual workerd transfer and deployed qualification remain separate work.
+`test_cloudflare_transfers.py` adds a separate transfer-profile workerd fixture
+with fresh successor credentials. A saved report commits before its delivery
+receipt witness fails. Transfer first refuses unavailable R2 without a fence,
+then recovers that original target and commits despite a lost HTTP reply. After
+authority restart, the exact command replays with both R2 and the witness source
+unavailable; a new key for the same transfer needs one witness and no R2 reads.
+Bounded fixture inspection compares native controller identity, assignment key,
+budgets, reservations and settlements. Queued trial/job records remain unchanged,
+there are no workers or attempts, and both successor starts remain pending.
+This scenario does not qualify active or unknown native custody. The actual
+workerd run and deployed qualification still need separate passing receipts.
 
 ### Signed clock query boundary
 

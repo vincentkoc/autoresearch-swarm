@@ -106,5 +106,6 @@ jobs:
           tests/test_cloudflare_evaluations.py
           tests/test_cloudflare_orchestration.py
           tests/test_cloudflare_hosted_workflow.py
+          tests/test_cloudflare_transfers.py
           tests/test_cloudflare_hosted_http.py tests/test_cloudflare_native_source.py
           tests/test_cloudflare_research_admission.py --tb=short

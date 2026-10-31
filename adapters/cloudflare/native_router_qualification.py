@@ -17,6 +17,7 @@ from research_router import (
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
     HostedScientificConfiguration,
+    HostedTransferConfiguration,
 )
 from router_qualification import DISPATCH_KEY, NAMESPACE, configuration, prepare_provision
 from witness_binding import WitnessHTTPTransport
@@ -44,6 +45,7 @@ class NativeProbe(VersionedRecord):
     lifecycle_profile: bool = Field(default=False, strict=True)
     scientific_profile: bool = Field(default=False, strict=True)
     orchestration_profile: bool = Field(default=False, strict=True)
+    transfer_profile: bool = Field(default=False, strict=True)
 
 
 class NativeFixtureR2(R2BindingTransport):
@@ -82,6 +84,7 @@ async def open_native_router(
                 | HostedLifecycleConfiguration
                 | HostedScientificConfiguration
                 | HostedOrchestrationConfiguration
+                | HostedTransferConfiguration
             ).validate_json(
                 sql.execute("SELECT payload FROM hosted_authority_config WHERE singleton=1").one()[
                     0
@@ -138,6 +141,7 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
                 lifecycle_profile=probe.lifecycle_profile,
                 scientific_profile=probe.scientific_profile,
                 orchestration_profile=probe.orchestration_profile,
+                transfer_profile=probe.transfer_profile,
             )
             if probe.action == "describe":
                 return config.model_dump(mode="json")
@@ -182,7 +186,7 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
                 )
 
             def inspect(sql):
-                return {
+                result = {
                     "commands": sql.execute("SELECT COUNT(*) FROM commands").one()[0],
                     "events": sql.execute("SELECT COUNT(*) FROM events").one()[0],
                     "provider_state": sql.execute(
@@ -209,6 +213,35 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
                         ).fetchall()
                     ],
                 }
+                if isinstance(router.configuration, HostedTransferConfiguration):
+
+                    def bounded(statement):
+                        rows = sql.execute(statement + " LIMIT 65").fetchall()
+                        if len(rows) > 64:
+                            raise ResearchError(
+                                ErrorCode.RESOURCE_UNAVAILABLE,
+                                "Fixture invariant projection is too large",
+                            )
+                        return [dict(row) for row in rows]
+
+                    result["transfer_invariants"] = {
+                        "authority": dict(
+                            sql.execute(
+                                "SELECT controller_id,control_epoch FROM workspaces WHERE id=?",
+                                (router.configuration.authority.workspace_id,),
+                            ).one()
+                        ),
+                        "assignment_key_id": router.configuration.authority.assignment_key_id,
+                        "budgets": bounded("SELECT * FROM budgets ORDER BY dimension"),
+                        "reservations": bounded("SELECT * FROM budget_reservations ORDER BY id"),
+                        "native_counts": {
+                            kind: sql.execute(
+                                "SELECT COUNT(*) FROM records WHERE kind=?", (kind,)
+                            ).one()[0]
+                            for kind in ("worker", "attempt")
+                        },
+                    }
+                return result
 
             return router.database.store.read(inspect)
 
