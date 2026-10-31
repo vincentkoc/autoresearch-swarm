@@ -1054,10 +1054,26 @@ errors contain codes and retryability, never exception text or route credentials
 
 Native adapter tests cover copied registration, identity substitution, revocation,
 pending and ready event waits, concurrent exact replay after a lost response,
-cancellation, detached clients and malformed/oversized envelopes. The facade is
-not yet wired into the actual workerd entrypoint or a Workflow transport profile.
-In-memory registration is trusted application configuration, not durable
-registration or restart qualification.
+cancellation, detached clients and malformed/oversized envelopes. The local
+workerd fixture now routes delivery directly to one fixed orchestration DO;
+request profile headers cannot redirect it. Its synthetic gateway is separate
+from control and evaluator principals. Each reopen reconstructs registration from
+the fixed driver's persisted owner row and verifies both route owners, workspace,
+epoch, adapter and configuration. The request cannot select a campaign, and the
+fixture never scans for a latest binding. Fenced bindings remain readable so the
+delivery kernel can report retirement. This fixture is not production credential
+provisioning or deployment routing.
+
+`test_cloudflare_hosted_workflow.py` runs separate authority and Workflow workerd
+processes with independent persistent directories. The authority keeps the same
+origin across restart because the transport registry pins it. A report target
+commits before its receipt witness fails; Workflow retry must recover one original
+receipt and one report. Both processes then restart with a saved event wait carried
+into a later generation. A false hint cannot satisfy it; an actual report event
+without a hint must become ready through polling. Duplicate wakeup acknowledgment
+leaves readiness unconsumed, a domain fence retires delivery, and a changed origin
+cannot reuse the transport registration. Collection/source checks are not runtime
+qualification; this probe needs a passing CI receipt.
 
 ### Signed clock query boundary
 

@@ -3,6 +3,7 @@
 import sys
 from typing import Any, Literal
 
+from delivery_router import DeliveryRegistration, HostedDelivery
 from durable_sql import DurableObjectStore
 from ed25519 import NobleEd25519
 from exclusive import exclusive
@@ -29,10 +30,11 @@ from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.crypto import public_key
 from research_swarm.domain.artifacts import StoredBlob
 from research_swarm.domain.assignments import signing_key_id
-from research_swarm.domain.canonical import canonical_bytes, record_digest
+from research_swarm.domain.canonical import canonical_bytes, content_digest, record_digest
 from research_swarm.domain.clocks import ClockPolicy
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, Principal
+from research_swarm.domain.orchestration import OrchestrationBinding, OrchestrationOwner
 from research_swarm.domain.time_witnesses import (
     TimeWitnessPayload,
     WitnessAuthorityScope,
@@ -40,6 +42,8 @@ from research_swarm.domain.time_witnesses import (
     witness_key_id,
 )
 from research_swarm.domain.types import VersionedRecord
+from research_swarm.orchestration.delivery_contract import binding_reference
+from research_swarm.orchestration.gateway_models import GatewayBinding
 from research_swarm.state.database import SCHEMA, Database, Transaction, encode
 from research_swarm.state.time_providers import TimeProviders
 from research_swarm.storage.async_r2 import BoundedR2Configuration, BoundedR2Objects
@@ -48,6 +52,8 @@ NAMESPACE = "router-qualification"
 OPERATOR_TOKEN, WORKER_TOKEN = "rsw_" + "O" * 43, "rsw_" + "W" * 43
 EVALUATOR_TOKEN = "rsw_" + "E" * 43
 DRIVER_TOKEN = "rsw_" + "D" * 43
+GATEWAY_TOKEN = "rsw_" + "G" * 43
+DELIVERY_CONFIG = content_digest(b"workerd-workflow-delivery")
 DISPATCH_KEY = b"\x00" * 32
 
 
@@ -80,9 +86,9 @@ def fixture_credentials(principals):
     count = len(principals)
     return tuple(
         zip(
-            ("operator", "worker", "evaluator", "driver")[:count],
+            ("operator", "worker", "evaluator", "driver", "gateway")[:count],
             principals,
-            (OPERATOR_TOKEN, WORKER_TOKEN, EVALUATOR_TOKEN, DRIVER_TOKEN)[:count],
+            (OPERATOR_TOKEN, WORKER_TOKEN, EVALUATOR_TOKEN, DRIVER_TOKEN, GATEWAY_TOKEN)[:count],
             strict=True,
         )
     )
@@ -155,6 +161,11 @@ def configuration(
                     "report.create",
                     "campaign.manage",
                 },
+            ),
+            Principal(
+                id=identifier("router-gateway-principal"),
+                workspace_id=principals[0].workspace_id,
+                scopes={"orchestration.deliver"},
             ),
         )
     config = HostedConfiguration(
@@ -323,7 +334,57 @@ def provisioned(principals):
         result.update(evaluator_token=EVALUATOR_TOKEN, evaluator_id=principals[2].id)
     if len(principals) >= 4:
         result.update(driver_token=DRIVER_TOKEN, driver_id=principals[3].id)
+    if len(principals) >= 5:
+        result.update(gateway_token=GATEWAY_TOKEN, gateway_id=principals[4].id)
     return result
+
+
+async def delivery_fixture(router):
+    """Reconstruct one fixed local fixture registration without request-selected state."""
+    routes = {
+        "control": identifier("router-driver-principal"),
+        "evaluator": identifier("router-evaluator-principal"),
+    }
+
+    async def load():
+        context = router._context(OPERATOR_TOKEN, idempotency_key="fixture-delivery-registration")
+
+        def read(sql):
+            transaction = Transaction(sql, context)
+            owners = {
+                route: OrchestrationOwner.model_validate(
+                    transaction.get("orchestration_owner", actor)["data"]
+                )
+                for route, actor in routes.items()
+            }
+            row = transaction.get("orchestration_binding", owners["control"].campaign_id)
+            binding = OrchestrationBinding.model_validate(row["data"])
+            if (
+                binding.workspace_id != identifier("router-workspace")
+                or binding.epoch != 1
+                or binding.configuration_digest != DELIVERY_CONFIG
+                or binding.adapter != "cloudflare-workflows"
+                or binding.routes != routes
+                or any(
+                    (owner.campaign_id, owner.epoch, owner.route, owner.actor_id)
+                    != (binding.campaign_id, binding.epoch, route, routes[route])
+                    for route, owner in owners.items()
+                )
+            ):
+                raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Fixture registration differs")
+            return GatewayBinding.from_reference(binding_reference(binding))
+
+        return router.database.store.read(read)
+
+    binding = await exclusive(router.state, load)
+    return HostedDelivery(
+        router,
+        {
+            identifier("router-gateway-principal"): DeliveryRegistration(
+                binding, {"control": DRIVER_TOKEN, "evaluator": EVALUATOR_TOKEN}
+            )
+        },
+    )
 
 
 class FixtureR2Transport(R2BindingTransport):

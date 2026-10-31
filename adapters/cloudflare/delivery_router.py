@@ -28,6 +28,29 @@ MAX_DELIVERY_BYTES = 16 * 1024
 GATEWAY_SCOPE = "orchestration.deliver"
 
 
+def delivery_error(error=None, *, authenticated=False):
+    """Sanitize both facade failures and failures opening its runtime boundary."""
+    if error is None:
+        error = ResearchError(ErrorCode.DELIVERY_UNCERTAIN, "Delivery is uncertain", retryable=True)
+    uncertain = error.code in {ErrorCode.TRANSPORT_UNAVAILABLE, ErrorCode.DELIVERY_UNCERTAIN}
+    status = (
+        503
+        if uncertain
+        else {
+            ErrorCode.AUTHORIZATION_DENIED: 403 if authenticated else 401,
+            ErrorCode.CAPABILITY_UNAVAILABLE: 501,
+            ErrorCode.PROJECT_CONTRACT_INVALID: 422,
+        }.get(error.code, 409)
+    )
+    return json_response(
+        {
+            "schema_version": "1.0",
+            "error": {"code": error.code.value, "retryable": error.retryable or uncertain},
+        },
+        status,
+    )
+
+
 @dataclass(frozen=True)
 class DeliveryRegistration:
     binding: GatewayBinding
@@ -197,38 +220,7 @@ class HostedDelivery:
         try:
             return await exclusive(self.router.state, invoke)
         except ResearchError as error:
-            uncertain = error.code in {
-                ErrorCode.TRANSPORT_UNAVAILABLE,
-                ErrorCode.DELIVERY_UNCERTAIN,
-            }
-            status = (
-                503
-                if uncertain
-                else {
-                    ErrorCode.AUTHORIZATION_DENIED: 403 if authenticated else 401,
-                    ErrorCode.CAPABILITY_UNAVAILABLE: 501,
-                    ErrorCode.PROJECT_CONTRACT_INVALID: 422,
-                }.get(error.code, 409)
-            )
-            return json_response(
-                {
-                    "schema_version": "1.0",
-                    "error": {
-                        "code": error.code.value,
-                        "retryable": error.retryable or uncertain,
-                    },
-                },
-                status,
-            )
+            return delivery_error(error, authenticated=authenticated)
         except Exception:
             # Let the gate observe unexpected failure before returning uncertainty.
-            return json_response(
-                {
-                    "schema_version": "1.0",
-                    "error": {
-                        "code": ErrorCode.DELIVERY_UNCERTAIN.value,
-                        "retryable": True,
-                    },
-                },
-                503,
-            )
+            return delivery_error()

@@ -8,6 +8,7 @@ from typing import Literal
 from urllib.parse import urlparse
 from uuid import NAMESPACE_URL, uuid5
 
+from delivery_router import delivery_error
 from durable_sql import DurableObjectStore
 from ed25519 import NobleEd25519
 from exclusive import exclusive
@@ -19,7 +20,7 @@ from native_router_qualification import NativeProbe, open_native_router
 from native_router_qualification import exercise as exercise_native_router
 from pydantic import Field
 from r2_qualification import exercise as exercise_r2
-from router_qualification import RouterProbe, configuration, open_router
+from router_qualification import RouterProbe, configuration, delivery_fixture, open_router
 from router_qualification import exercise as exercise_router
 from signing_qualification import exercise as exercise_signing
 from storage_qualification import exercise as exercise_storage
@@ -63,6 +64,7 @@ class OrderingProbe(VersionedRecord):
 class Qualification(DurableObject):
     async def fetch(self, request):
         # Local-only HTTP probe: synthetic state must be provisioned explicitly first.
+        delivery = urlparse(request.url).path.startswith("/v1/delivery/")
         module = import_from_javascript("./crypto.mjs")
         transport = import_from_javascript("./fixture_transport.mjs")
         bodies = import_from_javascript("./http_io.mjs")
@@ -88,7 +90,7 @@ class Qualification(DurableObject):
                 r2_fault=request.headers.get("x-fixture-r2-fault") or "none",
             )
             crypto = NobleEd25519(module)
-            if request.headers.get("x-fixture-native-source") == "true":
+            if delivery or request.headers.get("x-fixture-native-source") == "true":
                 native_transport = import_from_javascript("./witness_io.mjs")
                 router = await open_native_router(
                     self.ctx,
@@ -111,15 +113,16 @@ class Qualification(DurableObject):
                     bucket=python_to_rpc(self.env.ARTIFACTS),
                     r2_module=r2,
                 )
-            result = await handle_http(
-                router,
+            handler = (await delivery_fixture(router)).handle if delivery else None
+            arguments = (
                 request.method,
                 request.url,
                 dict(request.headers),
                 HTTPBodyReader(python_to_rpc(request), bodies),
             )
+            result = await handler(*arguments) if handler else await handle_http(router, *arguments)
         except ResearchError as error:
-            result = failure(error)
+            result = delivery_error(error) if delivery else failure(error)
         if (
             request.method == "POST"
             and result.status == 200
@@ -348,6 +351,14 @@ class Default(WorkerEntrypoint):
         url = urlparse(request.url)
         if url.hostname not in {"127.0.0.1", "localhost"}:
             return Response("Local qualification only", status=403)
+        if url.path.startswith("/v1/delivery/"):
+            # Delivery uses one explicitly provisioned authority, regardless of caller headers.
+            stub = self.env.QUALIFICATION.getByName("shared-native-research-orchestration")
+            try:
+                return await stub.fetch(request)
+            except Exception:
+                result = delivery_error()
+                return Response(result.body, status=result.status, headers=dict(result.headers))
         if url.path.startswith("/v1/"):
             name = (
                 "shared-native-router-contract"

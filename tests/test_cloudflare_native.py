@@ -72,6 +72,7 @@ def server(
     sequence: int,
     variables: dict[str, str] | None = None,
     config: str = "wrangler.hybrid.jsonc",
+    listen_port: int | None = None,
 ):
     if variables is None:
         executable = ROOT / ".venv/bin/uv"
@@ -87,7 +88,7 @@ def server(
         ]
         for name, value in variables.items():
             command.extend(["--var", f"{name}:{value}"])
-    selected_port = port()
+    selected_port = port() if listen_port is None else listen_port
     url = f"http://127.0.0.1:{selected_port}"
     log = tmp_path / f"local-workerd-{sequence}.log"
 

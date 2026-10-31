@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Wire the local workerd delivery fixture to its fixed witnessed authority and
+  reconstruct registration from persisted driver ownership. Add a two-process
+  Workflow/DO restart probe covering missing receipts, carried waits, false wake
+  hints, duplicate acknowledgment, fencing and changed-origin refusal.
+
 - Add explicit Workflow transport selection for a witnessed DO delivery facade.
   Keep native delivery as the default, refuse missing origins without fallback,
   and bind both profiles to the same persisted profile/origin configuration checks.
