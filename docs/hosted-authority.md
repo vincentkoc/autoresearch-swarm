@@ -66,6 +66,8 @@ threshold is never moved to accommodate restart latency. The three authority
 startups and two Workflow startups before that new discontinuity assertion passed
 in [run 41235361544](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41235361544/job/124641442744)
 at `95f313881a089b073a7560e5f4a8ddb43a492ed0`: **21 passes in 1,051.42 seconds**.
+The same run passed 1,522 tests on Linux and macOS, and 1,516 with six explicit
+skips on Windows. All four jobs completed successfully.
 The stronger pending-clock-fence assertions and explicit errored-Workflow recovery
 remain pending. The earlier pass does not qualify those later changes.
 

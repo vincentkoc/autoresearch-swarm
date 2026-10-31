@@ -4,24 +4,20 @@ This is the completion ledger for the design contract. Pending means unproven,
 not implicitly supported.
 
 The latest all-platform pass is the
-[clock-recovery run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41233958516)
-at `daee81a5b1113be2cb813e83367ca3fd6da62d36`:
+[reconciliation/timer run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41235361544)
+at `95f313881a089b073a7560e5f4a8ddb43a492ed0`:
 
 | Runtime | Result | Duration |
 |---|---|---|
-| workerd | 20 passed | 676.22 seconds |
-| Linux | 1,484 passed | 640.23 seconds |
-| macOS | 1,484 passed | 543.59 seconds |
-| Windows | 1,478 passed, six explicit skips | 1,641.34 seconds |
+| workerd | 21 passed | 1,051.42 seconds |
+| Linux | 1,522 passed | 722.03 seconds |
+| macOS | 1,522 passed | 485.78 seconds |
+| Windows | 1,516 passed, six explicit skips | 1,754.96 seconds |
 
 This qualifies the nine-startup recovery, target preparation/activation and
-fresh-deployment clock-management probes in local workerd.
-
-The [reconciliation/timer run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41235361544)
-at `95f313881a089b073a7560e5f4a8ddb43a492ed0` passed **21 workerd tests in
-1,051.42 seconds** and **1,522 Linux tests in 722.03 seconds**. This includes
-original CPU evidence reconciliation and a timer carried through Workflow rotation
-and authority/Workflow restart. Windows and macOS were still running when recorded.
+fresh-deployment clock-management probes in local workerd, plus original CPU evidence
+reconciliation and a timer carried through Workflow rotation and authority/Workflow
+restart.
 The later pending-wait clock-discontinuity fix and explicit errored-Workflow recovery
 need their own receipts. The qualification job allows 45 minutes on Windows and
 30 minutes for the expanded workerd suite; experiment budgets and individual test
