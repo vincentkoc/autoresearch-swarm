@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any
@@ -190,66 +191,130 @@ async def test_two_registered_workers_refill_a_slot_while_original_native_scope_
                     idempotency_key=f"response-{label}",
                 )
 
+        latest_progress: dict[str, Any] = {}
+
+        def diagnostics() -> str:
+            def read(call: Callable[[], Any]) -> Any:
+                try:
+                    return call()
+                except Exception as error:
+                    return {
+                        "error_type": type(error).__name__,
+                        "error_code": error.code if isinstance(error, ResearchError) else None,
+                    }
+
+            records = {
+                kind: read(
+                    lambda kind=kind: controller.list(
+                        RecordQuery(kind=kind, campaign_id=campaign_id, limit=12)
+                    )["items"]
+                )
+                for kind in ("proposal_request", "policy_transition", "trial", "job", "attempt")
+            }
+            native = []
+            attempts = records["attempt"] if isinstance(records["attempt"], list) else []
+            for attempt in attempts:
+                for connected in (worker_a, worker_b):
+                    entry = read(
+                        lambda connected=connected, attempt=attempt: connected.worker.journal.get(
+                            attempt["id"]
+                        )
+                    )
+                    if isinstance(entry, dict):
+                        if entry["error_code"] == ErrorCode.NOT_FOUND:
+                            continue
+                        native.append({"attempt_id": attempt["id"], **entry})
+                        continue
+                    native.append(
+                        {
+                            "worker_id": connected.bundle.worker.binding.worker_id,
+                            "attempt_id": attempt["id"],
+                            "journal_state": entry.state,
+                            "finding": entry.finding,
+                            "reason": entry.outcome.reason if entry.outcome else None,
+                            "exit_code": entry.outcome.exit_code if entry.outcome else None,
+                            "closure": entry.outcome.closure.model_dump(mode="json")
+                            if entry.outcome
+                            else None,
+                        }
+                    )
+            return json.dumps(
+                {
+                    "progress": latest_progress,
+                    "search_state": read(lambda: controller.get("search_state", campaign_id)),
+                    "budget": read(lambda: controller.budget(campaign_id)),
+                    "records": records,
+                    "native": native,
+                    "workers": [
+                        {
+                            "worker_id": driver.worker.worker.binding.worker_id,
+                            "admission": driver._admission,
+                            "control_error": driver._control_error.code
+                            if driver._control_error
+                            else None,
+                            "pump_failure": driver._pump_failure.code
+                            if driver._pump_failure
+                            else None,
+                            "availability": read(driver.worker.resources.availability),
+                        }
+                        for driver in drivers
+                    ],
+                }
+            )
+
         async def progress() -> None:
             scored = await evaluation.advance_async()
+            latest_progress["evaluation"] = scored.model_dump(mode="json")
             if scored.state not in {"idle", "advanced"} or scored.findings or scored.continuation:
-                native = []
-                for row in controller.list(RecordQuery(kind="job", campaign_id=campaign_id))[
-                    "items"
-                ]:
-                    job = controller.get("job", row["id"])
-                    attempt_id = job["data"]["current_attempt_id"]
-                    if attempt_id is None:
-                        continue
-                    attempt = controller.get("attempt", attempt_id)
-                    for connected in (worker_a, worker_b):
-                        try:
-                            entry = connected.worker.journal.get(attempt_id)
-                        except ResearchError as error:
-                            if error.code == ErrorCode.NOT_FOUND:
-                                continue
-                            raise
-                        native.append(
-                            {
-                                "job_id": row["id"],
-                                "job_state": job["state"],
-                                "attempt_id": attempt_id,
-                                "attempt_state": attempt["state"],
-                                "publication_status": attempt["data"]["publication_status"],
-                                "journal_state": entry.state,
-                                "reason": entry.outcome.reason if entry.outcome else None,
-                                "exit_code": entry.outcome.exit_code if entry.outcome else None,
-                                "closure": entry.outcome.closure.model_dump(mode="json")
-                                if entry.outcome
-                                else None,
-                            }
-                        )
-                pytest.fail(
-                    json.dumps({"evaluation": scored.model_dump(mode="json"), "native": native})
-                )
+                pytest.fail(f"Evaluation could not progress: {diagnostics()}")
             result = await search.advance_async()
+            latest_progress["search"] = result.model_dump(mode="json")
             assert result.state in {
                 "awaiting_proposal",
                 "awaiting_execution",
                 "awaiting_evaluation",
                 "budget_exhausted",
                 "contended",
-            }, result
+            }, f"Search could not progress: {diagnostics()}"
 
-        async def until(predicate: Any, *, advance: bool = False) -> Any:
+        async def until(
+            predicate: Any, *, advance: bool = False, request_id: str | None = None
+        ) -> Any:
             deadline = asyncio.get_running_loop().time() + 80
             while True:
                 for task in tasks:
                     if task.done():
                         outcome = task.result()
-                        pytest.fail(f"Continuous worker exited before drain: {outcome}")
+                        pytest.fail(
+                            f"Continuous worker exited before drain: {outcome}; {diagnostics()}"
+                        )
                 if advance:
                     await progress()
                 value = predicate()
                 if value:
                     return value
+                if request_id is not None:
+                    transitions = controller.list(
+                        RecordQuery(kind="policy_transition", campaign_id=campaign_id, limit=12)
+                    )["items"]
+                    admission = next(
+                        (row for row in transitions if row["data"].get("request_id") == request_id),
+                        None,
+                    )
+                    if admission is not None:
+                        assert admission["data"]["outcome"] == "admitted", (
+                            f"Replacement proposal was not admitted: {diagnostics()}"
+                        )
+                        trial = controller.get("trial", admission["data"]["trial_id"])
+                        assert trial["data"]["execution_outcome"] == "pending", (
+                            f"Replacement trial finished before its marker: {diagnostics()}"
+                        )
+                    else:
+                        assert latest_progress["search"]["state"] != "budget_exhausted", (
+                            f"Replacement admission exhausted its budget: {diagnostics()}"
+                        )
                 assert asyncio.get_running_loop().time() < deadline, (
-                    "Native portfolio progress exceeded the fixture bound"
+                    f"Native portfolio progress exceeded the fixture bound: {diagnostics()}"
                 )
                 await asyncio.sleep(0.05)
 
@@ -307,7 +372,7 @@ async def test_two_registered_workers_refill_a_slot_while_original_native_scope_
             assert request_c["data"]["parent_candidate_id"] == trial_b["data"]["candidate_id"]
             assert request_c["data"]["incumbent_revision"] == 2
             await respond(request_c, "c", 0.20, marker_c, release_c)
-            await until(marker_c.exists, advance=True)
+            await until(marker_c.exists, advance=True, request_id=request_c["id"])
             identity_c = json.loads(marker_c.read_text(encoding="utf-8"))
             process_c = psutil.Process(identity_c["pid"])
             entry_c = worker_b.worker.journal.get(identity_c["attempt_id"])
