@@ -31,6 +31,7 @@ from research_swarm.workers.remote_enrollment import (
     provision_worker,
 )
 from research_swarm.workers.resources import MachineResources, ResourceDemand
+from research_swarm.workers.supervision import base_environment
 from research_swarm.workers.supervisor import run_attempt
 from tests.test_engines import descriptor
 from tests.test_http_delivery import serving
@@ -413,7 +414,8 @@ def test_accelerator_admission_refuses_sharing_and_double_counted_memory(
         (
             (
                 "-c",
-                "import sys,json,__main__; "
+                "import os,sys,json,__main__; "
+                "assert 'RESEARCH_PARENT_ONLY' not in os.environ; "
                 "print(json.dumps([sys.argv,sys.flags.isolated,hasattr(__main__,'payload')]))",
                 "tail",
             ),
@@ -428,17 +430,24 @@ def test_registered_launch_python_invocations(
     tmp_path: Path,
     arguments: tuple[str, ...],
     expected: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("RESEARCH_PARENT_ONLY", "synthetic-parent-value")
     registered = registration(pipeline, tmp_path, isolated=True)
     frozen = execution.prepare_engine(tmp_path / "frozen-engine", registered)
     project = tmp_path / "project"
     project.mkdir()
-    code = "import json,sys\nprint(json.dumps(sys.argv[1:]))\n"
+    code = (
+        "import os,json,sys\n"
+        "assert 'RESEARCH_PARENT_ONLY' not in os.environ\n"
+        "print(json.dumps(sys.argv[1:]))\n"
+    )
     (project / "project_module.py").write_text(code)
     (project / "project_script.py").write_text(code)
     process = subprocess.run(
         [registered.executable, "-I", frozen.bootstrap.path, frozen.payload.path, *arguments],
         cwd=project,
+        env=base_environment(),
         capture_output=True,
         text=True,
         timeout=20,
@@ -450,19 +459,24 @@ def test_registered_launch_python_invocations(
 def test_registered_script_argv_and_inline_dynamic_import_path(
     pipeline: Pipeline,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("RESEARCH_PARENT_ONLY", "synthetic-parent-value")
     registered = registration(pipeline, tmp_path, isolated=True)
     frozen = execution.prepare_engine(tmp_path / "frozen-engine", registered)
     project = tmp_path / "project"
     nested = project / "nested"
     nested.mkdir(parents=True)
-    (project / "script.py").write_text("import sys; print(sys.argv[0])")
+    (project / "script.py").write_text(
+        "import os,sys; assert 'RESEARCH_PARENT_ONLY' not in os.environ; print(sys.argv[0])"
+    )
     (nested / "after_chdir.py").write_text("VALUE = 41")
 
     def launch(*arguments: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [registered.executable, "-I", frozen.bootstrap.path, frozen.payload.path, *arguments],
             cwd=project,
+            env=base_environment(),
             capture_output=True,
             text=True,
             timeout=20,
@@ -472,7 +486,9 @@ def test_registered_script_argv_and_inline_dynamic_import_path(
     assert script.returncode == 0, script.stderr
     assert script.stdout.strip() == "script.py"
     inline = launch(
-        "-c", "import os; os.chdir('nested'); import after_chdir; print(after_chdir.VALUE)"
+        "-c",
+        "import os; assert 'RESEARCH_PARENT_ONLY' not in os.environ; "
+        "os.chdir('nested'); import after_chdir; print(after_chdir.VALUE)",
     )
     assert inline.returncode == 0, inline.stderr
     assert inline.stdout.strip() == "41"
