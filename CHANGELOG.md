@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Define a separate signed hosted recovery activation envelope. Its verifier binds
+  the full source election and target admission, prepared runtime, exact final clock
+  witness, command revision and retired credential inventory. Freeze its signature
+  and witness preimages without changing native recovery bytes. This proof contract
+  does not yet activate a hosted target.
+
 - Add private hosted target runtime preparation after logical recovery. Install
   the elected manifest's fresh credential roster and unqualified clock provider
   atomically, then qualify it with a new signed witness and immutable receipt.

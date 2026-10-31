@@ -2278,6 +2278,22 @@ Subsequent activation remains separate work; the preparation guard cannot author
 execution, fencing, scientific acceptance or activation. Existing native witness
 request preimages and ordinary credential replay are unchanged.
 
+`HostedRecoveryActivation` is a separate signed evidence format, with its own profile
+and signature domain. It carries no native `private_files_digest`. Its runtime digest
+binds the protected plan, immutable preparation receipt and qualified provider revision.
+The final witness binds the exact activation request, command, gate revision, runtime,
+verified state/artifact view and sorted credential-retirement inventory. The offline
+verifier requires independently retained source custody and target intent, verifies all
+election/admission signatures, and checks both final-witness and target signatures.
+Target credentials cannot appear in the retirement inventory.
+
+Golden fixtures freeze the runtime, activation and witness preimages. Native recovery
+continues to reject logical admissions and cannot parse this hosted envelope. The shared
+atomic activation transition accepts either typed internal record; there is no generic
+wire decoder or public activation route. Offline verification establishes the recorded
+bindings, not current execution authority or a fresh elapsed-time observation. Hosted
+activation, deployment sealing and completed-lifecycle replay remain implementation work.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase
@@ -2400,6 +2416,14 @@ passed on all four surfaces: workerd 20 tests in 455.84 seconds; Linux 1,107 in
 in 1,386.70 seconds. This qualifies saved-turn closure and replay and confirms the
 Windows newline fix. It predates source/target artifact transfer, worker route
 issuance, the named recovery receiver and private journal closure.
+
+At `e3bdf987328ec410b58183445277e6832abd3744`, the
+[full qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41224128274)
+passed on all four surfaces: workerd 20 tests in 486.55 seconds; Linux 1,192 in
+521.89 seconds; macOS 1,192 in 305.63 seconds; Windows 1,186 with six explicit skips
+in 1,411.64 seconds. This adds source/target artifact transfer and original-worker
+route issuance across restart. It predates the named recovery receiver, journal
+quarantine/closure and target runtime preparation; those require newer receipts.
 
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent

@@ -2,10 +2,13 @@
 
 from research_swarm.domain.backup import RecoveryActivation, RecoveryAdmission
 from research_swarm.domain.errors import ResearchError
+from research_swarm.domain.recovery_runtime import HostedRecoveryActivation
 from research_swarm.state.database import JsonObject, Transaction
 
 
-def activate_in(transaction: Transaction, activation: RecoveryActivation) -> JsonObject:
+def activate_in(
+    transaction: Transaction, activation: RecoveryActivation | HostedRecoveryActivation
+) -> JsonObject:
     transaction.observe_waits = False
     admission = RecoveryAdmission.model_validate(
         transaction.get("recovery_admission", activation.request.restore_id)["data"]
