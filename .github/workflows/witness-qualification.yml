@@ -1,0 +1,69 @@
+name: Witness runtime qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: witness-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      RESEARCH_REQUIRE_NODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - run: uv sync --locked --group dev --python 3.12
+      - run: >-
+          uv run --no-sync pytest -q --tb=short
+          tests/test_time_witnesses.py tests/test_native_time_witnesses.py
+          tests/test_time_witness_http.py tests/test_time_providers.py
+          tests/test_witness_time.py tests/test_supervision.py
+          tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
+  workerd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      RESEARCH_CLOUDFLARE_TESTS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - run: uv sync --locked --group dev --python 3.12
+      - run: uv sync --directory adapters/cloudflare --locked --python 3.12
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: adapters/cloudflare
+      - run: npm run build
+        working-directory: adapters/cloudflare
+      - run: .venv/bin/uv run --frozen pywrangler sync
+        working-directory: adapters/cloudflare
+      - run: git diff --exit-code -- adapters/cloudflare/pylock.toml
+      - run: uv run --no-sync pytest -q tests/test_cloudflare_native.py --tb=short

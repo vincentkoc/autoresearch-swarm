@@ -108,6 +108,15 @@ roll back both the schema changes and version update. Foreign keys remain enable
 Local workerd evidence does not establish hosted recovery, regional failover,
 production signing-key custody, R2 durability, or the complete M5 deployment profile.
 
+The witness fixture additionally imports the actual provider lifecycle and
+one-use operation context. Public synthetic timestamps exercise accepted
+observations, source-change rollback/fencing, the injected Noble verifier and
+acknowledgment replay after a full process restart. These are runtime contract
+checks, not native-clock, exclusive-ordering or hosted deployment qualification.
+The `Witness runtime qualification` workflow runs this fixture on a clean Linux
+runner and the core witness/recovery tests on Linux, macOS and Windows. It uses
+local workerd only and has no Cloudflare account credentials.
+
 The opt-in native test exercises the shared kernel, storage boundary, full owned
 process restart and eight contending HTTP deliveries. CPU tests cover callback
 failure propagation and native counter exhaustion. These are infrastructure

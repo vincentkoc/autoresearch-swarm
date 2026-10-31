@@ -10,6 +10,7 @@ from durable_sql import DurableObjectStore
 from pydantic import Field
 from signing_qualification import exercise as exercise_signing
 from storage_qualification import exercise as exercise_storage
+from witness_qualification import exercise as exercise_witness
 from workers import DurableObject, Response, WorkerEntrypoint, import_from_javascript
 
 from research_swarm.domain.canonical import canonical_bytes
@@ -33,6 +34,14 @@ class Probe(VersionedRecord):
 
 
 class Qualification(DurableObject):
+    async def witness_contract(self, case, fail_bootstrap):
+        module = import_from_javascript("./crypto.mjs")
+        return json.dumps(
+            exercise_witness(
+                self.ctx.storage, str(self.ctx.id), case, module, fail_bootstrap=fail_bootstrap
+            )
+        )
+
     async def signing_contract(self, body):
         module = import_from_javascript("./crypto.mjs")
         try:
@@ -141,6 +150,15 @@ class Default(WorkerEntrypoint):
             return Response("Local qualification only", status=403)
         if request.method != "POST":
             return Response("Not found", status=404)
+        if url.path.startswith("/witness/"):
+            case = url.path.removeprefix("/witness/")
+            if case not in {"sample", "changed-source"}:
+                return Response("Not found", status=404)
+            stub = self.env.QUALIFICATION.getByName("witness-contract-" + case)
+            return Response(
+                await stub.witness_contract(case, url.query == "fail-bootstrap=1"),
+                headers={"content-type": "application/json"},
+            )
         if url.path == "/signing":
             text = await request.text()
             if len(text.encode()) > 65536:

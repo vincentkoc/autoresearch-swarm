@@ -156,8 +156,40 @@ def exercise(url, *, key, mode="accept", value=7):
 
 def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp_path):
     build_current_sources()
+    witness_results = {}
     with server(tmp_path, sequence=1) as url:
         with httpx.Client(trust_env=False, timeout=30) as client:
+            failed_bootstrap = client.post(url + "/witness/sample?fail-bootstrap=1")
+            assert failed_bootstrap.status_code == 200, failed_bootstrap.text[-3000:]
+            assert failed_bootstrap.json() == {
+                "bootstrap_failed": True,
+                "records": 0,
+                "events": 0,
+                "commands": 0,
+            }
+            for case in ("sample", "changed-source"):
+                response = client.post(url + "/witness/" + case)
+                assert response.status_code == 200, response.text[-3000:]
+                witness_results[case] = response.json()
+            accepted_witness = witness_results["sample"]
+            assert accepted_witness["disposition"] == "accepted"
+            assert accepted_witness["provider_state"] == "qualified"
+            assert accepted_witness["result"]["closed"] is True
+            assert accepted_witness["result"]["profile"] == "hosted-native-witness-v1"
+            assert accepted_witness["counts"] == {
+                "effects": 1,
+                "retirements": 0,
+                "acknowledgments": 1,
+            }
+            rejected_witness = witness_results["changed-source"]
+            assert rejected_witness["disposition"] == "rejected"
+            assert rejected_witness["provider_state"] == "unqualified"
+            assert rejected_witness["code"] == "STALE_FENCE"
+            assert rejected_witness["counts"] == {
+                "effects": 0,
+                "retirements": 1,
+                "acknowledgments": 1,
+            }
             qualify_shared_signing(client, url)
             for case in ("roundtrip", "unknown-version", "foreign-state", "migration-rollback"):
                 response = client.post(url + "/storage/" + case)
@@ -193,6 +225,10 @@ def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp
         assert exercise(url, key="rejected", mode="reject") == rejected
         assert exercise(url, key="contended") == deliveries[0]
         with httpx.Client(trust_env=False, timeout=10) as client:
+            for case, original in witness_results.items():
+                response = client.post(url + "/witness/" + case)
+                assert response.status_code == 200, response.text[-3000:]
+                assert response.json() == original
             denied = client.post(
                 url + "/qualification",
                 headers={"host": "example.invalid"},

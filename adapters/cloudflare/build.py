@@ -19,6 +19,7 @@ shutil.copyfile(ROOT / "atomic.py", output / "atomic.py")
 shutil.copyfile(ROOT / "durable_sql.py", output / "durable_sql.py")
 shutil.copyfile(ROOT / "storage_qualification.py", output / "storage_qualification.py")
 shutil.copyfile(ROOT / "signing_qualification.py", output / "signing_qualification.py")
+shutil.copyfile(ROOT / "witness_qualification.py", output / "witness_qualification.py")
 shutil.copyfile(ROOT / "ed25519.py", output / "ed25519.py")
 package = output / "research_swarm"
 source = ROOT.parents[1] / "src/research_swarm"
