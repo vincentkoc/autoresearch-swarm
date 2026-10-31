@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the Cloudflare async ordering bridge. Keep Python results and expected
+  domain refusals outside the JavaScript callback boundary, preserve runtime
+  reset on unexpected failures, and refuse skipped or repeated callbacks.
+
 - Preserve running main-branch CI when newer commits arrive, while keeping the
   latest pending run and replacing superseded pull-request checks.
 

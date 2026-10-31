@@ -397,6 +397,17 @@ retirement across reopening, nested copied-context queries, asynchronous-reader
 refusal and rollback when fencing fails. Hosted transport ordering and deployment
 qualification are still required.
 
+### Async ordering bridge
+
+The adapter's `exclusive()` bridge passes an async callable to
+`blockConcurrencyWhile`. Python results remain local to that call. Expected
+`ResearchError` refusals leave the runtime callback normally and are raised only
+after its gate releases; unexpected exceptions still reach the runtime's reset
+boundary. Closure rejects a late callback, and caller cancellation settles a
+separately scheduled callback before returning. These bridge tests do not prove
+provider event ordering. The actual awaited-witness runtime probe remains
+required before hosted activation.
+
 ## Native worker calibration
 
 The worker measures the entire challenge round trip:
