@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Bound hosted activation inspection before payload projection: exact portable
+  schema, at most 8 MiB and 8,192 rows, and separate artifact count/byte limits.
+  Preserve the shared native activation digest and select the exact non-target
+  credential retirement set. Final activation must repeat this preflight in its
+  outer transaction before entering the shared command guard.
+
 - Define a separate signed hosted recovery activation envelope. Its verifier binds
   the full source election and target admission, prepared runtime, exact final clock
   witness, command revision and retired credential inventory. Freeze its signature

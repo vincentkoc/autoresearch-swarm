@@ -2294,6 +2294,21 @@ wire decoder or public activation route. Offline verification establishes the re
 bindings, not current execution authority or a fresh elapsed-time observation. Hosted
 activation, deployment sealing and completed-lifecycle replay remain implementation work.
 
+The hosted activation-cut helper validates the exact portable schema and performs
+scalar SQL type/count/byte checks before calling the shared activation inspector.
+Its initial profile allows at most 8 MiB of encoded row data, 8,192 portable rows
+and 64 KiB per row. These are input bounds, not a heap-size guarantee. Unknown
+columns, oversized payloads and excessive command/turn rows refuse before eager
+payload projection. The shared native view digest is unchanged.
+
+Referenced content has independent limits: 1,024 verified generations, each within
+the configured bounded-R2 object limit, and 32 MiB total. The cut also selects all
+workspace credential IDs outside the prepared target roster, including already
+revoked historical rows. The final adapter transaction must repeat schema/scalar
+preflight **before** entering `Database.execute` through its existing SQL session:
+the activation guard projects the view before the command handler runs. The helper
+does not read R2 bytes, revoke credentials or change the workspace gate.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase
