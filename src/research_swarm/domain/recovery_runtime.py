@@ -88,6 +88,45 @@ class RuntimePreparationReceipt(VersionedRecord):
         )
 
 
+class RequalifyRecoveryRuntime(VersionedRecord):
+    """Explicit request; target authority and source stay in protected configuration."""
+
+    request_id: ID
+    expected_provider_revision: Revision = Field(ge=1)
+    previous_qualification_digest: Digest
+    reason: str = Field(min_length=1, max_length=4096)
+
+
+class RuntimeRequalificationReceipt(VersionedRecord):
+    """Immutable successor, stored by its new provider generation with no latest pointer."""
+
+    request: RequalifyRecoveryRuntime
+    plan_digest: Digest
+    restoration_digest: Digest
+    admission_digest: Digest
+    previous_generation: ID
+    fence_digest: Digest
+    provider_revision: Revision
+    provider: TimeProviderData
+    qualified_at: Timestamp
+
+    @model_validator(mode="after")
+    def successor(self) -> Self:
+        if (
+            self.provider_revision != self.request.expected_provider_revision + 1
+            or self.provider.source_epoch is None
+            or self.provider.scope.provider_generation == self.previous_generation
+        ):
+            raise ValueError("Runtime requalification successor differs")
+        return self
+
+    @property
+    def digest(self) -> str:
+        return record_digest(
+            "research.runtime-requalification-envelope.v1", self.model_dump(mode="json")
+        )
+
+
 class HostedRecoveryActivation(VersionedRecord):
     profile: Literal["hosted-recovery-activation-v1"] = "hosted-recovery-activation-v1"
     request_id: ID

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Define immutable recovery-runtime requalification requests and receipts, selected
+  by provider generation. Verify bounded predecessor and signed retirement history
+  back to the original preparation; reject missing links, altered fences, repeated
+  epochs and more than 16 successors. Original preparation and activation proof
+  bytes remain unchanged. The explicit requalification command is separate work.
+
 - Extend the production workerd recovery probe to seven startups. Freeze separate
   target runtimes and native witnesses before election, restore the full artifact
   inventory, prepare and activate only the winner, and verify lost-response replay

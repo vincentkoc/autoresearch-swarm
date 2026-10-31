@@ -2263,6 +2263,15 @@ gate and does not consume an activation intent. Its immutable source retirement
 prevents an old epoch from qualifying again if it later reappears. Mixed capabilities,
 changed admission/plan and use after activation still refuse.
 
+`RuntimeRequalificationReceipt` defines the immutable successor contract. It carries
+the explicit request, prior generation/qualification digest, retirement-fence digest
+and resulting provider snapshot. Records use their new provider generation as the
+key; the first preparation remains keyed by restore ID. No mutable latest pointer
+or overwrite is needed. A bounded history reader resolves at most 16 successors,
+verifies each predecessor and signed source-retirement observation, and rejects
+repeated epochs. Admission can reserve one remaining lineage slot before I/O.
+This proof slice does not yet expose the explicit requalification command.
+
 `Bootstrap.checkpoint_prepare_runtime(bootstrap_credential)` now implements the
 private preparation operation. The elected target manifest must already identify
 the desired runtime; this operation cannot change it. Its assignment key must differ

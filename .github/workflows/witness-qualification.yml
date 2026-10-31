@@ -104,6 +104,7 @@ jobs:
           tests/test_checkpoint_activation.py
           tests/test_checkpoint_activation_research.py
           tests/test_checkpoint_activation_closure.py
+          tests/test_runtime_qualification_history.py
           tests/test_recovery_elections.py
           tests/test_logical_recovery_routes.py
           tests/test_logical_route_installation.py

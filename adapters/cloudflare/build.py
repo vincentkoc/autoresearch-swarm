@@ -66,6 +66,7 @@ PRODUCTION = (
     "checkpoint_activation.py",
     "activation_cut.py",
     "activation_history.py",
+    "runtime_history.py",
     "recovery_router.py",
 )
 TARGETS = {
