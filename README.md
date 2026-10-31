@@ -18,9 +18,13 @@ The core contract separates immutable experiments from mutable dispatch authorit
 Every attempt, evaluator receipt, budget settlement, and promotion retains its
 own identity. The local implementation starts with Python, SQLite, and subprocesses.
 An optional [Temporal adapter](docs/temporal.md) delivers saved actions and waits
-against the same domain authority. The [Cloudflare direction](docs/cloudflare.md)
-has locally qualified hybrid Workflow delivery and SQL/signing primitives;
-The native notification bridge and agent API facade are implemented. The [R2 storage adapter](docs/r2.md) supports persistent runtime selection and passes local R2-binding qualification; hosted qualification remains separate.
+against the same domain authority. Cloudflare offers a
+[hybrid Workflow profile](docs/cloudflare.md) and a fixed
+[Durable Object authority profile](docs/hosted-authority.md). Local workerd tests
+cover native CPU execution, journal recovery, target preparation and activation.
+The native notification bridge, agent API facade and
+[R2 storage adapter](docs/r2.md) are implemented. Actual Cloudflare deployment,
+fleet qualification and newer clock-management probes have separate evidence gates.
 
 Implemented foundations include the transactional ledger, exact budget arithmetic,
 evaluation receipt validation, verified artifact lifecycle, and immutable source
