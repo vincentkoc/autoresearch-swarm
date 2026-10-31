@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a three-Worker qualification probe for source capture and distinct inactive
+  targets, wrong-target intent refusal, lost import replies and runtime restart.
+  Exercise exact/over-limit RPC strings with real signed bytes and fixed private
+  bindings; no production test endpoints or artifact availability claims are added.
+
 - Expose fixed-target inactive import through private Bootstrap RPC. Load the
   retained target key and source pins from protected configuration, reject invalid
   identity/signature/size before initialization, and independently reverify at import.

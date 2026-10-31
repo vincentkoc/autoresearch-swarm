@@ -40,7 +40,7 @@ from tests.test_manifest import project as project
 from tests.test_time_witnesses import source
 
 
-def fixture_config(directory):
+def fixture_config(directory, *, name=None, bucket_name=None):
     """Auxiliary config owns its local secrets, while code/dependencies stay unchanged."""
     directory.mkdir(mode=0o700)
     raw = "\n".join(
@@ -49,6 +49,10 @@ def fixture_config(directory):
         if not line.lstrip().startswith("//")
     )
     config = json.loads(re.sub(r",(\s*[}\]])", r"\1", raw))
+    if name is not None:
+        config["name"] = name
+    if bucket_name is not None:
+        config["r2_buckets"][0]["bucket_name"] = bucket_name
     config["main"] = str(ROOT / ".generated-production/entry.py")
     config["base_dir"] = str(ROOT / ".generated-production")
     vendor = ROOT / "python_modules"
@@ -60,13 +64,15 @@ def fixture_config(directory):
     return path
 
 
-def fixture_secrets(directory, manifest, secrets, *, source=None):
+def fixture_secrets(directory, manifest, secrets, *, source=None, target=None):
     values = {
         "RESEARCH_MANIFEST": json.dumps(manifest, separators=(",", ":")),
         "RESEARCH_SECRETS": json.dumps(secrets, separators=(",", ":")),
     }
     if source is not None:
         values["RESEARCH_CHECKPOINT_SOURCE"] = json.dumps(source, separators=(",", ":"))
+    if target is not None:
+        values["RESEARCH_CHECKPOINT_TARGET"] = json.dumps(target, separators=(",", ":"))
     assert all("'" not in value and "\n" not in value for value in values.values())
     write_private(
         directory / ".dev.vars",
@@ -75,6 +81,7 @@ def fixture_secrets(directory, manifest, secrets, *, source=None):
     return (
         tuple(values.values())
         + (() if source is None else (source["custody_seed_hex"],))
+        + (() if target is None else (target["custody_seed_hex"],))
         + (
             secrets["assignment_seed_hex"],
             secrets["dispatch_key_hex"],

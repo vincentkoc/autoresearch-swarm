@@ -1800,8 +1800,8 @@ unchanged. This source API has native transaction tests. The actual production
 workerd probe now exercises the private RPC with existing project/artifact/report
 evidence, validates signed bytes, loses replies and restarts before exact replay
 during a witness outage. It checks default/public denial and no additional witness
-calls. Its runtime receipt remains pending; maximum-size RPC and deployed service
-qualification are separate from that functional probe.
+calls. Its runtime receipt remains pending; full decoded-image memory and deployed
+service qualification are separate from that functional probe.
 
 The optional protected `RESEARCH_CHECKPOINT_SOURCE` binding contains:
 
@@ -1992,8 +1992,24 @@ router opening. No target credential installation, witness or R2 operation runs.
 
 The wrapper's native tests cover pre-factory refusal, concurrent exact delivery,
 fresh runtime-owner replay, changed protected inputs, invalid signed cuts and
-mutual exclusion with provisioning. Actual multi-target workerd import remains
-pending. A later hosted source-election proof must bind the exact
+mutual exclusion with provisioning. The actual multi-target workerd probe uses
+three separately named production Workers and fixed private source/A/B bindings.
+It discovers physical identities before installing protected configuration,
+captures ordinary project/artifact evidence, refuses A's intent at B, and imports
+at A with lost-reply and restart replay. B then receives its own protected intent
+and key and imports a separate inactive copy. Neither target becomes active.
+
+The local-only operator pads the real captured JSON with trailing ASCII spaces.
+It sends 6 MiB plus one byte first and requires refusal, then sends exactly 6 MiB
+and requires successful import. This exercises the inclusive RPC string limit
+through Bootstrap and the DO while preserving every signed envelope/chunk byte.
+Public HTTP carries only small fixture selectors and credentials. The probe also
+checks public/default denial, refusal of ordinary provisioning/router access,
+unchanged source capture, and no witness calls. Its runtime receipt remains pending.
+This transport-size probe does not establish maximum decoded-image memory usage,
+artifact transfer, source election or activation.
+
+A later hosted source-election proof must bind the exact
 `LogicalImportIntent.digest`, including physical target and deployment. Existing
 native `RestoreClaimRequest` signatures lack those hosted fields and cannot alone
 authorize a hosted target; their native signature bytes remain unchanged.

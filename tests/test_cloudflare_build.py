@@ -21,6 +21,8 @@ def test_production_and_qualification_bundles_share_implementation_without_fixtu
         assert (production / name).read_bytes() == (qualification / name).read_bytes()
     assert all((production / name).is_file() for name in PRODUCTION)
     assert all(not (production / name).exists() for name in QUALIFICATION)
+    assert not (production / "production_operator_fixture.mjs").exists()
+    assert not (production / "production_checkpoint_fixture.mjs").exists()
     assert all((qualification / name).is_file() for name in QUALIFICATION)
     assert not tuple(production.rglob("__pycache__"))
     for path in SOURCE.rglob("*.py"):

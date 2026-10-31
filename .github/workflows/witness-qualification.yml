@@ -112,6 +112,7 @@ jobs:
       - run: >-
           node --test adapters/cloudflare/http_io.test.mjs adapters/cloudflare/witness_io.test.mjs
           adapters/cloudflare/production_operator_fixture.test.mjs
+          adapters/cloudflare/production_checkpoint_fixture.test.mjs
       - run: uv sync --directory adapters/cloudflare --locked --python 3.12
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: adapters/cloudflare
@@ -135,5 +136,6 @@ jobs:
           tests/test_cloudflare_transfers.py
           tests/test_cloudflare_startup.py
           tests/test_cloudflare_production.py
+          tests/test_cloudflare_checkpoint.py
           tests/test_cloudflare_hosted_http.py tests/test_cloudflare_native_source.py
           tests/test_cloudflare_research_admission.py --tb=short
