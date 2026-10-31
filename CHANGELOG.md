@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Build original-worker recovery routes from one shared SQL snapshot of the
+  attempt, archived session and credential. Bound payload reads, require the
+  immutable session and current credential scopes, and recheck them before
+  returning an existing route. Native issuance reuses this backend-neutral path.
+
 - Let original workers install and reopen routes carrying a full logical election
   proof. Verify independently pinned source custody, all election signatures,
   admission and destination signatures before network access. Preserve native wire

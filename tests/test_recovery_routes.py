@@ -1,7 +1,9 @@
 """An explicit elected destination cannot rewrite original worker custody."""
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -11,6 +13,7 @@ from research_swarm.checkpoints.routes import issue_recovery_route
 from research_swarm.cli import main
 from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.reconciliation import ReconcileAttempt
+from research_swarm.control.recovery_route_issuance import route_from_snapshot
 from research_swarm.control.recovery_routes import verify_recovery_route
 from research_swarm.domain.backup import BackupCustodyPin
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
@@ -202,6 +205,107 @@ def test_issued_route_ids_cannot_be_rebound(routed):
             routed.request.model_copy(update={"destination_url": "https://another.example"}),
         )
     assert conflict.value.code == ErrorCode.IDEMPOTENCY_CONFLICT
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "revoked",
+        "credential_owner",
+        "credential_scope",
+        "driver",
+        "session_state",
+        "session_revision",
+        "session_size",
+        "attempt",
+    ],
+)
+def test_issuance_rechecks_original_authority_before_returning_saved_route(routed, damage):
+    r = routed
+    route = r.signed.route
+    context = CommandContext(principal=r.target.principal(), idempotency_key=new_id())
+    path = r.target.root / "recovery-routes" / (route.route_id + ".json")
+    before = path.read_bytes()
+
+    def change(sql):
+        if damage == "revoked":
+            sql.execute("UPDATE credentials SET revoked=1 WHERE id=?", (route.credential_id,))
+        elif damage.startswith("credential_"):
+            raw = strict_json_loads(
+                sql.execute(
+                    "SELECT principal FROM credentials WHERE id=?", (route.credential_id,)
+                ).one()[0]
+            )
+            raw["id" if damage == "credential_owner" else "scopes"] = (
+                new_id() if damage == "credential_owner" else ["worker.query"]
+            )
+            sql.execute(
+                "UPDATE credentials SET principal=? WHERE id=?",
+                (canonical_bytes(raw).decode(), route.credential_id),
+            )
+        elif damage == "driver":
+            from research_swarm.state.database import Transaction
+
+            Transaction(sql, context).insert(
+                "orchestration_owner", context.principal.id, {}, state="assigned"
+            )
+        elif damage.startswith("session_"):
+            column, value = {
+                "session_state": ("state", "active"),
+                "session_revision": ("revision", 2),
+                "session_size": ("payload", " " * (1024**2 + 1)),
+            }[damage]
+            sql.execute(f"UPDATE records SET {column}=? WHERE kind='worker_session'", (value,))
+        else:
+            raw = strict_json_loads(
+                sql.execute(
+                    "SELECT payload FROM records WHERE kind='attempt' AND id=?", (route.attempt_id,)
+                ).one()[0]
+            )
+            raw["dispatch"]["worker_session_id"] = new_id()
+            sql.execute(
+                "UPDATE records SET payload=? WHERE kind='attempt' AND id=?",
+                (canonical_bytes(raw).decode(), route.attempt_id),
+            )
+
+    r.target.database.store.write(change)
+    with pytest.raises(ResearchError):
+        issue_recovery_route(r.target, context, r.request)
+    assert path.read_bytes() == before
+    assert_original_unchanged(r)
+
+
+def test_route_worker_and_credential_reads_share_one_snapshot_during_revocation(routed):
+    r, reached, release = routed, Event(), Event()
+    context = CommandContext(principal=r.target.principal(), idempotency_key=new_id())
+
+    def read(sql):
+        class Paused:
+            def execute(self, statement, parameters=()):
+                result = sql.execute(statement, parameters)
+                if "worker_session" in parameters:
+                    reached.set()
+                    assert release.wait(5)
+                return result
+
+        return route_from_snapshot(
+            Paused(), context, r.request, r.signed.route.restoration, r.signed.route.admission
+        )
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(r.target.database.store.read, read)
+        try:
+            assert reached.wait(5)
+            r.target.database.store.write(
+                lambda sql: sql.execute(
+                    "UPDATE credentials SET revoked=1 WHERE id=?", (r.request.credential_id,)
+                )
+            )
+        finally:
+            release.set()
+        assert pending.result() == r.signed.route
+    with pytest.raises(ResearchError, match="credential is unavailable"):
+        r.target.database.store.read(read)
 
 
 @pytest.mark.parametrize("surface", ["route", "installation", "journal", "registry"])

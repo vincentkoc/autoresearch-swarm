@@ -2080,7 +2080,8 @@ Missing or reopened fences refuse both replay and recovery capability use; the
 transaction guard rechecks them after capability minting. Native tests cover
 independent SQLite connection races, lost replies, rollback after actual SDK
 campaign fencing, retained funding and pending turns. Production workerd admission
-qualification remains pending. Ordinary hosted routers still refuse this target;
+qualification passed at `b5521a4abec6b1f4891daf3512fccef79798af5c`, as recorded below.
+Ordinary hosted routers still refuse this target;
 evidence delivery, artifact restoration and activation require separate support.
 
 The production qualification probe now uses a sixth runtime startup to replay
@@ -2089,7 +2090,8 @@ signature and complete election digest, refuses the losing target and public
 entrypoint, and checks that provisioning, import, request generation and ordinary
 router access cannot reopen the recovering target. Its fixture drops only a
 recognized accepted admission; unexpected failures remain visible. This probe
-requires a new passing workerd receipt before hosted runtime qualification.
+passed in the workerd admission receipt below; it does not establish a deployed
+Cloudflare service or qualify later turn and artifact extensions.
 
 `Bootstrap.checkpoint_turn(bootstrap_credential, request_json)` admits only
 `orchestration.reconcile_turn` and `orchestration.close_turn` on the recovering
@@ -2219,6 +2221,13 @@ during the same witness outage. At
 passed 20 tests in 758.34 seconds, including this five-startup extension. That
 revision predates hosted admission and saved-turn maintenance; it does not qualify
 their later six-startup probe.
+
+At `b5521a4abec6b1f4891daf3512fccef79798af5c`, the
+[workerd admission qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41221477783/job/124597104195)
+passed 20 tests in 785.14 seconds. This covers elected admission, a lost accepted
+reply and byte-identical replay after the sixth startup. It predates saved-turn
+closure, source artifact export and target R2 restoration; those extensions still
+need their own passing runtime receipt.
 
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent

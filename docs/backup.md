@@ -313,6 +313,13 @@ credential ID, selected journal, and existing journal/registry identities under
 the original enrollment, driver and attempt locks. Reopening a route repeats
 those checks before any connection. Missing native stores are not recreated.
 
+Route construction reads the original attempt, archived worker session and
+credential in one SQL snapshot. Session records must be immutable at revision
+one; revoked, differently owned or insufficiently scoped credentials refuse even
+when a route file already exists. Attempt and session payloads are bounded to
+one MiB each, credential principal data to 16 KiB. This shared construction path
+does not sign, persist or establish current deployment authority itself.
+
 Signed routes may additionally carry `logical_election`. This complete source
 election envelope must match the digest signed into the target admission. Native
 route serialization omits the field and retains its existing bytes and digest.
