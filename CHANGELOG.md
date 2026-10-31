@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Exercise Durable Object ordering across an independently held HTTP witness:
+  verify committed sequence, task ownership, timeout refusal, fresh-nonce retry,
+  rejection fences and replay after process restart. The opt-in fixture uses
+  synthetic timestamps and public keys; it does not enable hosted authority.
+
 - Add the Cloudflare async ordering bridge. Keep Python results and expected
   domain refusals outside the JavaScript callback boundary, preserve runtime
   reset on unexpected failures, and refuse skipped or repeated callbacks.

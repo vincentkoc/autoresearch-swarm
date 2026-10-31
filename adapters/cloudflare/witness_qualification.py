@@ -1,5 +1,6 @@
 """Synthetic witness/lifecycle probe. No native time or hosted clock qualification."""
 
+import asyncio
 import sys
 from uuid import NAMESPACE_URL, uuid5
 
@@ -36,7 +37,9 @@ class BootstrapFailure(Exception):
     pass
 
 
-def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
+async def exercise(
+    storage, object_id, case, module, *, fail_bootstrap=False, key=None, acquire=None
+):
     if case not in {"sample", "changed-source", "domain-reject"}:
         raise ValueError("Unknown witness qualification case")
     store = DurableObjectStore(
@@ -50,7 +53,8 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
     workspace, controller = identifier("workspace"), identifier("controller")
     database.bootstrap(workspace, controller)
     principal = Principal(id=identifier("operator"), workspace_id=workspace, scopes={"*"})
-    context = CommandContext(principal=principal, idempotency_key=case)
+    key = key or case
+    context = CommandContext(principal=principal, idempotency_key=key)
     authority = WitnessAuthorityScope(
         state_authority_id=record_digest("fixture.state", {"object_id": object_id}),
         activation_id=identifier("activation"),
@@ -87,7 +91,7 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
     def current():
         return store.read(lambda sql: registry.load(Transaction(sql, context), authority))
 
-    def preflight():
+    async def preflight():
         try:
             snapshot = current()
         except ResearchError as error:
@@ -121,8 +125,21 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
             snapshot = store.write(initialize)
 
         with boundary.prepare(context, snapshot, "fixture.witness", {"case": case}) as turn:
+            if acquire is not None:
+
+                async def wrong_owner():
+                    try:
+                        turn.complete(response(turn.request, "epoch-1"))
+                    except ResearchError as error:
+                        assert error.code == ErrorCode.STALE_FENCE
+                    else:
+                        raise AssertionError("Child task borrowed its parent's witness")
+
+                await asyncio.create_task(wrong_owner())
             turn.complete(
-                response(turn.request, "epoch-2" if case == "changed-source" else "epoch-1")
+                await acquire(turn.request)
+                if acquire is not None
+                else response(turn.request, "epoch-2" if case == "changed-source" else "epoch-1")
             )
 
             def callback():
@@ -131,25 +148,31 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
                 return {"epoch": first.epoch, "time": first.milliseconds, "profile": first.profile}
 
             def command(transaction):
-                transaction.insert("fixture_effect", identifier(case), {}, state="temporary")
+                previous = transaction.connection.execute(
+                    "SELECT COUNT(*) FROM records WHERE kind='fixture_effect'"
+                ).one()[0]
+                row = transaction.insert("fixture_effect", identifier(key), {}, state="temporary")
+                event = transaction.event("fixture.effect", row, {"key": key})
                 result = callback()
                 if case == "domain-reject":
                     raise ResearchError(ErrorCode.ACCEPTANCE_EXPIRED, "Synthetic domain rejection")
-                return result
+                return {**result, "previous_effects": previous, "sequence": event.sequence}
 
             def reject(transaction, error):
                 if error.code == ErrorCode.ACCEPTANCE_EXPIRED:
                     assert provider.observe(scope).milliseconds == 1_793_000_000_000
-                    transaction.insert("fixture_domain_fence", identifier(case), {}, state="fenced")
+                    transaction.insert("fixture_domain_fence", identifier(key), {}, state="fenced")
 
             return database.execute(
                 context, "fixture.witness", {"case": case}, "write", command, on_rejection=reject
             )
 
     try:
-        result = database.with_preflight(
-            context, "fixture.witness", {"case": case}, "write", preflight
-        )
+        # This fixture's caller holds the DO gate across the awaited preflight.
+        # The kernel still repeats replay admission inside its write transaction.
+        result = database.replay(context, "fixture.witness", {"case": case}, "write")
+        if result is None:
+            result = await preflight()
     except BootstrapFailure:
         return store.read(
             lambda sql: {

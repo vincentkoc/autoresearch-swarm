@@ -42,6 +42,7 @@ From the repository root, using its core development environment:
 
 ```sh
 RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_native.py
+RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_witness_ordering.py
 ```
 
 The native fixture currently requires POSIX process groups. It starts only owned
@@ -119,6 +120,27 @@ atomic and has an injected failure/retry probe.
 The `Witness runtime qualification` workflow runs this fixture on a clean Linux
 runner and the core witness/recovery tests on Linux, macOS and Windows. It uses
 local workerd only and has no Cloudflare account credentials.
+
+The awaited-witness fixture uses `exclusive()` around the actual DO operation.
+An independent loopback HTTP server holds A's response and separately records
+B's RPC submission from the outer Worker. Durable event sequence and prior-effect
+counts must show A committed before B. A fixture-only gate bypass must reverse
+that order under the same delivery path. The fixture also rejects child-task
+witness use and aborts a bounded fetch. It observes the expired response attempt
+while holding the retry response, then requires one added effect/acknowledgment
+and a fresh nonce. Accepted and rejected acknowledgments replay
+after a full owned workerd restart without another witness request.
+
+`fixture_transport.mjs` accepts only loopback HTTP and fixed fixture paths, bounds
+request/response bytes, refuses redirects and aborts the whole exchange after its
+short timeout. Its credential is a public test string. This is qualification
+transport, not deployment authentication or a native clock source. The runtime's
+30-second reset path and production routing still require separate qualification.
+
+The earlier synchronous witness/lifecycle suite passed at `ba66e98` on Linux,
+macOS, Windows and local workerd in
+[runtime qualification 41189985236](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41189985236).
+That evidence predates the awaited-witness fixture and does not qualify its gate.
 
 The opt-in native test exercises the shared kernel, storage boundary, full owned
 process restart and eight contending HTTP deliveries. CPU tests cover callback

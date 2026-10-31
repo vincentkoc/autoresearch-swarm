@@ -1,5 +1,6 @@
 """Local-only feasibility fixture. This is not the production research API."""
 
+import asyncio
 import json
 import sys
 from typing import Literal
@@ -7,6 +8,7 @@ from urllib.parse import urlparse
 from uuid import NAMESPACE_URL, uuid5
 
 from durable_sql import DurableObjectStore
+from exclusive import exclusive
 from pydantic import Field
 from signing_qualification import exercise as exercise_signing
 from storage_qualification import exercise as exercise_storage
@@ -33,13 +35,58 @@ class Probe(VersionedRecord):
     value: int = Field(strict=True, ge=0, le=1_000_000)
 
 
+class OrderingProbe(VersionedRecord):
+    key: str = Field(pattern=r"^[a-z0-9-]{1,64}$")
+    case: Literal["sample", "changed-source", "domain-reject"] = "sample"
+    witness_origin: str = Field(max_length=256)
+    timeout_ms: int = Field(strict=True, ge=100, le=10_000, default=8_000)
+    bypass_gate: bool = Field(strict=True, default=False)
+
+
 class Qualification(DurableObject):
     async def witness_contract(self, case, fail_bootstrap):
         module = import_from_javascript("./crypto.mjs")
-        return json.dumps(
-            exercise_witness(
+
+        async def operation():
+            return await exercise_witness(
                 self.ctx.storage, str(self.ctx.id), case, module, fail_bootstrap=fail_bootstrap
             )
+
+        return json.dumps(await exclusive(self.ctx, operation))
+
+    async def witness_ordering(self, body):
+        request = OrderingProbe.model_validate_json(body)
+        # Imports may suspend. Finish loading both modules before entering the gate.
+        crypto = import_from_javascript("./crypto.mjs")
+        transport = import_from_javascript("./fixture_transport.mjs")
+
+        async def acquire(witness):
+            try:
+                text = await transport.request(
+                    request.witness_origin,
+                    "/witness/" + request.key,
+                    canonical_bytes(witness.model_dump(mode="json")).decode(),
+                    float(request.timeout_ms),
+                )
+            except Exception as error:
+                raise ResearchError(
+                    ErrorCode.TRANSPORT_UNAVAILABLE, "Local witness fixture unavailable"
+                ) from error
+            return text.encode()
+
+        async def operation():
+            return await exercise_witness(
+                self.ctx.storage,
+                str(self.ctx.id),
+                request.case,
+                crypto,
+                key=request.key,
+                acquire=acquire,
+            )
+
+        # Local-only negative control; not a supported authority configuration.
+        return json.dumps(
+            await operation() if request.bypass_gate else await exclusive(self.ctx, operation)
         )
 
     async def signing_contract(self, body):
@@ -150,6 +197,38 @@ class Default(WorkerEntrypoint):
             return Response("Local qualification only", status=403)
         if request.method != "POST":
             return Response("Not found", status=404)
+        if url.path == "/witness-ordering":
+            text = await request.text()
+            if len(text.encode()) > 4096:
+                return Response("Request too large", status=413)
+            probe = OrderingProbe.model_validate_json(text)
+            transport = import_from_javascript("./fixture_transport.mjs")
+            suffix = "-bypass" if probe.bypass_gate else ""
+            stub = self.env.QUALIFICATION.getByName("witness-ordering-" + probe.case + suffix)
+            submitted = asyncio.Event()
+
+            async def invoke():
+                try:
+                    delivery = stub.witness_ordering(text)
+                finally:
+                    submitted.set()
+                return await delivery
+
+            delivery = asyncio.create_task(invoke())
+            try:
+                await submitted.wait()
+                if delivery.done():
+                    delivery.result()
+                # Observe RPC submission outside the blocked DO. The bypass
+                # control must expose interleaving under this same delivery path.
+                await transport.request(
+                    probe.witness_origin, "/ingress/" + probe.key, "{}", 10_000.0
+                )
+                return Response(await delivery, headers={"content-type": "application/json"})
+            finally:
+                if not delivery.done():
+                    delivery.cancel()
+                    await asyncio.gather(delivery, return_exceptions=True)
         if url.path.startswith("/witness/"):
             case = url.path.removeprefix("/witness/")
             if case not in {"sample", "changed-source", "domain-reject"}:
