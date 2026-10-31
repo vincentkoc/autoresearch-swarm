@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend the production recovery probe to eight startups, including an actual
+  native witness restart, durable clock retirement, explicit requalification and
+  lost-reply recovery while the witness is offline. Preserve the existing target
+  activation and fresh-worker checks and bind them to the new generation/epoch.
+  The fixture passes locally; the extended actual-workerd sequence is pending.
+
 - Add private hosted runtime requalification for an elected target whose pinned
   clock restarted before activation. Verify its fenced predecessor, acquire a fresh
   witness, and commit one new generation, immutable receipt and acknowledgment

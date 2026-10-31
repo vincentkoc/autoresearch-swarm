@@ -34,7 +34,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|closure|default-closure|artifact|default-artifact|prepare-runtime|default-prepare-runtime|activate|default-activate|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|closure|default-closure|artifact|default-artifact|prepare-runtime|default-prepare-runtime|requalify-runtime|default-requalify-runtime|activate|default-activate|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -60,24 +60,39 @@ export default {
       Number.parseInt(pair, 16),
     );
     const input = JSON.parse(new TextDecoder().decode(bytes));
-    if (action === "prepare-runtime" || action === "activate") {
-      const result =
-        action === "prepare-runtime"
-          ? await bootstrap.checkpoint_prepare_runtime(input.credential)
-          : await bootstrap.checkpoint_activate(
-              input.credential,
-              input.activation_json,
-            );
+    if (["prepare-runtime", "requalify-runtime", "activate"].includes(action)) {
+      const operations = {
+        "prepare-runtime": () =>
+          bootstrap.checkpoint_prepare_runtime(input.credential),
+        "requalify-runtime": () =>
+          bootstrap.checkpoint_requalify_runtime(
+            input.credential,
+            input.requalification_json,
+          ),
+        activate: () =>
+          bootstrap.checkpoint_activate(
+            input.credential,
+            input.activation_json,
+          ),
+      };
+      const result = await operations[action]();
       if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
         const value = JSON.parse(result);
         const valid =
           action === "prepare-runtime"
             ? typeof value.receipt?.plan_digest === "string" &&
               value.receipt?.provider_revision >= 1
-            : value.disposition === "accepted" &&
-              value.result?.data?.profile === "hosted-recovery-activation-v1" &&
-              value.result?.data?.request_id ===
-                JSON.parse(input.activation_json).request_id;
+            : action === "requalify-runtime"
+              ? value.disposition === "accepted" &&
+                typeof value.result?.data?.provider?.scope
+                  ?.provider_generation === "string" &&
+                value.result?.data?.request?.request_id ===
+                  JSON.parse(input.requalification_json).request_id
+              : value.disposition === "accepted" &&
+                value.result?.data?.profile ===
+                  "hosted-recovery-activation-v1" &&
+                value.result?.data?.request_id ===
+                  JSON.parse(input.activation_json).request_id;
         if (!valid) return new Response(result, { status: 409 });
         return new Response("{", {
           headers: { "content-type": "application/json" },
@@ -209,6 +224,7 @@ export default {
       action === "default-route" ||
       action === "default-closure" ||
       action === "default-prepare-runtime" ||
+      action === "default-requalify-runtime" ||
       action === "default-activate" ||
       action === "default-artifact"
     ) {
@@ -225,6 +241,11 @@ export default {
           await api.checkpoint_closure(input.credential, input.closure_json);
         else if (action === "default-prepare-runtime")
           await api.checkpoint_prepare_runtime(input.credential);
+        else if (action === "default-requalify-runtime")
+          await api.checkpoint_requalify_runtime(
+            input.credential,
+            input.requalification_json,
+          );
         else if (action === "default-activate")
           await api.checkpoint_activate(
             input.credential,

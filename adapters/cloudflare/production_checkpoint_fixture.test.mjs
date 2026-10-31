@@ -19,6 +19,7 @@ function request(action, { letter = "a", drop = false } = {}) {
       route_json: '{"route_id":"fixture-route"}',
       closure_json: '{"payload":{"attempt_id":"original-attempt"}}',
       activation_json: '{"request_id":"activation-request"}',
+      requalification_json: '{"request_id":"requalification-request"}',
       artifact_json:
         '{"artifact_id":"artifact","generation":"generation","backup_id":"backup","manifest_digest":"image"}',
     }),
@@ -507,6 +508,19 @@ for (const [action, method, accepted] of [
     { receipt: { plan_digest: "plan", provider_revision: 2 } },
   ],
   [
+    "requalify-runtime",
+    "checkpoint_requalify_runtime",
+    {
+      disposition: "accepted",
+      result: {
+        data: {
+          request: { request_id: "requalification-request" },
+          provider: { scope: { provider_generation: "new-generation" } },
+        },
+      },
+    },
+  ],
+  [
     "activate",
     "checkpoint_activate",
     {
@@ -529,6 +543,8 @@ for (const [action, method, accepted] of [
           assert.equal(credential, "target-credential");
           if (action === "activate")
             assert.equal(payload, '{"request_id":"activation-request"}');
+          if (action === "requalify-runtime")
+            assert.equal(payload, '{"request_id":"requalification-request"}');
           return JSON.stringify(value);
         },
       },
@@ -545,6 +561,13 @@ for (const [action, method, accepted] of [
       const reply = await call(true);
       assert.equal(reply.status, 409);
       assert.deepEqual(await reply.json(), invalid);
+    }
+    if (action === "requalify-runtime") {
+      value = structuredClone(accepted);
+      value.result.data.request.request_id = "different-request";
+      const reply = await call(true);
+      assert.equal(reply.status, 409);
+      assert.deepEqual(await reply.json(), value);
     }
     assert.deepEqual(
       await (

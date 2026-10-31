@@ -29,6 +29,11 @@ from research_swarm.domain.checkpoint_elections import (
 )
 from research_swarm.domain.checkpoint_images import LogicalImportIntent, SignedLogicalCheckpoint
 from research_swarm.domain.recovery_routes import SignedWorkerRecoveryRoute
+from research_swarm.domain.recovery_runtime import (
+    RequalifyRecoveryRuntime,
+    RuntimePreparationReceipt,
+    RuntimeRequalificationReceipt,
+)
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import write_private
@@ -122,6 +127,7 @@ def target_call(
     route=None,
     closure=None,
     activation=None,
+    requalification=None,
 ):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
@@ -135,6 +141,7 @@ def target_call(
             "route_json": json.dumps(route),
             "closure_json": json.dumps(closure),
             "activation_json": json.dumps(activation),
+            "requalification_json": json.dumps(requalification),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -853,7 +860,15 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 ).json()
                 assert restored["result"]["artifact"] == remaining.model_dump(mode="json")
 
-            def runtime_call(letter, action, *, credential=None, drop=False, activation=None):
+            def runtime_call(
+                letter,
+                action,
+                *,
+                credential=None,
+                drop=False,
+                activation=None,
+                requalification=None,
+            ):
                 return target_call(
                     http,
                     letter,
@@ -863,6 +878,7 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                     capture,
                     drop=drop,
                     activation=activation,
+                    requalification=requalification,
                 )
 
             assert runtime_call(winner, "default-prepare-runtime").json() == {"denied": True}
@@ -1041,6 +1057,88 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             )
             assert "error" in runtime_call(loser, "activate", activation=activation_request).json()
             target_endpoints[winner].mode = "normal"
+            initial_runtime = RuntimePreparationReceipt.model_validate(prepared_value)
+            target_endpoints[winner].restart()
+            refused = runtime_call(winner, "activate", activation=activation_request).json()
+            assert refused["error"]["code"] == "STALE_FENCE", refused
+            restarted_epoch = target_endpoints[winner].responses[-1].payload.source_epoch
+            assert restarted_epoch != initial_runtime.provider.source_epoch
+            retired_witness_calls = len(target_endpoints[winner].requests)
+            assert retired_witness_calls == target_witness_calls + 1
+            assert "error" in runtime_call(winner, "prepare-runtime").json()
+            assert len(target_endpoints[winner].requests) == retired_witness_calls
+            requalification_request = RequalifyRecoveryRuntime(
+                request_id=new_id(),
+                expected_provider_revision=initial_runtime.provider_revision + 1,
+                previous_qualification_digest=initial_runtime.digest,
+                reason="Pinned native witness restarted before target activation",
+            ).model_dump(mode="json")
+            assert runtime_call(
+                winner, "default-requalify-runtime", requalification=requalification_request
+            ).json() == {"denied": True}
+            assert (
+                runtime_call(
+                    winner,
+                    "requalify-runtime",
+                    credential="wrong",
+                    requalification=requalification_request,
+                ).json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            assert (
+                "error"
+                in runtime_call(
+                    loser, "requalify-runtime", requalification=requalification_request
+                ).json()
+            )
+            assert len(target_endpoints[winner].requests) == retired_witness_calls
+            assert (
+                runtime_call(
+                    winner, "requalify-runtime", requalification=requalification_request, drop=True
+                ).text
+                == "{"
+            )
+            qualified_witness_calls = len(target_endpoints[winner].requests)
+            assert qualified_witness_calls == retired_witness_calls + 1
+            target_endpoints[winner].mode = "unavailable"
+
+        with (
+            server(tmp_path, sequence=7, **options) as url,
+            httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
+        ):
+            requalified_runtime = runtime_call(
+                winner, "requalify-runtime", requalification=requalification_request
+            ).text
+            requalified = json.loads(requalified_runtime)
+            assert requalified["disposition"] == "accepted"
+            successor = RuntimeRequalificationReceipt.model_validate(requalified["result"]["data"])
+            assert successor.request.model_dump(mode="json") == requalification_request
+            assert successor.plan_digest == initial_runtime.plan_digest
+            assert successor.restoration_digest == initial_runtime.restoration_digest
+            assert successor.admission_digest == initial_runtime.admission_digest
+            assert (
+                successor.previous_generation == initial_runtime.provider.scope.provider_generation
+            )
+            assert successor.provider_revision == initial_runtime.provider_revision + 2
+            assert successor.provider.scope.provider_generation != successor.previous_generation
+            assert successor.provider.source_epoch == restarted_epoch
+            assert (
+                runtime_call(
+                    winner, "requalify-runtime", requalification=requalification_request
+                ).text
+                == requalified_runtime
+            )
+            assert len(target_endpoints[winner].requests) == qualified_witness_calls
+            assert "error" in runtime_call(winner, "prepare-runtime").json()
+            assert (
+                http.get(
+                    f"/fixture/target-{winner}/capabilities",
+                    headers={"authorization": "Bearer " + fresh_token},
+                ).status_code
+                != 200
+            )
+            assert len(endpoint.requests) == witness_calls
+            target_endpoints[winner].mode = "normal"
             assert (
                 runtime_call(winner, "activate", activation=activation_request, drop=True).text
                 == "{"
@@ -1051,11 +1149,18 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             activated = json.loads(accepted_activation)
             assert activated["disposition"] == "accepted"
             assert activated["result"]["data"]["profile"] == "hosted-recovery-activation-v1"
-            assert len(target_endpoints[winner].requests) == target_witness_calls + 1
+            final_witness = activated["result"]["data"]["final_witness"]["payload"]
+            assert (
+                final_witness["request"]["scope"]["provider_generation"]
+                == successor.provider.scope.provider_generation
+            )
+            assert final_witness["source_epoch"] == restarted_epoch
+            activated_witness_calls = len(target_endpoints[winner].requests)
+            assert activated_witness_calls == qualified_witness_calls + 1
             target_endpoints[winner].mode = "unavailable"
 
         with (
-            server(tmp_path, sequence=7, **options) as url,
+            server(tmp_path, sequence=8, **options) as url,
             httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
             ResearchClient.connect(url + f"/fixture/authority-{winner}", fresh_token) as current,
         ):
@@ -1063,7 +1168,7 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 runtime_call(winner, "activate", activation=activation_request).text
                 == accepted_activation
             )
-            assert len(target_endpoints[winner].requests) == target_witness_calls + 1
+            assert len(target_endpoints[winner].requests) == activated_witness_calls
             assert current.capabilities()["execution"] != "unavailable"
             assert (
                 current.get("attempt", original_journal.dispatch.attempt_id) == settled["attempt"]
@@ -1110,7 +1215,7 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             )
             pending = sampler.begin()
             pending.complete(current.worker_clock(pending.challenge))
-            assert len(target_endpoints[winner].requests) > target_witness_calls + 1
+            assert len(target_endpoints[winner].requests) > activated_witness_calls
             assert (
                 current.command("worker.enroll", enroll, idempotency_key="new-target-worker")
                 == enrolled
