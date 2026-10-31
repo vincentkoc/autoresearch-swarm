@@ -2,6 +2,12 @@ name: Witness runtime qualification
 
 on:
   workflow_dispatch:
+    inputs:
+      surface:
+        description: Qualification surface
+        type: choice
+        default: all
+        options: [all, native, windows, workerd]
 
 permissions:
   contents: read
@@ -12,10 +18,11 @@ concurrency:
 
 jobs:
   native:
+    if: inputs.surface != 'workerd'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(inputs.surface == 'windows' && '["windows-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
@@ -42,6 +49,7 @@ jobs:
           tests/test_supervision.py
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
   workerd:
+    if: inputs.surface == 'all' || inputs.surface == 'workerd'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

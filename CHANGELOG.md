@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Allow targeted witness qualification for native platforms, Windows or workerd
+  so a provider-specific retry does not repeat unrelated successful jobs.
+
 - Exercise Durable Object ordering across an independently held HTTP witness:
   verify committed sequence, task ownership, timeout refusal, fresh-nonce retry,
   rejection fences and replay after process restart. The opt-in fixture uses
