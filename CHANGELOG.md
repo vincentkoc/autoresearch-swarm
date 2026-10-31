@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an actual workerd successor-recovery probe: restart a transferred authority,
+  recover a lost snapshot-creation response through the existing SDK, acknowledge
+  both drivers, execute one saved action, then replay offline after another restart.
+
 - Add a hosted successor-startup profile using the existing SDK's checkpoint and
   complete snapshot verification. Expose bounded actor-scoped snapshot reads,
   explicit startup acknowledgment and operator expiry collection through checked

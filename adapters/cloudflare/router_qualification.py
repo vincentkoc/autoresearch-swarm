@@ -21,6 +21,7 @@ from research_router import (
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
     HostedScientificConfiguration,
+    HostedStartupConfiguration,
     HostedTransferConfiguration,
     dispatch_key_digest,
 )
@@ -120,8 +121,10 @@ def configuration(
     scientific_profile=False,
     orchestration_profile=False,
     transfer_profile=False,
+    startup_profile=False,
     source=None,
 ):
+    transfer_profile = transfer_profile or startup_profile
     orchestration_profile = orchestration_profile or transfer_profile
     scientific_profile = scientific_profile or orchestration_profile
     lifecycle_profile = lifecycle_profile or scientific_profile
@@ -221,7 +224,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedTransferConfiguration
+            HostedStartupConfiguration
+            if startup_profile
+            else HostedTransferConfiguration
             if transfer_profile
             else HostedOrchestrationConfiguration
             if orchestration_profile

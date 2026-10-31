@@ -17,6 +17,7 @@ from research_router import (
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
     HostedScientificConfiguration,
+    HostedStartupConfiguration,
     HostedTransferConfiguration,
 )
 from router_qualification import DISPATCH_KEY, NAMESPACE, configuration, prepare_provision
@@ -46,6 +47,7 @@ class NativeProbe(VersionedRecord):
     scientific_profile: bool = Field(default=False, strict=True)
     orchestration_profile: bool = Field(default=False, strict=True)
     transfer_profile: bool = Field(default=False, strict=True)
+    startup_profile: bool = Field(default=False, strict=True)
 
 
 class NativeFixtureR2(R2BindingTransport):
@@ -85,6 +87,7 @@ async def open_native_router(
                 | HostedScientificConfiguration
                 | HostedOrchestrationConfiguration
                 | HostedTransferConfiguration
+                | HostedStartupConfiguration
             ).validate_json(
                 sql.execute("SELECT payload FROM hosted_authority_config WHERE singleton=1").one()[
                     0
@@ -142,6 +145,7 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
                 scientific_profile=probe.scientific_profile,
                 orchestration_profile=probe.orchestration_profile,
                 transfer_profile=probe.transfer_profile,
+                startup_profile=probe.startup_profile,
             )
             if probe.action == "describe":
                 return config.model_dump(mode="json")
@@ -240,6 +244,17 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
                             ).one()[0]
                             for kind in ("worker", "attempt")
                         },
+                    }
+                if isinstance(router.configuration, HostedStartupConfiguration):
+                    result["recovery_counts"] = {
+                        "snapshots": sql.execute("SELECT COUNT(*) FROM recovery_snapshots").one()[
+                            0
+                        ],
+                        "items": sql.execute("SELECT COUNT(*) FROM recovery_items").one()[0],
+                        "active": sql.execute(
+                            "SELECT COUNT(*) FROM recovery_snapshots "
+                            "WHERE released_at IS NULL AND expired_at IS NULL"
+                        ).one()[0],
                     }
                 return result
 

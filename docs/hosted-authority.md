@@ -1250,7 +1250,17 @@ acquisition; and abandoned-reader quota recovery. Native worker authority and
 budgets stay unchanged. Older transfer/orchestration profiles retain their
 startup refusal. Automatic async delivery bootstrap remains unavailable: the
 external SDK performs separate bounded HTTP calls rather than holding one DO
-gate across the entire recovery. Actual workerd and deployed receipts are pending.
+gate across the entire recovery.
+
+`test_cloudflare_startup.py` now exercises this SDK against the actual startup
+profile in workerd. It transfers queued work, restarts authority storage, loses a
+committed snapshot-creation response, recovers the same snapshot identity, and
+acknowledges control and evaluator starts independently. It then executes one
+successor report and checks old-driver fencing, preserved jobs/budgets/native
+authority, two released snapshot tombstones and zero retained items. After a
+second restart, acknowledged starts and the saved action replay with the witness
+source and R2 unavailable. This scenario has passed source/collection checks;
+actual workerd and deployed qualification need their own passing receipts.
 
 ### Offer and input query boundaries
 
