@@ -289,7 +289,9 @@ def test_native_training_and_independent_checker(rollout, tmp_path, tampered):
         )
     runtime = LocalRuntime.open(tmp_path / "state")
     client = ResearchClient(LocalTransport(runtime))
-    enrollment = ensure_local_enrollment(runtime, machine_registry=tmp_path / "machine.sqlite")
+    enrollment = ensure_local_enrollment(
+        runtime, machine_registry=tmp_path / "machine" / "resources.sqlite"
+    )
     inputs = {}
     for name, model in (("behavior", policy), ("trajectories", dataset)):
         path = tmp_path / (name + ".json")

@@ -17,6 +17,8 @@ from research_swarm.state.windows_privacy import (
     verified_path,
     verify_descriptor,
 )
+from research_swarm.workers.local import LocalWorker
+from tests.test_local_pipeline import pipeline as pipeline
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Native Windows ACL qualification")
 
@@ -111,3 +113,22 @@ def test_atomic_private_replacement_retains_owner_and_system_acl(tmp_path: Path)
         with verified_path(path, directory=False, protected=True):
             pass
         assert {entry.name for entry in root.iterdir()} == {path.name}
+
+
+def test_worker_lock_directory_is_private_and_broad_existing_acl_is_not_repaired(pipeline):
+    worker = pipeline.worker
+    locks = worker.root / "locks"
+    with verified_path(locks, directory=True, protected=True):
+        pass
+    LocalWorker(
+        worker.client, worker.worker, root=worker.root, machine_registry=worker.resources.path
+    )
+    subprocess.run(
+        ["icacls", str(locks), "/grant", "*S-1-1-0:(R)"], check=True, capture_output=True
+    )
+    with pytest.raises(ResearchError, match="another account"):
+        LocalWorker(
+            worker.client, worker.worker, root=worker.root, machine_registry=worker.resources.path
+        )
+    observed = subprocess.run(["icacls", str(locks)], check=True, capture_output=True)
+    assert b"(R)" in observed.stdout

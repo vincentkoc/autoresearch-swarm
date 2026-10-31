@@ -140,7 +140,9 @@ def test_interrupted_preparation_is_atomic_and_changed_source_is_rejected(
 ):
     contract, runner = benchmark_modules
     benchmark = runner.Benchmark(
-        tmp_path / "run", definition(contract), machine_registry=tmp_path / "pool.sqlite"
+        tmp_path / "run",
+        definition(contract),
+        machine_registry=tmp_path / "pool" / "resources.sqlite",
     )
     write = Path.write_bytes
 
@@ -168,7 +170,9 @@ async def test_failed_native_baseline_is_incomplete_and_report_refreshes_after_p
 ):
     contract, runner = benchmark_modules
     benchmark = runner.Benchmark(
-        tmp_path / "run", definition(contract), machine_registry=tmp_path / "pool.sqlite"
+        tmp_path / "run",
+        definition(contract),
+        machine_registry=tmp_path / "pool" / "resources.sqlite",
     )
     registered = benchmark.client.register_project(
         benchmark.source(0.35), idempotency_key="fixture-project"

@@ -75,7 +75,7 @@ def test_replacement_installs_distinct_native_state_and_preserves_original_custo
     before = read_private(recoverable.root, "installation.json", limit=2 * 1024 * 1024)
     journal = recoverable.enrollment.worker.journal.get(recoverable.attempt_id)
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination = tmp_path / "replacement-bundle.json"
+    destination = tmp_path / "bundles" / "replacement-bundle.json"
     bundle = provision(pipeline, recoverable, fenced, destination)
     root = tmp_path / "replacement"
     assert install_replacement(recoverable.root, root, destination) == bundle.worker
@@ -148,7 +148,7 @@ def test_replacement_provisioning_replays_each_interruption_without_new_authorit
     boundary: str,
 ) -> None:
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination = tmp_path / "replacement-bundle.json"
+    destination = tmp_path / "bundles" / "replacement-bundle.json"
     with monkeypatch.context() as patch:
         if boundary == "credential":
             original = pipeline.runtime.credentials.install
@@ -217,11 +217,11 @@ def test_changed_inputs_or_revoked_completed_credentials_do_not_rotate_identity(
     pipeline: Pipeline, recoverable: Recoverable, tmp_path: Path
 ) -> None:
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination = tmp_path / "replacement-bundle.json"
+    destination = tmp_path / "bundles" / "replacement-bundle.json"
     bundle = provision(pipeline, recoverable, fenced, destination)
     before = pending(pipeline, recoverable, fenced)
     with pytest.raises(ResearchError) as changed:
-        provision(pipeline, recoverable, fenced, tmp_path / "different-bundle.json")
+        provision(pipeline, recoverable, fenced, tmp_path / "bundles" / "different-bundle.json")
     assert changed.value.code == ErrorCode.IDEMPOTENCY_CONFLICT
     pipeline.runtime.credentials.revoke(pipeline.runtime.principal(), bundle.credential_id)
     with pytest.raises(ResearchError) as revoked:
@@ -234,7 +234,7 @@ def test_interrupted_native_installation_resumes_the_same_journal(
     pipeline: Pipeline, recoverable: Recoverable, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination, root = tmp_path / "replacement-bundle.json", tmp_path / "replacement"
+    destination, root = tmp_path / "bundles" / "replacement-bundle.json", tmp_path / "replacement"
     provision(pipeline, recoverable, fenced, destination)
     original = remote_enrollment._write_installation
 
@@ -258,7 +258,7 @@ def test_missing_registry_between_preflight_and_constructor_is_never_recreated(
     pipeline: Pipeline, recoverable: Recoverable, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination, root = tmp_path / "replacement-bundle.json", tmp_path / "replacement"
+    destination, root = tmp_path / "bundles" / "replacement-bundle.json", tmp_path / "replacement"
     provision(pipeline, recoverable, fenced, destination)
     registry = recoverable.enrollment.worker.resources.path
     saved = registry.with_suffix(".original")
@@ -287,7 +287,7 @@ def test_replacement_rejects_overlapping_native_roots(
     pipeline: Pipeline, recoverable: Recoverable, tmp_path: Path, target: str
 ) -> None:
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination = tmp_path / "replacement-bundle.json"
+    destination = tmp_path / "bundles" / "replacement-bundle.json"
     provision(pipeline, recoverable, fenced, destination)
     root = (
         recoverable.root
@@ -312,7 +312,7 @@ def test_real_cli_installs_without_printing_private_bundle(
         description,
         canonical_bytes(recoverable.enrollment.bundle.description.model_dump(mode="json")),
     )
-    destination, root = tmp_path / "replacement-bundle.json", tmp_path / "replacement"
+    destination, root = tmp_path / "bundles" / "replacement-bundle.json", tmp_path / "replacement"
     receipt = cli(
         pipeline.runtime.root,
         "worker",
@@ -370,7 +370,7 @@ def test_replacement_receipt_is_verified_before_native_initialization(
     from research_swarm.client import ResearchClient
 
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination, root = tmp_path / "replacement-bundle.json", tmp_path / "replacement"
+    destination, root = tmp_path / "bundles" / "replacement-bundle.json", tmp_path / "replacement"
     provision(pipeline, recoverable, fenced, destination)
     original = ResearchClient.worker_get
 
@@ -420,7 +420,7 @@ def test_registered_replacement_preserves_environment_without_launching_a_probe(
         with connect_worker(original_root, bundle_path=initial_path):
             pass
         fenced = fence(pipeline, original.worker)
-        replacement_path = tmp_path / "replacement.json"
+        replacement_path = tmp_path / "bundles" / "replacement.json"
         bundle = provision_replacement(
             pipeline.client,
             description,
@@ -463,7 +463,10 @@ def test_two_fenced_workers_cannot_claim_one_bundle_destination(
             barrier.wait(timeout=5)
             try:
                 return provision(
-                    pipeline, originals[index], fences[index], tmp_path / "one-destination.json"
+                    pipeline,
+                    originals[index],
+                    fences[index],
+                    tmp_path / "bundles" / "one-destination.json",
                 )
             except ResearchError as error:
                 return error
@@ -492,7 +495,7 @@ def test_credential_revoked_during_replacement_is_not_exported_or_regenerated(
     pipeline: Pipeline, recoverable: Recoverable, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fenced = fence(pipeline, recoverable.enrollment.bundle.worker)
-    destination = tmp_path / "replacement-bundle.json"
+    destination = tmp_path / "bundles" / "replacement-bundle.json"
     command = pipeline.client.command
 
     def revoke(*args: Any, **kwargs: Any) -> Any:

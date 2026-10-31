@@ -220,7 +220,7 @@ def test_explicit_resume_uses_new_worker_and_preserves_fence_on_original(pipelin
         worker_client,
         WorkerData.model_validate(enrolled["data"]),
         root=tmp_path / "successor-worker",
-        machine_registry=tmp_path / "successor-machine.sqlite",
+        machine_registry=tmp_path / "successor-machine" / "resources.sqlite",
     )
     attempt = worker.claim(client.get("job", scoring_id))
     assert worker.execute(attempt["id"])["state"] == "succeeded"

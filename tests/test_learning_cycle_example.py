@@ -59,7 +59,7 @@ async def test_native_learning_cycle_reopens_after_lost_reply_without_resampling
             "gate": FixedPairedPolicy(seeds=(101, 102, 103, 104, 105)),
         }
     )
-    root, registry = tmp_path / "cycle", tmp_path / "machine.sqlite"
+    root, registry = tmp_path / "cycle", tmp_path / "machine" / "resources.sqlite"
     cycle = module.LearningCycle(root, plan, machine_registry=registry)
     command = cycle.client.command
     lost = False

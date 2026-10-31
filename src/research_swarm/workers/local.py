@@ -123,7 +123,8 @@ class LocalWorker:
             )
         with private_state_directory(self.root):
             self.journal = WorkerJournal(self.root / "journal.sqlite")
-            (self.root / "locks").mkdir(mode=0o700, exist_ok=True)
+            with private_state_directory(self.root / "locks"):
+                pass
         machine_registry = machine_registry.absolute()
         with private_state_directory(machine_registry.parent):
             self.resources = (

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Create worker lock directories with the same native private-directory contract required during recovery. Preserve refusal of unsafe existing ACLs, and give Windows enrollment/replacement fixtures dedicated private parents instead of generic temporary roots.
+
 - Close both SQLite backup connections before publishing or removing the snapshot, including failure paths. This prevents Windows sharing violations without relying on garbage collection or retrying file deletion.
 
 - Record the unchanged native learning panel and its inconclusive result: 82 successful trials, 164 stages, 9/16 held-out wins and no policy adoption. Reconcile learning status and document the supported Cloudflare hybrid profile while preserving the unmet fully hosted authority criterion.

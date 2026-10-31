@@ -44,7 +44,10 @@ class Recovery:
 def recovery(pipeline, tmp_path):
     client, worker, credential, target = output_client(pipeline)
     native = LocalWorker(
-        client, worker, root=tmp_path / "worker", machine_registry=tmp_path / "machine.sqlite"
+        client,
+        worker,
+        root=tmp_path / "worker",
+        machine_registry=tmp_path / "machine" / "resources.sqlite",
     )
     attempt = pipeline.client.get("attempt", target.attempt_id)
     native._prepare(

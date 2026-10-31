@@ -95,7 +95,9 @@ def test_changed_signing_authority_rolls_back_attempt_and_budget(pipeline: Pipel
 
 def test_runtime_pins_distinct_signing_key_and_rejects_replacement(tmp_path: Path) -> None:
     runtime = LocalRuntime.open(tmp_path / "runtime")
-    enrollment = ensure_local_enrollment(runtime, machine_registry=tmp_path / "machine.sqlite")
+    enrollment = ensure_local_enrollment(
+        runtime, machine_registry=tmp_path / "machine" / "resources.sqlite"
+    )
     identity = runtime.identity.assignment_key_id
     signing = read_private(runtime.root, "assignment.key", limit=32)
     assert signing != read_private(runtime.root, "dispatch.key", limit=32)
@@ -120,20 +122,24 @@ def test_legacy_runtime_upgrades_once_without_replacing_existing_worker(tmp_path
             dispatch_key=read_private(runtime.root, "dispatch.key", limit=32),
         ),
     )
-    worker = ensure_local_enrollment(runtime, machine_registry=tmp_path / "machine.sqlite")
+    worker = ensure_local_enrollment(
+        runtime, machine_registry=tmp_path / "machine" / "resources.sqlite"
+    )
     identity = runtime.identity.model_copy(update={"assignment_key_id": None})
     write_private(runtime.root / "identity.json", identity.model_dump_json().encode())
     (runtime.root / "assignment.key").unlink()
     reopened = LocalRuntime.open(runtime.root)
     assert reopened.identity.assignment_key_id is not None
-    again = ensure_local_enrollment(reopened, machine_registry=tmp_path / "machine.sqlite")
+    again = ensure_local_enrollment(
+        reopened, machine_registry=tmp_path / "machine" / "resources.sqlite"
+    )
     assert again.worker.worker == worker.worker.worker
     assert again.worker.assignment_verifier is None and again.worker.verifier is not None
 
 
 def test_signed_state_cannot_silently_recreate_missing_identity(tmp_path: Path) -> None:
     runtime = LocalRuntime.open(tmp_path / "runtime")
-    ensure_local_enrollment(runtime, machine_registry=tmp_path / "machine.sqlite")
+    ensure_local_enrollment(runtime, machine_registry=tmp_path / "machine" / "resources.sqlite")
     identity = runtime.identity.model_copy(update={"assignment_key_id": None})
     write_private(runtime.root / "identity.json", identity.model_dump_json().encode())
     (runtime.root / "assignment.key").unlink()
