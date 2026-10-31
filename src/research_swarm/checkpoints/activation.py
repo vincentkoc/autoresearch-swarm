@@ -7,6 +7,8 @@ from filelock import FileLock
 from research_swarm.checkpoints.admission import verify_admitted
 from research_swarm.checkpoints.restore import RestoreCustody
 from research_swarm.control.activation_view import inspect_activation
+from research_swarm.control.recovery_activation import activate_in as _activate
+from research_swarm.control.recovery_activation import reject_activation as _reject
 from research_swarm.control.recovery_authority import recovery_authority
 from research_swarm.crypto import public_key, sign
 from research_swarm.domain.assignments import signing_key_id
@@ -14,7 +16,6 @@ from research_swarm.domain.backup import (
     ActivateRecovery,
     BackupCustodyPin,
     RecoveryActivation,
-    RecoveryAdmission,
     RestoreReceipt,
 )
 from research_swarm.domain.canonical import content_digest, record_digest, strict_json_loads
@@ -62,47 +63,6 @@ def _private_identity(runtime: LocalRuntime) -> str:
         "research.activation-private-files.v1",
         {name: content_digest(content) for name, content in files.items()},
     )
-
-
-def _activate(transaction: Transaction, activation: RecoveryActivation) -> JsonObject:
-    transaction.observe_waits = False
-    admission = RecoveryAdmission.model_validate(
-        transaction.get("recovery_admission", activation.request.restore_id)["data"]
-    )
-    # Native quiescence was proven independently of multi-stage trial completion.
-    # Preserve ready stages, their trial projections and all queued funding.
-    for identifier in admission.paused_campaign_ids:
-        row = transaction.get("campaign", identifier)
-        if row["state"] == "pausing":
-            changed = transaction.update(
-                "campaign",
-                identifier,
-                expected_revision=row["revision"],
-                data=row["data"],
-                state="paused",
-            )
-            transaction.event("campaign.paused", changed, {"mode": "recovery_quiescence"})
-    recorded = transaction.insert(
-        "recovery_activation",
-        activation.request.restore_id,
-        activation.model_dump(mode="json"),
-        state="immutable",
-    )
-    gate = transaction.get("workspace_gate", transaction.workspace_id)
-    transaction.update(
-        "workspace_gate",
-        transaction.workspace_id,
-        expected_revision=gate["revision"],
-        data=gate["data"],
-        state="active",
-    )
-    transaction.event("workspace.recovery_activated", recorded, {})
-    return recorded
-
-
-def _reject(transaction: Transaction, error: ResearchError) -> None:
-    # A temporary blocker must not consume the stable native activation intent.
-    raise error
 
 
 def activate_recovery(
