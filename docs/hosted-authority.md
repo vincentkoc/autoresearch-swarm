@@ -2038,8 +2038,29 @@ from the incoming request. It checks cross-layer
 restore, image, workspace, controller and next-epoch identity. A stripped native
 claim, changed physical destination, shared custody key or exhausted epoch refuses.
 These bounded records and pure verifiers supply no storage, election or activation
-authority. Completed-target request generation and hosted recovery admission remain
-separate implementation work.
+authority. Hosted recovery admission remains separate implementation work.
+
+Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
+generate a request from protected target configuration, with no caller-supplied
+destination or source digest. They repeat bootstrap and physical-target checks and
+use `open_existing`; they never initialize an empty target. The request operation
+holds the local exclusive gate through one read snapshot and signing.
+
+That read verifies the complete target schema, saved intent, all portable rows via
+the retained fingerprint, restoration receipt, next epoch and inactive gate. It
+also compares the original gate seal with immutable seal history and the receipt's
+worker/attempt inventories. The imported marker supplies source deployment identity
+after its source scope and custody agree with protected pins. The marker remains
+historical evidence here; the source-only election table is neither required nor
+recreated at the target.
+
+The target signs the existing native request and its hosted wrapper, verifies the
+result, and returns canonical bytes. It writes no acknowledgment or record and
+generates no new ID or timestamp. Unchanged imported state and retained key yield
+identical retries. Native tests cover the full import/request/source-election path,
+concurrent read-only retries, empty and legacy targets, changed configuration,
+corrupt receipts/seals/anchors and signer failure. Workerd qualification of this
+request RPC remains pending; requesting election cannot activate the target.
 
 A fresh source seal also registers `LogicalElectionAnchor` in the portable record
 ledger and its matching row in the original-only `hosted_checkpoint_elections`

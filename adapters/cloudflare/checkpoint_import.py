@@ -8,7 +8,7 @@ from research_swarm.checkpoints.image_schema import require_portable_image_schem
 from research_swarm.checkpoints.inactive import RestorationCut, restore_inactive_in
 from research_swarm.control.auth import CredentialStore
 from research_swarm.crypto import public_key
-from research_swarm.domain.backup import RestoreReceipt
+from research_swarm.domain.backup import RestoreReceipt, WorkspaceSeal
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.checkpoint_images import LogicalImportIntent
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -20,8 +20,10 @@ from research_swarm.state.schema_contracts import quoted, unsupported
 from research_swarm.state.sql import IntegrityViolation, StoreIdentity, next_counter
 
 if __package__:
+    from .checkpoint_anchor import read_anchor_marker
     from .deployment import secret_digest
 else:
+    from checkpoint_anchor import read_anchor_marker
     from deployment import secret_digest
 
 IMPORT_TABLE = "hosted_checkpoint_import"
@@ -119,20 +121,25 @@ def _saved(sql, intent):
 
 def _require_receipt(sql, intent, image, receipt):
     manifest = image.manifest
-    scope = manifest.source_authority
+    require_import_receipt(
+        sql, intent, manifest.source_authority, manifest.source_custody, manifest.seal, receipt
+    )
+
+
+def require_import_receipt(sql, intent, scope, custody, seal, receipt):
     expected = (
         intent.restore_id,
-        manifest.digest,
-        manifest.seal.backup_id,
+        intent.manifest_digest,
+        seal.backup_id,
         scope.workspace_id,
         scope.controller_id,
-        manifest.source_custody.custody_id,
-        manifest.source_custody.public_key,
+        custody.custody_id,
+        custody.public_key,
         intent.target_public_key,
         scope.control_epoch,
         next_counter(scope.control_epoch),
-        manifest.seal.worker_ids,
-        manifest.seal.unresolved_attempt_ids,
+        seal.worker_ids,
+        seal.unresolved_attempt_ids,
     )
     actual = (
         receipt.restore_id,
@@ -171,7 +178,7 @@ def _require_receipt(sql, intent, image, receipt):
         raise ResearchError(ErrorCode.STALE_FENCE, "Inactive import phase differs")
 
 
-def verify_import_inputs(
+def verify_target_configuration(
     target_manifest,
     secrets,
     intent,
@@ -179,13 +186,11 @@ def verify_import_inputs(
     identity,
     credential,
     target_seed,
-    envelope,
-    bodies,
     expected_source,
     expected_custody,
     crypto,
 ):
-    """Check protected inputs and signed bytes before a target factory can initialize SQL."""
+    """Check protected target identity without granting initialization or execution authority."""
     secrets.require_bootstrap(credential)
     if secret_digest("bootstrap", credential) != target_manifest.bootstrap_credential_digest:
         raise ResearchError(
@@ -216,6 +221,36 @@ def verify_import_inputs(
         or authority.activation_id == expected_source.activation_id
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Inactive import target differs")
+    return issuer
+
+
+def verify_import_inputs(
+    target_manifest,
+    secrets,
+    intent,
+    *,
+    identity,
+    credential,
+    target_seed,
+    envelope,
+    bodies,
+    expected_source,
+    expected_custody,
+    crypto,
+):
+    """Check protected inputs and signed bytes before a target factory can initialize SQL."""
+    issuer = verify_target_configuration(
+        target_manifest,
+        secrets,
+        intent,
+        identity=identity,
+        credential=credential,
+        target_seed=target_seed,
+        expected_source=expected_source,
+        expected_custody=expected_custody,
+        crypto=crypto,
+    )
+    intent = LogicalImportIntent.model_validate(intent)
     limits = CaptureLimits()
     if (
         not isinstance(envelope, bytes)
@@ -240,6 +275,45 @@ def verify_import_inputs(
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Inactive import source profile differs")
     return image
+
+
+def inspect_imported_target(sql, intent, expected_source, expected_custody):
+    """Verify an existing immutable import in one read; never initialize or repair it."""
+    if IMPORT_TABLE not in _target_schema(sql):
+        raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Target has no completed import")
+    require_portable_image_schema(sql)
+    receipt = _saved(sql, intent)
+    marker = read_anchor_marker(
+        sql, workspace_id=expected_source.workspace_id, custody_id=expected_custody.custody_id
+    )
+    if marker is None:
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE, "Imported image has no election anchor"
+        )
+    if marker.source_authority != expected_source or marker.custody_pin != expected_custody:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Imported election source differs")
+    gate = sql.execute(
+        "SELECT payload FROM records WHERE workspace_id=? AND kind='workspace_gate' AND id=?",
+        (expected_source.workspace_id, expected_source.workspace_id),
+    ).one()
+    seal = WorkspaceSeal.model_validate_json(gate[0])
+    original = sql.execute(
+        "SELECT state,payload FROM records WHERE workspace_id=? AND kind='workspace_seal' AND id=?",
+        (expected_source.workspace_id, seal.backup_id),
+    ).one()
+    if (
+        (seal.workspace_id, seal.controller_id, seal.control_epoch)
+        != (
+            expected_source.workspace_id,
+            expected_source.controller_id,
+            expected_source.control_epoch,
+        )
+        or original[0] != "immutable"
+        or WorkspaceSeal.model_validate_json(original[1]) != seal
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Imported source seal differs")
+    require_import_receipt(sql, intent, expected_source, expected_custody, seal, receipt)
+    return receipt, marker
 
 
 def import_checkpoint(

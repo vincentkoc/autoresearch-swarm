@@ -72,31 +72,40 @@ def expected_anchor(manifest, identity, pin):
     )
 
 
-def require_anchor_in(sql, manifest, identity, pin, *, required=False):
-    expected = expected_anchor(manifest, identity, pin)
-    table = sql.execute("SELECT type FROM sqlite_master WHERE name=?", (TABLE,)).fetchone()
+def read_anchor_marker(sql, *, workspace_id, custody_id):
+    """Read portable evidence only; it never establishes original election authority."""
     marker = sql.execute(
         "SELECT 1 FROM records WHERE workspace_id=? AND kind=? AND id=?",
-        (pin.workspace_id, KIND, pin.custody_id),
+        (workspace_id, KIND, custody_id),
     ).fetchone()
-    if table is None and marker is None and not required:
+    if marker is None:
         return None
-    if table is None or table[0] != "table" or marker is None:
-        raise ResearchError(ErrorCode.STALE_FENCE, "Original checkpoint election state is missing")
-    require_election_schema(sql)
     record = sql.execute(
         "SELECT payload FROM records WHERE workspace_id=? AND kind=? AND id=? "
         "AND typeof(revision)='integer' AND revision=1 AND state='immutable' "
         "AND campaign_id IS NULL AND parent_id IS NULL AND typeof(payload)='text' "
         "AND length(CAST(payload AS BLOB))<=8192",
-        (pin.workspace_id, KIND, pin.custody_id),
+        (workspace_id, KIND, custody_id),
     ).fetchone()
+    if record is None:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint election marker differs")
+    return LogicalElectionAnchor.model_validate_json(record["payload"])
+
+
+def require_anchor_in(sql, manifest, identity, pin, *, required=False):
+    expected = expected_anchor(manifest, identity, pin)
+    table = sql.execute("SELECT type FROM sqlite_master WHERE name=?", (TABLE,)).fetchone()
+    marker = read_anchor_marker(sql, workspace_id=pin.workspace_id, custody_id=pin.custody_id)
+    if table is None and marker is None and not required:
+        return None
+    if table is None or table[0] != "table" or marker is None:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Original checkpoint election state is missing")
+    require_election_schema(sql)
     row = sql.execute(f"SELECT * FROM {TABLE}").one()
-    if (
-        record is None
-        or LogicalElectionAnchor.model_validate_json(record["payload"]) != expected
-        or (row["activation_id"], row["custody_id"], row["anchor_digest"])
-        != (expected.source_authority.activation_id, pin.custody_id, expected.digest)
+    if marker != expected or (row["activation_id"], row["custody_id"], row["anchor_digest"]) != (
+        expected.source_authority.activation_id,
+        pin.custody_id,
+        expected.digest,
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Original checkpoint election identity differs")
     election = (

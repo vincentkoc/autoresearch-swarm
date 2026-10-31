@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Generate target election requests only from verified completed inactive imports.
+  Private fixed-target RPC opens existing state, checks its full fingerprint,
+  original seal/history, receipt and source marker, then signs without writes or
+  new IDs. Empty, legacy, changed and incomplete targets cannot request election.
+
 - Elect one exact hosted restoration destination at the original source through
   private RPC. Serialize competing requests, sign and persist the winner atomically,
   and replay its original bytes after lost replies without re-signing or recapture.

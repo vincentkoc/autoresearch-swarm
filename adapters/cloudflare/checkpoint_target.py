@@ -1,22 +1,39 @@
-"""Private fixed-target import from protected source pins; activation stays unavailable."""
+"""Private inactive import and verified target requests; activation stays unavailable."""
 
 import re
 from dataclasses import dataclass
 
-from research_swarm.domain.backup import BackupCustodyPin
+from research_swarm.checkpoints.elections import verify_election_request
+from research_swarm.crypto import sign
+from research_swarm.domain.backup import BackupCustodyPin, SignedRestoreRequest
 from research_swarm.domain.canonical import strict_json_loads
+from research_swarm.domain.checkpoint_elections import (
+    LogicalElectionRequest,
+    SignedLogicalElectionRequest,
+)
 from research_swarm.domain.checkpoint_images import LogicalImportIntent
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import VersionedRecord
+from research_swarm.state.database import encode
 
 if __package__:
-    from .checkpoint_import import import_checkpoint, verify_import_inputs
+    from .checkpoint_import import (
+        import_checkpoint,
+        inspect_imported_target,
+        verify_import_inputs,
+        verify_target_configuration,
+    )
     from .checkpoint_wire import decode_checkpoint, require_rpc_string
     from .deployment import secret_digest
     from .exclusive import exclusive
 else:
-    from checkpoint_import import import_checkpoint, verify_import_inputs
+    from checkpoint_import import (
+        import_checkpoint,
+        inspect_imported_target,
+        verify_import_inputs,
+        verify_target_configuration,
+    )
     from checkpoint_wire import decode_checkpoint, require_rpc_string
     from deployment import secret_digest
     from exclusive import exclusive
@@ -94,3 +111,58 @@ async def import_target(
         return {"schema_version": "1.0", "receipt": receipt.model_dump(mode="json")}
 
     return await exclusive(state, restore)
+
+
+async def request_target(
+    state, open_store, manifest, secrets, *, identity, credential, target_json, crypto
+):
+    custody = load_target(target_json, manifest, secrets, credential=credential)
+    binding = custody.binding
+    verify_target_configuration(
+        manifest,
+        secrets,
+        binding.intent,
+        identity=identity,
+        credential=credential,
+        target_seed=custody.seed,
+        expected_source=binding.expected_source,
+        expected_custody=binding.expected_custody,
+        crypto=crypto,
+    )
+
+    async def request():
+        store = open_store()
+        manifest.require_store(store.identity)
+
+        def read(sql):
+            receipt, marker = inspect_imported_target(
+                sql, binding.intent, binding.expected_source, binding.expected_custody
+            )
+            native = receipt.claim_request()
+            payload = LogicalElectionRequest(
+                intent=binding.intent,
+                source_authority=marker.source_authority,
+                source_deployment_digest=marker.source_deployment_digest,
+                signed_request=SignedRestoreRequest(
+                    request=native,
+                    signature=sign(crypto, custody.seed, native.digest.encode("ascii")).hex(),
+                ),
+            )
+            signed = SignedLogicalElectionRequest(
+                request=payload,
+                signature=sign(crypto, custody.seed, payload.digest.encode("ascii")).hex(),
+            )
+            verify_election_request(
+                signed,
+                expected_intent=binding.intent,
+                expected_backup_id=receipt.backup_id,
+                expected_source=binding.expected_source,
+                expected_deployment_digest=marker.source_deployment_digest,
+                expected_custody=binding.expected_custody,
+                crypto=crypto,
+            )
+            return encode(signed.model_dump(mode="json"))
+
+        return store.read(read)
+
+    return await exclusive(state, request)
