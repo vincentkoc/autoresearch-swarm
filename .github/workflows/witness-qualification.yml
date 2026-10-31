@@ -24,7 +24,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.surface == 'windows' && '["windows-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 30 || 20 }}
     env:
       RESEARCH_REQUIRE_NODE: "1"
     steps:

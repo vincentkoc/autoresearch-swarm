@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Allow the expanded Windows qualification job 30 minutes after its 20-minute
+  runner ceiling interrupted the suite. Keep all experiment, supervision, witness
+  and per-test fault thresholds unchanged.
+
 - Capture sealed hosted state in one consistent SQL snapshot with scalar size/type
   preflight, bounded binary-key pagination and deterministic chunks. Preserve raw
   text, binary data, credential revocation and clock history without acquiring a

@@ -1549,6 +1549,12 @@ registration and delivery replay without a witness. This extension passed with
 `da25f340de6cd53d4d55f4159ceea5d31bb1f9b5` in
 [qualification 41211517897](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41211517897).
 This is a local workerd receipt, not a deployed-account qualification.
+At the same revision, Linux passed 690 tests in 321.30 seconds and macOS passed
+690 in 296.35 seconds. Windows did not complete: GitHub's check annotation says
+the job exceeded its 20-minute maximum. Its interrupted pytest summary printed
+668 passed and two skipped in 1176.96 seconds; it is not a completed receipt.
+The workflow now permits 30 minutes for Windows while retaining 20 minutes for
+the other native jobs. Runtime clock guards and experiment deadlines are unchanged.
 
 This release retains a fixed credential roster. A new campaign or transfer needs
 unused preprovisioned driver and gateway actors. Adding actors or rotating tokens
