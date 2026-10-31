@@ -163,6 +163,7 @@ def artifact_context(
         "artifact.unpin",
         "artifact.begin_upload",
         "artifact.finalize_upload",
+        "artifact.cleanup_upload",
         "artifact.finish_upload",
     }:
         raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Turn cannot derive this operation")

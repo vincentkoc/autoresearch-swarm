@@ -101,6 +101,10 @@ class HostedScientificConfiguration(HostedLifecycleConfiguration):
     profile: Literal["research-scientific-witness-v1"] = "research-scientific-witness-v1"
 
 
+class HostedOrchestrationConfiguration(HostedScientificConfiguration):
+    profile: Literal["research-orchestration-witness-v1"] = "research-orchestration-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
@@ -133,11 +137,16 @@ def supports_scientific(configuration):
     return isinstance(configuration, HostedScientificConfiguration)
 
 
+def supports_orchestration(configuration):
+    return isinstance(configuration, HostedOrchestrationConfiguration)
+
+
 def allowed_commands(configuration):
     if __package__:
         from .artifact_router import COMMANDS as artifact_commands
         from .evaluations import COMMANDS as evaluation_commands
         from .lifecycle import COMMANDS as lifecycle_commands
+        from .orchestration import COMMANDS as orchestration_commands
         from .research_admission import COMMANDS as research_commands
         from .result_publication import COMMANDS as publication_commands
         from .scientific import COMMANDS as scientific_commands
@@ -146,6 +155,7 @@ def allowed_commands(configuration):
         from artifact_router import COMMANDS as artifact_commands
         from evaluations import COMMANDS as evaluation_commands
         from lifecycle import COMMANDS as lifecycle_commands
+        from orchestration import COMMANDS as orchestration_commands
         from research_admission import COMMANDS as research_commands
         from result_publication import COMMANDS as publication_commands
         from scientific import COMMANDS as scientific_commands
@@ -159,6 +169,7 @@ def allowed_commands(configuration):
         | (evaluation_commands if supports_evaluation(configuration) else frozenset())
         | (lifecycle_commands if supports_lifecycle(configuration) else frozenset())
         | (scientific_commands if supports_scientific(configuration) else frozenset())
+        | (orchestration_commands if supports_orchestration(configuration) else frozenset())
     )
 
 
@@ -216,6 +227,7 @@ class ExistingResearchRouter:
                 | HostedEvaluationConfiguration
                 | HostedLifecycleConfiguration
                 | HostedScientificConfiguration
+                | HostedOrchestrationConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (
@@ -266,6 +278,7 @@ class ExistingResearchRouter:
                 from .artifact_router import HostedArtifacts
                 from .evaluations import HostedEvaluations
                 from .lifecycle import HostedLifecycle
+                from .orchestration import HostedOrchestration
                 from .research_admission import HostedResearchAdmission
                 from .result_publication import HostedResultPublication
                 from .scientific import HostedScientific
@@ -275,6 +288,7 @@ class ExistingResearchRouter:
                 from artifact_router import HostedArtifacts
                 from evaluations import HostedEvaluations
                 from lifecycle import HostedLifecycle
+                from orchestration import HostedOrchestration
                 from research_admission import HostedResearchAdmission
                 from result_publication import HostedResultPublication
                 from scientific import HostedScientific
@@ -288,6 +302,7 @@ class ExistingResearchRouter:
             instance.evaluations = HostedEvaluations(instance)
             instance.lifecycle = HostedLifecycle(instance)
             instance.scientific = HostedScientific(instance)
+            instance.orchestration = HostedOrchestration(instance)
             return instance
 
         return await exclusive(state, construct)
@@ -406,40 +421,53 @@ class ExistingResearchRouter:
             context = self._context(
                 token, idempotency_key=idempotency_key, expected_revision=expected_revision
             )
-            if operation.startswith("artifact."):
-                return await self.artifacts.command(token, context, operation, payload)
-            if operation in self.research.commands:
-                return await self.research.command(token, context, operation, payload)
-            if operation in self.outputs.commands:
-                return await self.outputs.command(token, context, operation, payload)
-            if operation in self.publication.commands:
-                return await self.publication.command(token, context, operation, payload)
-            if operation in self.evaluations.commands:
-                return await self.evaluations.command(token, context, operation, payload)
-            if operation in self.lifecycle.commands:
-                return await self.lifecycle.command(token, context, operation, payload)
-            if operation in self.scientific.commands:
-                return await self.scientific.command(token, context, operation, payload)
-            if operation not in COMMANDS:
-                raise unavailable()
-            definition, request = validate_command_input(context, operation, payload)
-            # These three encodings match their kernel payloads. Local enrollment
-            # has a legacy omission and is intentionally outside this profile.
-            if operation == "worker.enroll" and request.clock_mode != "bounded-continuous-v1":
-                raise unavailable("Hosted enrollment requires calibrated authority time")
-            normalized = request.model_dump(mode="json")
-            previous = self.database.replay(context, operation, normalized, definition.scope)
-            if previous is not None:
-                return previous
-            self._preflight_command(context, operation, request)
-            return await self._witnessed(
-                context,
-                operation,
-                normalized,
-                lambda: dispatch_command(self.service, context, operation, normalized),
-            )
+            return await self._command_in_context(token, context, operation, payload)
 
         return await exclusive(self.state, execute)
+
+    async def _command_in_context(self, token, context, operation, payload):
+        """The gate owner may preserve a private saved-turn or derived context."""
+        current = self._context(
+            token,
+            idempotency_key=context.idempotency_key,
+            expected_revision=context.expected_revision,
+        )
+        if current.principal != context.principal:
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Command credential changed")
+        if operation.startswith("artifact."):
+            return await self.artifacts.command(token, context, operation, payload)
+        if operation in self.research.commands:
+            return await self.research.command(token, context, operation, payload)
+        if operation in self.outputs.commands:
+            return await self.outputs.command(token, context, operation, payload)
+        if operation in self.publication.commands:
+            return await self.publication.command(token, context, operation, payload)
+        if operation in self.evaluations.commands:
+            return await self.evaluations.command(token, context, operation, payload)
+        if operation in self.lifecycle.commands:
+            return await self.lifecycle.command(token, context, operation, payload)
+        if operation in self.scientific.commands:
+            return await self.scientific.command(token, context, operation, payload)
+        if operation in self.orchestration.commands:
+            return await self.orchestration.command(token, context, operation, payload)
+        if operation not in COMMANDS:
+            raise unavailable()
+        definition, request = validate_command_input(context, operation, payload)
+        # These three encodings match their kernel payloads. Local enrollment
+        # has a legacy omission and is intentionally outside this profile.
+        if operation == "worker.enroll" and request.clock_mode != "bounded-continuous-v1":
+            raise unavailable("Hosted enrollment requires calibrated authority time")
+        normalized = request.model_dump(mode="json")
+        previous = self.database.replay(context, operation, normalized, definition.scope)
+        if previous is not None:
+            return previous
+        self._preflight_command(context, operation, request)
+        return await self._witnessed(
+            context,
+            operation,
+            normalized,
+            lambda: dispatch_command(self.service, context, operation, normalized),
+        )
 
     async def upload_part(self, token, upload_id, offset, content):
         async def write():
@@ -473,6 +501,8 @@ class ExistingResearchRouter:
         async def read():
             context = self._context(token, idempotency_key=new_id())
             if operation in {"get", "list"}:
+                if supports_orchestration(self.configuration):
+                    return self.orchestration.query(token, context, operation, payload)
                 if supports_scientific(self.configuration):
                     return self.scientific.query(token, context, operation, payload)
                 if supports_lifecycle(self.configuration):
@@ -480,6 +510,8 @@ class ExistingResearchRouter:
                 if supports_evaluation(self.configuration):
                     return self.evaluations.query(token, context, operation, payload)
                 return self.research.query(context, operation, payload)
+            if operation == "context":
+                return self.orchestration.query(token, context, operation, payload)
             if operation == "worker.input":
                 reference, _ = await self.inputs.read(token, context, payload, content=False)
                 return reference.model_dump(mode="json")

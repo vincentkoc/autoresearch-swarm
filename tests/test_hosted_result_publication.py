@@ -193,7 +193,7 @@ async def publication(research, project, tmp_path, request):
             client.command = capture
             with pytest.raises(ResearchError) as held:
                 runner.execute(claimed["result"]["id"])
-            assert held.value.code == ErrorCode.DELIVERY_UNCERTAIN
+            assert held.value.code == ErrorCode.DELIVERY_UNCERTAIN, str(held.value)
             entry = runner.journal.get(claimed["result"]["id"])
             if mode == "not_started":
                 assert entry.state == JournalState.NOT_STARTED

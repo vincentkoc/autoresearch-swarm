@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add hosted saved-action orchestration and durable event waits using the ordinary
+  SDK. Preserve separate witnesses for target effects and delivery receipts,
+  recover committed actions without redelivery, and keep evaluator artifact
+  preparation inside its private saved-turn authority. Add bounded research
+  context queries; refuse unsupported targets, timers and successor startup.
+
 - Separate saved-turn execution preparation from target delivery and receipt
   completion. Preserve the private target guard and current action scopes, so
   async adapters can use separate transaction boundaries and recover committed

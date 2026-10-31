@@ -856,6 +856,15 @@ lifecycle commands replay after workerd restart with source and storage
 unavailable. This extension needs its own passing runtime receipt and does not
 claim running-process cancellation qualification.
 
+At `544d54caeececfd65220b8c181f128b158607a2c`,
+[CI 41202600727](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41202600727)
+passed **13 actual workerd tests in 361.63 seconds**, including this lifecycle
+case. Linux passed 439 tests in 177.56 seconds, macOS passed 439 in 181.18 seconds,
+and Windows passed 435 with 4 skips in 696.39 seconds. Scientific closeout and
+saved-turn orchestration require their later revisions' own receipts. The native
+qualification job now allows 20 minutes as those additional real-process cases
+join a Windows suite already measured at over 11 minutes.
+
 ### Scientific closeout
 
 `research-scientific-witness-v1` extends the lifecycle profile with six existing
@@ -928,6 +937,55 @@ missing delivery receipt skips target dispatch and finishes only the receipt.
 This seam lets an async adapter prepare bytes and obtain a target witness before
 obtaining a different witness for receipt completion. It does not itself expose
 hosted orchestration or permit one witness to cover two commands.
+
+### Hosted saved actions and event waits
+
+`research-orchestration-witness-v1` extends scientific closeout with the existing
+bind, fence, prepare/execute/reconcile/close-turn, record/reconcile-wait and
+acknowledge-wakeup commands. It exposes bounded get/list views of their records
+and the ordinary `/v1/campaigns/{id}/context?limit=10` query, with a 1–50 limit.
+`DurableTurnDriver` can use this API unchanged, including its authoritative event
+watermark. The gateway's event watermark is never inferred from a record revision.
+
+Saved control actions are currently limited to `evaluation.authorize`,
+`promotion.assess`, `promotion.commit`, `campaign.pause`, `campaign.complete` and
+`report.create`. The separate evaluator route permits `evaluation.complete`.
+Unsupported actions fail before reserving an ordinal or pending turn. The shared
+kernel still enforces route ownership, current action scopes, exact saved request,
+target/delivery key separation, binding epoch and configuration identity.
+
+Execution keeps the authority's exclusive gate while using an internal async
+dispatcher that preserves the private `DriveGuard`. Public HTTP cannot supply
+that guard. Evaluation artifact preparation retains its exact derived operations,
+including duplicate-upload cleanup, and each command obtains its own witness.
+The target effect commits before a different fresh witness can authorize the
+delivery receipt. No SQL transaction spans asynchronous byte or witness I/O.
+
+If the target commits but its receipt witness or response is lost, retry inspects
+the original target acknowledgment and finishes only bookkeeping. Preflight
+failure leaves the turn unresolved; an actual durable target rejection produces
+a rejected receipt. Current target scopes are checked before replay. Fencing,
+revoked credentials and task cancellation cannot manufacture a successful target
+or a receipt for an unacknowledged effect. Explicit fenced closure preserves the
+distinction between no acknowledged effect and a settled target result.
+
+Waits are event-only in this profile. An event committed before registration is
+found by catch-up; an event committed afterward creates readiness and a pending
+wakeup in the event transaction. Notification acknowledgment does not consume
+readiness or research evidence. The next saved action consumes the ready wait
+using its planning watermark. Orchestration bookkeeping does not wake itself.
+Timers remain refused because acquiring a native witness does not qualify the
+kernel's UTC timer comparison. Successor bindings with startup checkpoints are
+also refused until their transfer/recovery path is qualified.
+
+Local adapter coverage includes SDK planning, missing-receipt recovery after
+reopen, exact offline replay, revoked target scopes, two separately scoped saved
+evaluator actions with real native CPU scoring, duplicate-manifest retirement
+and interrupted cleanup, both event-registration orders, duplicate wakeup
+acknowledgment, unsupported-action/timer refusal, fenced closure and post-witness
+fencing/revocation/cancellation. These are SQLite/mock-R2 adapter tests. Actual
+workerd and Workflow generation/restart qualification remain separate work;
+this profile is not yet a deployed Workflow service.
 
 ### Signed clock query boundary
 

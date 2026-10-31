@@ -32,6 +32,7 @@ shutil.copyfile(ROOT / "result_publication.py", output / "result_publication.py"
 shutil.copyfile(ROOT / "evaluations.py", output / "evaluations.py")
 shutil.copyfile(ROOT / "lifecycle.py", output / "lifecycle.py")
 shutil.copyfile(ROOT / "scientific.py", output / "scientific.py")
+shutil.copyfile(ROOT / "orchestration.py", output / "orchestration.py")
 shutil.copyfile(ROOT / "artifact_router.py", output / "artifact_router.py")
 shutil.copyfile(ROOT / "hosted_http.py", output / "hosted_http.py")
 shutil.copyfile(ROOT / "http_binding.py", output / "http_binding.py")

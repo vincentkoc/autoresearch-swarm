@@ -25,6 +25,7 @@ if __package__:
     from .artifact_router import UploadTarget
     from .evaluations import EvaluationQuery, EvaluationRead
     from .lifecycle import LifecycleQuery, LifecycleRead
+    from .orchestration import TARGETS, ContextRead, OrchestrationQuery, OrchestrationRead
     from .research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from .research_router import (
         allowed_commands,
@@ -32,6 +33,7 @@ if __package__:
         supports_evaluation,
         supports_inputs,
         supports_lifecycle,
+        supports_orchestration,
         supports_outputs,
         supports_publication,
         supports_research,
@@ -43,6 +45,7 @@ else:
     from artifact_router import UploadTarget
     from evaluations import EvaluationQuery, EvaluationRead
     from lifecycle import LifecycleQuery, LifecycleRead
+    from orchestration import TARGETS, ContextRead, OrchestrationQuery, OrchestrationRead
     from research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from research_router import (
         allowed_commands,
@@ -50,6 +53,7 @@ else:
         supports_evaluation,
         supports_inputs,
         supports_lifecycle,
+        supports_orchestration,
         supports_outputs,
         supports_publication,
         supports_research,
@@ -63,6 +67,7 @@ UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 UPLOAD = re.compile(r"^/v1/artifact-uploads/(" + UUID + r")(/parts|/finalize)?$")
 ARTIFACT = re.compile(r"^/v1/artifacts/(" + UUID + r")(/content)?$")
 RECORD = re.compile(r"^/v1/records/([a-z_]+)/(" + UUID + r")$")
+CAMPAIGN_CONTEXT = re.compile(r"^/v1/campaigns/(" + UUID + r")/context$")
 BASE_HEADERS = {"cache-control": "no-store, no-transform", "x-content-type-options": "nosniff"}
 
 
@@ -262,6 +267,20 @@ def capabilities(configuration):
             "confirmation_plans": "unavailable",
             "unresolved_resource_closeout": "unavailable",
         }
+    if supports_orchestration(configuration):
+        result["record_queries"] = {
+            "scope": "read",
+            "get": OrchestrationRead.model_json_schema(),
+            "list": OrchestrationQuery.model_json_schema(),
+        }
+        result["orchestration"] = {
+            "saved_targets": sorted(TARGETS),
+            "transaction_witnesses": "separate-target-and-receipt",
+            "waits": "event-only",
+            "timer_waits": False,
+            "successor_startup": False,
+            "context": ContextRead.model_json_schema(),
+        }
     return result
 
 
@@ -274,6 +293,12 @@ def route(method, target):
     if len(query) != len(pairs):
         raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Repeated query parameter")
     path = url.path
+    if method == "GET" and (match := CAMPAIGN_CONTEXT.fullmatch(path)):
+        if set(query) - {"limit"} or not re.fullmatch(
+            r"[1-9]|[1-4][0-9]|50", query.get("limit", "10")
+        ):
+            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid context limit")
+        return "context", match[1], int(query.get("limit", "10"))
     if method == "PUT" and path == "/v1/worker/output/parts":
         if set(query) - {"worker_id", "session_id", "attempt_id", "upload_id", "offset"}:
             raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid worker upload query")
@@ -345,6 +370,8 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Artifact profile is unavailable")
         if kind == "command" and identifier not in allowed_commands(router.configuration):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Command is outside this profile")
+        if kind == "context" and not supports_orchestration(router.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Context is outside this profile")
         if kind in {"record", "records"} and not supports_research(router.configuration):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Research queries are unavailable"
@@ -421,6 +448,10 @@ async def handle(router, method, target, headers, read_body):
             result = await router.query(token, "list", payload)
         elif kind == "record":
             result = await router.query(token, "get", {"kind": identifier, "id": offset})
+        elif kind == "context":
+            result = await router.query(
+                token, "context", {"campaign_id": identifier, "limit": offset}
+            )
         elif kind == "upload":
             result = {"offset": await router.upload_part(token, identifier, offset, body)}
         elif kind == "worker-upload":
