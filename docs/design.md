@@ -1444,11 +1444,11 @@ The adapter contract specifies observable behavior. It does not require identica
 | Primitive | Local | Temporal-backed | Cloudflare-backed |
 |---|---|---|---|
 | API | Local Python service. | Same research API. | Workers-hosted facade or equivalent. |
-| Domain authority | SQLite. | SQLite for small deployments or a transactional server store. | Supported profile: qualified native controller through an authenticated gateway. Proposed authoritative Durable Object profile remains unsupported. |
+| Domain authority | SQLite. | SQLite for small deployments or a transactional server store. | Hybrid profile: native controller through an authenticated gateway. Fixed authoritative Durable Object profiles with an admitted native clock witness are qualified in local workerd; deployed qualification remains open. |
 | Artifacts | Filesystem. | Filesystem or object storage. | R2 or another supported object store. |
 | Dispatch/waits | Persisted intents plus asyncio. | Workflows/Activities and external completion or signals. | Workflows and external events. |
 | Native compute | Local or remote worker. | Same worker protocol. | Same worker protocol. |
-| Query projection | Domain queries. | Domain queries or reporting projection. | Native domain queries through the facade; optional reporting projection. |
+| Query projection | Domain queries. | Domain queries or reporting projection. | Shared domain queries through the selected native or authoritative Durable Object profile; optional reporting projection. |
 | Additional queue | Not required. | Temporal task routing. | Optional Queues, not required initially. |
 
 A hosted provider can be adopted without adopting its agent framework.
@@ -1484,13 +1484,18 @@ Use bounded histories and deliberate workflow versioning. Replay representative 
 
 ### 16.5 Cloudflare driver
 
-Implementation qualification update (2026-10-30): deployed Workers freeze their
-clock during computation, unlike local development. The proposed authoritative
-Durable Object profile does not currently satisfy the qualified controller-time
-contract. The implementation direction therefore starts with Cloudflare delivery
-around the native authority. The original hosted-authority exit criteria remain
-unmet; this is not an implicit UTC fallback or a claim of equivalent qualification.
-See [the implemented boundary and gateway](cloudflare.md).
+Implementation qualification update: both the hybrid delivery profile and fixed
+authoritative Durable Object profiles have local runtime proof. The latter use
+an explicitly admitted native clock witness; Workers timers do not supply
+authority time. Recovery activation, clock management, original CPU evidence
+reconciliation, timer rotation/restart and errored-Workflow recovery passed in
+local workerd at `1eab4e7d6ea784dfc6b5bed1080673e0bec45ffb`. See the
+[qualification receipts and profile limits](hosted-authority.md).
+
+No production Cloudflare deployment has been performed. Protected key custody,
+service routing and deployed recovery still require qualification. The original
+hosted-authority exit criteria remain open. Local runtime proof is not an
+implicit UTC fallback or a deployment claim.
 
 The implemented hybrid shape is:
 
@@ -1502,10 +1507,14 @@ The implemented hybrid shape is:
 - Optional D1 for cross-campaign reporting.
 - Optional Queues for additional dispatch buffering.
 
-The original fully hosted profile and its later exit criteria remain a design
-exception requiring an independently qualified authority-time contract. The
-hybrid implementation does not satisfy those criteria. No UTC fallback is
-permitted, and this clarification does not authorize a hosted deployment.
+The authoritative profile instead keeps domain state and transactional decisions
+in a Durable Object, with a separate native service supplying clock witnesses.
+Native compute remains external. Its implemented command surface is explicitly
+profile-bound; an existing deployment does not silently gain later capabilities.
+The hybrid implementation and the locally qualified authoritative implementation
+do not satisfy the deployed exit criteria. No UTC fallback is permitted, and this
+status update does not authorize a hosted deployment. See the
+[hybrid boundary and gateway](cloudflare.md) for its separate execution path.
 
 Keep all campaigns that share a resource under one compatible reservation authority. Do not split a shared device's lease and budget across unrelated objects without a new coordination design.
 

@@ -1,7 +1,7 @@
 # Cloudflare adapters and qualification
 
-The supported implementation direction keeps the native controller as the
-research authority and places Cloudflare delivery services around its API.
+The hybrid profile keeps the native controller as the research authority and
+places Cloudflare delivery services around its API.
 This preserves the same experiment identities, budgets, worker protocol,
 evaluation rules and promotion decisions used by local and Temporal delivery.
 
@@ -10,8 +10,10 @@ driver with a durable transport registry, and locally qualified Cloudflare
 storage/signing primitives. A native bridge delivers the durable wakeup outbox.
 A separate agent API facade forwards caller identities to the same native API.
 The [native R2 adapter](r2.md) supports persistent runtime selection and is qualified
-against the local R2 binding. Hosted deployment is not part of the local
-qualification.
+against the local R2 binding. Separate fixed
+[authoritative Durable Object profiles](hosted-authority.md) also have local
+workerd proof under an admitted native clock witness. Neither profile has
+production Cloudflare deployment qualification.
 
 ## Authority clock boundary
 
@@ -21,26 +23,32 @@ Therefore local workerd timing tests cannot establish the deployed runtime's
 fitness for the existing fresh, bounded continuous-time authority contract.
 [Cloudflare timing documentation](https://developers.cloudflare.com/workers/runtime-apis/performance/)
 
-The current controller samples qualified time inside a synchronous state decision.
-A cached timestamp could accept a result after its acceptance deadline. Fetching
-time before the transaction, extending a guard interval or relabeling a hosted
-clock as a native profile does not establish the missing guarantee. This is a
-contract mismatch, not a missing SDK dependency.
+The native controller samples qualified time inside a synchronous state decision.
+A cached timestamp could accept a result after its acceptance deadline. Merely
+fetching time before a transaction, extending a guard interval or relabeling a
+hosted clock as a native profile does not establish the missing guarantee.
+The authoritative Durable Object protocol instead holds exclusive serialization
+across a fresh witness observation and the final transaction. That observation is
+its declared linearization point; complete revalidation must preserve the same
+authority, inputs and profile. The detailed witness contract governs admission.
 
-Authoritative Cloudflare execution admission remains unsupported. There is no
-implicit `local-utc-v1` fallback for a hosted controller. The hybrid profile uses
-the qualified native controller for assignment and acceptance authority; Workflow
-timeouts affect delivery only. Native compute remains outside Workers.
+There is no implicit `local-utc-v1` fallback for a hosted controller. The hybrid
+profile uses the qualified native controller for assignment and acceptance
+authority; Workflow timeouts affect delivery only. Native compute remains outside
+Workers.
 
-The original design's authoritative Durable Object deployment is consequently
-unqualified. Its SQL and signing adapters remain useful, but a complete hosted
-authority requires a separately designed and qualified time contract. The hybrid
-route must not be reported as completion of that original deployment profile.
+The [hosted authority implementation](hosted-authority.md) keeps domain state in a
+Durable Object and obtains native clock witnesses from a separate service. Its
+fixed profiles implement serialized acceptance and epoch retirement. Local
+workerd qualification at `1eab4e7d6ea784dfc6b5bed1080673e0bec45ffb` covers bounded
+CPU execution, recovery activation, clock management, original evidence
+reconciliation, timer restart and explicit errored-Workflow recovery.
 
-The [hosted authority implementation design](hosted-authority.md) keeps domain
-state in a Durable Object and obtains native clock witnesses from a separate
-service. It defines serialized acceptance, epoch retirement and the required
-qualification slices. This design is not enabled hosted support.
+That proof exercises the implementation under an admitted local witness. It does
+not establish production key custody, deployed service or Container routing,
+deployed recovery or physical GPU fleet qualification. The original hosted
+deployment exit remains open; the hybrid route also does not satisfy that exit.
+Existing deployments do not automatically gain the later authoritative profiles.
 
 ## Native delivery gateway
 
