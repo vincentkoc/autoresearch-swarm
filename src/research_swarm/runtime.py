@@ -200,6 +200,13 @@ class LocalRuntime:
                         except FileNotFoundError:
                             if name == "research.sqlite":
                                 raise
+                        except ResearchError as error:
+                            raise ResearchError(
+                                error.code,
+                                error.message,
+                                retryable=error.retryable,
+                                details={**error.details, "state_file": name},
+                            ) from error
             if not (root / "research.sqlite").exists():
                 write_private(root / "research.sqlite", b"")
             database = Database(root / "research.sqlite")

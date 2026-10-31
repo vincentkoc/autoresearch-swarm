@@ -33,6 +33,17 @@ timeouts, filesystem backup and SQL savepoints. `Database(path)` keeps the local
 construction path. `Database.from_store(store)` binds an already initialized store
 to the same command implementation; it does not create a second set of domain rules.
 
+On Windows, each synchronous SQLite connection duplicates the effective same-user
+token and sets the duplicate's default owner to that user. The connection and its
+backup target close before the exact previous thread token is restored. This makes
+new WAL, shared-memory and backup files satisfy the same owner checks as other
+private state. The process token stays unchanged; nested connections restore their
+immediate predecessor. Foreign identities and identification-only tokens are refused.
+Failure to restore terminates the affected controller process with exit code 125,
+so a thread cannot return to a pool with altered authority. Existing unsafe owners
+or ACLs are still rejected without repair. Native Windows tests cover these paths;
+tests skipped on another platform do not qualify Windows behavior.
+
 `read(callback)` provides a consistent snapshot. `write(callback)` serializes the
 outer mutation. `session.atomic(callback)` creates a nested rollback boundary.
 Callbacks run once and must finish synchronously, materialize their returned data,

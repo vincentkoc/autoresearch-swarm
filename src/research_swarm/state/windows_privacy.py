@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from ctypes import wintypes
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
@@ -29,6 +29,18 @@ FULL_ACCESS = 0x001F01FF
 
 class SecurityAttributes(ctypes.Structure):
     _fields_ = [("length", DWORD), ("descriptor", PTR), ("inherit", BOOL)]
+
+
+class SidAndAttributes(ctypes.Structure):
+    _fields_ = [("sid", PTR), ("attributes", DWORD)]
+
+
+class TokenUser(ctypes.Structure):
+    _fields_ = [("user", SidAndAttributes)]
+
+
+class TokenOwner(ctypes.Structure):
+    _fields_ = [("owner", PTR)]
 
 
 class AclSize(ctypes.Structure):
@@ -54,8 +66,8 @@ class FileInformation(ctypes.Structure):
     ]
 
 
-def _denied(message: str) -> ResearchError:
-    return ResearchError(ErrorCode.AUTHORIZATION_DENIED, message)
+def _denied(message: str, *, details: dict[str, Any] | None = None) -> ResearchError:
+    return ResearchError(ErrorCode.AUTHORIZATION_DENIED, message, details=details)
 
 
 @lru_cache(maxsize=1)
@@ -67,6 +79,7 @@ def _api() -> dict[str, Any]:
     functions: dict[str, Any] = {}
     definitions = [
         (kernel, "GetCurrentProcess", [], HANDLE),
+        (kernel, "GetCurrentThread", [], HANDLE),
         (kernel, "CloseHandle", [HANDLE], BOOL),
         (kernel, "LocalFree", [PTR], PTR),
         (kernel, "CreateDirectoryW", [wintypes.LPCWSTR, ctypes.POINTER(SecurityAttributes)], BOOL),
@@ -102,6 +115,22 @@ def _api() -> dict[str, Any]:
             BOOL,
         ),
         (security, "OpenProcessToken", [HANDLE, DWORD, ctypes.POINTER(HANDLE)], BOOL),
+        (security, "OpenThreadToken", [HANDLE, DWORD, BOOL, ctypes.POINTER(HANDLE)], BOOL),
+        (
+            security,
+            "DuplicateTokenEx",
+            [
+                HANDLE,
+                DWORD,
+                ctypes.POINTER(SecurityAttributes),
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.POINTER(HANDLE),
+            ],
+            BOOL,
+        ),
+        (security, "SetTokenInformation", [HANDLE, ctypes.c_int, PTR, DWORD], BOOL),
+        (security, "SetThreadToken", [ctypes.POINTER(HANDLE), HANDLE], BOOL),
         (
             security,
             "GetTokenInformation",
@@ -177,6 +206,73 @@ def current_user_sid() -> str:
         api["CloseHandle"](token)
 
 
+def _token_information(token: Any, kind: int) -> Any:
+    api, size = _api(), DWORD()
+    api["GetTokenInformation"](token, kind, None, 0, ctypes.byref(size))
+    if not 1 <= size.value <= 64 * 1024:
+        raise _denied("Unexpected Windows token metadata size")
+    buffer = ctypes.create_string_buffer(size.value)
+    _check(api["GetTokenInformation"](token, kind, buffer, size, ctypes.byref(size)))
+    return buffer
+
+
+def _fatal_owner_restore() -> NoReturn:
+    # A thread with un-restored authority must never return to a reusable pool.
+    os._exit(125)
+
+
+@contextmanager
+def sqlite_creation_owner() -> Iterator[None]:
+    """Give generated SQLite files the user owner, without changing process authority.
+
+    Duplicate the effective same-user token and change only its default owner.
+    Keep the scope synchronous and restore the exact prior thread token on exit.
+    Existing files are never repaired or admitted through this creation scope.
+    """
+    if sys.platform != "win32":
+        raise RuntimeError("Windows SQLite ownership scope is unavailable")
+    api = _api()
+    source, temporary = HANDLE(), HANDLE()
+    try:
+        prior = bool(
+            api["OpenThreadToken"](api["GetCurrentThread"](), 0x000E, True, ctypes.byref(source))
+        )
+        if not prior:
+            if ctypes.get_last_error() != 1008:  # ERROR_NO_TOKEN is the only fallback.
+                _check(False)
+            _check(
+                api["OpenProcessToken"](api["GetCurrentProcess"](), 0x000A, ctypes.byref(source))
+            )
+        level = 2  # SecurityImpersonation for a primary source token.
+        if prior:
+            level_info = _token_information(source, 9)  # TokenImpersonationLevel
+            level = ctypes.c_int.from_buffer(level_info).value
+            if level not in (2, 3):
+                raise _denied("SQLite creation requires impersonation or delegation authority")
+        user_info = _token_information(source, 1)  # TokenUser
+        user = TokenUser.from_buffer(user_info).user.sid
+        if _sid(user) != current_user_sid():
+            raise _denied("SQLite creation requires the process user's effective identity")
+        # QUERY | IMPERSONATE | ADJUST_DEFAULT; the handle is not inheritable.
+        _check(api["DuplicateTokenEx"](source, 0x008C, None, level, 2, ctypes.byref(temporary)))
+        owner = TokenOwner(user)
+        _check(api["SetTokenInformation"](temporary, 4, ctypes.byref(owner), ctypes.sizeof(owner)))
+        owner_info = _token_information(temporary, 4)
+        if _sid(TokenOwner.from_buffer(owner_info).owner) != current_user_sid():
+            raise _denied("SQLite creation owner was not established")
+        try:
+            _check(api["SetThreadToken"](None, temporary))
+            yield
+        finally:
+            if not api["SetThreadToken"](None, source if prior else None):
+                _fatal_owner_restore()
+    finally:
+        if temporary.value:
+            api["CloseHandle"](temporary)
+        if source.value:
+            api["CloseHandle"](source)
+
+
 @contextmanager
 def _security(directory: bool) -> Iterator[SecurityAttributes]:
     api = _api()
@@ -227,8 +323,17 @@ def verify_handle(handle: int, *, directory: bool, protected: bool) -> None:
         raise OSError(code, "Cannot read native security descriptor")
     try:
         user = current_user_sid()
-        if not owner or _sid(owner) != user or not dacl or not api["IsValidAcl"](dacl):
-            raise _denied("Private state has an unexpected owner or absent DACL")
+        owner_matches = bool(owner) and _sid(owner) == user
+        dacl_valid = bool(dacl) and bool(api["IsValidAcl"](dacl))
+        if not owner_matches or not dacl_valid:
+            raise _denied(
+                "Private state has an unexpected owner or absent DACL",
+                details={
+                    "owner_matches": owner_matches,
+                    "dacl_present": bool(dacl),
+                    "dacl_valid": dacl_valid,
+                },
+            )
         control, revision = wintypes.WORD(), DWORD()
         _check(
             api["GetSecurityDescriptorControl"](

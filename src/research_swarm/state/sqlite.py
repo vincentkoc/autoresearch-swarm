@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import inspect
 import sqlite3
+import sys
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -105,16 +106,23 @@ class SQLiteStore:
 
     @contextmanager
     def connect(self) -> Iterator[SQLiteSession]:
-        connection = sqlite3.connect(
-            self.path, isolation_level=None, timeout=self.busy_timeout_ms / 1000
-        )
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute(f"PRAGMA busy_timeout={self.busy_timeout_ms}")
-        try:
-            yield SQLiteSession(connection)
-        finally:
-            connection.close()
+        if sys.platform == "win32":
+            from research_swarm.state.windows_privacy import sqlite_creation_owner
+
+            ownership = sqlite_creation_owner()
+        else:
+            ownership = nullcontext()
+        with ownership:
+            connection = sqlite3.connect(
+                self.path, isolation_level=None, timeout=self.busy_timeout_ms / 1000
+            )
+            try:
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys=ON")
+                connection.execute(f"PRAGMA busy_timeout={self.busy_timeout_ms}")
+                yield SQLiteSession(connection)
+            finally:
+                connection.close()
 
     def _run(self, callback: Callable[[SqlSession], T], *, write: bool) -> T:
         with self.connect() as session:
