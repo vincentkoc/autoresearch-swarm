@@ -10,6 +10,7 @@ from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.models import TrialData
 from research_swarm.control.observations import PublishAttempt
 from research_swarm.control.reconciliation import ReconcileAttempt
+from research_swarm.control.recovery_operations import recovery_context
 from research_swarm.control.worker_artifacts import WorkerAttemptTarget
 from research_swarm.control.worker_outputs import BeginWorkerUpload
 from research_swarm.control.workers import AttemptData
@@ -99,6 +100,50 @@ def reconcile(recovery: Recovery, submission: dict, key: str = "close") -> dict:
         idempotency_key=key,
         expected_revision=recovery.operator.get("attempt", recovery.target.attempt_id)["revision"],
     )
+
+
+@pytest.mark.parametrize("damage", ["absent_journal", "changed_worker"])
+def test_prepared_submission_cannot_skip_journal_or_original_worker_verification(recovery, damage):
+    r = recovery
+    entry = run_attempt(r.native.journal, r.target.attempt_id)
+    assert entry.state == JournalState.CLOSED
+    reference, _ = upload(r, entry)
+    request = PublishAttempt(attempt_id=r.target.attempt_id, journal_artifact=reference)
+    service = r.runtime.service.reconciliation
+    context = recovery_context(
+        r.runtime.database,
+        CommandContext(principal=r.runtime.credentials.resolve(r.token), idempotency_key=new_id()),
+        "worker.submit_evidence",
+        request.model_dump(mode="json"),
+        attempt_id=request.attempt_id,
+        artifact_id=reference.id,
+        crypto_provider=r.runtime.service.crypto_provider,
+    )
+    from research_swarm.state.database import Transaction
+
+    worker, _ = r.runtime.database.store.read(
+        lambda sql: service._owner(Transaction(sql, context), request)
+    )
+    if damage == "changed_worker":
+        worker = worker.model_copy(update={"name": "Different prepared worker"})
+    before = r.operator.get("attempt", request.attempt_id), r.operator.budget(r.campaign_id)
+    with pytest.raises(ResearchError) as refused:
+        r.runtime.database.execute(
+            context,
+            "worker.submit_evidence",
+            request.model_dump(mode="json"),
+            "worker.publish",
+            lambda tx: service._submit_verified(
+                tx, request, worker, None if damage == "absent_journal" else entry
+            ),
+        )
+    assert refused.value.code == (
+        ErrorCode.ARTIFACT_UNVERIFIED if damage == "absent_journal" else ErrorCode.STALE_FENCE
+    )
+    assert (
+        r.operator.get("attempt", request.attempt_id),
+        r.operator.budget(r.campaign_id),
+    ) == before
 
 
 def test_http_journal_after_restart_closes_once_without_scientific_acceptance(recovery):

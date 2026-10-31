@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Separate verified journal submission from native byte reads. The shared
+  transaction requires journal-only recovery evidence, rechecks the prepared
+  worker and validates its original native grant before retaining a submission.
+  Native pin/read custody and operational settlement semantics stay intact.
+
 - Extend production workerd recovery qualification with an actual SDK worker claim.
   Preserve that attempt through the source cut, issue its signed route only at the
   elected target, lose the accepted reply, and replay it after restart. Verify the

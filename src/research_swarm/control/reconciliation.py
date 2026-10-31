@@ -133,24 +133,39 @@ class ReconciliationControl:
                 else None
             )
 
-            def submit(transaction: Transaction) -> JsonObject:
-                if journal is not None:
-                    validate_native_grant(
-                        transaction,
-                        request,
-                        journal,
-                        worker,
-                        crypto_provider=self.results.crypto_provider,
-                    )
-                return self._submit(transaction, request)
-
             return self.database.execute(
                 context,
                 "worker.submit_evidence",
                 payload,
                 "worker.publish",
-                submit,
+                lambda transaction: self._submit_verified(transaction, request, worker, journal),
             )
+
+    def _submit_verified(
+        self,
+        transaction: Transaction,
+        request: PublishAttempt,
+        worker: WorkerData,
+        journal: JournalEntry | None,
+    ) -> JsonObject:
+        """Commit caller-verified bytes; byte readers and catalog rechecks stay with the caller."""
+        if transaction.context._recovery_operation is not None:
+            if request.report_artifact is not None or request.outputs or request.logs:
+                raise ResearchError(
+                    ErrorCode.AUTHORIZATION_DENIED, "Recovery accepts journal evidence only"
+                )
+            if journal is None:
+                raise ResearchError(
+                    ErrorCode.ARTIFACT_UNVERIFIED, "Recovery journal proof is absent"
+                )
+        current, _ = self._owner(transaction, request)
+        if current != worker:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Evidence worker changed during preparation")
+        if journal is not None:
+            validate_native_grant(
+                transaction, request, journal, worker, crypto_provider=self.results.crypto_provider
+            )
+        return self._submit(transaction, request)
 
     def _submit(self, transaction: Transaction, request: PublishAttempt) -> JsonObject:
         worker, attempt = self._owner(transaction, request)
