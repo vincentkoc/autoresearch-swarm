@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show each reported evaluation's authorized measurement trust, exposure class, evaluator and panel authority. Keep confirmed selection separate from protected or official evaluation, which remain explicitly unqualified in both JSON and Markdown reports.
+
 - Retain the native process handle until scope closure, pipe EOF and leader exit are all observable within the existing cleanup deadline. Preserve UNKNOWN when the exit code remains unavailable instead of treating job-accounting closure as complete process evidence.
 
 - Create worker lock directories with the same native private-directory contract required during recovery. Preserve refusal of unsafe existing ACLs, and give Windows enrollment/replacement fixtures dedicated private parents instead of generic temporary roots.

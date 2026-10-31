@@ -5,6 +5,7 @@ import re
 from pydantic import Field
 
 from research_swarm.control.comparisons import eligible_evaluation
+from research_swarm.control.evaluations import EvaluationAuthorization
 from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
 from research_swarm.control.obligations import operational_context
@@ -108,11 +109,28 @@ def markdown(snapshot: JsonObject) -> str:
             "Confirmed selection means the declared gate passed. It does not establish held-out "
             "generalization or erase earlier dataset exposure.",
             "",
+            "Protected evaluation: unavailable. Official evaluation: unavailable. "
+            "This runtime qualifies authenticated evaluators only; neither an observed result "
+            "nor a confirmed selection establishes protected-panel or official evaluation.",
+            "",
             "This immutable report records eligibility at capture. Later correction events can "
             "change current eligibility without rewriting this snapshot.",
             "",
         ]
     )
+    lines.extend(
+        [
+            "| Receipt | Measurement trust | Exposure class | Eligible at capture |",
+            "|---|---|---|---|",
+        ]
+    )
+    for evaluation in snapshot["recent_evaluations"]:
+        data = evaluation["data"]
+        lines.append(
+            f"| `{evaluation['id']}` | {data['measurement_trust']} | "
+            f"{data['exposure_class']} | {'yes' if evaluation['eligible'] else 'no'} |"
+        )
+    lines.append("")
     if funding := snapshot.get("funding"):
         lines.extend(
             [
@@ -164,6 +182,19 @@ def create_report(
     for item in recent:
         row = transaction.get("evaluation_receipt", item["id"])
         evidence = summarize(row)
+        authorization = EvaluationAuthorization.model_validate(
+            transaction.get("evaluation_request", evidence["data"]["request_id"])["data"]
+        )
+        request = authorization.request
+        evidence["data"].update(
+            candidate_id=request.candidate_id,
+            trial_id=request.trial_id,
+            evaluator_id=request.evaluator_id,
+            evaluator_contract_digest=request.evaluator_contract_digest,
+            measurement_trust=request.measurement_trust,
+            exposure_class=request.exposure_class,
+            exposure_authorization_id=request.exposure_authorization_id,
+        )
         try:
             eligible_evaluation(transaction, row["id"], campaign_row["id"], campaign)
             evidence["eligible"] = True
@@ -208,6 +239,12 @@ def create_report(
             for account in accounts
         ],
         "recent_evaluations": evaluations,
+        "evaluation_claim_support": {
+            "qualified_measurement_trust": ["authenticated"],
+            "protected": False,
+            "official": False,
+            "reason": "Protected and project-official evaluator profiles are not qualified",
+        },
         "evaluation_count": sum(
             item["count"] for item in counts if item["kind"] == "evaluation_receipt"
         ),

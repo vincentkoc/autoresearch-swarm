@@ -68,6 +68,17 @@ def test_completion_and_report_are_atomic_replayable_and_preserve_later_correcti
     )
     assert snapshot["incumbent"]["evidence_level"] == "observed"
     assert snapshot["recent_evaluations"][0]["eligible"]
+    observed = snapshot["recent_evaluations"][0]["data"]
+    assert observed["measurement_trust"] == "authenticated"
+    assert observed["exposure_class"] == "exploratory"
+    assert observed["exposure_authorization_id"] is None
+    assert observed["trial_id"] == pipeline.trial["id"]
+    assert snapshot["evaluation_claim_support"]["protected"] is False
+    assert snapshot["evaluation_claim_support"]["official"] is False
+    assert (
+        "Protected evaluation: unavailable. Official evaluation: unavailable."
+        in content["markdown"]
+    )
     assert "No incumbent" not in content["markdown"]
     assert all(item["reserved"] == "0" and item["uncertain"] == "0" for item in snapshot["budget"])
     pipeline.client.command(
@@ -85,6 +96,7 @@ def test_completion_and_report_are_atomic_replayable_and_preserve_later_correcti
         idempotency_key="current-report",
     )["result"]["data"]["snapshot"]
     assert not current["recent_evaluations"][0]["eligible"]
+    assert current["recent_evaluations"][0]["data"] == observed
     assert current["incumbent"]["eligibility"] == "suspended"
 
 

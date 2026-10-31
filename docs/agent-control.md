@@ -110,6 +110,19 @@ does not measure LLM proposal quality. The measured improvement is reported as
 `observed`, under the synthetic project's frozen comparison contract. No GUI or
 provider-specific agent runtime is required.
 
+## Read evaluation claims
+
+`report.create` captures the same evidence for JSON and Markdown. Each recent
+evaluation includes its authorized `measurement_trust`, `exposure_class`,
+evaluator identity, evaluator contract and exposure authorization. Eligibility is
+recorded separately and can change in a later report after an evidence correction.
+An earlier report and its digest remain unchanged.
+
+`evaluation_claim_support` explicitly marks protected and official evaluation as
+unqualified. The supported evaluator profile is authenticated. A confirmed
+selection means its declared replication gate passed; it does not upgrade the
+panel's access policy or turn the evaluator into an official project evaluator.
+
 ## Durable external proposals
 
 A proposal request assigns research work to one principal. It freezes an eligible

@@ -8,6 +8,7 @@ from research_swarm.control.confirmation_models import ConfirmationData
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.promotions import InvalidateEvidence
 from research_swarm.control.queries import RecordQuery
+from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.validity import EvidenceReference
 from tests.test_confirmation import create_plan, options, setup_plan
 from tests.test_local_pipeline import Pipeline
@@ -94,6 +95,29 @@ def test_complete_fixed_panel_selects_confirmed_candidate_or_rejects_failed_real
     assert selected["incumbent_candidate_id"] == intent.candidate_id
     assert (
         selected["incumbent_revision"] == 2 and selected["incumbent_evidence_level"] == "confirmed"
+    )
+    report = pipeline.client.command(
+        "report.create",
+        ReportCampaign(campaign_id=campaign["id"]),
+        idempotency_key="report-confirmed-selection",
+    )["result"]["data"]
+    snapshot = report["snapshot"]
+    assert snapshot["incumbent"]["evidence_level"] == "confirmed"
+    assert snapshot["evaluation_claim_support"]["protected"] is False
+    assert snapshot["evaluation_claim_support"]["official"] is False
+    exposures = {
+        item["data"]["exposure_authorization_id"]
+        for item in snapshot["recent_evaluations"]
+        if item["data"]["exposure_class"] == "confirmation"
+    }
+    assert exposures == {binding.exposure_id for binding in plan.bindings}
+    assert all(
+        item["data"]["measurement_trust"] == "authenticated"
+        for item in snapshot["recent_evaluations"]
+    )
+    assert "| authenticated | confirmation | yes |" in report["markdown"]
+    assert (
+        "Protected evaluation: unavailable. Official evaluation: unavailable." in report["markdown"]
     )
     pipeline.client.command(
         "evidence.invalidate",
