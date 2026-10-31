@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add resumable private provisioning with atomic prepared and completed phases.
+  Authenticate bootstrap and physical identity before opening state, freeze the
+  manifest and credential roster, then admit one fresh witness before publishing
+  configuration. Completed receipts replay without reinstallation or requalification.
+
 - Allow credential schema and installation to share an owner's atomic
   provisioning transaction. Preserve install authorization, identity, expiry and
   revocation checks, and roll back the complete roster on any member failure.

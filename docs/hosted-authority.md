@@ -1359,6 +1359,31 @@ credential is not repaired. Atomic roster tests preserve pre-existing credential
 and roll back new schema/members when initialization or a later member fails.
 This is the shared preparation boundary, not a deployed bootstrap endpoint.
 
+`provisioning.py` uses two atomic phases. A separate bootstrap credential and the
+actual target identity are checked before calling the store factory. The factory
+must initialize only an empty store, or open existing current-schema state without
+migration. The first transaction refuses foreign data, seals the complete manifest,
+creates the workspace and credential roster, and registers an unqualified source.
+A fresh witness is acquired outside SQL while the existing operation gate remains
+held. The second transaction rechecks the exact intent, roster and source before
+admitting time, publishing the ordinary router configuration and storing the
+immutable provisioning receipt together.
+
+An interrupted preparation has no partial roster. An interrupted witness or
+completion leaves prepared state unavailable to normal opens. Resume accepts only
+the same manifest and intact roster; deleted, revoked, expiring or changed
+credentials are not recreated. Completed bootstrap replay returns the original
+admission receipt without contacting the source or reinstalling credentials.
+That historical receipt is not a statement of current source availability.
+`require_deployment()` provides a read-only full-manifest/configuration seal check
+for the future production entrypoint. Runtime named-object resolution and the
+empty-store factory remain that entrypoint's responsibilities.
+
+Native SQLite tests cover interrupted phases, source outage, concurrent resume,
+changed roster/manifest, revocation after the witness, foreign-state refusal,
+cancellation and completed offline replay. These tests do not qualify workerd
+provisioning, an operator bootstrap route, or a deployed controller.
+
 ## Native worker calibration
 
 The worker measures the entire challenge round trip:
