@@ -1,19 +1,25 @@
 """Actual workerd successor recovery uses the ordinary checkpoint/snapshot SDK."""
 
+import asyncio
 from contextlib import ExitStack
 
+import httpx
 import pytest
 
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.orchestration import DriveAction
+from research_swarm.domain.orchestration import DriveAction, OrchestrationBinding
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
+from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
+from research_swarm.orchestration.delivery_contract import binding_reference, delivery_key
+from research_swarm.orchestration.gateway_models import GatewayBinding
 from research_swarm.orchestration.startup import recover_driver_start
 from research_swarm.orchestration.turns import DurableTurnDriver
 from research_swarm.workers.clocks import native_clock
+from tests.test_cloudflare_hybrid import CONTROL, until
 from tests.test_cloudflare_native import build_current_sources, server
 from tests.test_cloudflare_native_source import TOKEN, Endpoint, control
 from tests.test_cloudflare_research_admission import client_at, inspect
@@ -106,7 +112,7 @@ def test_successor_sdk_recovers_lost_snapshot_then_drives_after_authority_restar
                     "campaign_id": campaign["id"],
                     "campaign_revision": campaign["revision"],
                     "epoch": 1,
-                    "adapter": "external-sdk",
+                    "adapter": "cloudflare-workflows",
                     "configuration_digest": CONFIG,
                     "routes": {
                         "control": setup["successor_id"],
@@ -119,7 +125,10 @@ def test_successor_sdk_recovers_lost_snapshot_then_drives_after_authority_restar
             )["result"]
             starts = transferred["data"]["start_ids"]
 
-        with server(tmp_path, sequence=2) as url, ExitStack() as connections:
+        with (
+            server(tmp_path, sequence=2, fixture_delivery_profile="successor") as url,
+            ExitStack() as connections,
+        ):
             operator, driver, successor, evaluator = clients(connections, url, setup)
             with pytest.raises(ResearchError) as pending:
                 prepare(successor, campaign["id"])
@@ -136,11 +145,62 @@ def test_successor_sdk_recovers_lost_snapshot_then_drives_after_authority_restar
             assert inspect(url, **OPTIONS)["recovery_counts"]["active"] == 1
             recover_driver_start(successor, starts["control"], recovery_id="stable-recovery")
             assert operator.get("orchestration_start", starts["evaluator"])["state"] == "pending"
+            reference = binding_reference(
+                OrchestrationBinding.model_validate(
+                    operator.get("orchestration_binding", campaign["id"])["data"]
+                )
+            )
+            with httpx.Client(base_url=url, trust_env=False, timeout=30) as delivery:
+                response = delivery.post(
+                    "/v1/delivery/bootstrap",
+                    json={
+                        "binding": GatewayBinding.from_reference(reference).model_dump(mode="json"),
+                        "recovery_id": new_id(),
+                    },
+                    headers={"authorization": "Bearer " + setup["gateway_token"]},
+                )
+                assert response.status_code == 501
+                assert response.json()["error"]["code"] == "CAPABILITY_UNAVAILABLE"
             recover_driver_start(evaluator, starts["evaluator"], recovery_id="evaluator-recovery")
             turn = prepare(successor, campaign["id"])
+            workflow = tmp_path / "workflow"
+            workflow.mkdir()
+            variables = {
+                "AUTHORITY_PROFILE": "hosted-do-witness-v1",
+                "HOSTED_DELIVERY_ORIGIN": url,
+                "GATEWAY_TOKEN": setup["gateway_token"],
+                "CONTROL_TOKEN": CONTROL,
+                "ALLOW_LOCAL_GATEWAY": "true",
+            }
+            with server(workflow, sequence=1, variables=variables) as workflow_url:
+
+                async def start():
+                    async with CloudflareBridge(workflow_url, CONTROL) as bridge:
+                        return await asyncio.gather(
+                            *(
+                                bridge.start(
+                                    reference,
+                                    WorkflowOptions(
+                                        poll_seconds=1, rotate_after=2, request_timeout_seconds=10
+                                    ),
+                                )
+                                for _ in range(3)
+                            )
+                        )
+
+                ids = asyncio.run(start())
+                assert ids == [ids[0]] * 3
+                until(lambda: successor.get("drive_turn", turn["id"])["state"] != "prepared")
+                delivered = operator.list(
+                    RecordQuery(kind="drive_receipt", campaign_id=campaign["id"])
+                )["items"]
+                assert len(delivered) == 1 and delivered[0]["data"]["disposition"] == "accepted"
+            execution_key = delivery_key("turn", turn["id"])
+            witness_calls = len(endpoint.requests)
             receipt = successor.command(
-                "orchestration.execute_turn", {"turn_id": turn["id"]}, idempotency_key="execute"
+                "orchestration.execute_turn", {"turn_id": turn["id"]}, idempotency_key=execution_key
             )
+            assert len(endpoint.requests) == witness_calls
             assert receipt["result"]["response"]["disposition"] == "accepted"
             assert len(operator.list(RecordQuery(kind="report"))["items"]) == 1
             assert len(operator.list(RecordQuery(kind="orchestration_start_ack"))["items"]) == 2
@@ -163,7 +223,9 @@ def test_successor_sdk_recovers_lost_snapshot_then_drives_after_authority_restar
             recover_driver_start(evaluator, starts["evaluator"], recovery_id="already-started")
             assert (
                 successor.command(
-                    "orchestration.execute_turn", {"turn_id": turn["id"]}, idempotency_key="execute"
+                    "orchestration.execute_turn",
+                    {"turn_id": turn["id"]},
+                    idempotency_key=execution_key,
                 )
                 == receipt
             )

@@ -79,6 +79,7 @@ def server(
     extra_configs: tuple[Path, ...] = (),
     child_environment: dict[str, str] | None = None,
     diagnostic_secrets: tuple[str, ...] = (),
+    fixture_delivery_profile: str | None = None,
 ):
     if variables is None:
         executable = ROOT / ".venv/bin/uv"
@@ -98,6 +99,9 @@ def server(
             command.extend(["--var", f"{name}:{value}"])
     for extra in extra_configs:
         command.extend(["--config", str(extra)])
+    if fixture_delivery_profile is not None:
+        assert variables is None and fixture_delivery_profile == "successor"
+        command.extend(["--var", "FIXTURE_DELIVERY_PROFILE:successor"])
     selected_port = port() if listen_port is None else listen_port
     url = f"http://127.0.0.1:{selected_port}"
     log = tmp_path / f"local-workerd-{sequence}.log"

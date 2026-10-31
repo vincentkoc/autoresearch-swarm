@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the actual workerd successor probe with Workflow delivery after SDK
+  recovery. Partial recovery refuses; duplicate Workflow starts share one driver,
+  which records the accepted successor receipt before any client replay.
+
 - Let async delivery start after all successor drivers complete external SDK
   recovery. Verify bounded startup records and immutable acknowledgments, then
   recheck current ownership. Pending recovery still refuses; delivery creates no

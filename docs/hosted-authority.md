@@ -1275,6 +1275,13 @@ turn preparation advancing the binding revision during bootstrap. The hosted
 delivery facade reads the same transfer records and executes one saved successor
 report with exact retry. Actual Workflow qualification must start the Workflow
 after recovery; a previously failed bootstrap is not silently restarted.
+The workerd startup probe now starts the separate real Workflow process only
+after both SDK acknowledgments. Its fixed local successor registration refuses
+partial startup, then duplicate starts deliver one saved turn and produce the
+accepted receipt before the SDK replays it. That replay must consume no witness.
+The fixture's authority selection is a launcher binding, never a caller header,
+and remains excluded from the production bundle. This extended probe still needs
+its own passing runtime receipt beyond the earlier startup result below.
 
 `test_cloudflare_startup.py` now exercises this SDK against the actual startup
 profile in workerd. It transfers queued work, restarts authority storage, loses a
@@ -1426,9 +1433,9 @@ it only the research service binding.
 
 Native SQLite runtime tests cover missing/prepared state, exact manifest sealing,
 offline reopen, retained revocation, fixed object resolution, ineffective fixture
-headers, excluded routes and sanitized recovery responses. The entrypoint still
-needs actual workerd named-RPC qualification. These tests do not establish deployed
-service routing, bucket identity or clock behavior.
+headers, excluded routes and sanitized recovery responses. The actual workerd
+named-RPC receipt appears below. Neither test surface establishes deployed service
+routing, bucket identity or clock behavior.
 
 ### Building the production entrypoint
 
@@ -1482,8 +1489,15 @@ outage during provisioning, lost completed receipts, unchanged SDK source upload
 and queued campaign admission through R2, one report effect, offline exact replay,
 process restart and a coherently changed but physically wrong object identity.
 Secret bundles and individual tokens are removed from failure diagnostics.
-Adding the probe is implementation evidence; its actual CI result must be recorded
-before claiming runtime qualification. It does not deploy any resources.
+The probe does not deploy any resources; its runtime qualification is limited to
+the exact revision and receipt below.
+
+This production-entrypoint probe passed as part of 19 actual workerd tests in
+610.97 seconds at `42a245e343a410eab7a63eaf4581831ea0a31c6a` in
+[qualification 41209431793](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41209431793/job/124561128648).
+The production build, formatter, TypeScript and supporting Node suites also passed.
+That receipt covers the fixed production entrypoint and bootstrap; it predates
+the native launcher and acknowledgment-aware async startup changes.
 
 ### Native witness launcher
 

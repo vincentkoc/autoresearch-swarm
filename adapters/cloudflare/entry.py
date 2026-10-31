@@ -353,7 +353,14 @@ class Default(WorkerEntrypoint):
             return Response("Local qualification only", status=403)
         if url.path.startswith("/v1/delivery/"):
             # Delivery uses one explicitly provisioned authority, regardless of caller headers.
-            stub = self.env.QUALIFICATION.getByName("shared-native-research-orchestration")
+            profile = getattr(self.env, "FIXTURE_DELIVERY_PROFILE", None) or "original"
+            name = {
+                "original": "shared-native-research-orchestration",
+                "successor": "shared-native-research-startup",
+            }.get(profile)
+            if name is None:
+                return Response("Unknown local delivery fixture", status=403)
+            stub = self.env.QUALIFICATION.getByName(name)
             try:
                 return await stub.fetch(request)
             except Exception:

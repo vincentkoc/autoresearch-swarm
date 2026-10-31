@@ -382,9 +382,19 @@ def provisioned(principals):
 
 async def delivery_fixture(router):
     """Reconstruct one fixed local fixture registration without request-selected state."""
+    successor = isinstance(router.configuration, HostedStartupConfiguration)
     routes = {
-        "control": identifier("router-driver-principal"),
-        "evaluator": identifier("router-evaluator-principal"),
+        "control": identifier(
+            "router-successor-principal" if successor else "router-driver-principal"
+        ),
+        "evaluator": identifier(
+            "router-next-evaluator-principal" if successor else "router-evaluator-principal"
+        ),
+    }
+    expected_config = content_digest(b"workerd-startup-driver") if successor else DELIVERY_CONFIG
+    tokens = {
+        "control": SUCCESSOR_TOKEN if successor else DRIVER_TOKEN,
+        "evaluator": NEXT_EVALUATOR_TOKEN if successor else EVALUATOR_TOKEN,
     }
 
     async def load():
@@ -402,8 +412,8 @@ async def delivery_fixture(router):
             binding = OrchestrationBinding.model_validate(row["data"])
             if (
                 binding.workspace_id != identifier("router-workspace")
-                or binding.epoch != 1
-                or binding.configuration_digest != DELIVERY_CONFIG
+                or binding.epoch != (2 if successor else 1)
+                or binding.configuration_digest != expected_config
                 or binding.adapter != "cloudflare-workflows"
                 or binding.routes != routes
                 or any(
@@ -420,11 +430,7 @@ async def delivery_fixture(router):
     binding = await exclusive(router.state, load)
     return HostedDelivery(
         router,
-        {
-            identifier("router-gateway-principal"): DeliveryRegistration(
-                binding, {"control": DRIVER_TOKEN, "evaluator": EVALUATOR_TOKEN}
-            )
-        },
+        {identifier("router-gateway-principal"): DeliveryRegistration(binding, tokens)},
     )
 
 
