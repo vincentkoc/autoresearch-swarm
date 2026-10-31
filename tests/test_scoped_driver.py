@@ -563,6 +563,7 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
     pipeline: Pipeline, tmp_path: Path, cancel_offline: bool
 ) -> None:
     root = tmp_path / "remote"
+    marker = tmp_path / "resumed-attempt-acquired.json"
     with controller_process(pipeline) as url, enrollment(pipeline, root, url) as connected:
         argv = [
             sys.executable,
@@ -584,18 +585,28 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
         supervisor = None
 
         def setup_diagnostics(process: Any, phase: str) -> str:
-            def bounded(value: Any) -> str:
+            def bounded(value: Any, limit: int = 1024) -> str:
                 text = value.decode(errors="replace") if isinstance(value, bytes) else str(value)
                 for private in (
                     connected.bundle.token,
                     str(root),
                     str(pipeline.runtime.root),
                     sys.executable,
+                    str(Path(__file__).resolve().parents[1]),
+                    str(Path.home()),
                 ):
                     text = text.replace(private, "<redacted>")
-                return text[:1024]
+                return text[:limit]
 
             result: dict[str, Any] = {"phase": phase, "returncode": process.poll(), "attempts": []}
+            for suffix in (".phase", ".trace"):
+                try:
+                    with marker.with_suffix(suffix).open("rb") as stream:
+                        result["resumer" + suffix] = bounded(stream.read(8192), 8192)
+                except FileNotFoundError:
+                    pass
+                except Exception as error:
+                    result["resumer" + suffix] = {"error_type": type(error).__name__}
             if process.poll() is not None:
                 try:
                     output, error_output = process.communicate(timeout=2)
@@ -747,32 +758,44 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 )["result"]
                 assert requested["disposition"] == "requested"
                 assert requested["control"]["data"]["acknowledged_at"] is None
-            marker = tmp_path / "resumed-attempt-acquired.json"
             resumed_argv = argv
             if not cancel_offline:
                 # Observe the actual acquisition inside the recovering worker.
                 # A parent probe would compete for this same native file lock.
                 script = """
+import faulthandler
 import json
 import os
 import sys
 from pathlib import Path
-from research_swarm.workers import local
-
 expected = Path(sys.argv[1]).resolve()
 marker = Path(sys.argv[2])
+trace = marker.with_suffix(".trace").open("w", encoding="utf-8")
+faulthandler.dump_traceback_later(8, file=trace)
+
+def phase(name):
+    marker.with_suffix(".phase").write_text(name, encoding="utf-8")
+
+phase("importing-worker")
+from research_swarm.workers import local
+phase("worker-imported")
 
 class ObservedLock(local.FileLock):
     def acquire(self, *args, **kwargs):
+        observed = Path(self.lock_file).resolve() == expected
+        if observed:
+            phase("requesting-attempt-lock")
         acquired = super().acquire(*args, **kwargs)
         try:
-            if Path(self.lock_file).resolve() == expected:
+            if observed:
+                phase("acquired-attempt-lock")
                 pending = marker.with_suffix(".pending")
                 pending.write_text(
                     json.dumps({"attempt_id": expected.stem, "pid": os.getpid()}),
                     encoding="utf-8",
                 )
                 pending.replace(marker)
+                faulthandler.cancel_dump_traceback_later()
         except BaseException:
             self.release()
             raise
@@ -780,7 +803,12 @@ class ObservedLock(local.FileLock):
 
 local.FileLock = ObservedLock
 from research_swarm.cli import main
-raise SystemExit(main(sys.argv[3:]))
+phase("entering-worker-cli")
+try:
+    raise SystemExit(main(sys.argv[3:]))
+finally:
+    faulthandler.cancel_dump_traceback_later()
+    trace.close()
 """
                 lock_path = root / "execution" / "locks" / f"{running.dispatch.attempt_id}.lock"
                 resumed_argv = [
