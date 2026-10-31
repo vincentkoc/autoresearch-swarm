@@ -7,10 +7,12 @@ recovery remains open.
 
 The witness wire records, domain-separated signatures, pinned source checks,
 one-use response verification and epoch derivation are implemented. A frozen
-public fixture is independently checked in Python and JavaScript. These
-primitives neither observe fresh time nor qualify a source. The exclusive
-operation context, persisted retirement, native service and hosted adapter
-remain to be implemented.
+public fixture is independently checked in Python and JavaScript. A separate
+native source primitive observes the existing qualified clock implementation
+and preserves its fault latch; independent child processes establish distinct
+source origins locally. Wire validity does not qualify a deployment. The
+exclusive operation context, persisted retirement, authenticated source
+transport and hosted adapter remain to be implemented.
 
 ## Decision and boundary
 
@@ -131,6 +133,28 @@ must authenticate its consumer. A public caller cannot provide a witness,
 select a clock origin, replace a source key or invoke an unguarded synchronous
 controller method. Production key provisioning and rotation need their own
 qualified lifecycle. Public fixtures use public test keys only.
+
+### Native source scope
+
+`NativeWitnessSource` pins a `WitnessAuthorityScope`: state authority, logical
+activation, workspace, controller, control epoch and assignment key. It validates
+that binding before sampling its one `AuthorityClock`. The source descriptor
+pins the native profile, policy, source identity and signing key. An incompatible
+clock observation poisons that origin; another request or provider generation
+cannot reset it.
+
+The Durable Object owns `provider_generation`. The source signs the requested
+generation, operation identity, digest and nonce as evidence; it does not admit
+them as research authority. Requalifying a generation must not require restarting
+the source and thereby producing yet another clock epoch. The consumer checks
+the generation against its durable state under exclusive ordering. This also
+means a fresh, valid witness for an old generation remains inadmissible there.
+
+The source primitive is an in-process trusted interface. Its eventual network
+transport must authenticate a configured consumer before invoking it; having a
+matching request scope is not network authentication. Current tests cover native
+sampling and process-origin separation plus synthetic continuity failures. They
+do not establish Container routing or hosted clock qualification.
 
 ## Epochs, eviction and source replacement
 

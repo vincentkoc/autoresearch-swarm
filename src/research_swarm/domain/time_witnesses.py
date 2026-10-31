@@ -10,14 +10,23 @@ from research_swarm.domain.clocks import ClockMilliseconds, ClockPolicy
 from research_swarm.domain.types import ID, Digest, Name, VersionedRecord
 
 
-class WitnessScope(VersionedRecord):
+class WitnessAuthorityScope(VersionedRecord):
     state_authority_id: Digest
     activation_id: ID
-    provider_generation: ID
     workspace_id: ID
     controller_id: ID
     control_epoch: int = Field(strict=True, ge=0, le=MAX_SAFE_INTEGER)
     assignment_key_id: Digest
+
+
+class WitnessScope(WitnessAuthorityScope):
+    provider_generation: ID
+
+    @property
+    def authority(self) -> WitnessAuthorityScope:
+        return WitnessAuthorityScope.model_validate(
+            self.model_dump(mode="json", exclude={"provider_generation"})
+        )
 
 
 class TimeWitnessRequest(VersionedRecord):

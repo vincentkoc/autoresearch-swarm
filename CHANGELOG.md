@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a native clock-witness source with fixed authority scope, sampled
+  observations, sticky continuity faults and independent process origins. Keep
+  provider generation under controller ownership and network exposure disabled.
+
 - Add native time-witness records, pinned domain-separated signatures, one-use
   response verification and stable epoch derivation with a Python/JavaScript
   golden fixture. These primitives do not enable hosted authority.
