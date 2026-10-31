@@ -119,6 +119,21 @@ def test_complete_fixed_panel_selects_confirmed_candidate_or_rejects_failed_real
     assert (
         "Protected evaluation: unavailable. Official evaluation: unavailable." in report["markdown"]
     )
+    bounded = pipeline.client.command(
+        "report.create",
+        ReportCampaign(campaign_id=campaign["id"], recent_limit=1),
+        idempotency_key="report-pinned-selections",
+    )["result"]["data"]["snapshot"]
+    assert bounded["evaluation_window"]["complete"] is False
+    assert set(bounded["evaluation_window"]["pinned_ids"]) == {
+        bounded["research"]["baseline"]["evaluation_id"],
+        selected["incumbent_evaluation_id"],
+    }
+    assert bounded["research"]["trials"]["complete"] is False
+    assert {item["id"] for item in bounded["research"]["candidates"]["items"]} >= {
+        bounded["research"]["baseline"]["candidate_id"],
+        selected["incumbent_candidate_id"],
+    }
     pipeline.client.command(
         "evidence.invalidate",
         InvalidateEvidence(

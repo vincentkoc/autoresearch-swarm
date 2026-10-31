@@ -10,9 +10,10 @@ from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
 from research_swarm.control.obligations import operational_context
 from research_swarm.control.queries import summarize
+from research_swarm.control.report_details import research_details
 from research_swarm.domain.budgets import BudgetAccount
-from research_swarm.domain.canonical import record_digest
-from research_swarm.domain.errors import ResearchError
+from research_swarm.domain.canonical import canonical_bytes, record_digest
+from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord, new_id, utc_now
 from research_swarm.state.database import JsonObject, Transaction
 
@@ -20,6 +21,9 @@ from research_swarm.state.database import JsonObject, Transaction
 class ReportCampaign(VersionedRecord):
     campaign_id: ID
     recent_limit: int = Field(default=20, strict=True, ge=1, le=50)
+
+
+MAX_REPORT_BYTES = 1024 * 1024
 
 
 def literal(value: str) -> str:
@@ -30,6 +34,142 @@ def literal(value: str) -> str:
         1 + max((len(match.group()) for match in re.finditer(r"`+", value)), default=0)
     )
     return f"{delimiter} {value} {delimiter}"
+
+
+def detail_markdown(details: JsonObject) -> list[str]:
+    metric = details["objective"]["primary_metric"]
+    timing = details["scope"]["timing"]
+    stopping = details["stopping"]
+    lines = [
+        "## Research contract",
+        "",
+        "Objective: " + literal(details["objective"]["name"]),
+        "",
+        f"Metric: {literal(metric['name'])}; direction: {metric['direction']}; "
+        f"unit: {literal(metric['unit'])}.",
+        "",
+        f"Timing: {timing['budget_ms']} ms; scope: {timing['scope']}; "
+        f"authority: {timing['timer_authority']}.",
+        "",
+        f"Trial limit: {stopping['rule']['max_trials']}. "
+        f"Target: {stopping['rule']['target_metric']}. Target met: {stopping['target_met']}.",
+        "",
+        "Original baseline: "
+        + (
+            f"`{details['baseline']['candidate_id']}`; "
+            f"promotion `{details['baseline']['promotion']['id']}`; "
+            f"evaluation `{details['baseline']['evaluation_id']}`; "
+            f"eligible at capture: {details['baseline']['eligible_at_capture']}."
+            if details["baseline"]
+            else "not initialized."
+        ),
+        "",
+    ]
+    for key in ("data_manifest_digest", "environment_contract_digest", "evaluator_contract_digest"):
+        lines.extend([key + ": " + literal(details["scope"][key]), ""])
+    candidates = details["candidates"]
+    lines.extend(
+        [
+            "## Candidate changes and lineage",
+            "",
+            f"Included {candidates['included']} of {candidates['total']} candidates. "
+            f"Complete: {candidates['complete']}. Baseline and incumbent are pinned.",
+            "",
+        ]
+    )
+    for candidate in candidates["items"]:
+        lines.extend(
+            [
+                f"Candidate `{candidate['id']}`; source artifact "
+                f"`{candidate['source_artifact']['id']}`; "
+                f"tree `{candidate['source_tree_digest']}`.",
+                "",
+            ]
+        )
+        for change in candidate["changes"]:
+            lines.append(
+                f"Parent {change['parent']['kind']} `{change['parent']['id']}`: "
+                f"{change['included']}/{change['total']} changed paths shown."
+            )
+            lines.append("")
+            for path in change["paths"]:
+                before = path["before"]["digest"] if path["before"] else "absent"
+                after = path["after"]["digest"] if path["after"] else "absent"
+                lines.append(
+                    f"- {literal(path['path'])}: {path['change']}; `{before}` → `{after}`."
+                )
+            lines.append("")
+    trials = details["trials"]
+    lines.extend(
+        [
+            "## Trial outcomes",
+            "",
+            f"Included {trials['included']} of {trials['total']} trials. "
+            f"Complete: {trials['complete']}.",
+            "",
+            "| Trial | Candidate | Seed | Execution | Evaluation | Resources |",
+            "|---|---|---:|---|---|---|",
+        ]
+    )
+    for trial in trials["items"]:
+        lines.append(
+            f"| `{trial['id']}` | `{trial['candidate_id']}` | {trial['seed']} | "
+            f"{trial['execution_outcome']} | {trial['evaluation_status']} | "
+            f"{trial['resource_status']} |"
+        )
+    attempts = details["attempts"]
+    lines.extend(
+        [
+            "",
+            "## Execution evidence",
+            "",
+            f"Included {attempts['included']} of {attempts['total']} attempts. "
+            f"Complete: {attempts['complete']}.",
+            "",
+            "Profiles describe historical enrollment. A full hardware descriptor may be external.",
+            "",
+            "| Attempt | State | Backend | Fingerprint | Exit | Elapsed ms |",
+            "|---|---|---|---|---:|---:|",
+        ]
+    )
+    for attempt in attempts["items"]:
+        result = attempt["result"]
+        lines.append(
+            f"| `{attempt['id']}` | {attempt['state']} | "
+            f"{literal(attempt['profile']['backend'])} | "
+            f"`{attempt['profile']['execution_fingerprint']}` | "
+            f"{result['exit_code'] if result else 'unknown'} | "
+            f"{result['elapsed_ms'] if result else 'unknown'} |"
+        )
+    reservations = details["resource_disposition"]["open_reservations"]
+    lines.extend(
+        [
+            "",
+            "## Unresolved evidence and resources",
+            "",
+            f"Open reservations: {reservations['total']}; "
+            f"{reservations['included']} owners included in JSON. "
+            "Omitted rows do not establish resource closure.",
+            "",
+        ]
+    )
+    for question in details["open_questions"]["items"]:
+        evidence = question["evidence"]
+        lines.append(
+            f"- {question['question']} Read {evidence['kind']} `{evidence['id']}` "
+            f"at captured revision {evidence['revision']}."
+        )
+    if not details["open_questions"]["items"]:
+        lines.append("No unresolved questions were derived from the captured rows.")
+    lines.extend(
+        [
+            "",
+            "These are evidence-navigation hints, not permission to mutate state. "
+            "The JSON snapshot supplies capture bounds and detail queries for each section.",
+            "",
+        ]
+    )
+    return lines
 
 
 def markdown(snapshot: JsonObject) -> str:
@@ -157,6 +297,8 @@ def markdown(snapshot: JsonObject) -> str:
                 "",
             ]
         )
+    if details := snapshot.get("research"):
+        lines.extend(detail_markdown(details))
     return "\n".join(lines)
 
 
@@ -168,6 +310,7 @@ def create_report(
     report_id: str | None = None,
 ) -> JsonObject:
     campaign = CampaignData.model_validate(campaign_row["data"])
+    details = research_details(transaction, campaign_row, campaign, limit=recent_limit)
     counts = transaction.connection.execute(
         "SELECT kind,state,COUNT(*) AS count FROM records WHERE workspace_id=? "
         "AND campaign_id=? GROUP BY kind,state ORDER BY kind,state",
@@ -179,8 +322,11 @@ def create_report(
         (transaction.workspace_id, campaign_row["id"], recent_limit),
     ).fetchall()
     evaluations = []
-    for item in recent:
-        row = transaction.get("evaluation_receipt", item["id"])
+    evaluation_ids = tuple(
+        dict.fromkeys((*details["pinned_evaluation_ids"], *(item["id"] for item in recent)))
+    )
+    for identifier in evaluation_ids:
+        row = transaction.get("evaluation_receipt", identifier)
         evidence = summarize(row)
         authorization = EvaluationAuthorization.model_validate(
             transaction.get("evaluation_request", evidence["data"]["request_id"])["data"]
@@ -202,6 +348,11 @@ def create_report(
             evidence["eligible"] = False
             evidence["ineligibility"] = error.code.value
         evaluations.append(evidence)
+    if details["baseline"] is not None:
+        baseline_evaluation = next(
+            item for item in evaluations if item["id"] == details["baseline"]["evaluation_id"]
+        )
+        details["baseline"]["eligible_at_capture"] = baseline_evaluation["eligible"]
     budget_rows = transaction.connection.execute(
         "SELECT payload FROM budgets WHERE workspace_id=? AND campaign_id=? ORDER BY dimension",
         (transaction.workspace_id, campaign_row["id"]),
@@ -239,6 +390,14 @@ def create_report(
             for account in accounts
         ],
         "recent_evaluations": evaluations,
+        "evaluation_window": {
+            "recent_limit": recent_limit,
+            "pinned_ids": details["pinned_evaluation_ids"],
+            "included": len(evaluations),
+            "complete": len(evaluations)
+            == sum(item["count"] for item in counts if item["kind"] == "evaluation_receipt"),
+        },
+        "research": details,
         "evaluation_claim_support": {
             "qualified_measurement_trust": ["authenticated"],
             "protected": False,
@@ -258,6 +417,11 @@ def create_report(
         snapshot["funding"] = funding
     content: JsonObject = {"snapshot": snapshot, "markdown": markdown(snapshot)}
     content["report_digest"] = record_digest("research.report", content)
+    if len(canonical_bytes(content)) > MAX_REPORT_BYTES:
+        raise ResearchError(
+            ErrorCode.RESOURCE_UNAVAILABLE,
+            "Report exceeds its bounded capture profile; request fewer recent records",
+        )
     row = transaction.insert(
         "report",
         report_id or new_id(),

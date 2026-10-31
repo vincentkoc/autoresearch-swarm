@@ -224,8 +224,22 @@ def test_unknown_execution_blocks_completion_without_refunding_budget(
     accounts = pipeline.client.budget(pipeline.campaign["id"])["accounts"]
     assert next(item for item in accounts if item["dimension"] == "attempts")["uncertain"] == "1"
     assert pipeline.client.list(RecordQuery(kind="report"))["items"] == []
+    unresolved = pipeline.client.command(
+        "report.create",
+        ReportCampaign(campaign_id=pipeline.campaign["id"]),
+        idempotency_key="report-unknown-custody",
+    )["result"]
+    details = unresolved["data"]["snapshot"]["research"]
+    assert details["attempts"]["items"][0]["state"] == "execution_unknown"
+    assert details["attempts"]["items"][0]["result"] is None
+    assert details["resource_disposition"]["open_reservations"]["total"] > 0
+    assert any(
+        question["evidence"]["id"] == attempt["id"]
+        for question in details["open_questions"]["items"]
+    )
     pipeline.worker.journal.request_cancel(attempt["id"], 1)
     assert pipeline.worker.execute(attempt["id"])["state"] == "not_started"
+    assert pipeline.client.get("report", unresolved["id"]) == unresolved
 
 
 def test_completion_freezes_uncommitted_selection(pipeline: Pipeline) -> None:

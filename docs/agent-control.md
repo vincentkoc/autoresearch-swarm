@@ -123,6 +123,32 @@ unqualified. The supported evaluator profile is authenticated. A confirmed
 selection means its declared replication gate passed; it does not upgrade the
 panel's access policy or turn the evaluator into an official project evaluator.
 
+The `research` section captures the declared objective, metric direction, timing,
+mutation boundary and stopping rule in the same transaction as the report. Its
+baseline comes from a committed baseline-initialization decision. The oldest
+candidate or trial is not treated as a baseline. Baseline and incumbent candidate,
+trial and evaluator references remain included outside the recent-history window.
+
+Candidate details compare stored source manifests, including file digests and
+parent identities. They do not read the live checkout. Trial and attempt tables
+retain failure, incomplete evaluation and unknown execution states, native result
+references, historical worker capabilities and phase timings. A capability
+fingerprint does not identify a full GPU/driver descriptor unless that descriptor
+has been recorded separately. Open reservations remain visible even when the
+campaign's scientific work is complete.
+
+Every record page gives `total`, `included`, `complete` and a detail query. Source
+diffs include at most 16 changed paths for each of four immediate parents; omitted
+parents and paths have their own completeness flags. Detail pages share a 512 KiB
+budget. Report content has a 1 MiB ceiling and fails atomically if its required
+context cannot fit. `evaluation_window` distinguishes recent receipts from the
+explicitly pinned selection evidence. Missing rows never imply successful work
+or resource closure.
+
+Open questions are derived from captured unresolved records. Suggested next
+actions navigate that evidence; they neither grant mutation authority nor execute
+search, evaluation, promotion or worker reconciliation.
+
 ## Durable external proposals
 
 A proposal request assigns research work to one principal. It freezes an eligible

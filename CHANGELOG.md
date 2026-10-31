@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Capture research scope, declared stopping rules, committed baseline evidence, source lineage and file digests, trial outcomes, historical execution profiles and open resource obligations in immutable reports. Pin selection evidence outside recent-history windows, expose truncation explicitly, and reject oversized reports without partial publication.
+
 - Show each reported evaluation's authorized measurement trust, exposure class, evaluator and panel authority. Keep confirmed selection separate from protected or official evaluation, which remain explicitly unqualified in both JSON and Markdown reports.
 
 - Retain the native process handle until scope closure, pipe EOF and leader exit are all observable within the existing cleanup deadline. Preserve UNKNOWN when the exit code remains unavailable instead of treating job-accounting closure as complete process evidence.
