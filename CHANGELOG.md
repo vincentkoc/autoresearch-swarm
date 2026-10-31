@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Build production and qualification bundles separately from the same shared
+  source. Exclude probes, synthetic signing seeds and fixture transports from
+  production, and provide a template with public routes and preview URLs disabled.
+
 - Add a fixed-authority production Worker and a separate named bootstrap RPC
   entrypoint. Verify actual object routing and the complete deployment seal on
   normal opens, preserve revocation, and initialize only empty bootstrap storage.

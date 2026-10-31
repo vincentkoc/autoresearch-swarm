@@ -1,4 +1,5 @@
 .generated/
+.generated-production/
 .venv/
 .venv-workers/
 python_modules/

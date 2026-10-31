@@ -1409,8 +1409,43 @@ it only the research service binding.
 Native SQLite runtime tests cover missing/prepared state, exact manifest sealing,
 offline reopen, retained revocation, fixed object resolution, ineffective fixture
 headers, excluded routes and sanitized recovery responses. The entrypoint still
-needs its production bundle and actual workerd named-RPC qualification. These
-tests do not establish deployed service routing, bucket identity or clock behavior.
+needs actual workerd named-RPC qualification. These tests do not establish deployed
+service routing, bucket identity or clock behavior.
+
+### Building the production entrypoint
+
+From the adapter's separately qualified dependency environment, run
+`npm run build:production`. It writes `.generated-production/`, copies the actual
+shared package and production adapter modules, and bundles the pinned Ed25519
+implementation. It excludes all qualification modules, fixture transport and
+synthetic keys. The existing `npm run build` retains the independent `.generated/`
+qualification target. A build may replace only its own marked output directory;
+linked paths, unrelated directories and the other target's marker refuse.
+
+`wrangler.production.jsonc` is an operator template. `workers_dev` and
+`preview_urls` are disabled and it defines no public routes. Resource names are
+placeholders to be matched to an authorized account and explicit bucket binding.
+There is no manifest or secret default: supply the validated `RESEARCH_MANIFEST`
+and protected `RESEARCH_SECRETS` bindings. Local qualification uses an owned
+secret file, never secret values on command arguments. Preparing this bundle or
+template does not create a resource, install a secret or deploy a service.
+
+The operator's separate service configuration selects the named entrypoint:
+
+```json
+{
+  "services": [{
+    "binding": "RESEARCH_BOOTSTRAP",
+    "service": "research-swarm-authority",
+    "entrypoint": "Bootstrap"
+  }]
+}
+```
+
+No operator HTTP proxy is included in the production bundle. Bootstrap callers
+already need the private service binding and the independent bootstrap credential.
+Deployment admission must verify the real DO name/ID, bucket binding, protected
+secret placement, HTTPS witness and absence of unintended ingress.
 
 ## Native worker calibration
 
