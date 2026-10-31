@@ -133,7 +133,8 @@ class CredentialStore:
     def _digest(token: str) -> str:
         return hashlib.sha256(b"research.credential-v1\x00" + token.encode("utf-8")).hexdigest()
 
-    def resolve(self, token: str) -> Principal:
+    def resolve(self, token: str, *, allow_expiring: bool = True) -> Principal:
+        """Resolve current credentials; runtimes without qualified UTC can refuse expiry."""
         if not token.startswith("rsw_") or len(token) > 256:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid credential")
         row = self.database.store.read(
@@ -145,6 +146,8 @@ class CredentialStore:
         if row is None or row["revoked"]:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid credential")
         if row["expires_at"] is not None:
+            if not allow_expiring:
+                raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid credential")
             try:
                 expires_at = TypeAdapter(Timestamp).validate_python(row["expires_at"])
             except ValueError as error:

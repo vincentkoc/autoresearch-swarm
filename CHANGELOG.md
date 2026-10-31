@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Share command scope/schema validation with adapter preflight, and let runtimes
+  without qualified UTC explicitly refuse expiring credentials before reading
+  time. Preserve native credential expiry and command-dispatch behavior.
+
 - Give worker offer ranking and input metadata their own witnessed query scope
   and time-free authorization preflight. Keep recovery views independent of
   clocks, preserve native locality fallback, and create no read pin or command

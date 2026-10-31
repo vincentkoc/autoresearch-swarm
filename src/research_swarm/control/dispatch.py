@@ -757,9 +757,14 @@ COMMANDS = {
 }
 
 
-def dispatch_command(
-    service: ResearchService, context: CommandContext, operation: str, payload: dict[str, Any]
-) -> JsonObject:
+def validate_command_input(
+    context: CommandContext, operation: str, payload: dict[str, Any]
+) -> tuple[CommandDefinition, VersionedRecord]:
+    """Share scope/schema preflight without executing a command.
+
+    A request model is not necessarily its kernel's legacy canonical payload.
+    Adapters must qualify that encoding separately before preparing a witness.
+    """
     definition = COMMANDS.get(operation)
     if definition is None:
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Unknown research command")
@@ -774,6 +779,13 @@ def dispatch_command(
             "Command input does not match its schema",
             details={"fields": [list(item["loc"]) for item in error.errors(include_input=False)]},
         ) from error
+    return definition, request
+
+
+def dispatch_command(
+    service: ResearchService, context: CommandContext, operation: str, payload: dict[str, Any]
+) -> JsonObject:
+    definition, request = validate_command_input(context, operation, payload)
     response: JsonObject = getattr(service, definition.method)(context, request)
     return response
 

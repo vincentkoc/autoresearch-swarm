@@ -347,6 +347,20 @@ must not be disguised as a native profile to bypass that boundary.
 
 ### Command transaction boundary
 
+Adapter preflight can call `validate_command_input()` to reuse the command
+catalog's scopes and request schemas without executing the command. This is
+validation, not a universal canonical-payload encoder: legacy local worker
+enrollment omits its default clock mode from the kernel payload. A hosted
+operation allowlist must audit its actual kernel encoding before binding replay
+or witnesses, and require the qualified worker mode where applicable.
+
+`CredentialStore.resolve(allow_expiring=False)` provides a conservative profile
+for runtimes without qualified UTC expiry. It checks the current credential and
+revocation state and refuses every expiring credential before consulting time.
+Native resolution retains its existing default expiry behavior. The hosted
+router must explicitly select this stricter mode inside its exclusive gate;
+this helper does not enable a hosted route or claim expiring-token support.
+
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command
