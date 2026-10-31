@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import subprocess
@@ -95,6 +96,86 @@ def test_real_cpu_probe_is_path_free_and_does_not_claim_workload_qualification()
     assert observation.qualification == "environment_probe"
     assert str(Path(sys.executable)) not in observation.model_dump_json()
     assert str(Path.home()) not in observation.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    ("native_machine", "process_machine", "expected"),
+    [(0x8664, 0, "AMD64"), (0x8664, 0x014C, "AMD64"), (0xAA64, 0x8664, "ARM64")],
+)
+def test_windows_probe_observes_native_machine_without_processor_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    native_machine: int,
+    process_machine: int,
+    expected: str,
+) -> None:
+    def query(handle: int, process: Any, native: Any) -> int:
+        assert handle == 1234
+        ctypes.cast(process, ctypes.POINTER(ctypes.c_ushort)).contents.value = process_machine
+        ctypes.cast(native, ctypes.POINTER(ctypes.c_ushort)).contents.value = native_machine
+        return 1
+
+    kernel = SimpleNamespace(GetCurrentProcess=lambda: 1234, IsWow64Process2=query)
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: kernel, raising=False)
+    monkeypatch.setattr(
+        _probe, "sys", SimpleNamespace(platform="win32", implementation=sys.implementation)
+    )
+    monkeypatch.setattr(
+        _probe,
+        "platform",
+        SimpleNamespace(
+            system=lambda: "Windows",
+            release=lambda: "11",
+            machine=lambda: "",
+            python_version=lambda: sys.version.split()[0],
+        ),
+    )
+    monkeypatch.setattr(_probe, "cpu_model", lambda: "Fixture processor")
+    monkeypatch.setattr(_probe, "inventory", lambda: [])
+    for name in ("PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432"):
+        monkeypatch.delenv(name, raising=False)
+    observed = _probe.observe("python-cpu", 0)
+    assert observed["status"] == "available"
+    assert EngineDescriptor.model_validate(observed["descriptor"]).machine == expected
+
+
+@pytest.mark.parametrize("native_machine", [0, 0xFFFF])
+def test_windows_probe_does_not_invent_architecture_after_native_query_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    native_machine: int,
+) -> None:
+    def query(handle: int, process: Any, native: Any) -> int:
+        ctypes.cast(native, ctypes.POINTER(ctypes.c_ushort)).contents.value = native_machine
+        return int(native_machine != 0)
+
+    kernel = SimpleNamespace(GetCurrentProcess=lambda: 1234, IsWow64Process2=query)
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **kw: kernel, raising=False)
+    monkeypatch.setattr(_probe, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(_probe.platform, "machine", lambda: "AMD64")
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
+    with pytest.raises((OSError, ValueError), match="Native machine architecture"):
+        _probe.machine_architecture()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Actual Windows architecture API")
+def test_windows_probe_and_registration_ignore_spoofed_processor_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = probe_engine("python-cpu")
+    assert baseline.status == "available"
+    assert baseline.descriptor is not None
+    assert baseline.descriptor.machine in {"x86", "AMD64", "ARM", "ARM64", "ia64"}
+    for name in ("PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432", "PROCESSOR_IDENTIFIER"):
+        monkeypatch.setenv(name, "synthetic-untrusted-processor")
+    observed = probe_engine("python-cpu")
+    assert observed.descriptor_digest == baseline.descriptor_digest
+    registered = register_environment(
+        tmp_path / "registered" / "environment.json",
+        profile="python-cpu",
+        environment_contracts=(CONTRACT,),
+    )
+    assert registered.descriptor == baseline.descriptor
+    verify_registration(registered)
 
 
 @pytest.mark.parametrize(

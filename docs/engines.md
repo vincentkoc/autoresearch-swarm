@@ -46,6 +46,13 @@ exit, or missing native closure cannot produce an available descriptor. Import
 diagnostics are not returned. Capture files are removed after proven closure.
 No package installation or tensor workload occurs.
 
+On Windows, the probe reads native host architecture through `IsWow64Process2`,
+including when the selected interpreter is emulated. Caller `PROCESSOR_*` values
+remain excluded. An unavailable API or unknown architecture fails the probe;
+it does not invent an architecture or relax descriptor validation. The API
+requires Windows 10 version 1709 / Windows Server 2016 version 1709 or later.
+[Windows architecture API](https://learn.microsoft.com/en-us/windows/win32/api/wow64apiset/nf-wow64apiset-iswow64process2)
+
 Probe custody lives under the machine's private
 `~/.local/state/autoresearch-swarm-engine-probes` directory. `--probe-dir` selects
 an explicit alternative; registrations remember it for verification. The custody

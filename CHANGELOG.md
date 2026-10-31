@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fix isolated Windows engine probes on Python 3.11 by querying native host
+  architecture instead of relying on stripped processor environment variables.
+  Preserve native architecture under emulation, environment isolation and strict
+  descriptor validation. Add a focused Python 3.11–3.13 Windows qualification path
+  for registration and registered worker execution.
+
 - Add explicit recovery for an errored Cloudflare Workflow through the private
   adapter API and typed Python bridge. Preserve failed history, atomically reserve
   one successor and recovery receipt, rediscover saved research work, and replay

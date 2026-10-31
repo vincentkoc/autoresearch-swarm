@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: Native matrix, isolated restart diagnosis or clock witnesses
+        description: Native ownership, restart diagnosis, clock witnesses or engine registration
         type: choice
         default: native
-        options: [native, recovery, witness]
+        options: [native, recovery, witness, engines]
 
 permissions:
   contents: read
@@ -18,10 +18,14 @@ concurrency:
 
 jobs:
   native:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ${{ fromJSON(inputs.suite == 'engines' && '["3.11","3.12","3.13"]' || '["3.12"]') }}
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ inputs.suite == 'engines' && 20 || 15 }}
     env:
-      UV_PYTHON: "3.12"
+      UV_PYTHON: ${{ matrix.python }}
       RESEARCH_REQUIRE_NODE: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -38,12 +42,22 @@ jobs:
           Write-Output "Qualified revision: $actual"
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - run: uv sync --locked --group dev --python 3.12
+      - run: uv sync --locked --group dev --python ${{ matrix.python }}
+      - name: Engine probing and registered execution
+        if: inputs.suite == 'engines'
+        run: >-
+          uv run --no-sync pytest -q --tb=short --durations=10
+          tests/test_engines.py
+          tests/test_registered_execution.py
+          tests/test_portfolio_native.py
+          tests/test_upstream_adoption.py::test_context_and_checkpoint_reject_false_comparability
+          tests/test_remote_replacement.py::test_registered_replacement_preserves_environment_without_launching_a_probe
+          tests/test_worker_recovery.py::test_recovery_does_not_require_registered_interpreter_or_source
       - name: Native ownership, recovery and cancellation
         if: inputs.suite == 'native'
         run: >-

@@ -15,6 +15,33 @@ from pathlib import Path
 from typing import Any
 
 
+def machine_architecture() -> str:
+    if sys.platform != "win32":
+        return platform.machine()
+    import ctypes
+
+    # Older Python versions read PROCESSOR_* environment values, which the
+    # isolated probe excludes. Query the native host even under CPU emulation.
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.argtypes = []
+    kernel.GetCurrentProcess.restype = ctypes.c_void_p
+    kernel.IsWow64Process2.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_ushort),
+        ctypes.POINTER(ctypes.c_ushort),
+    ]
+    kernel.IsWow64Process2.restype = ctypes.c_int
+    process, native = ctypes.c_ushort(), ctypes.c_ushort()
+    if not kernel.IsWow64Process2(
+        kernel.GetCurrentProcess(), ctypes.byref(process), ctypes.byref(native)
+    ):
+        raise OSError("Native machine architecture is unavailable")
+    architectures = {0x014C: "x86", 0x01C4: "ARM", 0x0200: "ia64", 0x8664: "AMD64", 0xAA64: "ARM64"}
+    if native.value not in architectures:
+        raise ValueError("Native machine architecture is unsupported")
+    return architectures[native.value]
+
+
 def cpu_model() -> str:
     if sys.platform == "darwin":
         result = subprocess.run(
@@ -98,7 +125,7 @@ def observe(profile: str, index: int) -> dict[str, Any]:
         "device_backend": backend,
         "system": platform.system(),
         "release": platform.release(),
-        "machine": platform.machine(),
+        "machine": machine_architecture(),
         "cpu_model": cpu_model(),
         "cpu_count": os.cpu_count() or 1,
         "python_version": platform.python_version(),
