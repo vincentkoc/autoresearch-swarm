@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Elect one exact hosted restoration destination at the original source through
+  private RPC. Serialize competing requests, sign and persist the winner atomically,
+  and replay its original bytes after lost replies without re-signing or recapture.
+  Election changes only excluded metadata; source evidence and capture bytes stay fixed.
+
 - Register original-authority election state atomically with a new hosted seal.
   Export its immutable marker, exclude its mutable election table, and refuse
   missing or mismatched pairs without repair. Legacy images still import but

@@ -90,7 +90,7 @@ def load_source(raw_json, manifest, secrets, *, credential, crypto):
         ) from None
 
 
-def _request(raw_json, model):
+def parse_checkpoint_request(raw_json, model):
     try:
         if type(raw_json) is not str or len(raw_json) > 16384 or len(raw_json.encode()) > 16384:
             raise ValueError("Invalid request bounds")
@@ -101,7 +101,7 @@ def _request(raw_json, model):
         ) from None
 
 
-class _SourceStore:
+class SourceStore:
     """Bind shared command transactions to one admitted outer source write."""
 
     def __init__(self, store, sql, manifest, token, custody):
@@ -140,7 +140,7 @@ class _SourceStore:
         return self.sql.atomic(lambda sql: self._admit(sql, callback))
 
 
-def _operator(manifest, secrets):
+def source_operator(manifest, secrets):
     item = next(
         item for item in manifest.credentials if item.principal.id == manifest.provisioning_actor_id
     )
@@ -152,7 +152,7 @@ async def seal_source(
 ):
     custody = load_source(source_json, manifest, secrets, credential=credential, crypto=crypto)
     manifest.require_store(identity)
-    request = _request(request_json, SealCheckpoint)
+    request = parse_checkpoint_request(request_json, SealCheckpoint)
     scope = manifest.configuration.authority
     if (request.seal.expected_controller_id, request.seal.expected_control_epoch) != (
         scope.controller_id,
@@ -161,12 +161,12 @@ async def seal_source(
         raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint seal authority differs")
 
     async def seal():
-        principal, token = _operator(manifest, secrets)
+        principal, token = source_operator(manifest, secrets)
         store = open_store()
         manifest.require_store(store.identity)
 
         def commit(sql):
-            bound = _SourceStore(store, sql, manifest, token, custody)
+            bound = SourceStore(store, sql, manifest, token, custody)
             fresh = (
                 sql.execute(
                     "SELECT 1 FROM records WHERE workspace_id=? AND "
@@ -217,10 +217,10 @@ async def capture_source(
 ):
     custody = load_source(source_json, manifest, secrets, credential=credential, crypto=crypto)
     manifest.require_store(identity)
-    request = _request(request_json, CaptureCheckpoint)
+    request = parse_checkpoint_request(request_json, CaptureCheckpoint)
 
     async def capture():
-        _, token = _operator(manifest, secrets)
+        _, token = source_operator(manifest, secrets)
         image = capture_checkpoint(
             open_store(),
             manifest,

@@ -1,5 +1,6 @@
 """Production Worker: one fixed authority, with a separate private bootstrap entrypoint."""
 
+from checkpoint_election import elect_source
 from checkpoint_source import capture_source, seal_source
 from checkpoint_target import import_target
 from checkpoint_wire import require_rpc_string
@@ -106,6 +107,9 @@ class ResearchAuthority(DurableObject):
     async def checkpoint_capture(self, credential, request_json):
         return await source_checkpoint(self.ctx, self.env, credential, request_json, capture_source)
 
+    async def checkpoint_elect(self, credential, request_json):
+        return await source_checkpoint(self.ctx, self.env, credential, request_json, elect_source)
+
     async def fetch(self, request):
         mode = "query"
         try:
@@ -186,6 +190,20 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def checkpoint_elect(self, credential, request_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_elect(
+                credential, request_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def checkpoint_import(self, credential, bundle_json):
         try:

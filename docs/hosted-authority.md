@@ -1747,8 +1747,8 @@ before parsing. The initial source profile permits 4 MiB of encoded chunks, 4,09
 rows, 128 KiB chunks, a 64 KiB conservative row bound, 1,024 chunks and a 128 KiB
 manifest. It reads at most eight rows per query. These source limits are narrower
 than the wire format. Final canonical row/chunk/image checks retain every byte cap.
-They bound capture allocations, not total runtime RSS; workerd still needs
-qualification of the complete source path.
+They bound capture allocations, not total runtime RSS. The complete source RPC
+passed before the subsequent election-anchor extension described below.
 
 Explicit columns and binary primary-key pagination preserve raw TEXT/BLOB values.
 Chunk boundaries depend on encoded rows, not page size. No cursor survives the
@@ -1768,8 +1768,10 @@ binary cells. The shared helper passed in the
 The subsequent [full source-RPC probe](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41216865957)
 exposed a sixfold TEXT estimate rejecting ordinary saved reports. A native SDK
 regression now preserves both reports through seal/capture; the updated workerd
-probe also carries large ASCII and every JSON control character. Its receipt is
-pending.
+probe also carries large ASCII and every JSON control character. The
+[corrected run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41218485151)
+passed 20 workerd tests in 469.14 seconds at
+`8342b6829b9bcd4c2979befddd43a53351bcc83e`. That revision predates election anchors.
 
 `checkpoints.cut.inspect_sealed_cut()` provides read-only relational inspection
 through the shared SQL port. It checks the sole workspace, authority and seal,
@@ -1793,8 +1795,8 @@ bytes; the importer remains responsible for signature, identity and SQL validati
 Cloudflare documents a 32 MiB serialized RPC limit and structured-cloneable values
 for Python/JavaScript service calls. This profile uses a string to avoid transferring
 Python models, tuples or proxies. The maximum source byte profile fits below the
-6 MiB cap in native tests. This establishes encoding feasibility; near-limit memory
-and the full private RPC path still need actual workerd qualification.
+6 MiB cap in native tests. The full private RPC passed an exactly 6 MiB padded
+string in the corrected workerd run; maximum decoded-image memory remains unqualified.
 Sources: [RPC limits](https://developers.cloudflare.com/workers/runtime-apis/rpc/#limitations),
 [Python RPC](https://developers.cloudflare.com/changelog/post/2026-08-03-python-javascript-rpc/).
 
@@ -1809,8 +1811,8 @@ unchanged. This source API has native transaction tests. The actual production
 workerd probe now exercises the private RPC with existing project/artifact/report
 evidence, validates signed bytes, loses replies and restarts before exact replay
 during a witness outage. It checks default/public denial and no additional witness
-calls. Its runtime receipt remains pending; full decoded-image memory and deployed
-service qualification are separate from that functional probe.
+calls. The corrected workerd run above passed that source RPC and restart flow.
+Full decoded-image memory and deployed service qualification remain separate.
 
 The optional protected `RESEARCH_CHECKPOINT_SOURCE` binding contains:
 
@@ -1956,10 +1958,11 @@ passed 19 actual workerd tests in 484.51 seconds, including the shared capture a
 fingerprint probe. That runtime receipt predates source and target RPC and does
 not qualify actual workerd import.
 
-The import port has native SQLite transaction qualification only. Tests cover rollback
+The import port's native SQLite tests cover rollback
 at all three mutation phases, independent-connection races, invalid signed cuts,
 changes in all twelve tables, changed bootstrap pairings, exact worker archival
-and source preservation. Actual workerd import qualification is still required.
+and source preservation. Actual workerd import subsequently passed at `8342b68`
+through the fixed source/A/B production RPC probe described below.
 No target R2 bytes are fetched or declared available.
 Imported artifact rows are historical catalog evidence; byte restoration and
 verification must precede activation. The target has no completed provisioning or
@@ -2014,7 +2017,8 @@ and requires successful import. This exercises the inclusive RPC string limit
 through Bootstrap and the DO while preserving every signed envelope/chunk byte.
 Public HTTP carries only small fixture selectors and credentials. The probe also
 checks public/default denial, refusal of ordinary provisioning/router access,
-unchanged source capture, and no witness calls. Its runtime receipt remains pending.
+unchanged source capture, and no witness calls. The corrected workerd run at
+`8342b68` passed this complete probe before the election-anchor extension.
 This transport-size probe does not establish maximum decoded-image memory usage,
 artifact transfer, source election or activation.
 
@@ -2034,8 +2038,8 @@ from the incoming request. It checks cross-layer
 restore, image, workspace, controller and next-epoch identity. A stripped native
 claim, changed physical destination, shared custody key or exhausted epoch refuses.
 These bounded records and pure verifiers supply no storage, election or activation
-authority. Atomic source election, completed-target request generation and hosted
-recovery admission remain separate implementation work.
+authority. Completed-target request generation and hosted recovery admission remain
+separate implementation work.
 
 A fresh source seal also registers `LogicalElectionAnchor` in the portable record
 ledger and its matching row in the original-only `hosted_checkpoint_elections`
@@ -2053,10 +2057,25 @@ images without markers still verify, capture and import; replaying their old sea
 through the new source RPC refuses instead of initializing unused election state.
 No automatic legacy upgrade is defined.
 
-The next transition may only change original-only metadata from `open` to
-`elected`, retaining the exact signed election. It must not append a portable event
-or command acknowledgment after capture, because that would alter the selected
-image. Whole-store rollback/PITR of the original authority is not qualified:
+Private `Bootstrap.checkpoint_elect` and its fixed DO method implement the
+`open → elected` transition through one serialized source write. Current bootstrap,
+root operator, physical deployment, provider history, schema and anchor admission
+precede both new elections and cached replies. A new request must pass both target
+signatures and match the complete freshly captured sealed image. Source and target
+locations/deployments must differ, and this initial profile retains one operator.
+The source signs a native claim plus its hosted envelope and persists them in the
+same transaction. No witness or R2 call runs.
+
+On replay, the operation verifies the persisted proof and incoming target proof
+before comparing the complete signed requests. A competing valid destination
+refuses; an exact retry returns the canonical persisted bytes without a new claim
+ID, timestamp, signature or capture. Neither transition appends a portable event
+or command acknowledgment, so the selected image stays unchanged. Native tests
+exercise independent-connection races, lost commit replies, current-credential
+revocation, missing anchors, signature corruption and source-cut drift. The private
+RPC still needs workerd qualification. Election alone cannot activate a target.
+
+Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent
 non-rollbackable authority before this protocol could safely elect again.
 

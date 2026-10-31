@@ -50,6 +50,7 @@ PRODUCTION = (
     "delivery_registry.py",
     "checkpoint_schema.py",
     "checkpoint_anchor.py",
+    "checkpoint_election.py",
     "checkpoint_capture.py",
     "checkpoint_import.py",
     "checkpoint_wire.py",

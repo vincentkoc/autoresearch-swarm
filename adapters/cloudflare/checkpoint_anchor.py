@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from research_swarm.domain.checkpoint_elections import LogicalElectionAnchor, SignedLogicalElection
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.state.database import Transaction
+from research_swarm.state.database import Transaction, encode
 from research_swarm.state.schema_contracts import unsupported
 
 TABLE = "hosted_checkpoint_elections"
@@ -108,7 +108,8 @@ def require_anchor_in(sql, manifest, identity, pin, *, required=False):
         request = election.election.signed_request.request
         claim = election.election.signed_claim.claim
         if (
-            request.source_authority != expected.source_authority
+            row["election_payload"] != encode(election.model_dump(mode="json"))
+            or request.source_authority != expected.source_authority
             or request.source_deployment_digest != expected.source_deployment_digest
             or request.signed_request.request.source_custody_id != pin.custody_id
             or claim.source_public_key != pin.public_key
