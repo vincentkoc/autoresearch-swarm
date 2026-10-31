@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -32,10 +32,10 @@ from research_swarm.workers.remote_enrollment import (
     describe_worker,
     provision_worker,
 )
+from tests.cli_process import OwnedCliProcess, acknowledge_driver, require_ancestry, require_driver
 from tests.test_http_delivery import serving
 from tests.test_local_pipeline import Pipeline
 from tests.test_local_pipeline import pipeline as pipeline
-from tests.worker_driver import acknowledge_driver, require_ancestry, require_driver
 
 
 @contextmanager
@@ -510,17 +510,23 @@ def controller_process(
     pipeline: Pipeline,
     *,
     port: int | None = None,
-    processes: list[subprocess.Popen[bytes]] | None = None,
+    processes: list[OwnedCliProcess] | None = None,
 ) -> Iterator[str]:
     if port is None:
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             port = listener.getsockname()[1]
+    nonce = new_id()
+    witness = pipeline.runtime.root.parent / f"controller-{nonce}.json"
     process = subprocess.Popen(
         [
             sys.executable,
             "-m",
-            "research_swarm.cli",
+            "tests.cli_process",
+            str(witness),
+            nonce,
+            "",
+            "serve",
             "--state-dir",
             str(pipeline.runtime.root),
             "serve",
@@ -531,29 +537,74 @@ def controller_process(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
-    if processes is not None:
-        processes.append(process)
+    launcher = psutil.Process(process.pid)
+    launcher.create_time()
+    owned = None
     try:
         until = time.monotonic() + 10
         while True:
             if process.poll() is not None:
                 _, stderr = process.communicate(timeout=1)
-                pytest.fail(stderr.decode("utf-8", errors="replace"))
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
-                    break
-            except OSError:
-                assert time.monotonic() < until, "Owned HTTP controller did not start"
-                time.sleep(0.025)
+                details = stderr.decode("utf-8", errors="replace").replace(
+                    str(Path.home()), "<home>"
+                )
+                pytest.fail("Owned HTTP controller exited before readiness: " + details[-4096:])
+            if owned is None and witness.exists():
+                owned = OwnedCliProcess(process, acknowledge_driver(launcher, witness, nonce))
+            listening = witness.with_suffix(".listening")
+            if owned is not None and listening.exists():
+                assert json.loads(listening.read_text(encoding="utf-8")) == {
+                    "nonce": nonce,
+                    "pid": owned.process.pid,
+                    "created_at_hex": owned.process.create_time().hex(),
+                    "host": "127.0.0.1",
+                    "port": port,
+                }
+                require_ancestry(owned.process, launcher)
+                break
+            assert time.monotonic() < until, "Owned HTTP controller did not start"
+            time.sleep(0.025)
+        if processes is not None:
+            processes.append(owned)
         yield f"http://127.0.0.1:{port}"
-    finally:
-        if process.poll() is None:
-            process.terminate()
+    except BaseException as error:
         try:
-            process.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
+            with witness.with_suffix(".trace").open("rb") as stream:
+                stream.seek(0, 2)
+                stream.seek(max(0, stream.tell() - 8192))
+                trace = stream.read(8192).decode("utf-8", errors="replace")
+            for path in (str(Path.home()), str(Path(__file__).resolve().parents[1])):
+                trace = trace.replace(path, "<redacted>")
+            if trace:
+                error.add_note("Owned controller stack: " + trace)
+        except Exception:
+            pass
+        raise
+    finally:
+        if owned is None and witness.exists() and launcher.is_running():
+            with suppress(psutil.NoSuchProcess):
+                owned = OwnedCliProcess(process, require_driver(launcher, witness, nonce))
+        if owned is not None:
+            owned.close()
+        else:
+            if process.poll() is None:
+                process.kill()
             process.communicate(timeout=5)
+
+
+def test_controller_readiness_rejects_an_existing_unrelated_listener(pipeline: Pipeline) -> None:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        address = listener.getsockname()
+        with (
+            pytest.raises(
+                pytest.fail.Exception, match="Owned HTTP controller exited before readiness"
+            ),
+            controller_process(pipeline, port=address[1]),
+        ):
+            pytest.fail("An unrelated listener was mistaken for the new controller")
+        assert listener.getsockname() == address
 
 
 @pytest.mark.parametrize(
@@ -590,7 +641,7 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             return [
                 sys.executable,
                 "-m",
-                "tests.worker_driver",
+                "tests.cli_process",
                 str(witness),
                 nonce,
                 str(lock_path) if lock_path else "",

@@ -55,6 +55,8 @@ jobs:
           tests/test_temporal_history.py
           tests/test_recovery_activation.py::test_real_process_exit_at_activation_has_one_recoverable_commit
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
+          tests/test_scoped_driver.py::test_controller_readiness_rejects_an_existing_unrelated_listener
+          tests/test_worker_recovery.py::test_controller_process_restart_preserves_live_native_scope_and_original_settlement
           tests/test_portfolio_native.py
           tests/test_r2_runtime.py
           tests/test_worker_recovery.py::test_original_driver_and_attempt_locks_are_respected
@@ -64,3 +66,5 @@ jobs:
         run: >-
           uv run --no-sync pytest -q --tb=short
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
+          tests/test_scoped_driver.py::test_controller_readiness_rejects_an_existing_unrelated_listener
+          tests/test_worker_recovery.py::test_controller_process_restart_preserves_live_native_scope_and_original_settlement

@@ -1,15 +1,47 @@
-"""Identify the actual fixture driver when a venv executable is a redirector."""
+"""Identify actual fixture CLI processes behind venv redirectors."""
 
 from __future__ import annotations
 
 import faulthandler
 import json
 import os
+import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
+
+
+@dataclass
+class OwnedCliProcess:
+    launcher: subprocess.Popen[bytes]
+    process: psutil.Process
+
+    def kill_and_wait(self) -> None:
+        self.close(force=True)
+
+    def close(self, *, force: bool = False) -> None:
+        try:
+            if self.process.is_running():
+                if force:
+                    self.process.kill()
+                else:
+                    self.process.terminate()
+                try:
+                    self.process.wait(timeout=5 if force else 10)
+                except psutil.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=5)
+        except psutil.NoSuchProcess:
+            pass
+        assert not self.process.is_running(), "Owned interpreter is still alive"
+        try:
+            self.launcher.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.launcher.kill()
+            self.launcher.communicate(timeout=5)
 
 
 def require_ancestry(process: psutil.Process, owner: psutil.Process) -> None:
@@ -64,7 +96,9 @@ def main() -> int:
         "created_at_hex": psutil.Process().create_time().hex(),
     }
     publish(witness, identity)
-    if sys.argv[4] == "ack":
+    mode = sys.argv[4]
+    assert mode in {"", "ack", "serve"}
+    if mode in {"ack", "serve"}:
         until = time.monotonic() + 10
         while True:
             if time.monotonic() >= until:
@@ -78,6 +112,32 @@ def main() -> int:
                     raise ValueError("Fixture driver acknowledgment has another identity")
                 break
     trace = None
+    if mode == "serve":
+        import uvicorn
+
+        original_startup = uvicorn.Server.startup
+        trace = witness.with_suffix(".trace").open("w", encoding="utf-8")
+
+        async def startup(server, sockets=None):
+            await original_startup(server, sockets=sockets)
+            if server.started:
+                faulthandler.dump_traceback_later(8, repeat=True, file=trace)
+                addresses = [
+                    listener.getsockname()
+                    for instance in server.servers
+                    for listener in instance.sockets
+                ]
+                assert len(addresses) == 1 and addresses[0][0] == "127.0.0.1"
+                publish(
+                    witness.with_suffix(".listening"),
+                    {
+                        **identity,
+                        "host": addresses[0][0],
+                        "port": addresses[0][1],
+                    },
+                )
+
+        uvicorn.Server.startup = startup
     if lock_path:
         expected = Path(lock_path).resolve()
         trace = witness.with_suffix(".trace").open("w", encoding="utf-8")

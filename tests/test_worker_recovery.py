@@ -458,8 +458,8 @@ def test_controller_process_restart_preserves_live_native_scope_and_original_set
             assert native.resources.availability() == {"cpu": 0}
             budget = pipeline.client.budget(pipeline.campaign["id"])
             binding = connected.bundle.worker.binding
-            controllers[0].kill()  # Exact controller process created by this fixture.
-            controllers[0].communicate(timeout=5)
+            controllers[0].kill_and_wait()
+            assert not controllers[0].process.is_running()
             assert supervised.process.poll() is None
             assert native.journal.get(attempt["id"]) == running
             assert pipeline.client.budget(pipeline.campaign["id"]) == budget
