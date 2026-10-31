@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add an optional synchronous command boundary spanning handler rollback,
+  rejection hooks and acknowledgment. Keep one witnessed instant available to
+  legitimate hooks, persist source-change fences once, and reject boundary
+  attempts to skip, repeat or rewrite the recorded outcome. Native execution
+  retains its default path without a boundary.
+
 - Add one-use witness operation contexts with transaction-bound time, explicit
   execution ownership and synchronous callbacks. Refuse reused responses,
   nested-command timestamp borrowing and use after closure; keep the distinct

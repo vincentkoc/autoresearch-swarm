@@ -167,18 +167,19 @@ def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp
                 "events": 0,
                 "commands": 0,
             }
-            for case in ("sample", "changed-source"):
+            for case in ("sample", "changed-source", "domain-reject"):
                 response = client.post(url + "/witness/" + case)
                 assert response.status_code == 200, response.text[-3000:]
                 witness_results[case] = response.json()
             accepted_witness = witness_results["sample"]
             assert accepted_witness["disposition"] == "accepted"
             assert accepted_witness["provider_state"] == "qualified"
-            assert accepted_witness["result"]["closed"] is True
+            assert accepted_witness["closed"] is True
             assert accepted_witness["result"]["profile"] == "hosted-native-witness-v1"
             assert accepted_witness["counts"] == {
                 "effects": 1,
                 "retirements": 0,
+                "domain_fences": 0,
                 "acknowledgments": 1,
             }
             rejected_witness = witness_results["changed-source"]
@@ -188,6 +189,18 @@ def test_python_do_nested_rollback_synchronous_signing_and_persistent_replay(tmp
             assert rejected_witness["counts"] == {
                 "effects": 0,
                 "retirements": 1,
+                "domain_fences": 0,
+                "acknowledgments": 1,
+            }
+            domain_rejected = witness_results["domain-reject"]
+            assert domain_rejected["disposition"] == "rejected"
+            assert domain_rejected["provider_state"] == "qualified"
+            assert domain_rejected["closed"] is True
+            assert domain_rejected["code"] == "ACCEPTANCE_EXPIRED"
+            assert domain_rejected["counts"] == {
+                "effects": 0,
+                "retirements": 0,
+                "domain_fences": 1,
                 "acknowledgments": 1,
             }
             qualify_shared_signing(client, url)

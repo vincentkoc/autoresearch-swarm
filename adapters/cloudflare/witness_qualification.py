@@ -8,6 +8,7 @@ from ed25519 import NobleEd25519
 
 from research_swarm.control.time_authority import ClockAuthorityScope
 from research_swarm.control.time_witnesses import WitnessSigner
+from research_swarm.control.witness_commands import WitnessCommandBoundary
 from research_swarm.control.witness_time import WitnessAuthorityTimeProvider
 from research_swarm.crypto import public_key
 from research_swarm.domain.canonical import canonical_bytes, record_digest
@@ -21,7 +22,7 @@ from research_swarm.domain.time_witnesses import (
     witness_key_id,
 )
 from research_swarm.state.database import SCHEMA, Database, Transaction
-from research_swarm.state.time_providers import ProviderChanged, TimeProviders
+from research_swarm.state.time_providers import TimeProviders
 
 # Public RFC 8032 fixture only. This endpoint must never be deployed.
 SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
@@ -36,18 +37,20 @@ class BootstrapFailure(Exception):
 
 
 def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
-    if case not in {"sample", "changed-source"}:
+    if case not in {"sample", "changed-source", "domain-reject"}:
         raise ValueError("Unknown witness qualification case")
     store = DurableObjectStore(
         storage, namespace="witness-fixture", object_id=object_id, schema=SCHEMA
     )
-    database = Database.from_store(store)
+    crypto = NobleEd25519(module)
+    registry = TimeProviders(store.identity, crypto_provider=crypto)
+    provider = WitnessAuthorityTimeProvider(store.identity)
+    boundary = WitnessCommandBoundary(registry, provider)
+    database = Database.from_store(store, execution_boundary=boundary)
     workspace, controller = identifier("workspace"), identifier("controller")
     database.bootstrap(workspace, controller)
     principal = Principal(id=identifier("operator"), workspace_id=workspace, scopes={"*"})
     context = CommandContext(principal=principal, idempotency_key=case)
-    crypto = NobleEd25519(module)
-    registry = TimeProviders(database.authority_identity, crypto_provider=crypto)
     authority = WitnessAuthorityScope(
         state_authority_id=record_digest("fixture.state", {"object_id": object_id}),
         activation_id=identifier("activation"),
@@ -65,6 +68,7 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
         policy=ClockPolicy(),
     )
     signer = WitnessSigner(source, SEED, crypto_provider=crypto)
+    scope = ClockAuthorityScope(workspace, controller, 1, authority.assignment_key_id)
 
     def response(request, epoch):
         return canonical_bytes(
@@ -116,14 +120,10 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
 
             snapshot = store.write(initialize)
 
-        provider = WitnessAuthorityTimeProvider(database.authority_identity)
-        with provider.prepare(
-            registry, context, snapshot, "fixture.witness", {"case": case}
-        ) as turn:
+        with boundary.prepare(context, snapshot, "fixture.witness", {"case": case}) as turn:
             turn.complete(
                 response(turn.request, "epoch-2" if case == "changed-source" else "epoch-1")
             )
-            scope = ClockAuthorityScope(workspace, controller, 1, authority.assignment_key_id)
 
             def callback():
                 first = provider.observe(scope)
@@ -132,23 +132,15 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
 
             def command(transaction):
                 transaction.insert("fixture_effect", identifier(case), {}, state="temporary")
-                result = turn.run(
-                    transaction, callback, name="fixture.witness", payload={"case": case}
-                )
-                try:
-                    provider.observe(scope)
-                except ResearchError as error:
-                    assert error.code == ErrorCode.CAPABILITY_UNAVAILABLE
-                else:
-                    raise AssertionError("Witness survived its callback")
-                return {**result, "closed": True}
+                result = callback()
+                if case == "domain-reject":
+                    raise ResearchError(ErrorCode.ACCEPTANCE_EXPIRED, "Synthetic domain rejection")
+                return result
 
             def reject(transaction, error):
-                if not isinstance(error, ProviderChanged):
-                    raise error
-                registry.fence(
-                    transaction, error.evidence, name="fixture.witness", payload={"case": case}
-                )
+                if error.code == ErrorCode.ACCEPTANCE_EXPIRED:
+                    assert provider.observe(scope).milliseconds == 1_793_000_000_000
+                    transaction.insert("fixture_domain_fence", identifier(case), {}, state="fenced")
 
             return database.execute(
                 context, "fixture.witness", {"case": case}, "write", command, on_rejection=reject
@@ -173,6 +165,13 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
             "code": error.code.value,
             "command_id": error.command_id,
         }
+    try:
+        provider.observe(scope)
+    except ResearchError as error:
+        assert error.code == ErrorCode.CAPABILITY_UNAVAILABLE
+    else:
+        raise AssertionError("Witness survived its command")
+    result["closed"] = True
     result["provider_state"] = current().state
     result["counts"] = store.read(
         lambda sql: {
@@ -181,6 +180,9 @@ def exercise(storage, object_id, case, module, *, fail_bootstrap=False):
             ).one()[0],
             "retirements": sql.execute(
                 "SELECT COUNT(*) FROM records WHERE kind='time_source_retirement'"
+            ).one()[0],
+            "domain_fences": sql.execute(
+                "SELECT COUNT(*) FROM records WHERE kind='fixture_domain_fence'"
             ).one()[0],
             "acknowledgments": sql.execute("SELECT COUNT(*) FROM commands").one()[0],
         }

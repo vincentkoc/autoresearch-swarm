@@ -113,6 +113,9 @@ one-use operation context. Public synthetic timestamps exercise accepted
 observations, source-change rollback/fencing, the injected Noble verifier and
 acknowledgment replay after a full process restart. These are runtime contract
 checks, not native-clock, exclusive-ordering or hosted deployment qualification.
+The command fixture also keeps witnessed time available in a legitimate domain
+rejection hook while rolling back its handler effects. Synthetic bootstrap is
+atomic and has an injected failure/retry probe.
 The `Witness runtime qualification` workflow runs this fixture on a clean Linux
 runner and the core witness/recovery tests on Linux, macOS and Windows. It uses
 local workerd only and has no Cloudflare account credentials.

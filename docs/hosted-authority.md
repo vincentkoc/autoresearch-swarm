@@ -344,6 +344,30 @@ profile. Current native workers reject it. Enabling it requires the complete
 exclusive-ordering adapter, source lifecycle and deployment qualification; it
 must not be disguised as a native profile to bypass that boundary.
 
+### Command transaction boundary
+
+`Database` accepts an optional internal `CommandBoundary`; native construction
+leaves it absent. Exact acknowledgment replay, workspace admission and reserved
+command-key checks run before the boundary. It is synchronous and runs inside the command
+marker and outer write transaction.
+
+`WitnessCommandBoundary` wraps the complete decision callback: handler savepoint,
+rejection hooks and acknowledgment persistence. This scope matters because an
+acceptance-expiry hook can need the same witnessed time after the handler rolls
+back. Closing the witness at handler exit would break that legitimate fence.
+
+If provider validation fails before the decision starts, the boundary requests
+one rejection. The kernel composes authenticated source retirement before the
+existing domain rejection hook. A hook, fence, serialization or acknowledgment
+failure aborts the entire outer transaction; it must not become a second rejection
+attempt. The kernel permits exactly one decision or pre-handler rejection and
+requires the returned acknowledgment to match the recorded canonical bytes.
+
+The complete command outcome is recorded before the witness closes. The outer
+SQL commit then follows while the hosting adapter still owns its ordering gate.
+Replays need neither a new witness nor a prepared boundary. Public hosted routing,
+query scopes and artifact preflight remain separate integration requirements.
+
 ## Native worker calibration
 
 The worker measures the entire challenge round trip:

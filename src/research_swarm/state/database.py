@@ -12,6 +12,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import Event
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
+from research_swarm.state.boundaries import CommandBoundary
 from research_swarm.state.events import event_page
 from research_swarm.state.execution import command_execution
 from research_swarm.state.sql import (
@@ -326,19 +327,29 @@ class Transaction:
 class Database:
     """No global Python lock: SQLite arbitrates independent processes."""
 
-    def __init__(self, path: Path, *, busy_timeout_ms: int = 10_000) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        busy_timeout_ms: int = 10_000,
+        execution_boundary: CommandBoundary | None = None,
+    ) -> None:
         from research_swarm.state.sqlite import SQLiteStore
 
         native = SQLiteStore(path, SCHEMA, busy_timeout_ms=busy_timeout_ms)
         self._native_store: SQLiteStore | None = native
         self.store: StateStore = native
+        self._execution_boundary = execution_boundary
 
     @classmethod
-    def from_store(cls, store: StateStore) -> Database:
+    def from_store(
+        cls, store: StateStore, *, execution_boundary: CommandBoundary | None = None
+    ) -> Database:
         """Bind the shared command kernel to an already initialized authority store."""
         instance = cls.__new__(cls)
         instance.store = store
         instance._native_store = None
+        instance._execution_boundary = execution_boundary
         return instance
 
     @property
@@ -452,34 +463,76 @@ class Database:
                 encode(response)
                 return response
 
-            try:
-                response = connection.atomic(operation_effects)
-            except ResearchError as error:
+            def acknowledge(response: JsonObject) -> JsonObject:
+                connection.execute(
+                    "INSERT INTO commands "
+                    "(workspace_id,actor_id,idempotency_key,request_digest,"
+                    "command_id,response,created_at) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (
+                        workspace_id,
+                        context.principal.id,
+                        context.idempotency_key,
+                        request_digest,
+                        context.command_id,
+                        encode(response),
+                        utc_now(),
+                    ),
+                )
+                return response
+
+            def reject(error: ResearchError) -> JsonObject:
+                if self._execution_boundary is not None:
+                    self._execution_boundary.rejected(
+                        Transaction(connection, context),
+                        name=operation,
+                        payload=payload,
+                        error=error,
+                    )
                 if on_rejection is not None:
                     # Failed operation effects have rolled back. A conservative
                     # fence and the rejection acknowledgment share the outer commit.
                     on_rejection(Transaction(connection, context), error)
-                response = {
-                    "command_id": context.command_id,
-                    "disposition": "rejected",
-                    "error": error.as_dict()["error"],
-                }
-            connection.execute(
-                "INSERT INTO commands "
-                "(workspace_id,actor_id,idempotency_key,request_digest,"
-                "command_id,response,created_at) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (
-                    workspace_id,
-                    context.principal.id,
-                    context.idempotency_key,
-                    request_digest,
-                    context.command_id,
-                    encode(response),
-                    utc_now(),
-                ),
+                return acknowledge(
+                    {
+                        "command_id": context.command_id,
+                        "disposition": "rejected",
+                        "error": error.as_dict()["error"],
+                    }
+                )
+
+            def perform() -> JsonObject:
+                try:
+                    response = connection.atomic(operation_effects)
+                except ResearchError as error:
+                    return reject(error)
+                return acknowledge(response)
+
+            if self._execution_boundary is None:
+                return perform()
+
+            invoked = False
+            emitted: str | None = None
+
+            def once(callback: Callable[[], JsonObject]) -> JsonObject:
+                nonlocal invoked, emitted
+                if invoked:
+                    raise RuntimeError("Command boundary invoked more than one outcome")
+                invoked = True
+                response = callback()
+                emitted = encode(response)
+                return response
+
+            result = self._execution_boundary.invoke(
+                Transaction(connection, context),
+                name=operation,
+                payload=payload,
+                perform=lambda: once(perform),
+                reject=lambda error: once(lambda: reject(error)),
             )
-            return response
+            if emitted is None or encode(result) != emitted:
+                raise RuntimeError("Command boundary did not preserve its acknowledged outcome")
+            return result
 
         response = self.store.write(apply)
         return _deliver(dict(response))

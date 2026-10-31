@@ -152,7 +152,7 @@ class Default(WorkerEntrypoint):
             return Response("Not found", status=404)
         if url.path.startswith("/witness/"):
             case = url.path.removeprefix("/witness/")
-            if case not in {"sample", "changed-source"}:
+            if case not in {"sample", "changed-source", "domain-reject"}:
                 return Response("Not found", status=404)
             stub = self.env.QUALIFICATION.getByName("witness-contract-" + case)
             return Response(
