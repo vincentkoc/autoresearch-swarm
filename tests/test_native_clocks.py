@@ -244,6 +244,63 @@ def test_watchdog_closes_a_held_child_while_authorization_is_blocked(
     require_closed(result.closure.identity.pid)
 
 
+@pytest.mark.parametrize("eventually_available", [False, True])
+def test_closed_scope_waits_for_leader_exit_within_original_cleanup_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, eventually_available: bool
+) -> None:
+    from research_swarm.workers import supervision
+
+    prepare = supervision._prepare
+    observations = []
+    exit_reads = []
+    watchdogs = []
+    original_thread = threading.Thread
+
+    class TrackedThread(original_thread):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            if kwargs.get("target").__name__ == "enforce_deadline":
+                watchdogs.append(self)
+
+    def delayed_exit(*args: Any) -> Any:
+        child = prepare(*args)
+        active, original = child.active, child.exit_code
+
+        def delayed_active() -> bool:
+            value = active()
+            if not value:
+                observations.append(value)
+                if not eventually_available or len(observations) <= 3:
+                    return True
+            return value
+
+        def exit_code() -> int | None:
+            joined = bool(watchdogs) and all(not thread.is_alive() for thread in watchdogs)
+            exit_reads.append(joined)
+            assert joined, "Exit collection reaped the leader before joining its watchdog"
+            return original()
+
+        monkeypatch.setattr(child, "active", delayed_active)
+        monkeypatch.setattr(child, "exit_code", exit_code)
+        return child
+
+    monkeypatch.setattr(supervision, "_prepare", delayed_exit)
+    monkeypatch.setattr(supervision.threading, "Thread", TrackedThread)
+    invocation = command(tmp_path, "raise SystemExit('held child must not run')").model_copy(
+        update={"grace_ms": 10, "cleanup_ms": 200}
+    )
+    result = run_native(invocation, tmp_path / "output", on_held=lambda _: False)
+    assert len(observations) > 3
+    assert exit_reads == [True]
+    assert result.reason == "not_started" and result.released_at is None
+    assert result.closure.scope_closed == eventually_available
+    assert (result.exit_code is not None) == eventually_available
+    assert (
+        "Incomplete native exit or output closure" in result.closure.findings
+    ) != eventually_available
+    require_closed(result.closure.identity.pid)
+
+
 def test_missing_clock_leaves_unclaimed_journal_recoverable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

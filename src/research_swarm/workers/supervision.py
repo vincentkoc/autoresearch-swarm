@@ -271,7 +271,7 @@ def run_native(
                 scope="windows_job" if sys.platform == "win32" else "posix_process_group",
             )
 
-        # Retain the native handle until both closure and pipe draining are resolved.
+        # Retain ownership through scope closure, exit readiness and pipe draining.
         cleanup_start = continuous_time()
         cleanup_deadline = cleanup_start + command.cleanup_ms / 1000
         force_at = cleanup_start + command.grace_ms / 1000
@@ -289,10 +289,10 @@ def run_native(
             if not closure.scope_closed:
                 request_stop(force=False)
             while True:
-                child.active()  # Preserve observations of descendants before the leader exits.
+                leader_active = child.active()  # Observe descendants without reaping the leader.
                 progress = drain()
                 closure = child.closure()
-                if closure.scope_closed and stdout.eof and stderr.eof:
+                if closure.scope_closed and stdout.eof and stderr.eof and not leader_active:
                     break
                 now = continuous_time()
                 if not closure.scope_closed and now >= force_at and not forced:

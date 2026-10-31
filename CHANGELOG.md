@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Retain the native process handle until scope closure, pipe EOF and leader exit are all observable within the existing cleanup deadline. Preserve UNKNOWN when the exit code remains unavailable instead of treating job-accounting closure as complete process evidence.
+
 - Create worker lock directories with the same native private-directory contract required during recovery. Preserve refusal of unsafe existing ACLs, and give Windows enrollment/replacement fixtures dedicated private parents instead of generic temporary roots.
 
 - Close both SQLite backup connections before publishing or removing the snapshot, including failure paths. This prevents Windows sharing violations without relying on garbage collection or retrying file deletion.
