@@ -35,6 +35,7 @@ from research_swarm.workers.remote_enrollment import (
 from tests.test_http_delivery import serving
 from tests.test_local_pipeline import Pipeline
 from tests.test_local_pipeline import pipeline as pipeline
+from tests.worker_driver import acknowledge_driver, require_ancestry, require_driver
 
 
 @contextmanager
@@ -563,7 +564,12 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
     pipeline: Pipeline, tmp_path: Path, cancel_offline: bool
 ) -> None:
     root = tmp_path / "remote"
-    marker = tmp_path / "resumed-attempt-acquired.json"
+    first_witness, resumed_witness = (
+        tmp_path / "first-driver.json",
+        tmp_path / "resumed-driver.json",
+    )
+    first_nonce, resumed_nonce = new_id(), new_id()
+    marker = resumed_witness.with_suffix(".acquired")
     with controller_process(pipeline) as url, enrollment(pipeline, root, url) as connected:
         argv = [
             sys.executable,
@@ -577,9 +583,30 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             "--poll-ms",
             "50",
         ]
+
+        def driver_argv(
+            witness: Path, nonce: str, lock_path: Path | None = None, *, wait_for_ack: bool = False
+        ) -> list[str]:
+            return [
+                sys.executable,
+                "-m",
+                "tests.worker_driver",
+                str(witness),
+                nonce,
+                str(lock_path) if lock_path else "",
+                "ack" if wait_for_ack else "",
+                *argv[3:],
+            ]
+
         first = subprocess.Popen(
-            argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            driver_argv(first_witness, first_nonce),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
+        first_launcher = psutil.Process(first.pid)
+        first_launcher.create_time()
+        first_driver = resumed_driver = resumed_launcher = None
         resumed = None
         release = None
         supervisor = None
@@ -744,8 +771,17 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     first, "first driver before payload marker"
                 )
                 time.sleep(0.01)
-            first.kill()  # Only the driver process created by this test.
+            first_driver = require_driver(first_launcher, first_witness, first_nonce)
+            require_ancestry(native_parent, first_driver)
+            # Interrupt the interpreter, not a venv redirector that may outlive it.
+            first_driver.kill()
+            first_driver.wait(timeout=5)
             first.communicate(timeout=5)
+            assert not first_driver.is_running()
+            assert native_parent.is_running() and native_parent.create_time() == supervisor[1]
+            native_root = psutil.Process(running.native.pid)
+            assert native_root.is_running()
+            assert running.native.start_token == f"native-created:{native_root.create_time().hex()}"
             if cancel_offline:
                 attempt = pipeline.client.get("attempt", running.dispatch.attempt_id)
                 requested = pipeline.client.command(
@@ -758,67 +794,13 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 )["result"]
                 assert requested["disposition"] == "requested"
                 assert requested["control"]["data"]["acknowledged_at"] is None
-            resumed_argv = argv
-            if not cancel_offline:
-                # Observe the actual acquisition inside the recovering worker.
-                # A parent probe would compete for this same native file lock.
-                script = """
-import faulthandler
-import json
-import os
-import sys
-from pathlib import Path
-expected = Path(sys.argv[1]).resolve()
-marker = Path(sys.argv[2])
-trace = marker.with_suffix(".trace").open("w", encoding="utf-8")
-faulthandler.dump_traceback_later(8, file=trace)
-
-def phase(name):
-    marker.with_suffix(".phase").write_text(name, encoding="utf-8")
-
-phase("importing-worker")
-from research_swarm.workers import local
-phase("worker-imported")
-
-class ObservedLock(local.FileLock):
-    def acquire(self, *args, **kwargs):
-        observed = Path(self.lock_file).resolve() == expected
-        if observed:
-            phase("requesting-attempt-lock")
-        acquired = super().acquire(*args, **kwargs)
-        try:
-            if observed:
-                phase("acquired-attempt-lock")
-                pending = marker.with_suffix(".pending")
-                pending.write_text(
-                    json.dumps({"attempt_id": expected.stem, "pid": os.getpid()}),
-                    encoding="utf-8",
-                )
-                pending.replace(marker)
-                faulthandler.cancel_dump_traceback_later()
-        except BaseException:
-            self.release()
-            raise
-        return acquired
-
-local.FileLock = ObservedLock
-from research_swarm.cli import main
-phase("entering-worker-cli")
-try:
-    raise SystemExit(main(sys.argv[3:]))
-finally:
-    faulthandler.cancel_dump_traceback_later()
-    trace.close()
-"""
-                lock_path = root / "execution" / "locks" / f"{running.dispatch.attempt_id}.lock"
-                resumed_argv = [
-                    sys.executable,
-                    "-c",
-                    script,
-                    str(lock_path),
-                    str(marker),
-                    *argv[3:],
-                ]
+            lock_path = root / "execution" / "locks" / f"{running.dispatch.attempt_id}.lock"
+            resumed_argv = driver_argv(
+                resumed_witness,
+                resumed_nonce,
+                None if cancel_offline else lock_path,
+                wait_for_ack=True,
+            )
             resumed = subprocess.Popen(
                 resumed_argv,
                 stdin=subprocess.DEVNULL,
@@ -826,8 +808,16 @@ finally:
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            resumed_launcher = psutil.Process(resumed.pid)
+            resumed_launcher.create_time()
+            until = time.monotonic() + 10
+            while not resumed_witness.exists():
+                assert resumed.poll() is None and time.monotonic() < until, setup_diagnostics(
+                    resumed, "resumed driver before identity"
+                )
+                time.sleep(0.01)
+            resumed_driver = acknowledge_driver(resumed_launcher, resumed_witness, resumed_nonce)
             if not cancel_offline:
-                until = time.monotonic() + 10
                 while True:
                     assert resumed.poll() is None and time.monotonic() < until, setup_diagnostics(
                         resumed, "resumed driver before attempt lock"
@@ -839,14 +829,16 @@ finally:
                     else:
                         assert acquired == {
                             "attempt_id": running.dispatch.attempt_id,
-                            "pid": resumed.pid,
+                            "pid": resumed_driver.pid,
+                            "created_at_hex": resumed_driver.create_time().hex(),
+                            "nonce": resumed_nonce,
                         }
                         break
                 assert journal.get(running.dispatch.attempt_id).state == JournalState.RUNNING
                 release.touch()
             finish_by = time.monotonic() + 20
             if cancel_offline:
-                apply_by = time.monotonic() + 10
+                apply_by = until
                 while not journal.get(running.dispatch.attempt_id).cancel_requested:
                     if resumed.poll() is not None:
                         break
@@ -889,10 +881,25 @@ finally:
         finally:
             if release is not None:
                 release.touch()
-            if resumed is not None:
-                if resumed.poll() is None:
-                    resumed.kill()
-                resumed.communicate(timeout=5)
-            if first.poll() is None:
-                first.kill()
-            first.communicate(timeout=5)
+            for process, launcher, driver, witness, nonce in (
+                (resumed, resumed_launcher, resumed_driver, resumed_witness, resumed_nonce),
+                (first, first_launcher, first_driver, first_witness, first_nonce),
+            ):
+                if process is None:
+                    continue
+                try:
+                    if (
+                        driver is None
+                        and witness.exists()
+                        and launcher is not None
+                        and launcher.is_running()
+                    ):
+                        driver = require_driver(launcher, witness, nonce)
+                    if driver is not None and driver.is_running():
+                        driver.kill()
+                        driver.wait(timeout=5)
+                except psutil.NoSuchProcess:
+                    pass
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=5)
