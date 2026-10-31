@@ -3,3 +3,5 @@
 .venv/
 .venv-workers/
 python_modules/
+.dev.vars
+.dev.vars.*

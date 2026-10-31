@@ -31,11 +31,14 @@ pytestmark = pytest.mark.skipif(
 ROOT = Path(__file__).resolve().parents[1] / "adapters/cloudflare"
 
 
-def build_current_sources():
-    for command in (
+def build_current_sources(*, production=False):
+    commands = [
         ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
         ["npm", "run", "build"],
-    ):
+    ]
+    if production:
+        commands.append(["npm", "run", "build:production"])
+    for command in commands:
         result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=120)
         assert result.returncode == 0, (result.stdout + result.stderr)[-4000:]
 
@@ -71,23 +74,30 @@ def server(
     *,
     sequence: int,
     variables: dict[str, str] | None = None,
-    config: str = "wrangler.hybrid.jsonc",
+    config: str | None = None,
     listen_port: int | None = None,
+    extra_configs: tuple[Path, ...] = (),
+    child_environment: dict[str, str] | None = None,
+    diagnostic_secrets: tuple[str, ...] = (),
 ):
     if variables is None:
         executable = ROOT / ".venv/bin/uv"
         assert executable.is_file(), "Prepare the isolated Cloudflare tool environment first"
         assert (ROOT / ".generated/crypto.mjs").is_file(), "Run npm run build first"
         command = [str(executable), "run", "--frozen", "pywrangler", "dev"]
+        if config is not None:
+            command.extend(["--config", config])
     else:
         command = [
             str(ROOT / "node_modules/.bin/wrangler"),
             "dev",
             "--config",
-            config,
+            config or "wrangler.hybrid.jsonc",
         ]
         for name, value in variables.items():
             command.extend(["--var", f"{name}:{value}"])
+    for extra in extra_configs:
+        command.extend(["--config", str(extra)])
     selected_port = port() if listen_port is None else listen_port
     url = f"http://127.0.0.1:{selected_port}"
     log = tmp_path / f"local-workerd-{sequence}.log"
@@ -98,6 +108,9 @@ def server(
         for name, value in (variables or {}).items():
             if "TOKEN" in name:
                 text = text.replace(value, "<fixture-token>")
+        for secret in diagnostic_secrets:
+            if secret:
+                text = text.replace(secret, "<fixture-secret>")
         return text
 
     with log.open("wb") as output:
@@ -123,6 +136,7 @@ def server(
             start_new_session=True,
             env={
                 **os.environ,
+                **(child_environment or {}),
                 "WRANGLER_SEND_METRICS": "false",
                 "CI": "true",
                 "WRANGLER_LOG_PATH": str(tmp_path / f"wrangler-{sequence}.log"),

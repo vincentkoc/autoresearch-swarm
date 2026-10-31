@@ -1447,6 +1447,26 @@ already need the private service binding and the independent bootstrap credentia
 Deployment admission must verify the real DO name/ID, bucket binding, protected
 secret placement, HTTPS witness and absence of unintended ingress.
 
+`test_cloudflare_production.py` adds an opt-in local workerd probe of this exact
+production bundle. A separate loopback-only JavaScript operator fixture discovers
+the namespace-derived object ID without invoking a DO method, forwards ordinary
+HTTP through a default service binding, and invokes the named bootstrap binding.
+That operator fixture is excluded from production. The test's auxiliary Python
+configuration has its own private `.dev.vars` file and a link to the already
+qualified adapter's frozen `python_modules`; it never installs through that link.
+The operator's config directory has none of those secret bindings.
+
+An actual native witness serves HTTPS with a task-owned certificate. The launcher
+adds that trust anchor through `NODE_EXTRA_CA_CERTS`; neither certificate checking
+nor the production HTTPS requirement is disabled. The probe covers failed bootstrap
+authentication, default-entrypoint RPC refusal, missing/prepared state, source
+outage during provisioning, lost completed receipts, unchanged SDK source upload
+and queued campaign admission through R2, one report effect, offline exact replay,
+process restart and a coherently changed but physically wrong object identity.
+Secret bundles and individual tokens are removed from failure diagnostics.
+Adding the probe is implementation evidence; its actual CI result must be recorded
+before claiming runtime qualification. It does not deploy any resources.
+
 ## Native worker calibration
 
 The worker measures the entire challenge round trip:

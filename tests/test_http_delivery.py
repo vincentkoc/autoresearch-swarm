@@ -239,7 +239,8 @@ def test_unsafe_controller_url_is_rejected_before_constructing_http(
         HTTPTransport(url, "synthetic-token")
 
 
-def test_tls_trust_and_hostname_verification_are_required(tmp_path: Path) -> None:
+def tls_certificate(tmp_path: Path) -> tuple[Path, Path]:
+    """One task-owned trust anchor for actual local TLS, without disabling verification."""
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "Synthetic test server")])
     certificate = (
@@ -267,6 +268,11 @@ def test_tls_trust_and_hostname_verification_are_required(tmp_path: Path) -> Non
             serialization.NoEncryption(),
         ),
     )
+    return cert_path, key_path
+
+
+def test_tls_trust_and_hostname_verification_are_required(tmp_path: Path) -> None:
+    cert_path, key_path = tls_certificate(tmp_path)
     trusted = ssl.create_default_context(cafile=str(cert_path))
 
     async def app(scope: Scope, receive: Receive, send: Send) -> None:

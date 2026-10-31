@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add local workerd qualification for the production entrypoint using a separate
+  operator service binding, task-owned secret inputs and a verified HTTPS native
+  witness. Exercise interrupted/private bootstrap, lost receipts, R2-backed
+  research admission, offline replay and fixed-authority refusal across restarts.
+
 - Build production and qualification bundles separately from the same shared
   source. Exclude probes, synthetic signing seeds and fixture transports from
   production, and provide a template with public routes and preview URLs disabled.

@@ -1,0 +1,25 @@
+{
+  "name": "research-swarm-production-operator-fixture",
+  "main": "production_operator_fixture.mjs",
+  "workers_dev": false,
+  "preview_urls": false,
+  "compatibility_date": "2026-10-30",
+  "services": [
+    { "binding": "RESEARCH_API", "service": "research-swarm-authority" },
+    {
+      "binding": "RESEARCH_BOOTSTRAP",
+      "service": "research-swarm-authority",
+      "entrypoint": "Bootstrap",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RESEARCH_AUTHORITY",
+        "class_name": "ResearchAuthority",
+        "script_name": "research-swarm-authority",
+      },
+    ],
+  },
+  "dev": { "ip": "127.0.0.1" },
+}
