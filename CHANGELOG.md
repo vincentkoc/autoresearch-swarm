@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Preserve running main-branch CI when newer commits arrive, while keeping the
+  latest pending run and replacing superseded pull-request checks.
+
 - Give signed clock queries their own checked execution scope and time-free
   authorization preflight. Preserve native read transactions; configured witness
   boundaries commit conservative query fences before returning refusal, with no
