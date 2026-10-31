@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Size checkpoint TEXT by its escaped JSON bytes after a raw-byte preflight.
+  Ordinary research reports no longer fail a sixfold worst-case estimate; row,
+  image and RPC caps remain unchanged, including control-character expansion.
+
 - Add a three-Worker qualification probe for source capture and distinct inactive
   targets, wrong-target intent refusal, lost import replies and runtime restart.
   Exercise exact/over-limit RPC strings with real signed bytes and fixed private

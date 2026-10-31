@@ -98,7 +98,12 @@ def roundtrip(store):
 
 def checkpoint_capture(store):
     workspace, snapshot, actor, backup = (new_id() for _ in range(4))
-    raw = ' {"x":1,"x":2,"text":"e\u0301"}\n'
+    raw = (
+        ' {"x":1,"x":2,"text":"e\u0301"}\n'
+        + "".join(map(chr, range(32)))
+        + '\\"\\u0000\0suffix中\U00010000\u2028\u2029'
+        + "x" * 12000
+    )
 
     def seed(sql):
         sql.execute("INSERT INTO workspaces(id,controller_id) VALUES (?,?)", (workspace, new_id()))

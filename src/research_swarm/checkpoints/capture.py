@@ -59,7 +59,9 @@ def preflight_rows(sql: SqlSession, limits: CaptureLimits) -> tuple[TableInvento
         total_rows += count
         if total_rows > limits.rows:
             raise overflow()
-        predicates, sizes = [], []
+        predicates = []
+        raw_sizes: list[str] = []
+        escaped_sizes: list[str] = []
         for column in table.columns:
             field = quoted(column.name)
             allowed = f"typeof({field})='{column.kind}'"
@@ -68,27 +70,34 @@ def preflight_rows(sql: SqlSession, limits: CaptureLimits) -> tuple[TableInvento
             if column.nullable:
                 allowed = f"({allowed}) OR {field} IS NULL"
             predicates.append(f"NOT ({allowed})")
-            size = (
-                f"6*length(CAST({field} AS BLOB))+2"
+            raw_size = (
+                f"length(CAST({field} AS BLOB))+2"
                 if column.kind == "text"
                 else f"4*((length({field})+2)/3)+18"
                 if column.kind == "blob"
                 else "20"
             )
-            sizes.append(f"CASE WHEN {field} IS NULL THEN 4 ELSE {size} END")
+            escaped_size = (
+                f"length(CAST(json_quote({field}) AS BLOB))" if column.kind == "text" else raw_size
+            )
+            for sizes, size in ((raw_sizes, raw_size), (escaped_sizes, escaped_size)):
+                sizes.append(f"CASE WHEN {field} IS NULL THEN 4 ELSE {size} END")
         if sql.execute(f"SELECT 1 FROM {name} WHERE {' OR '.join(predicates)} LIMIT 1").fetchone():
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Logical SQL cell type differs")
-        # Worst-case JSON escaping is conservative, including embedded NUL in TEXT.
-        size_expression = "+".join([str(len(table.columns) + 1), *sizes])
-        sizes_row = sql.execute(
-            f"SELECT COALESCE(SUM(n),0),COALESCE(MAX(n),0) "
-            f"FROM (SELECT ({size_expression}) n FROM {name})"
-        ).one()
+        # Bound raw bytes before SQLite allocates escaped TEXT. Stored columns
+        # have no JSON subtype: json_quote measures the string, including NUL,
+        # without interpreting embedded JSON or returning payloads to Python.
+        for sizes in (raw_sizes, escaped_sizes):
+            size_expression = "+".join([str(len(table.columns) + 1), *sizes])
+            sizes_row = sql.execute(
+                f"SELECT COALESCE(SUM(n),0),COALESCE(MAX(n),0) "
+                f"FROM (SELECT ({size_expression}) n FROM {name})"
+            ).one()
+            if sizes_row[1] > min(limits.row_bytes, limits.chunk_bytes - 512):
+                raise overflow()
+            if total_bytes + sizes_row[0] > limits.image_bytes:
+                raise overflow()
         total_bytes += sizes_row[0]
-        if sizes_row[1] > min(limits.row_bytes, limits.chunk_bytes - 512):
-            raise overflow()
-        if total_bytes > limits.image_bytes:
-            raise overflow()
         inventory.append(TableInventory(table=table.name, row_count=count))
     return tuple(inventory)
 

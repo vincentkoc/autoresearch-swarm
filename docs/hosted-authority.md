@@ -1738,13 +1738,16 @@ source without requesting a new witness. Qualified and unqualified clock history
 remain evidence; capture grants neither state execution nor requalification.
 
 Before reading portable payloads, scalar SQL queries check bounded row counts,
-cell types and conservative JSON size estimates. TEXT length uses UTF-8 bytes,
-including embedded NUL. Metadata and operator projections are bounded separately
+cell types and raw UTF-8 byte lengths, including embedded NUL. Only after raw
+admission passes does a separate query measure escaped TEXT with SQLite's
+[`json_quote`](https://www.sqlite.org/json1.html#the_json_quote_function), without
+parsing embedded JSON or returning payloads. Integer/BLOB framing remains
+conservative. Metadata and operator projections are bounded separately
 before parsing. The initial source profile permits 4 MiB of encoded chunks, 4,096
 rows, 128 KiB chunks, a 64 KiB conservative row bound, 1,024 chunks and a 128 KiB
 manifest. It reads at most eight rows per query. These source limits are narrower
-than the wire format and may reject an image whose actual escaped encoding would
-fit. They bound capture allocations, not total runtime RSS; workerd still needs
+than the wire format. Final canonical row/chunk/image checks retain every byte cap.
+They bound capture allocations, not total runtime RSS; workerd still needs
 qualification of the complete source path.
 
 Explicit columns and binary primary-key pagination preserve raw TEXT/BLOB values.
@@ -1760,7 +1763,13 @@ Native tests verify deterministic byte preservation, independent-connection
 snapshot isolation, changed authority/custody refusals, revoked operators, clock
 outages and every source bound. The workerd storage probe additionally exercises
 the shared preflight and pagination code with Unicode ordering, embedded NUL and
-binary cells; that extension's runtime receipt is pending.
+binary cells. The shared helper passed in the
+[native-import qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41215181158).
+The subsequent [full source-RPC probe](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41216865957)
+exposed a sixfold TEXT estimate rejecting ordinary saved reports. A native SDK
+regression now preserves both reports through seal/capture; the updated workerd
+probe also carries large ASCII and every JSON control character. Its receipt is
+pending.
 
 `checkpoints.cut.inspect_sealed_cut()` provides read-only relational inspection
 through the shared SQL port. It checks the sole workspace, authority and seal,

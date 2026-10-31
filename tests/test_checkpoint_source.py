@@ -280,7 +280,7 @@ async def test_final_capacity_refusal_rolls_back_seal_custody_and_acknowledgment
         count = sum(map(len, portable_rows(e).values()))
         additions = CaptureLimits().rows - 4 - count
     else:
-        additions = 350
+        additions = 1800
 
     def fill(sql):
         for _ in range(additions):

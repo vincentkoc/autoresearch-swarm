@@ -252,7 +252,7 @@ async def test_source_authentication_scope_and_custody_refuse(sealed, change):
     assert portable_rows(sealed) == before
 
 
-@pytest.mark.parametrize("payload", ["x" * 12000, "\0" * 12000, b"x" * 12000])
+@pytest.mark.parametrize("payload", ["x" * 65536, "\0" * 12000, b"x" * 12000])
 async def test_oversized_or_wrong_type_payload_refuses_before_cut_body_reads(
     sealed, monkeypatch, payload
 ):
