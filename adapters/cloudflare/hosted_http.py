@@ -35,7 +35,9 @@ if __package__:
         supports_outputs,
         supports_publication,
         supports_research,
+        supports_scientific,
     )
+    from .scientific import ScientificQuery, ScientificRead
 else:
     from artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from artifact_router import UploadTarget
@@ -51,7 +53,9 @@ else:
         supports_outputs,
         supports_publication,
         supports_research,
+        supports_scientific,
     )
+    from scientific import ScientificQuery, ScientificRead
 
 
 MAX_JSON_BYTES = 1024**2
@@ -243,6 +247,20 @@ def capabilities(configuration):
             "cancellation": "attempt-intent-until-proven-closure",
             "heartbeat": "presence-control-acks-and-explicit-acceptance-renewals",
             "execution_deadline_extension": False,
+        }
+    if supports_scientific(configuration):
+        result["record_queries"] = {
+            "scope": "read",
+            "get": ScientificRead.model_json_schema(),
+            "list": ScientificQuery.model_json_schema(),
+        }
+        result["evaluation"]["promotion"] = "observed-assessment-and-atomic-commit"
+        result["scientific_closeout"] = {
+            "correction": "append-only-with-incumbent-suspension",
+            "reports": "immutable-bounded-json-and-markdown",
+            "completion": "settled-work-and-declared-stopping-rule",
+            "confirmation_plans": "unavailable",
+            "unresolved_resource_closeout": "unavailable",
         }
     return result
 

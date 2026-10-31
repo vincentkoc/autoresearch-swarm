@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add hosted scientific closeout through the shared promotion, evidence correction,
+  report and settled campaign transactions. Preserve observed-versus-confirmed
+  evidence, incumbent revision checks, immutable reports and exact historical
+  acknowledgments after corrections and controller restart.
+
 - Extend the actual workerd trial probe with independent campaign and worker
   draining, heartbeat reply recovery, scoring while pausing, evaluator completion
   while paused and exact lifecycle replay after restart.

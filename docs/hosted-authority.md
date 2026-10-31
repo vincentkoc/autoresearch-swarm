@@ -783,8 +783,8 @@ Local adapter coverage executes both CPU stages and uses a separate evaluator
 credential. It covers valid/incomplete/invalid receipts, foreign evaluator denial,
 missing/corrupt reports, catalog changes, credential revocation, cancellation,
 lost manifest writes, interrupted duplicate retirement and offline reopen replay.
-The qualification uses an in-process HTTP/storage harness; actual workerd
-evaluation and cloud deployment require separate evidence. Hosted historical
+These adapter tests use an in-process HTTP/storage harness; actual workerd
+evaluation has separate evidence below, and cloud deployment remains unqualified. Hosted historical
 acceptance, restoration, confirmation-plan creation and promotion remain outside
 this profile.
 
@@ -797,6 +797,15 @@ two run results and settlements, one evaluator receipt, unchanged trial evidence
 and no promotion or reader sessions. Older fixture profiles retain their original
 two credentials and configuration digest inputs. This test requires its own
 passing runtime receipt; source and collection checks alone are not qualification.
+
+At `24c749e4d13a8bdf511d16d26802c8ba67874d80`,
+[CI 41201873265](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41201873265)
+passed the actual workerd suite with **12 tests in 339.40 seconds** and its Node
+transport suite with **13 tests in 10.141 seconds**. Linux passed 431 tests in
+108.12 seconds and macOS passed 431 tests in 114.68 seconds. Windows passed 427
+tests with 4 skips in 564.33 seconds. This is local workerd/R2 qualification of native result
+publication and independent evaluation, including restart replay. It is not a
+deployed Cloudflare service or accelerator qualification.
 
 ### Witnessed lifecycle intent
 
@@ -846,6 +855,54 @@ does not overwrite its rejection. A lost heartbeat response and all successful
 lifecycle commands replay after workerd restart with source and storage
 unavailable. This extension needs its own passing runtime receipt and does not
 claim running-process cancellation qualification.
+
+### Scientific closeout
+
+`research-scientific-witness-v1` extends the lifecycle profile with six existing
+commands. It uses the same request models, scopes and synchronous transactions as
+the local controller. Each fresh command gets one witness after validation; these
+commands perform no artifact byte access, derived command or await inside the
+transaction. Eligibility uses the authenticated evaluator receipt, accepted stage
+results, comparison identity, catalog availability and append-only corrections.
+
+| Command | Required scope | Revision authority |
+| --- | --- | --- |
+| `promotion.assess` | `promotion.assess` | Payload incumbent revision |
+| `promotion.reinitialize` | `promotion.reinitialize` | Payload incumbent revision and fresh post-correction trial |
+| `promotion.commit` | `promotion.commit` | Persisted assessment's incumbent revision |
+| `evidence.invalidate` | `evidence.invalidate` | Append-only correction of named evidence |
+| `report.create` | `report.create` | Immutable snapshot at current event watermark |
+| `campaign.complete` | `campaign.manage` | Exact current campaign revision |
+
+The first eligible baseline is observed evidence. Selecting it does not claim an
+improvement or statistical confirmation. Assessments preserve the evidence and
+expected incumbent revision; competing commits cannot both change that revision.
+Corrections suspend affected incumbent eligibility and invalidate dependent trial
+eligibility without rewriting measurements, receipts or prior reports. Explicit
+reinitialization requires a new trial submitted after the correction.
+
+Reports contain bounded JSON and Markdown with a content digest and event
+watermark. `recent_limit` remains 1–50 and the shared serialized report limit is
+1 MiB. Completion creates its final report in the same transaction as state,
+events and any funding settlement. It requires closed resources, settled budgets,
+completed evaluation of successful work and the declared stopping condition or
+permission for manual completion. An unknown process, cancellation acknowledgment
+or expired lease cannot satisfy closure. Failure to construct the report rolls
+back the completion.
+
+Operator get/list queries include promotions, corrections, reports and run results.
+Their `read` permission is separate from mutation scopes. Exact accepted and
+rejected command replay remains available after reopen without storage or witness
+access, subject to current credential/profile checks. A replayed historical
+promotion acknowledgment does not erase a later correction or restore eligibility.
+
+Local adapter tests use two real native CPU stages and an independent evaluator.
+They cover competing selection, completion, immutable report watermarks/digests,
+late corrections, fresh baseline reinitialization, pending-evaluation refusal,
+report transaction rollback, scope denial, post-witness revocation/cancellation
+and offline replay. This profile needs separate actual workerd qualification.
+Confirmation-plan creation, unresolved-resource scientific completion, orchestration
+transfer and hosted restoration remain outside this profile.
 
 ### Signed clock query boundary
 
