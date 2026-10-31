@@ -141,6 +141,11 @@ The earlier synchronous witness/lifecycle suite passed at `ba66e98` on Linux,
 macOS, Windows and local workerd in
 [runtime qualification 41189985236](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41189985236).
 That evidence predates the awaited-witness fixture and does not qualify its gate.
+The awaited probe subsequently passed at `595af9f` in
+[workerd qualification 41190864271](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41190864271):
+both runtime tests passed in 41.82 seconds, including the gate-bypass negative
+control and expired-response completion check. This qualifies the local fixture's
+ordering boundary, not native-clock rate or deployed hosted authority.
 
 The opt-in native test exercises the shared kernel, storage boundary, full owned
 process restart and eight contending HTTP deliveries. CPU tests cover callback

@@ -12,9 +12,10 @@ native source primitive observes the existing qualified clock implementation
 and preserves its fault latch; independent child processes establish distinct
 source origins locally. Internal provider generations, explicit requalification
 and persisted retirement are locally verified. A one-use synchronous operation
-context is implemented. Wire validity does not qualify a deployment. Provider
-exclusive ordering, authenticated source deployment and the hosted adapter remain
-to be implemented. The private HTTP source transport is locally verified; it
+context is implemented. Wire validity does not qualify a deployment. Local
+workerd now qualifies the awaited ordering bridge with a synthetic witness;
+full service routing under that boundary, authenticated source deployment and
+the hosted adapter remain to be implemented. The private HTTP source transport is locally verified; it
 does not establish Container routing.
 
 ## Decision and boundary
@@ -427,9 +428,23 @@ The adapter's `exclusive()` bridge passes an async callable to
 `ResearchError` refusals leave the runtime callback normally and are raised only
 after its gate releases; unexpected exceptions still reach the runtime's reset
 boundary. Closure rejects a late callback, and caller cancellation settles a
-separately scheduled callback before returning. These bridge tests do not prove
-provider event ordering. The actual awaited-witness runtime probe remains
-required before hosted activation.
+separately scheduled callback before returning. Python bridge tests alone do not
+prove provider event ordering.
+
+The actual local workerd probe passed at `595af9f`: A holds an independent HTTP
+witness response while B is submitted to the same object; persisted event sequence
+and prior-effect counts require A before B. A fixture-only bypass must produce
+B before A. A separate async task cannot complete its parent's witness. A fetch
+timeout produces no acknowledgment or retirement, the expired response is observed
+while a retry is held, and the retry uses a new nonce and creates one effect.
+Accepted and rejected commands replay after process restart without another
+witness request. Both runtime tests passed in 41.82 seconds in
+[qualification 41190864271](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41190864271).
+
+This establishes the tested local runtime ordering and operation ownership. The
+timestamps and keys are public fixtures. The 30-second runtime reset boundary,
+production source authentication, service routing, artifact custody and hosted
+restore remain unqualified; the hosted authority profile remains disabled.
 
 ## Native worker calibration
 
