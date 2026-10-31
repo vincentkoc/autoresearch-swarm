@@ -987,6 +987,20 @@ fencing/revocation/cancellation. These are SQLite/mock-R2 adapter tests. Actual
 workerd and Workflow generation/restart qualification remain separate work;
 this profile is not yet a deployed Workflow service.
 
+The actual workerd orchestration probe provisions a fourth, separate control
+driver and adds drive permission to the evaluator only in this explicit profile.
+Older fixture credential manifests remain unchanged. A real two-stage CPU project
+uses saved evaluator authorization and completion actions. The source deliberately
+fails the receipt witness after authorization has committed; a restarted controller
+recovers the original saved action without invoking its planner and finishes only
+the receipt, with R2 unavailable and exactly one new witness. Native scoring and
+an independent saved evaluator completion follow. A later event wait and wakeup
+acknowledgment survive another workerd restart alongside all delivery receipts,
+without consuming readiness or changing native journals or settlements. Source
+and collection checks are not runtime qualification; this probe needs a passing
+CI receipt. Naming the binding adapter `cloudflare-workflows` does not claim that
+a Workflow has executed it.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

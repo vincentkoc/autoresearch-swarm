@@ -12,6 +12,7 @@ from research_router import (
     HostedEvaluationConfiguration,
     HostedInputConfiguration,
     HostedLifecycleConfiguration,
+    HostedOrchestrationConfiguration,
     HostedOutputConfiguration,
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
@@ -42,6 +43,7 @@ class NativeProbe(VersionedRecord):
     evaluation_profile: bool = Field(default=False, strict=True)
     lifecycle_profile: bool = Field(default=False, strict=True)
     scientific_profile: bool = Field(default=False, strict=True)
+    orchestration_profile: bool = Field(default=False, strict=True)
 
 
 class NativeFixtureR2(R2BindingTransport):
@@ -79,6 +81,7 @@ async def open_native_router(
                 | HostedEvaluationConfiguration
                 | HostedLifecycleConfiguration
                 | HostedScientificConfiguration
+                | HostedOrchestrationConfiguration
             ).validate_json(
                 sql.execute("SELECT payload FROM hosted_authority_config WHERE singleton=1").one()[
                     0
@@ -134,6 +137,7 @@ async def exercise(state, object_id, probe, crypto, transport, *, bucket=None, r
                 evaluation_profile=probe.evaluation_profile,
                 lifecycle_profile=probe.lifecycle_profile,
                 scientific_profile=probe.scientific_profile,
+                orchestration_profile=probe.orchestration_profile,
             )
             if probe.action == "describe":
                 return config.model_dump(mode="json")

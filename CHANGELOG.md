@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an actual workerd saved-evaluator probe with separate driver credentials,
+  a target committed before its receipt witness fails, restart recovery without
+  replanning or artifact reads, native scoring and persistent event-wakeup replay.
+
 - Add hosted saved-action orchestration and durable event waits using the ordinary
   SDK. Preserve separate witnesses for target effects and delivery receipts,
   recover committed actions without redelivery, and keep evaluator artifact

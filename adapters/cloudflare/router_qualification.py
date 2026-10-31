@@ -15,6 +15,7 @@ from research_router import (
     HostedEvaluationConfiguration,
     HostedInputConfiguration,
     HostedLifecycleConfiguration,
+    HostedOrchestrationConfiguration,
     HostedOutputConfiguration,
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
@@ -46,6 +47,7 @@ from research_swarm.storage.async_r2 import BoundedR2Configuration, BoundedR2Obj
 NAMESPACE = "router-qualification"
 OPERATOR_TOKEN, WORKER_TOKEN = "rsw_" + "O" * 43, "rsw_" + "W" * 43
 EVALUATOR_TOKEN = "rsw_" + "E" * 43
+DRIVER_TOKEN = "rsw_" + "D" * 43
 DISPATCH_KEY = b"\x00" * 32
 
 
@@ -78,9 +80,9 @@ def fixture_credentials(principals):
     count = len(principals)
     return tuple(
         zip(
-            ("operator", "worker", "evaluator")[:count],
+            ("operator", "worker", "evaluator", "driver")[:count],
             principals,
-            (OPERATOR_TOKEN, WORKER_TOKEN, EVALUATOR_TOKEN)[:count],
+            (OPERATOR_TOKEN, WORKER_TOKEN, EVALUATOR_TOKEN, DRIVER_TOKEN)[:count],
             strict=True,
         )
     )
@@ -98,8 +100,10 @@ def configuration(
     evaluation_profile=False,
     lifecycle_profile=False,
     scientific_profile=False,
+    orchestration_profile=False,
     source=None,
 ):
+    scientific_profile = scientific_profile or orchestration_profile
     lifecycle_profile = lifecycle_profile or scientific_profile
     evaluation_profile = evaluation_profile or lifecycle_profile
     publication_profile = publication_profile or evaluation_profile
@@ -134,7 +138,23 @@ def configuration(
             Principal(
                 id=identifier("router-evaluator-principal"),
                 workspace_id=principals[0].workspace_id,
-                scopes={"read", "evaluation.publish"},
+                scopes={"read", "evaluation.publish"}
+                | ({"orchestration.drive"} if orchestration_profile else set()),
+            ),
+        )
+    if orchestration_profile:
+        principals += (
+            Principal(
+                id=identifier("router-driver-principal"),
+                workspace_id=principals[0].workspace_id,
+                scopes={
+                    "read",
+                    "orchestration.drive",
+                    "evaluation.request",
+                    "artifact.upload",
+                    "report.create",
+                    "campaign.manage",
+                },
             ),
         )
     config = HostedConfiguration(
@@ -163,7 +183,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedScientificConfiguration
+            HostedOrchestrationConfiguration
+            if orchestration_profile
+            else HostedScientificConfiguration
             if scientific_profile
             else HostedLifecycleConfiguration
             if lifecycle_profile
@@ -297,8 +319,10 @@ def provisioned(principals):
             ],
         },
     }
-    if len(principals) == 3:
+    if len(principals) >= 3:
         result.update(evaluator_token=EVALUATOR_TOKEN, evaluator_id=principals[2].id)
+    if len(principals) >= 4:
+        result.update(driver_token=DRIVER_TOKEN, driver_id=principals[3].id)
     return result
 
 
