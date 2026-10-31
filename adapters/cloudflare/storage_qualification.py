@@ -2,6 +2,8 @@
 
 from durable_sql import MAX_SAFE_INTEGER, DurableObjectStore
 
+from research_swarm.checkpoints.image_schema import require_portable_image_schema
+from research_swarm.control.auth import CredentialStore
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.state import schema as migrations
 from research_swarm.state.database import SCHEMA
@@ -74,12 +76,15 @@ def roundtrip(store):
 
     expect(TypeError, lambda: store.write(suspend))
     assert store.read(lambda sql: sql.execute("SELECT version FROM research_schema").one()[0]) == 3
+    store.write(CredentialStore.initialize_in)
+    store.read(require_portable_image_schema)
     return {
         "binary_null": True,
         "rows": True,
         "numeric_bounds": True,
         "constraints": True,
         "synchronous_scope": True,
+        "checkpoint_schema": True,
     }
 
 

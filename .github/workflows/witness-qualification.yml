@@ -73,6 +73,8 @@ jobs:
           tests/test_cloudflare_deployment.py
           tests/test_credential_installation.py
           tests/test_cloudflare_provisioning.py
+          tests/test_checkpoint_images.py tests/test_checkpoint_cut.py tests/test_checkpoint_schema.py
+          tests/test_inactive_transform.py
           tests/test_cloudflare_runtime.py
           tests/test_production_delivery.py
           tests/test_cloudflare_store_open.py

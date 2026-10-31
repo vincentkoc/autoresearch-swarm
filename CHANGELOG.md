@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Require complete application-state admission before logical checkpoint export.
+  Check portable column, key, uniqueness and foreign-key metadata, reject unknown
+  tables, views, triggers and generated columns, and verify deployment metadata in
+  the same SQL snapshot. Exclude reserved Cloudflare storage and alarm tables.
+
 - Share sealed checkpoint inspection through the SQL port. Refuse foreign
   workspace rows, incomplete execution inventories and unresolved byte operations.
   Logical exports can require immutable seal history and custody; existing native

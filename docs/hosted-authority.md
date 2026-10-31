@@ -1285,7 +1285,10 @@ and remains excluded from the production bundle. This extension passed in
 `2f3548fb37866539b73379eef96863b9a0ab414e` in
 [qualification 41210738134](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41210738134).
 That revision passed 660 native tests on Linux in 315.66 seconds and on macOS
-in 291.00 seconds; Windows was still running at this checkpoint. This receipt
+in 291.00 seconds. Windows finished with 653 passed, six skipped and one fixture
+setup error in 1035.02 seconds: the native clock sample exceeded its existing
+interval bound during candidate admission. The interval guard remains unchanged;
+later diagnostics retain the measured span. This receipt
 predates the production post-bootstrap registration extension.
 
 `test_cloudflare_startup.py` now exercises this SDK against the actual startup
@@ -1684,7 +1687,7 @@ fit a chunk refuses; this profile has no implicit continuation or truncation.
 Wire verification checks provenance, canonical encoding and complete ordered
 coverage. It does not prove that the source SQL cut was sealed, that its relational
 contents are valid, that artifact bytes exist, that native execution ended, or that
-a target may activate. The forthcoming exporter must reject unsupported columns,
+a target may activate. The exporter must reject unsupported columns,
 foreign-workspace rows and unaccounted application state. `research_schema` is
 verified as version metadata; `hosted_authority_config` and `hosted_provisioning`
 are bound through source identity digests and must never be copied as active target
@@ -1694,6 +1697,25 @@ import, original-source election and provider recovery remain separate work.
 Golden layout/manifest/chunk digests and tests cover raw value preservation,
 coverage/order mutations, forged signatures, wrong trusted identities and bounds.
 This format has no deployed-provider qualification yet.
+
+Logical schema admission is separate from ordinary service reopening. It requires
+exact portable column order, declared types, nullability, defaults and primary keys;
+it also checks uniqueness, key collation/direction and foreign-key actions.
+Additional uniqueness constraints refuse unless they duplicate an admitted key.
+Nonunique indexes may be omitted because they contain no independent research
+state. These checks do not claim arbitrary DDL equivalence for every possible
+CHECK, conflict policy or deferrability clause.
+
+The Cloudflare adapter admits exactly the portable tables plus the three metadata
+tables above. Unknown application tables, views, triggers and generated columns
+refuse. Reserved `sqlite_`, `__cf_` and `_cf_` names are excluded case-insensitively
+before table inspection, including the protected KV and alarm state described in
+[Cloudflare's storage documentation](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
+and [workerd's metadata implementation](https://github.com/cloudflare/workerd/blob/main/src/workerd/util/sqlite-metadata.h).
+It checks metadata layouts, schema version and the complete provisioning seal in
+the caller's SQL snapshot. Native tests cover drift and retained revocations; the
+workerd storage probe now exercises the exact bounded PRAGMA queries. Its new
+runtime receipt remains pending.
 
 `checkpoints.cut.inspect_sealed_cut()` provides read-only relational inspection
 through the shared SQL port. It checks the sole workspace, authority and seal,

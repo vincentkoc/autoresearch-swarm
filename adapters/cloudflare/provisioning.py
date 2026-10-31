@@ -59,31 +59,32 @@ def require_deployment(store, manifest):
     """Read-only reopen seal; never repair configuration or reinstall credentials."""
     manifest.require_store(store.identity)
 
-    def read(sql):
-        row = intent(sql, manifest)
-        if row["state"] != "complete":
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Deployment is not provisioned")
-        require_table(sql, "hosted_authority_config", "singleton digest payload", ("singleton",))
-        configured = sql.execute("SELECT * FROM hosted_authority_config LIMIT 2").one()
-        config = manifest.configuration
-        if (
-            configured["singleton"] != 1
-            or configured["digest"] != config.digest
-            or strict_json_loads(configured["payload"]) != config.model_dump(mode="json")
-        ):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Provisioned configuration differs")
-        receipt = ProvisioningReceipt.model_validate_json(row["receipt"])
-        if (
-            receipt.manifest_digest != manifest.digest
-            or receipt.configuration_digest != config.digest
-            or receipt.workspace_id != config.authority.workspace_id
-            or receipt.controller_id != config.authority.controller_id
-            or receipt.activation_id != config.authority.activation_id
-        ):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Provisioning receipt differs")
-        return receipt.model_dump(mode="json")
+    return store.read(lambda sql: require_deployment_in(sql, manifest))
 
-    return store.read(read)
+
+def require_deployment_in(sql, manifest):
+    row = intent(sql, manifest)
+    if row["state"] != "complete":
+        raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Deployment is not provisioned")
+    require_table(sql, "hosted_authority_config", "singleton digest payload", ("singleton",))
+    configured = sql.execute("SELECT * FROM hosted_authority_config LIMIT 2").one()
+    config = manifest.configuration
+    if (
+        configured["singleton"] != 1
+        or configured["digest"] != config.digest
+        or strict_json_loads(configured["payload"]) != config.model_dump(mode="json")
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Provisioned configuration differs")
+    receipt = ProvisioningReceipt.model_validate_json(row["receipt"])
+    if (
+        receipt.manifest_digest != manifest.digest
+        or receipt.configuration_digest != config.digest
+        or receipt.workspace_id != config.authority.workspace_id
+        or receipt.controller_id != config.authority.controller_id
+        or receipt.activation_id != config.authority.activation_id
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Provisioning receipt differs")
+    return receipt.model_dump(mode="json")
 
 
 def _fresh(sql):
