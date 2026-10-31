@@ -405,6 +405,20 @@ imports. Timestamps and credentials remain synthetic; production provisioning,
 authenticated transport, artifact custody and hosted worker admission remain
 disabled. This evidence does not qualify the runtime's 30-second reset path.
 
+The next artifact layer begins with `storage/async_r2.py`: bounded, awaited
+generation operations without native staging directories or filesystem locks.
+Its initial profile accepts complete bodies up to 1 MiB and shares the existing
+native R2 key/metadata layout. Conditional payload publication requires complete
+digest/size/metadata readback. Retirement writes and verifies a permanent empty
+object at the same generation key, fencing delayed conditional payload writes.
+Neither absence nor a failed response proves byte-operation closure. These byte
+operations grant no catalog, quota, reader or scientific authority: the controller
+must reserve occupancy before I/O and independently validate its commit afterward.
+Unit tests use an in-memory transport; actual R2 binding and authoritative upload
+routing require separate runtime qualification.
+The binding adapter must preserve the documented
+[R2 conditional-write and read-after-write semantics](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/).
+
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command

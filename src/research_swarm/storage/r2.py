@@ -24,6 +24,7 @@ from research_swarm.state.private_files import (
 )
 from research_swarm.storage.filesystem import CHUNK_BYTES, FilesystemBlobStore
 from research_swarm.storage.r2_config import R2Config
+from research_swarm.storage.r2_objects import generation_key, generation_metadata
 from research_swarm.storage.r2_transport import ObjectAbsent, R2Transport, unavailable
 
 
@@ -100,22 +101,10 @@ class R2BlobStore:
             )
 
     def _key(self, blob: StoredBlob) -> str:
-        return "/".join(
-            (
-                self.config.prefix,
-                self.binding.workspace_id,
-                blob.reference.digest[7:],
-                blob.generation,
-            )
-        )
+        return generation_key(self.config.prefix, self.binding.workspace_id, blob)
 
     def _metadata(self, blob: StoredBlob, *, retired: bool = False) -> dict[str, str]:
-        return {
-            "research-state": "retired" if retired else "payload",
-            "research-generation": blob.generation,
-            "research-digest": blob.reference.digest[7:],
-            "research-size": str(blob.reference.size_bytes),
-        }
+        return generation_metadata(blob, retired=retired)
 
     def _path(self, directory: str, name: str) -> Path:
         parent = self.root / directory

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add bounded asynchronous R2 generation operations with complete content
+  verification and permanent retirement fences. Reuse the native generation
+  layout; keep quota, publication authority and provider qualification separate.
+
 - Exercise the actual hosted worker-control router in local workerd with explicit
   synthetic provisioning, independently held HTTP witnesses, signed clock replies,
   timeout retry, source fencing, persistent replay and current credential checks.
