@@ -21,6 +21,7 @@ from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.checkpoint_images import SignedLogicalCheckpoint
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import DriveAction, OrchestrationBinding
+from research_swarm.domain.time_providers import RequalifyTimeProvider, TimeProviderRequalification
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
 from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
@@ -113,6 +114,17 @@ def checkpoint(client, credential, payload, *, capture=False, drop=False, defaul
     )
     assert result.status_code == 200, result.text[:1000]
     return result
+
+
+def provider_call(client, credential, request=None, *, drop=False, default=False):
+    action = "provider-status" if request is None else "requalify-provider"
+    response = client.post(
+        "/fixture/" + ("default-" if default else "") + action,
+        json={"credential": credential, "request_json": json.dumps(request)},
+        headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
+    )
+    assert response.status_code == 200, response.text[:1000]
+    return response
 
 
 def fixture_custody(manifest, crypto):
@@ -320,6 +332,56 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
             ):
                 assert http.post(path).status_code == 404
 
+            initial_status = provider_call(http, secrets["bootstrap"]).json()
+            assert initial_status["provider"]["state"] == "qualified"
+            assert (
+                initial_status["provider"]["data"]["scope"]["provider_generation"]
+                == receipt["provider_generation"]
+            )
+            before_management = len(endpoint.requests)
+            endpoint.mode = "normal"
+            endpoint.restart()
+            with pytest.raises(ResearchError) as changed_clock:
+                operator.command(
+                    "report.create", report_request, idempotency_key="clock-discontinuity-report"
+                )
+            assert changed_clock.value.code == ErrorCode.STALE_FENCE
+            replacement_epoch = endpoint.responses[-1].payload.source_epoch
+            assert replacement_epoch != receipt["source_epoch"]
+            assert len(endpoint.requests) == before_management + 1
+            status = provider_call(http, secrets["bootstrap"]).json()["provider"]
+            assert status["state"] == "unqualified"
+            assert status["data"] == initial_status["provider"]["data"]
+            assert status["revision"] == initial_status["provider"]["revision"] + 1
+            assert (
+                len(
+                    operator.list(RecordQuery(kind="report", campaign_id=admitted.campaign["id"]))[
+                        "items"
+                    ]
+                )
+                == 2
+            )
+            provider_request = RequalifyTimeProvider(
+                request_id=new_id(),
+                expected_provider_revision=status["revision"],
+                expected_provider_generation=status["data"]["scope"]["provider_generation"],
+                reason="Fresh deployment source restart qualification",
+            ).model_dump(mode="json")
+            for request in (None, provider_request):
+                assert provider_call(http, secrets["bootstrap"], request, default=True).json() == {
+                    "denied": True
+                }
+                assert (
+                    provider_call(http, "wrong", request).json()["error"]["code"]
+                    == "AUTHORIZATION_DENIED"
+                )
+            assert len(endpoint.requests) == before_management + 1
+            assert (
+                provider_call(http, secrets["bootstrap"], provider_request, drop=True).text == "{"
+            )
+            assert len(endpoint.requests) == before_management + 2
+            endpoint.mode = "unavailable"
+
         # A new workerd process reopens existing SQL/R2 and replays during source outage.
         requests = len(endpoint.requests)
         with (
@@ -357,6 +419,44 @@ def test_production_private_bootstrap_tls_and_reopen_preserve_one_authority(
             )["items"]
             assert len(reports) == 2 and report["result"]["id"] in {row["id"] for row in reports}
             assert len(endpoint.requests) == requests
+
+            management_reply = provider_call(http, secrets["bootstrap"], provider_request).text
+            management_value = json.loads(management_reply)
+            assert management_value["disposition"] == "accepted"
+            managed = TimeProviderRequalification.model_validate(management_value["result"]["data"])
+            assert managed.request.model_dump(mode="json") == provider_request
+            assert managed.previous.model_dump(mode="json") == status["data"]
+            assert managed.provider_revision == status["revision"] + 1
+            assert managed.provider.source_epoch == replacement_epoch
+            assert managed.provider.scope.provider_generation != receipt["provider_generation"]
+            assert (
+                provider_call(http, secrets["bootstrap"], provider_request).text == management_reply
+            )
+            assert provider_call(http, secrets["bootstrap"]).json()["provider"] == {
+                "state": "qualified",
+                "revision": managed.provider_revision,
+                "data": managed.provider.model_dump(mode="json"),
+            }
+            with pytest.raises(ResearchError) as still_rejected:
+                operator.command(
+                    "report.create", report_request, idempotency_key="clock-discontinuity-report"
+                )
+            assert still_rejected.value.code == ErrorCode.STALE_FENCE
+            assert len(endpoint.requests) == requests
+            endpoint.mode = "normal"
+            fresh_report = operator.command(
+                "report.create", report_request, idempotency_key="post-requalification-report"
+            )
+            assert fresh_report["disposition"] == "accepted"
+            reports = operator.list(
+                RecordQuery(kind="report", campaign_id=admitted.campaign["id"])
+            )["items"]
+            assert len(reports) == 3 and fresh_report["result"]["id"] in {
+                row["id"] for row in reports
+            }
+            assert len(endpoint.requests) == requests + 1
+            endpoint.mode = "unavailable"
+            requests = len(endpoint.requests)
 
             seal_request = {
                 "schema_version": "1.0",

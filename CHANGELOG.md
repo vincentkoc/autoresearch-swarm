@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add fresh-deployment active-clock recovery to the existing production probe,
+  preserving its startup count. Discover the restart through an ordinary command,
+  replay a lost private requalification reply during outage, retain the rejected
+  command and initial provisioning receipt, then run a fresh command before seal
+  and export. Fixture checks pass; actual workerd execution remains pending.
+
 - Extend the production recovery probe to nine startups. An ordinary worker clock
   request discovers a second native witness restart after target activation; private
   status and active-provider requalification recover it. Replay the lost reply

@@ -352,6 +352,16 @@ integration preserves an unresolved attempt and its accounting while qualifying 
 fresh worker. Production RPCs are implemented; actual workerd qualification of
 these two management methods remains pending.
 
+The separate fresh-deployment production probe now discovers an actual native
+source restart through a new `report.create` command, obtains its fenced state
+through private status, and loses the accepted requalification reply. Its existing
+next startup replays both original provisioning and management while the source
+is unavailable. The rejected discovery command stays rejected; a different command
+key succeeds under the replacement origin. The probe refreshes its expected report
+inventory before its existing seal/export sequence. It adds no runtime startup and
+makes no live-native-attempt preservation claim. Fixture tests and collection pass;
+this extension still requires actual workerd execution.
+
 ## One-use operation context
 
 `WitnessAuthorityTimeProvider.prepare()` owns a fresh pending request and an

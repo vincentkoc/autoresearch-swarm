@@ -3,6 +3,71 @@ import test from "node:test";
 
 import operator from "./production_operator_fixture.mjs";
 
+test("fresh provider status uses one private argument and preserves default denial", async () => {
+  const calls = [];
+  const env = {
+    RESEARCH_API: {},
+    RESEARCH_BOOTSTRAP: {
+      async time_provider_status(...args) {
+        calls.push(args);
+        return '{"provider":{"state":"unqualified"}}';
+      },
+    },
+  };
+  const payload = { credential: "synthetic", request_json: "null" };
+  const value = await operator.fetch(
+    request("/fixture/provider-status", payload),
+    env,
+  );
+  assert.deepEqual(await value.json(), { provider: { state: "unqualified" } });
+  const denied = await operator.fetch(
+    request("/fixture/default-provider-status", payload),
+    env,
+  );
+  assert.deepEqual(await denied.json(), { denied: true });
+  assert.deepEqual(calls, [["synthetic"]]);
+});
+
+test("fresh provider requalification can lose only its matching accepted reply", async () => {
+  let value = {
+    disposition: "accepted",
+    result: {
+      data: {
+        request: { request_id: "fixture" },
+        provider: { scope: { provider_generation: "new-generation" } },
+      },
+    },
+  };
+  const env = {
+    RESEARCH_API: {},
+    RESEARCH_BOOTSTRAP: {
+      async requalify_time_provider(...args) {
+        assert.deepEqual(args, ["synthetic", '{"request_id":"fixture"}']);
+        return JSON.stringify(value);
+      },
+    },
+  };
+  const payload = {
+    credential: "synthetic",
+    request_json: '{"request_id":"fixture"}',
+  };
+  const call = (drop) =>
+    operator.fetch(request("/fixture/requalify-provider", payload, drop), env);
+  assert.deepEqual(await (await call(false)).json(), value);
+  assert.equal(await (await call(true)).text(), "{");
+  value.result.data.request.request_id = "other";
+  assert.equal((await call(true)).status, 409);
+  value = { error: { code: "STALE_FENCE" } };
+  const refused = await call(true);
+  assert.equal(refused.status, 409);
+  assert.deepEqual(await refused.json(), value);
+  const denied = await operator.fetch(
+    request("/fixture/default-requalify-provider", payload),
+    env,
+  );
+  assert.deepEqual(await denied.json(), { denied: true });
+});
+
 function request(path, payload, drop = false) {
   return new Request(`http://127.0.0.1${path}`, {
     method: "POST",
