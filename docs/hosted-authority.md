@@ -4,9 +4,9 @@ Status: staged implementation with fixed-profile authoritative Durable Object
 execution qualified in local workerd under an explicitly admitted native witness.
 No production Cloudflare deployment has been performed. The existing
 [hybrid profile](cloudflare.md) remains available; it has separate qualification.
-The full M5 exit remains open. The seven-startup activation path has a workerd pass;
-later clock-management probes need their own receipts. Deployed/fleet qualification
-is separate.
+The full M5 exit remains open. Nine-startup recovery and fresh-deployment clock
+management have local workerd proof at `daee81a`. Later active-reconciliation and
+timer profiles need their own receipts. Deployed/fleet qualification is separate.
 
 The witness wire records, domain-separated signatures, pinned source checks,
 one-use response verification and epoch derivation are implemented. A frozen
@@ -18,7 +18,7 @@ and persisted retirement are locally verified. A one-use synchronous operation
 context is implemented. Wire validity does not qualify a deployment. Local
 workerd qualifies the awaited ordering bridge, bounded worker/artifact routing,
 native source lifecycle and the bounded research/recovery paths recorded below.
-Ordinary research admission has explicit capability limits. Later clock-management
+Ordinary research admission has explicit capability limits. Later profile
 qualification and authenticated production deployment remain open. The private HTTP source
 transport does not establish Container routing.
 
@@ -2703,6 +2703,20 @@ restoring both marker and election row to an earlier state requires an independe
 non-rollbackable authority before this protocol could safely elect again.
 
 ## Required implementation slices
+
+The completed workerd job in
+[run 41233958516](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41233958516/job/124633747710)
+tested `daee81a5b1113be2cb813e83367ca3fd6da62d36`: **20 passes in 676.22 seconds**.
+Its nine-startup recovery probe verifies target-clock retirement/requalification,
+activation, a second clock restart under active authority, offline management
+replay and recalibration of the same fresh worker. Its separate production probe
+verifies active-clock management for a fresh deployment while preserving initial
+provisioning and rejected-command history. Both use actual local workerd and
+native witnesses. The Linux job passed **1,484 tests in 640.23 seconds**.
+
+Windows and macOS were unresolved when this receipt was recorded. These job
+results do not qualify the later active-reconciliation/timer profiles, an actual
+Cloudflare account deployment, physical GPU execution or scientific improvement.
 
 1. Freeze witness schemas, signatures, epoch derivation and one-use operation
    context. Prove rejection and scope behavior with deterministic fixtures.
