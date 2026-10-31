@@ -28,6 +28,7 @@ from research_swarm.orchestration.evaluation import EvaluationDriver
 from research_swarm.orchestration.scoped import ScopedWorkerDriver
 from research_swarm.orchestration.search import SearchDriver
 from research_swarm.search.portfolio import PortfolioDriverConfiguration
+from research_swarm.workers.contracts import NativeIdentity
 from research_swarm.workers.journal import JournalState
 from research_swarm.workers.remote_enrollment import (
     connect_worker,
@@ -39,6 +40,22 @@ from tests.test_http_delivery import serving
 from tests.test_local_pipeline import Pipeline
 from tests.test_local_pipeline import pipeline as pipeline
 from tests.test_portfolio_control import portfolio_options
+
+
+def require_payload_scope(native: NativeIdentity, payload: psutil.Process) -> None:
+    if native.backend != "windows_job":
+        assert native.pid == payload.pid
+        return
+    # A Windows venv redirector is the native root; Python may run in its child.
+    root = psutil.Process(native.pid)
+    root_created, payload_created = root.create_time(), payload.create_time()
+    assert native.start_token == f"native-created:{root_created.hex()}"
+    assert any(
+        process.pid == root.pid and process.create_time() == root_created
+        for process in (payload, *payload.parents())
+    ), "Payload is not in the observed native root's process ancestry"
+    assert root.is_running() and payload.is_running()
+    assert root.create_time() == root_created and payload.create_time() == payload_created
 
 
 def options() -> dict[str, Any]:
@@ -342,7 +359,7 @@ async def test_two_registered_workers_refill_a_slot_while_original_native_scope_
             process_a = psutil.Process(identity_a["pid"])
             assert entry_a.state == JournalState.RUNNING and entry_a.native is not None
             original_a_native = entry_a.native
-            assert original_a_native.pid == process_a.pid
+            require_payload_scope(original_a_native, process_a)
             assert identity_a["trial_id"] == trial_a["id"]
             controller.command(
                 "worker.set_admission",
@@ -380,7 +397,9 @@ async def test_two_registered_workers_refill_a_slot_while_original_native_scope_
             assert entry_a.state == entry_c.state == JournalState.RUNNING
             assert entry_a.native == original_a_native
             assert entry_a.outcome is None and entry_c.outcome is None
-            assert entry_c.native is not None and entry_c.native.pid == process_c.pid
+            assert entry_c.native is not None
+            require_payload_scope(original_a_native, process_a)
+            require_payload_scope(entry_c.native, process_c)
             assert process_a.is_running() and process_c.is_running()
             assert not release_a.exists() and not release_c.exists()
             assert worker_b.worker.resources.availability() == {"cpu": 0}

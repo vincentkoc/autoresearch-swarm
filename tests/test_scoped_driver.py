@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import psutil
 import pytest
 from filelock import FileLock, Timeout
 
@@ -581,6 +582,69 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
         )
         resumed = None
         release = None
+        supervisor = None
+
+        def diagnostics(phase: str) -> str:
+            def read(call: Any) -> Any:
+                try:
+                    return call()
+                except Exception as error:
+                    return {"error_type": type(error).__name__}
+
+            def process(pid: int, created: float | None = None) -> Any:
+                current = psutil.Process(pid)
+                return {
+                    "pid": pid,
+                    "running": current.is_running(),
+                    "created_at": current.create_time(),
+                    "identity_matches": current.create_time() == created if created else None,
+                }
+
+            def journal_state() -> Any:
+                assert running is not None
+                entry = journal.get(running.dispatch.attempt_id)
+                return {
+                    "state": entry.state,
+                    "cancel_requested": entry.cancel_requested,
+                    "last_controller_sequence": entry.last_controller_sequence,
+                    "supervisor_id": entry.supervisor_id,
+                    "native_unchanged": entry.native == running.native,
+                    "native": entry.native.model_dump(mode="json") if entry.native else None,
+                    "outcome": {
+                        "reason": entry.outcome.reason,
+                        "exit_code": entry.outcome.exit_code,
+                        "scope_closed": entry.outcome.closure.scope_closed,
+                        "findings": [item[:512] for item in entry.outcome.closure.findings[:8]],
+                    }
+                    if entry.outcome
+                    else None,
+                    "finding": entry.finding[:512],
+                }
+
+            assert running is not None
+            assert running.native is not None
+            return json.dumps(
+                {
+                    "phase": phase,
+                    "journal": read(journal_state),
+                    "control": read(
+                        lambda: pipeline.client.get("attempt_control", running.dispatch.attempt_id)
+                    ),
+                    "presence": read(
+                        lambda: pipeline.client.get(
+                            "worker_presence", connected.bundle.worker.binding.worker_id
+                        )
+                    ),
+                    "root": read(lambda: process(running.native.pid)),
+                    "supervisor": read(lambda: process(*supervisor))
+                    if supervisor is not None
+                    else None,
+                    "resumed_returncode": resumed.poll() if resumed is not None else None,
+                    "capacity": read(connected.worker.resources.availability),
+                },
+                sort_keys=True,
+            )
+
         try:
             until = time.monotonic() + 10
             journal = WorkerJournal(root / "execution" / "journal.sqlite")
@@ -594,6 +658,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 time.sleep(0.01)
             assert running.native is not None
             assert running.prepared is not None
+            native_parent = psutil.Process(running.native.pid).parent()
+            assert native_parent is not None
+            supervisor = (native_parent.pid, native_parent.create_time())
             output_root = Path(running.prepared.context.output_root)
             release = output_root / "payload-release"
             while not (output_root / "payload-finished").exists():
@@ -635,13 +702,31 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     time.sleep(0.01)
                 assert journal.get(running.dispatch.attempt_id).state == JournalState.RUNNING
                 release.touch()
+            finish_by = time.monotonic() + 20
+            if cancel_offline:
+                apply_by = time.monotonic() + 10
+                while not journal.get(running.dispatch.attempt_id).cancel_requested:
+                    if resumed.poll() is not None:
+                        break
+                    if time.monotonic() >= apply_by:
+                        pytest.fail(
+                            "Resumed driver did not apply cancellation: " + diagnostics("delivery")
+                        )
+                    time.sleep(0.025)
             try:
-                stdout, stderr = resumed.communicate(timeout=20)
-            except subprocess.TimeoutExpired:
-                observed = journal.get(running.dispatch.attempt_id)
+                stdout, stderr = resumed.communicate(
+                    timeout=max(0.001, finish_by - time.monotonic())
+                )
+            except subprocess.TimeoutExpired as error:
+                captured = error.stderr or b""
+                if isinstance(captured, bytes):
+                    captured = captured.decode("utf-8", errors="replace")
+                captured = captured.replace(connected.bundle.token, "<redacted>")[-2048:]
                 pytest.fail(
-                    f"Resumed driver did not finish: {observed.state}; "
-                    f"{observed.finding}; {observed.outcome}"
+                    "Resumed driver did not finish: "
+                    + diagnostics("closure")
+                    + "; stderr="
+                    + captured
                 )
             assert resumed.returncode == 0, stderr
             result = json.loads(stdout)
