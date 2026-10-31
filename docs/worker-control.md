@@ -71,6 +71,25 @@ Input materialization still checks its ordinary live authority. Eligible worker
 offer pages use these hints for stable locality preference; claims retain all
 existing admission checks.
 
+Local and scoped HTTP drivers refresh hints before discovering fresh work, at
+most once per 15 seconds. Each refresh verifies at most 128 cache entries and
+256 MiB of resident bytes. Oversized or omitted entries make the observation
+explicitly truncated; the hint is not a complete inventory of the worker.
+Verification runs outside the heartbeat/control executor, and the cache lock
+is released before publication.
+
+Within a running driver, an uncertain publication retains its exact snapshot,
+revision and command key for replay before preparing another observation. A
+restarted driver reads the latest controller revision. An empty new cache does
+not create an observation; an empty cache after a nonempty observation clears
+that hint. Optional cache failures do not bypass the ordinary authorization,
+clock, input-verification or claim checks.
+
+Shutdown retains driver ownership while an in-flight cache operation drains.
+A stop arriving during refresh prevents a subsequent fresh claim. Scoped
+workers prioritize unresolved native recovery before cache reporting and new
+offer discovery.
+
 ## Drain linearization
 
 Fresh claim admission reads worker policy inside the same transaction that
