@@ -65,6 +65,7 @@ from research_swarm.control.orchestration_models import (
     PrepareDriveTurn,
     TransferOrchestration,
 )
+from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
@@ -118,6 +119,22 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "learning.create_policy_binding": CommandDefinition(
+        CreatePolicyBinding,
+        "create_policy_binding",
+        "learning.manage",
+        False,
+        "Initialize a policy binding from the benchmark's frozen baseline.",
+        additional_scopes=("read",),
+    ),
+    "learning.adopt_policy": CommandDefinition(
+        AdoptPolicy,
+        "adopt_policy",
+        "learning.adopt",
+        True,
+        "Adopt a currently passing learned challenger with an exact policy-binding revision.",
+        additional_scopes=("read",),
+    ),
     "learning.assess_benchmark": CommandDefinition(
         AssessPolicyBenchmark,
         "assess_policy_benchmark",

@@ -10,6 +10,7 @@ from research_swarm.control.benchmark_trials import BenchmarkTrialAuthority
 from research_swarm.control.candidates import propose_candidate, validate_candidate
 from research_swarm.control.commands import ProposeCandidate, SubmitTrial
 from research_swarm.control.comparisons import eligible_evaluation
+from research_swarm.control.learning_guard import require_learning_policy
 from research_swarm.control.models import CampaignData
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.proposals import search_state, write_search_state
@@ -117,6 +118,7 @@ class SearchAdmission:
             raise ResearchError(
                 ErrorCode.RESOURCE_UNAVAILABLE, "Search exceeds its sealed capacity"
             )
+        require_learning_policy(transaction, intent.request_id)
         benchmark = candidate_authority(transaction, intent.request_id, request, response)
         return previous, state, row, request, response, benchmark
 

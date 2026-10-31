@@ -20,6 +20,7 @@ from research_swarm.control.models import (
     CandidateValidation,
     TrialData,
 )
+from research_swarm.control.policy_guard import require_plan_binding
 from research_swarm.control.search_models import (
     ProposalAdmission,
     ProposalRequest,
@@ -48,6 +49,7 @@ def blocked(episode_id: str, outcome: str) -> None:
 def qualified_episode(
     transaction: Transaction, plan: LearningPlan, episode: FrozenEpisode
 ) -> Trajectory:
+    require_plan_binding(transaction, plan)
     evidence: list[LearningEvidence] = []
     request_id, campaign_id = episode.episode_id, episode.campaign_id
     capture_record(transaction, "learning_plan", plan.request.plan_id, evidence)

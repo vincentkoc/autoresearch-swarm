@@ -111,6 +111,8 @@ from research_swarm.control.orchestration_models import (
 )
 from research_swarm.control.orchestration_transfer import OrchestrationTransferControl
 from research_swarm.control.orchestration_waits import OrchestrationWaitControl
+from research_swarm.control.policy_adoption import PolicyAdoptionControl
+from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
     AssessPromotion,
@@ -257,6 +259,7 @@ class ResearchService:
         self.proposals = ProposalControl(database)
         self.learning = LearningControl(database)
         self.benchmarks = BenchmarkControl(database)
+        self.policy_adoption = PolicyAdoptionControl(database)
         self.benchmark_assessment = BenchmarkAssessmentControl(database)
         self.benchmark_proposals = BenchmarkProposalControl(database)
         self.benchmark_execution = BenchmarkExecutionControl(
@@ -496,6 +499,14 @@ class ResearchService:
         self, context: CommandContext, request: AssessPolicyBenchmark
     ) -> JsonObject:
         return self.benchmark_assessment.assess(context, request)
+
+    def create_policy_binding(
+        self, context: CommandContext, request: CreatePolicyBinding
+    ) -> JsonObject:
+        return self.policy_adoption.create(context, request)
+
+    def adopt_policy(self, context: CommandContext, request: AdoptPolicy) -> JsonObject:
+        return self.policy_adoption.adopt(context, request)
 
     def request_benchmark_proposal(
         self, context: CommandContext, request: RequestBenchmarkProposal

@@ -14,6 +14,7 @@ from research_swarm.control.learning_models import (
     PlanEpisode,
 )
 from research_swarm.control.models import CampaignData
+from research_swarm.control.policy_guard import freeze_binding, require_plan_binding
 from research_swarm.control.proposals import ProposalControl, search_state
 from research_swarm.control.search_models import ProposalRequest, SearchState
 from research_swarm.control.workers import authority
@@ -121,6 +122,7 @@ class LearningControl:
                 raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Learning plan is immutable")
             return previous
         episodes = tuple(freeze_episode(transaction, item, intent) for item in intent.episodes)
+        policy_binding = freeze_binding(transaction, intent, episodes)
         for action, artifact in intent.action_artifacts.items():
             ArtifactCatalog.available(transaction, artifact)
             ArtifactCatalog.retain(
@@ -142,6 +144,7 @@ class LearningControl:
             evidence_through=watermark,
             actor_id=transaction.context.principal.id,
             recorded_at=utc_now(),
+            policy_binding=policy_binding,
         )
         result = transaction.insert(
             "learning_plan", intent.plan_id, plan.model_dump(mode="json"), state="immutable"
@@ -175,6 +178,7 @@ class LearningControl:
             )
             if binding.plan_digest != plan.digest:
                 raise ResearchError(ErrorCode.STALE_FENCE, "Learning plan binding differs")
+            require_plan_binding(transaction, plan)
             row, request = live_proposal(transaction, intent.request_id)
             episode = binding.episode
             if (

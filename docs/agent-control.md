@@ -764,7 +764,8 @@ job accounting and independent evaluation still apply. The numerical trainer in
 [the CPU policy example](../examples/cpu_policy_learning/README.md) remains separate.
 A controller-qualified trajectory dataset must still verify actual admission,
 comparison eligibility, corrections and settled costs for every planned episode.
-Held-out policy comparison and policy adoption remain pending.
+The held-out benchmark and explicit policy-adoption commands below complete this
+path. A measured improvement still requires an actual passing native panel.
 
 ## Qualify a development dataset from recorded experiments
 
@@ -1262,5 +1263,84 @@ does not establish transfer to a different dataset, hardware class or policy.
 
 Historical retries return the original assessment. A later decision gate must
 requalify all current evidence and compare the exact case digests; replaying an
-old successful assessment cannot bypass a correction. Policy adoption remains
-a separate explicit operation.
+old successful assessment cannot bypass a correction.
+
+## Adopt and pin a research policy
+
+Initialize a policy binding from a benchmark's frozen baseline. This is an
+explicit baseline choice, without a claim of improvement:
+
+```python
+from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
+
+origin = operator.command(
+    "learning.create_policy_binding",
+    CreatePolicyBinding(binding_id=binding_id, benchmark_id=benchmark_id),
+    idempotency_key="initialize-research-policy",
+)["result"]
+binding = operator.get("policy_binding", binding_id)
+```
+
+Creation requires `learning.manage` and `read`. It retains the original policy
+artifact and action sources, creates the active `policy_binding`, and records
+an immutable `policy_binding_origin`. The command returns that origin; replay
+continues to return it after later adoption. Query the active binding to see its
+current policy and record revision.
+
+A separate actor with `learning.adopt` and `read` can adopt a passing challenger:
+
+```python
+adoption = operator.command(
+    "learning.adopt_policy",
+    AdoptPolicy(binding_id=binding_id, benchmark_id=benchmark_id),
+    expected_revision=binding["revision"],
+    idempotency_key="adopt-qualified-policy",
+)["result"]
+```
+
+The transaction requalifies the full assessment, training publication and prior
+adoption chain. It requires a passing gate against the binding's exact current
+baseline, with the same research protocol, comparison fingerprint, reward rule,
+ordered action identities and starting-source content. It retains the checked
+checkpoint, records `policy_adoption`, and updates the binding with a revision
+check. Concurrent challengers cannot both replace one baseline. Model-candidate
+incumbents and already frozen learning plans do not change.
+
+New learning plans can pin the active binding:
+
+```python
+from research_swarm.control.policy_models import PolicyBinding, PolicyBindingRef
+
+row = operator.get("policy_binding", binding_id)
+current = PolicyBinding.model_validate(row["data"])
+intent = FreezeLearningPlan(
+    plan_id=plan_id,
+    policy=current.policy,
+    reward_spec=current.family.reward_spec,
+    action_artifacts=current.action_artifacts,
+    episodes=planned_episodes,
+    policy_binding=PolicyBindingRef(
+        binding_id=binding_id,
+        revision=row["revision"],
+        policy_digest=current.policy.digest,
+    ),
+)
+```
+
+The controller verifies the supplied revision, adoption evidence and episode
+family before freezing. The plan stores the exact binding snapshot. Future
+decisions, admissions and dataset qualification use that snapshot, not the
+latest pointer. Advancing the binding preserves old plans; correcting evidence
+under a pinned adoption blocks new uses of that adoption. Exact command replay
+remains historical evidence and never silently performs another adoption.
+
+The first profile supports up to 16 linked adopted-policy generations in one
+ancestry proof. It rejects cycles and deeper ancestry explicitly. Shared
+ancestors are verified once within a proof walk, with no cache across operations
+or transactions. This bound applies to policy ancestry, not experiment count.
+
+MCP exposes `research_learning_create_policy_binding` and
+`research_learning_adopt_policy`. Policy bindings, origins and adoptions are
+available through the same evidence query API. A successful adoption mechanism
+does not establish a native policy win: report the actual held-out gate outcome,
+including rejection or inconclusive results.

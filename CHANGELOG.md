@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add explicit research-policy bindings and adoption with a dedicated scope, full current-evidence checks and atomic revision fencing. Pin binding snapshots in new learning plans, preserve prior plans across advancement, and recheck corrected adoption ancestry before new decisions, admissions or training data qualification.
+
 - Assess the complete frozen held-out policy panel with the original paired sign gate. Persist raw case trajectories and exact comparator/candidate costs atomically, reject incomplete or over-budget panels, and separate historical assessment replay from current-evidence qualification.
 
 - Admit committed benchmark actions through ordinary search and worker APIs into their exact reserved trial slots. Revalidate current policy provenance after source reads, preserve failed cases, and measure precommitted duplicate or no-op sources without resampling.

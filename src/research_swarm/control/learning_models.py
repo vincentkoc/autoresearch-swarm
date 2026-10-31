@@ -6,6 +6,7 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from research_swarm.control.policy_models import FrozenPolicyBinding, PolicyBindingRef
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.learning import (
@@ -30,9 +31,17 @@ class FreezeLearningPlan(VersionedRecord):
     action_artifacts: dict[Name, ArtifactRef] = Field(min_length=2, max_length=32)
     episodes: tuple[PlanEpisode, ...] = Field(min_length=1, max_length=256)
     comparison_policy: Literal["same-seed-v1"] = "same-seed-v1"
+    policy_binding: PolicyBindingRef | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def identities(self) -> Self:
+        if (
+            self.policy_binding is not None
+            and self.policy_binding.policy_digest != self.policy.digest
+        ):
+            raise ValueError("Policy binding reference must identify the requested policy")
         if len({item.request_id for item in self.episodes}) != len(self.episodes):
             raise ValueError("Every planned episode requires a distinct proposal request")
         if set(self.action_artifacts) != {action.id for action in self.policy.actions} or any(
@@ -70,6 +79,9 @@ class LearningPlan(VersionedRecord):
     evidence_through: Revision
     actor_id: ID
     recorded_at: Timestamp
+    policy_binding: FrozenPolicyBinding | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @property
     def digest(self) -> str:
