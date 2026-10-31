@@ -17,7 +17,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|artifact|default-artifact|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -43,6 +43,37 @@ export default {
       Number.parseInt(pair, 16),
     );
     const input = JSON.parse(new TextDecoder().decode(bytes));
+    if (action === "artifact") {
+      const source = await env.RESEARCH_BOOTSTRAP.checkpoint_read_artifact(
+        input.source_credential,
+        input.artifact_json,
+      );
+      const exported = JSON.parse(source);
+      if (exported.error) return new Response(source, { status: 409 });
+      const artifact = JSON.parse(input.artifact_json);
+      const result = JSON.parse(
+        await bootstrap.checkpoint_artifact(
+          input.credential,
+          JSON.stringify({
+            artifact_id: artifact.artifact_id,
+            generation: artifact.generation,
+          }),
+          exported.content_hex,
+        ),
+      );
+      if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
+        if (
+          typeof result.restore_id !== "string" ||
+          typeof result.storage_digest !== "string" ||
+          JSON.stringify(result.artifact) !== JSON.stringify(exported.artifact)
+        )
+          return Response.json(result, { status: 409 });
+        return new Response("{", {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return Response.json({ exported, result });
+    }
     if (action === "provision" || action === "request") {
       const result =
         action === "provision"
@@ -98,7 +129,8 @@ export default {
       action === "default-import" ||
       action === "default-request" ||
       action === "default-admit" ||
-      action === "default-turn"
+      action === "default-turn" ||
+      action === "default-artifact"
     ) {
       try {
         if (action === "default-import")
@@ -107,6 +139,12 @@ export default {
           await api.checkpoint_request(input.credential);
         else if (action === "default-admit")
           await api.checkpoint_admit(input.credential, input.election_json);
+        else if (action === "default-artifact")
+          await api.checkpoint_artifact(
+            input.credential,
+            input.artifact_json,
+            "",
+          );
         else await api.checkpoint_turn(input.credential, input.turn_json);
         return Response.json({ denied: false });
       } catch {

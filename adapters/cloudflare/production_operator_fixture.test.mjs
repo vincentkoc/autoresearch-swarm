@@ -11,7 +11,8 @@ function request(path, payload, drop = false) {
   });
 }
 
-for (const action of ["seal", "capture", "elect"]) {
+for (const action of ["seal", "capture", "elect", "read-artifact"]) {
+  const method = "checkpoint_" + action.replaceAll("-", "_");
   test(`private ${action} forwards one unchanged JSON string and can lose its reply`, async () => {
     const calls = [];
     const payload = {
@@ -22,10 +23,12 @@ for (const action of ["seal", "capture", "elect"]) {
       elect: '{"election":{},"signature":"fixture"}',
       seal: '{"seal":{},"custody":{}}',
       capture: '{"envelope_base64":"eA==","chunks_base64":["eQ=="]}',
+      "read-artifact":
+        '{"manifest_digest":"fixture","artifact":{"generation":"fixture"},"content_hex":"00"}',
     }[action];
     const env = {
       RESEARCH_BOOTSTRAP: {
-        [`checkpoint_${action}`]: async (...args) => {
+        [method]: async (...args) => {
           calls.push(args);
           return result;
         },
@@ -59,8 +62,7 @@ for (const action of ["seal", "capture", "elect"]) {
       request(`/fixture/checkpoint-${action}`, {}, true),
       {
         RESEARCH_BOOTSTRAP: {
-          [`checkpoint_${action}`]: async () =>
-            '{"error":{"code":"STALE_FENCE"}}',
+          [method]: async () => '{"error":{"code":"STALE_FENCE"}}',
         },
       },
     );

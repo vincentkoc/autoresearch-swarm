@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extend the six-startup workerd probe through real source R2 export and elected
+  target restoration. Verify content hashes, fixed bindings, public and wrong-target
+  refusal, lost successful replies and exact replay after restarting all Workers.
+  The fixture keeps source errors and incomplete restoration receipts visible.
+
 - Export exact artifact generations from a sealed source through private RPC.
   Revalidate the requested checkpoint and current custody before and after R2
   reads, verify complete bytes, and preserve every SQL row. The bounded result

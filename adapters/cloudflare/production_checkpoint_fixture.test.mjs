@@ -16,6 +16,8 @@ function request(action, { letter = "a", drop = false } = {}) {
       request_json: '{"backup_id":"fixture"}',
       election_json: "synthetic-signed-election",
       turn_json: "synthetic-saved-turn",
+      artifact_json:
+        '{"artifact_id":"artifact","generation":"generation","backup_id":"backup","manifest_digest":"image"}',
     }),
     headers: drop ? { "x-fixture-drop-bootstrap": "true" } : {},
   });
@@ -211,6 +213,80 @@ test("target turn closure preserves failure and fixed-target routing", async () 
 
 test("default target turn cannot enter private recovery", async () => {
   const result = await operator.fetch(request("default-turn"), {
+    TARGET_A_API: {},
+  });
+  assert.deepEqual(await result.json(), { denied: true });
+});
+
+test("artifact copy carries exact source bytes into only the fixed target", async () => {
+  const artifact = { reference: { id: "artifact" }, generation: "generation" };
+  const exported = { manifest_digest: "image", artifact, content_hex: "00ff" };
+  const receipt = {
+    restore_id: "restore",
+    storage_digest: "storage",
+    artifact,
+  };
+  const calls = [];
+  const env = {
+    RESEARCH_BOOTSTRAP: {
+      checkpoint_read_artifact: async (credential, payload) => {
+        assert.equal(credential, "source-credential");
+        assert.equal(JSON.parse(payload).manifest_digest, "image");
+        calls.push("read");
+        return JSON.stringify(exported);
+      },
+    },
+    TARGET_A_BOOTSTRAP: {
+      checkpoint_artifact: () => assert.fail("Wrong target"),
+    },
+    TARGET_B_BOOTSTRAP: {
+      checkpoint_artifact: async (credential, payload, content) => {
+        assert.equal(credential, "target-credential");
+        assert.deepEqual(JSON.parse(payload), {
+          artifact_id: "artifact",
+          generation: "generation",
+        });
+        assert.equal(content, exported.content_hex);
+        calls.push("restore");
+        return JSON.stringify(receipt);
+      },
+    },
+  };
+  const call = (drop = false) =>
+    operator.fetch(request("artifact", { letter: "b", drop }), env);
+  assert.deepEqual(await (await call()).json(), { exported, result: receipt });
+  assert.equal(await (await call(true)).text(), "{");
+  assert.deepEqual(calls, ["read", "restore", "read", "restore"]);
+  for (const invalid of [
+    { error: { code: "STALE_FENCE" } },
+    { ...receipt, artifact: { ...artifact, generation: "other" } },
+  ]) {
+    env.TARGET_B_BOOTSTRAP.checkpoint_artifact = async () =>
+      JSON.stringify(invalid);
+    const failed = await call(true);
+    assert.equal(failed.status, 409);
+    assert.deepEqual(await failed.json(), invalid);
+  }
+});
+
+test("source artifact refusal cannot reach the target or become a lost reply", async () => {
+  for (const drop of [false, true]) {
+    const result = await operator.fetch(request("artifact", { drop }), {
+      RESEARCH_BOOTSTRAP: {
+        checkpoint_read_artifact: async () =>
+          '{"error":{"code":"STALE_FENCE"}}',
+      },
+      TARGET_A_BOOTSTRAP: {
+        checkpoint_artifact: () => assert.fail("Source refused"),
+      },
+    });
+    assert.equal(result.status, 409);
+    assert.deepEqual(await result.json(), { error: { code: "STALE_FENCE" } });
+  }
+});
+
+test("default artifact restoration has no private fallback", async () => {
+  const result = await operator.fetch(request("default-artifact"), {
     TARGET_A_API: {},
   });
   assert.deepEqual(await result.json(), { denied: true });

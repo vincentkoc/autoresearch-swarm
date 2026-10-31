@@ -45,9 +45,11 @@ export default {
         "/fixture/checkpoint-seal": "checkpoint_seal",
         "/fixture/checkpoint-capture": "checkpoint_capture",
         "/fixture/checkpoint-elect": "checkpoint_elect",
+        "/fixture/checkpoint-read-artifact": "checkpoint_read_artifact",
         "/fixture/default-checkpoint-seal": "checkpoint_seal",
         "/fixture/default-checkpoint-capture": "checkpoint_capture",
         "/fixture/default-checkpoint-elect": "checkpoint_elect",
+        "/fixture/default-checkpoint-read-artifact": "checkpoint_read_artifact",
       };
       const method = checkpoints[url.pathname];
       if (method) {
@@ -72,6 +74,13 @@ export default {
             else if (value.error?.code === "IDEMPOTENCY_CONFLICT")
               outcome = "conflict";
             else return new Response(result, { status: 409 });
+          } else if (method === "checkpoint_read_artifact") {
+            if (
+              typeof value.manifest_digest !== "string" ||
+              typeof value.artifact?.generation !== "string" ||
+              typeof value.content_hex !== "string"
+            )
+              return new Response(result, { status: 409 });
           } else if (
             method === "checkpoint_seal"
               ? !(value.seal && value.custody)

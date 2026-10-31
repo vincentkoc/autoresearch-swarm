@@ -2142,6 +2142,15 @@ signatures or generation identities change. Source export refuses when evidence,
 authority or storage configuration changes during the read. Native tests cover
 the full export-to-restore flow; actual workerd qualification remains pending.
 
+The six-startup production probe now copies one actual source artifact through
+these private RPCs into the elected target's distinct R2 bucket. It checks source
+bytes against the signed inventory, validates the target receipt, rejects public,
+wrong-credential and losing-target calls, then drops a successful restoration
+reply. After all Workers restart, copying the same generation must return the
+same response. The source checkpoint and witness request count remain unchanged;
+ordinary research stays refused. This added probe still needs a passing workerd
+receipt before claiming runtime qualification.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and

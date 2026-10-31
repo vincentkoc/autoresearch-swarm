@@ -105,6 +105,7 @@ def target_call(
     drop=False,
     election=None,
     turn=None,
+    artifact=None,
 ):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
@@ -114,6 +115,7 @@ def target_call(
             "request_json": json.dumps(capture),
             "election_json": json.dumps(election),
             "turn_json": json.dumps(turn),
+            "artifact_json": json.dumps(artifact),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -550,6 +552,63 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             assert closed["turn"]["state"] == "closed_unacknowledged"
             assert closed["response"] is closed["receipt"] is None
 
+            blob = image.artifacts[0]
+            artifact_request = {
+                "backup_id": image.seal.backup_id,
+                "manifest_digest": image.digest,
+                "artifact_id": blob.reference.id,
+                "generation": blob.generation,
+            }
+            source_request = {
+                "credential": secrets["bootstrap"],
+                "request_json": json.dumps(artifact_request),
+            }
+            assert http.post(
+                "/fixture/default-checkpoint-read-artifact", json=source_request
+            ).json() == {"denied": True}
+            assert (
+                http.post(
+                    "/fixture/checkpoint-read-artifact",
+                    json={**source_request, "credential": "wrong"},
+                ).json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            exported = http.post("/fixture/checkpoint-read-artifact", json=source_request).json()
+            assert exported["artifact"] == blob.model_dump(mode="json")
+            assert exported["manifest_digest"] == image.digest
+            content = bytes.fromhex(exported["content_hex"])
+            assert len(content) == blob.reference.size_bytes
+            assert content_digest(content) == blob.reference.digest
+
+            def artifact_call(letter, *, action="artifact", credential=None, drop=False):
+                return target_call(
+                    http,
+                    letter,
+                    action,
+                    credential or target_secrets[letter]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    artifact=artifact_request,
+                    drop=drop,
+                )
+
+            assert artifact_call(winner, action="default-artifact").json() == {"denied": True}
+            assert "error" in artifact_call(loser).json()["result"]
+            assert (
+                artifact_call(winner, credential="wrong").json()["result"]["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            assert artifact_call(winner, drop=True).text == "{"
+            copied_artifact = artifact_call(winner).text
+            copied = json.loads(copied_artifact)
+            assert copied["exported"] == exported
+            assert copied["result"]["artifact"] == blob.model_dump(mode="json")
+            assert copied["result"]["restore_id"] == bindings[winner]["intent"]["restore_id"]
+            assert (
+                copied["result"]["storage_digest"]
+                == DeploymentManifest.model_validate(targets[winner]).configuration.storage.digest
+            )
+
         with (
             server(tmp_path, sequence=6, **options) as url,
             httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
@@ -564,6 +623,18 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 election=outcomes[winner],
             )
             assert repeated.text == accepted_admission
+            assert (
+                target_call(
+                    http,
+                    winner,
+                    "artifact",
+                    target_secrets[winner]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    artifact=artifact_request,
+                ).text
+                == copied_artifact
+            )
             assert (
                 target_call(
                     http,
