@@ -310,11 +310,20 @@ class ExistingResearchRouter:
 
         return await exclusive(self.state, write)
 
+    async def artifact_content(self, token, artifact_id):
+        async def read():
+            context = self._context(token, idempotency_key=new_id())
+            return await self.artifacts.content(token, context, {"id": artifact_id})
+
+        return await exclusive(self.state, read)
+
     async def query(self, token, operation, payload):
         async def read():
             context = self._context(token, idempotency_key=new_id())
             if operation == "artifact.upload_status":
                 return await self.artifacts.status(token, context, payload)
+            if operation == "artifact.get":
+                return self.artifacts.metadata(token, context, payload)
             if operation == "worker.get":
                 return self.queries.get(context, validated(WorkerRead, payload))
             if operation == "worker.list":

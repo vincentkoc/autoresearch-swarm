@@ -459,6 +459,26 @@ Logical payload quota excludes permanent empty retirement-marker overhead and
 provider billing. This bounded profile supplies no streaming readers, restore,
 artifact deletion or worker execution route and does not qualify those features.
 
+The authoritative upload lifecycle passed local DO/R2 qualification at `315c548`
+in [run 41194176308](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41194176308):
+all five runtime tests passed in 115.94 seconds.
+The fixture sends an actual source ZIP and empty object, discards a successful
+PUT response, verifies shared publication, retires a duplicate before a deliberately
+failed witness, restarts workerd and completes cleanup without releasing quota
+early. A separate-object bypass proves that the test detects missing exclusion;
+normal routing holds abort behind an externally delayed PUT invocation. Accepted
+and rejected acknowledgments replay with byte access disabled and no additional
+witness call. These remain local runtime results with synthetic clocks and keys.
+
+`artifact.get` requires `read` and returns the shared metadata record. Bounded
+content delivery requires `read`, an active workspace and a verified canonical
+generation. The router reads and verifies the complete body inside its exclusive
+gate, then rechecks credentials, configuration and the captured catalog row.
+Only immutable `(ArtifactRef, bytes)` leaves the gate. Thus HTTP delivery cannot
+keep an R2 reader, native session or catalog pin alive. Metadata queries and
+downloads create no command acknowledgment, event, pin or witness. Provider
+qualification of this download path is separate from the upload receipt above.
+
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command

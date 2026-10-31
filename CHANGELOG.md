@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add read-only hosted artifact metadata and bounded verified downloads. Finish
+  all R2 reads under the exclusive authority gate, recheck current identity and
+  catalog selection, then return immutable bytes without native reader pins.
+
 - Add actual DO/R2 artifact probes for lost responses, held transfers, duplicate
   retirement, quota recovery, empty files and replay after process restart. Use
   a bypass control to prove that the ordering test detects a missing gate.

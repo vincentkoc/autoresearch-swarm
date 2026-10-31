@@ -17,6 +17,7 @@ from research_swarm.state.database import Transaction, encode
 from research_swarm.storage.async_r2 import BoundedR2Configuration, BoundedR2Objects, ObjectBytes
 from research_swarm.storage.r2_objects import generation_key, generation_metadata
 from tests.test_async_r2 import Transport
+from tests.test_hosted_router import counts
 from tests.test_hosted_router import hosted as hosted
 
 
@@ -191,7 +192,7 @@ async def test_abort_intent_does_not_release_quota_and_late_payload_cannot_resur
     # A prior uncertain transport can complete after the authority call has ended.
     late = asyncio.create_task(h.transport.put(key, body, generation_metadata(old), if_absent=True))
     try:
-        await h.transport.arrived.wait()
+        await asyncio.wait_for(h.transport.arrived.wait(), 2)
         intent = await command(h, "abort_upload", row["id"], key="abort")
         assert intent["result"]["state"] == "aborting"
         with pytest.raises(ResearchError) as full:
@@ -200,7 +201,7 @@ async def test_abort_intent_does_not_release_quota_and_late_payload_cannot_resur
         finished = await command(h, "cleanup_upload", row["id"], key="retire")
         assert finished["result"]["state"] == "aborted"
         h.transport.release.set()
-        assert await late is False
+        assert await asyncio.wait_for(late, 2) is False
         await begin(h, b"c")
         before = len(h.witness.requests), len(h.transport.calls)
         assert await command(h, "abort_upload", row["id"], key="abort") == intent
@@ -310,13 +311,13 @@ async def test_exclusive_transfer_finishes_before_competing_abort(artifacts):
     transfer = asyncio.create_task(h.router.upload_part(h.operator.token, row["id"], 0, body))
     abort = None
     try:
-        await h.transport.arrived.wait()
+        await asyncio.wait_for(h.transport.arrived.wait(), 2)
         abort = asyncio.create_task(command(h, "abort_upload", row["id"]))
-        await h.gate.waiting.wait()
+        await asyncio.wait_for(h.gate.waiting.wait(), 2)
         assert not abort.done()
         h.transport.release.set()
-        assert await transfer == len(body)
-        assert (await abort)["result"]["state"] == "aborting"
+        assert await asyncio.wait_for(transfer, 2) == len(body)
+        assert (await asyncio.wait_for(abort, 2))["result"]["state"] == "aborting"
         with pytest.raises(ResearchError) as refused:
             await command(h, "finalize_upload", row["id"])
         assert refused.value.code == ErrorCode.INVALID_TRANSITION
@@ -473,13 +474,111 @@ async def test_storage_cannot_suppress_cancellation_and_publish_a_record(artifac
     before = len(h.witness.requests)
     task = asyncio.create_task(command(h, "finalize_upload", row["id"]))
     try:
-        await entered.wait()
+        await asyncio.wait_for(entered.wait(), 2)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await asyncio.wait_for(task, 2)
         assert len(h.witness.requests) == before
         assert current(h, "upload", row["id"])["state"] == "pending"
     finally:
         if not task.done():
             task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_read_only_actor_receives_verified_buffer_without_ledger_effects(artifacts):
+    h, body = artifacts, b"\x00\xff bounded download"
+    row = await pending(h, body)
+    acknowledgment = await command(h, "finalize_upload", row["id"])
+    artifact_id = acknowledgment["result"]["id"]
+    principal = h.principal.model_copy(update={"id": new_id(), "scopes": {"read"}})
+    reader = h.credentials.issue(h.principal, principal)
+    context = CommandContext(principal=h.principal, idempotency_key=new_id())
+    before = h.database.snapshot(context), counts(h)
+    witnesses = len(h.witness.requests)
+    metadata = await h.router.query(reader.token, "artifact.get", {"id": artifact_id})
+    reference, buffered = await h.router.artifact_content(reader.token, artifact_id)
+    assert reference.model_dump(mode="json") == metadata["reference"]
+    assert buffered == body and isinstance(buffered, bytes)
+    assert (h.database.snapshot(context), counts(h)) == before
+    assert len(h.witness.requests) == witnesses
+    # The verified buffer survives subsequent provider loss; no lazy reader escaped.
+    h.transport.hide_reads = True
+    assert buffered == body
+    with pytest.raises(ResearchError) as missing:
+        await h.router.artifact_content(reader.token, artifact_id)
+    assert missing.value.code == ErrorCode.ARTIFACT_UNVERIFIED
+
+
+@pytest.mark.parametrize("change", ["revoked", "generation", "workspace", "corrupt", "oversized"])
+async def test_bounded_download_refuses_authority_or_content_drift(artifacts, change):
+    h, body = artifacts, b"fixture"
+    row = await pending(h, body)
+    acknowledgment = await command(h, "finalize_upload", row["id"])
+    artifact_id = acknowledgment["result"]["id"]
+    original = h.transport.get
+
+    async def changed(*args, **kwargs):
+        value = await original(*args, **kwargs)
+        if change == "revoked":
+            h.credentials.revoke(h.principal, h.operator.id)
+        elif change in {"generation", "workspace"}:
+            data = dict(acknowledgment["result"]["data"])
+            data["storage_generation" if change == "generation" else "workspace_id"] = new_id()
+            h.store.write(
+                lambda sql: sql.execute(
+                    "UPDATE records SET payload=? WHERE workspace_id=? "
+                    "AND kind='artifact' AND id=?",
+                    (encode(data), h.principal.workspace_id, artifact_id),
+                )
+            )
+        elif change == "corrupt":
+            return ObjectBytes(b"wrong", value.metadata)
+        else:
+            return ObjectBytes(bytes(4097), value.metadata)
+        return value
+
+    h.transport.get = changed
+    with pytest.raises(ResearchError) as refused:
+        await h.router.artifact_content(h.operator.token, artifact_id)
+    assert refused.value.code in {
+        ErrorCode.AUTHORIZATION_DENIED,
+        ErrorCode.STALE_FENCE,
+        ErrorCode.ARTIFACT_UNVERIFIED,
+    }
+
+
+async def test_download_gate_spans_full_read_and_only_releases_an_immutable_buffer(artifacts):
+    h, body = artifacts, b"fixture"
+    row = await pending(h, body)
+    artifact_id = (await command(h, "finalize_upload", row["id"]))["result"]["id"]
+    original = h.transport.get
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def held(*args, **kwargs):
+        value = await original(*args, **kwargs)
+        entered.set()
+        await release.wait()
+        return value
+
+    h.transport.get = held
+    first = asyncio.create_task(h.router.artifact_content(h.operator.token, artifact_id))
+    second = None
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        second = asyncio.create_task(
+            h.router.query(h.operator.token, "artifact.get", {"id": artifact_id})
+        )
+        await asyncio.wait_for(h.gate.waiting.wait(), 2)
+        assert not second.done()
+        release.set()
+        reference, content = await asyncio.wait_for(first, 2)
+        assert (await asyncio.wait_for(second, 2))["reference"] == reference.model_dump(mode="json")
+        assert content == body
+    finally:
+        release.set()
+        tasks = [task for task in (first, second) if task is not None]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

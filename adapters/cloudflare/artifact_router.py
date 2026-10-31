@@ -21,6 +21,10 @@ class UploadTarget(VersionedRecord):
     upload_id: ID
 
 
+class ArtifactTarget(VersionedRecord):
+    id: ID
+
+
 COMMANDS = frozenset(
     {
         "artifact.begin_upload",
@@ -45,7 +49,7 @@ class HostedArtifacts:
         self.router = router
         self.database, self.service = router.database, router.service.artifacts
 
-    def _admit(self, token, context):
+    def _identity(self, token, context):
         if self.router.configuration.profile != "worker-artifacts-witness-v1":
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Artifact profile is unavailable")
         current = self.router._context(
@@ -55,11 +59,50 @@ class HostedArtifacts:
         )
         if current.principal != context.principal:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Artifact credential changed")
-        context.principal.require("artifact.upload")
-        context.principal.require("read")
         task = asyncio.current_task()
         if task is None or task.cancelling():
             raise asyncio.CancelledError("Artifact operation owner was cancelled")
+
+    def _admit(self, token, context):
+        self._identity(token, context)
+        context.principal.require("artifact.upload")
+        context.principal.require("read")
+
+    def metadata(self, token, context, payload):
+        self._identity(token, context)
+        context.principal.require("read")
+        request = validated(ArtifactTarget, payload)
+        return self.service.get(context, request.id).model_dump(mode="json")
+
+    def _readable(self, token, context, artifact_id):
+        self._identity(token, context)
+        context.principal.require("read")
+
+        def read(sql):
+            require_workspace_mutation(sql, context.principal.workspace_id, "artifact.read")
+            row = Transaction(sql, context).get("artifact", artifact_id)
+            record = ArtifactRecord.model_validate(row["data"])
+            if (
+                row["state"] != "verified"
+                or record.state != "verified"
+                or record.workspace_id != context.principal.workspace_id
+                or record.reference.id != artifact_id
+            ):
+                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact is unavailable")
+            return row, record
+
+        return self.database.store.read(read)
+
+    async def content(self, token, context, payload):
+        request = validated(ArtifactTarget, payload)
+        before, record = self._readable(token, context, request.id)
+        body = await self.router.objects.read(record.workspace_id, self.service._blob(record))
+        after, _ = self._readable(token, context, request.id)
+        if before != after:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Artifact changed during download")
+        # All storage I/O has finished while holding the gate. Bytes are immutable;
+        # no reader or generation pin escapes into HTTP response delivery.
+        return record.reference, body
 
     def _upload_in(self, transaction, upload_id, *, expected=None):
         row = transaction.get("upload", upload_id)
