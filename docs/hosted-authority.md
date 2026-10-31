@@ -2244,7 +2244,8 @@ the original outcome and consumption; public, losing-target and wrong-bootstrap
 calls refuse. The fixture drops only a matching accepted closure response. After
 restarting every Worker, the original upload, submission and closure acknowledgments
 must replay unchanged, while historical attempt reads show `closed_unaccepted`.
-This extension remains pending actual workerd qualification.
+This six-startup extension passed actual workerd qualification at the exact revision
+recorded below; target preparation and activation require newer receipts.
 
 The shared kernel now has a private `RecoveryRuntimeGuard` for preparing an elected
 target. Its immutable `RecoveryRuntimePlan` binds deployment/configuration digests,
@@ -2536,6 +2537,16 @@ passed on all four surfaces: workerd 20 tests in 486.55 seconds; Linux 1,192 in
 in 1,411.64 seconds. This adds source/target artifact transfer and original-worker
 route issuance across restart. It predates the named recovery receiver, journal
 quarantine/closure and target runtime preparation; those require newer receipts.
+
+At `d111b841d242771a3de6fece8180d94860c7270b`, the
+[full qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41227545377)
+passed on all four surfaces: workerd 20 tests in 824.40 seconds; Linux 1,317 in
+382.90 seconds; macOS 1,317 in 474.45 seconds; Windows 1,311 with six explicit skips
+in 1,684.56 seconds. This adds named recovery ingress, original native CPU journal
+transfer/quarantine and private closure across six startups. Native tests include
+target preparation, but that revision's workerd probe does not call its private
+preparation RPC. Actual target preparation, activation and requalification require
+newer qualification receipts.
 
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent
