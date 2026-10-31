@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Reconcile or close original saved agent turns through a private hosted recovery
+  route. Reuse the shared acknowledgment and closure rules, recheck original
+  ownership before cached replies, and preserve budgets without dispatching actions.
+  Accepted target commands reconcile; an absent acknowledgment closes explicitly.
+
 - Extend the production workerd probe through elected-target admission and a
   sixth runtime startup. Verify the target signature, wrong-target and public
   refusal, lost accepted replies, exact restart replay and continued execution

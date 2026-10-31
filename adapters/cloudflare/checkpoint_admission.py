@@ -60,6 +60,34 @@ class HostedRecoveryVerifier:
     manifest: DeploymentManifest
     binding: TargetBinding
 
+    def read_admission(self, sql, *, authority, context, crypto):
+        binding = self.binding
+        receipt, _, _ = inspect_target_history(
+            sql,
+            binding.intent,
+            binding.expected_source,
+            binding.expected_custody,
+            phase="recovering",
+        )
+        row = sql.execute(
+            "SELECT payload FROM records WHERE workspace_id=? AND kind='recovery_admission' "
+            "AND id=? AND state='immutable' AND revision=1 AND typeof(payload)='text' "
+            "AND length(CAST(payload AS BLOB))<=1048576",
+            (receipt.workspace_id, receipt.restore_id),
+        ).fetchone()
+        if row is None:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Logical admission record changed")
+        admission = RecoveryAdmission.model_validate_json(row[0])
+        self.verify(
+            sql,
+            authority=authority,
+            context=context,
+            receipt=receipt,
+            admission=admission,
+            crypto=crypto,
+        )
+        return receipt, admission
+
     def verify(self, sql, *, authority, context, receipt, admission, crypto):
         manifest, binding = self.manifest, self.binding
         intent, target = binding.intent, manifest.configuration.authority
@@ -138,30 +166,13 @@ async def admit_target(
             bound = AdmissionStore(store.identity, sql)
             database = Database.from_store(bound, recovery_verifier=verifier)
             existing = sql.execute(
-                "SELECT state,revision,payload FROM records WHERE workspace_id=? "
-                "AND kind='recovery_admission' AND id=? AND typeof(payload)='text' "
-                "AND length(CAST(payload AS BLOB))<=1048576",
+                "SELECT 1 FROM records WHERE workspace_id=? AND kind='recovery_admission' AND id=?",
                 (issuer.workspace_id, binding.intent.restore_id),
             ).fetchone()
             if existing is not None:
-                receipt, _, _ = inspect_target_history(
-                    sql,
-                    binding.intent,
-                    binding.expected_source,
-                    binding.expected_custody,
-                    phase="recovering",
+                receipt, admitted = verifier.read_admission(
+                    sql, authority=store.identity, context=context, crypto=crypto
                 )
-                admitted = RecoveryAdmission.model_validate_json(existing["payload"])
-                verifier.verify(
-                    sql,
-                    authority=store.identity,
-                    context=context,
-                    receipt=receipt,
-                    admission=admitted,
-                    crypto=crypto,
-                )
-                if (existing["state"], existing["revision"]) != ("immutable", 1):
-                    raise ResearchError(ErrorCode.STALE_FENCE, "Logical admission record changed")
                 if admitted.logical_election_digest != elected.digest:
                     raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Recovery election differs")
                 reply = database.replay(context, "workspace.begin_recovery", payload, "*")

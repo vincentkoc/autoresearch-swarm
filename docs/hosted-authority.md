@@ -2091,6 +2091,21 @@ router access cannot reopen the recovering target. Its fixture drops only a
 recognized accepted admission; unexpected failures remain visible. This probe
 requires a new passing workerd receipt before hosted runtime qualification.
 
+`Bootstrap.checkpoint_turn(bootstrap_credential, request_json)` admits only
+`orchestration.reconcile_turn` and `orchestration.close_turn` on the recovering
+fixed target. The request supplies a stable UUID `request_id`, optional
+`expected_revision`, operation and its ordinary typed payload. Close requires the
+original turn revision, epoch and finding; reconcile uses the turn ID. The target
+operator comes from protected configuration. Each call verifies admitted recovery
+and the original fenced turn/owner before reading even an existing acknowledgment.
+The shared `OrchestrationControl` performs the transition under the same SQL write;
+its action dispatcher always refuses. A retained target acknowledgment produces
+the existing receipt semantics; absence permits explicit unacknowledged closure.
+Neither operation resumes a provider, launches an experiment or releases funding.
+Native adapter tests cover both branches, independent connection races, a lost
+first committed reply, restart replay and changed-owner refusal. Actual workerd
+turn-maintenance qualification remains pending.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and

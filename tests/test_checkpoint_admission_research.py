@@ -17,15 +17,25 @@ from tests.test_checkpoint_target import configured as configured
 from tests.test_cloudflare_deployment import deployment as deployment
 from tests.test_cloudflare_provisioning import bootstrap as bootstrap
 from tests.test_manifest import project as project
-from tests.test_production_delivery import prepare, register
+from tests.test_production_delivery import delivery, prepare, register
 from tests.test_production_delivery import production as production
 
 
 @pytest.fixture
-async def source(production):
+async def source(production, request, monkeypatch):
     e = production
     await register(e)
-    await prepare(e)
+    e.turn = await prepare(e)
+    if getattr(request, "param", None) == "acknowledged":
+        status, pending = await delivery(e)
+        assert status == 200
+
+        def lost(*args):
+            raise RuntimeError("Synthetic reply lost before turn settlement")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(e.router.orchestration.service, "_finish", lost)
+            assert (await delivery(e, "execute", pending["work"]))[0] == 503
 
     def schema(sql):
         sql.execute(

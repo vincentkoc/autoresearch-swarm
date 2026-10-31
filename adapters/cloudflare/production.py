@@ -4,6 +4,7 @@ from checkpoint_admission import admit_target
 from checkpoint_election import elect_source
 from checkpoint_source import capture_source, seal_source
 from checkpoint_target import import_target, request_target
+from checkpoint_turns import reconcile_target_turn
 from checkpoint_wire import require_rpc_string
 from deployment import load_deployment
 from durable_sql import DurableObjectStore
@@ -97,6 +98,11 @@ async def target_checkpoint(state, env, credential, operation, **arguments):
 
 
 class ResearchAuthority(DurableObject):
+    async def checkpoint_turn(self, credential, request_json):
+        return await target_checkpoint(
+            self.ctx, self.env, credential, reconcile_target_turn, request_json=request_json
+        )
+
     async def checkpoint_request(self, credential):
         return await target_checkpoint(self.ctx, self.env, credential, request_target)
 
@@ -224,6 +230,20 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def checkpoint_turn(self, credential, request_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_turn(
+                credential, request_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def checkpoint_admit(self, credential, election_json):
         try:
