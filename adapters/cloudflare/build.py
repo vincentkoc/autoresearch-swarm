@@ -53,6 +53,7 @@ PRODUCTION = (
     "checkpoint_election.py",
     "checkpoint_capture.py",
     "checkpoint_import.py",
+    "checkpoint_history.py",
     "checkpoint_wire.py",
     "checkpoint_source.py",
     "checkpoint_target.py",
