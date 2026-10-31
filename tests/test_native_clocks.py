@@ -89,8 +89,10 @@ def test_sample_bounds_read_delay_and_rejects_a_counter_reversal() -> None:
 def test_suspend_within_sampling_cannot_be_hidden_as_read_uncertainty() -> None:
     values = iter([1_000_000_000, 61_000_000_000])
     clock = NativeClock("synthetic-suspend", lambda: next(values), lambda: 1000, 1)
-    with pytest.raises(ResearchError, match="interval is too wide"):
+    with pytest.raises(ResearchError, match="interval is too wide") as stale:
         clock.sample()
+    assert stale.value.code == ErrorCode.STALE_FENCE and stale.value.retryable is False
+    assert stale.value.details == {"sample_span_ns": "60000000000", "maximum_span_ns": "50000000"}
     before = ClockReading(1_000_000_000, 1000, 1_000_000_000, 1)
     after = ClockReading(61_000_000_000, 1000, 61_000_000_000, 60_000_000_000)
     with pytest.raises(ResearchError, match="uncertainty exceeds"):

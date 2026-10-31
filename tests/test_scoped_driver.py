@@ -682,7 +682,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
         release = None
         supervisor = None
 
-        def setup_diagnostics(process: Any, phase: str) -> str:
+        def setup_diagnostics(
+            process: Any, phase: str, captured: tuple[bytes, bytes] | None = None
+        ) -> str:
             def bounded(value: Any, limit: int = 1024) -> str:
                 text = value.decode(errors="replace") if isinstance(value, bytes) else str(value)
                 for private in (
@@ -707,7 +709,7 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     result["resumer" + suffix] = {"error_type": type(error).__name__}
             if process.poll() is not None:
                 try:
-                    output, error_output = process.communicate(timeout=2)
+                    output, error_output = captured or process.communicate(timeout=2)
                     result["stderr"] = bounded(error_output)
                     if len(output) > 128 * 1024:
                         result["stdout"] = "CLI response exceeded diagnostic bound"
@@ -939,9 +941,13 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     + "; stderr="
                     + captured
                 )
-            assert resumed.returncode == 0, stderr
+            assert resumed.returncode == 0, setup_diagnostics(
+                resumed, "resumed driver result", (stdout, stderr)
+            )
             result = json.loads(stdout)
-            assert result["state"] == "idle" and result["observation_count"] == 1
+            assert result["state"] == "idle" and result["observation_count"] == 1, (
+                setup_diagnostics(resumed, "resumed driver observations", (stdout, stderr))
+            )
             closed = journal.get(running.dispatch.attempt_id)
             assert closed.state == JournalState.CLOSED and closed.native == running.native
             assert closed.outcome is not None and closed.outcome.closure.scope_closed

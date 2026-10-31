@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Include measured and maximum sample spans in native clock interval refusals.
+  Preserve the existing fault threshold and nonretryable fence. Worker restart
+  qualification now reports its bounded, redacted blocked/disconnected result
+  and journal evidence when a resumed process exits unsuccessfully.
+
 - Extend production workerd qualification with post-bootstrap campaign binding,
   durable gateway registration, and a separate actual Workflow delivering a saved
   report. Verify its accepted receipt before client replay, then restart the

@@ -56,7 +56,14 @@ class NativeClock:
         if before < 0 or awake < 0 or after < before:
             raise ResearchError(ErrorCode.STALE_FENCE, "Native clock regressed")
         if after - before > MAX_SAMPLE_SPAN_NS:
-            raise ResearchError(ErrorCode.STALE_FENCE, "Clock sample interval is too wide")
+            raise ResearchError(
+                ErrorCode.STALE_FENCE,
+                f"Clock sample interval is too wide ({after - before}ns > {MAX_SAMPLE_SPAN_NS}ns)",
+                details={
+                    "sample_span_ns": str(after - before),
+                    "maximum_span_ns": str(MAX_SAMPLE_SPAN_NS),
+                },
+            )
         return ClockReading(after, awake, wall, after - before + self.resolution_ns)
 
 
