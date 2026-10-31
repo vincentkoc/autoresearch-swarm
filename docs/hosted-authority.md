@@ -1098,6 +1098,16 @@ any checkpoint or successor. This extraction lets a future hosted adapter verify
 R2 bytes asynchronously while retaining the same selection and transaction rules.
 It does not expose hosted transfer, snapshot recovery or successor startup yet.
 
+`TransferLimits` lets an adapter reduce record, manifest-entry, manifest-byte and
+artifact-count ceilings and set an aggregate artifact-byte ceiling. Defaults keep
+the native manifest ceilings; auxiliary custody and retention scans now also have
+an explicit 100,000-row ceiling. SQL queries request at most the selected bound
+plus one sentinel row before the bridge can materialize a result. Reference
+traversal yields incrementally, and both preparation and commit enforce the
+selected profile. Exceeding a bound refuses the transfer; it never truncates a
+checkpoint or treats missing evidence as absent custody. Smaller valid profiles
+produce the same view and checkpoint digests as the native profile.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

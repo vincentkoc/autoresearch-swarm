@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add narrower transfer inspection profiles for bounded runtimes. Bound SQL
+  materialization, manifest records/bytes and required artifact counts/bytes;
+  reapply the same limits at commit without changing accepted transfer identities.
+
 - Separate shared transfer selection from native artifact pinning. Preserve
   operator/driver separation, exact transfer identity and final view revalidation
   so other byte-verification adapters can use the same atomic transfer transaction.

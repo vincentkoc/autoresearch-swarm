@@ -10,7 +10,12 @@ from research_swarm.control.orchestration_models import (
     AcknowledgeDriverStart,
     TransferOrchestration,
 )
-from research_swarm.control.transfer_view import TransferView, inspect_transfer
+from research_swarm.control.transfer_view import (
+    DEFAULT_LIMITS,
+    TransferLimits,
+    TransferView,
+    inspect_transfer,
+)
 from research_swarm.domain.canonical import canonical_bytes, record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
@@ -140,7 +145,12 @@ class OrchestrationTransferControl:
         )
 
     def _prepare_in(
-        self, transaction: Transaction, intent: TransferOrchestration, digest: str
+        self,
+        transaction: Transaction,
+        intent: TransferOrchestration,
+        digest: str,
+        *,
+        limits: TransferLimits = DEFAULT_LIMITS,
     ) -> TransferView | None:
         """Select one transfer view before adapter-specific artifact verification."""
         for scope in ("read", "orchestration.manage", "orchestration.drive"):
@@ -153,7 +163,7 @@ class OrchestrationTransferControl:
                 ErrorCode.AUTHORIZATION_DENIED, "A driver cannot transfer its own authority"
             )
         existing = previous_transfer(transaction, intent.transfer_id, digest)
-        return None if existing else inspect_transfer(transaction, intent)
+        return None if existing else inspect_transfer(transaction, intent, limits=limits)
 
     def _commit(
         self,
@@ -161,11 +171,13 @@ class OrchestrationTransferControl:
         intent: TransferOrchestration,
         digest: str,
         verified: TransferView | None,
+        *,
+        limits: TransferLimits = DEFAULT_LIMITS,
     ) -> JsonObject:
         previous = previous_transfer(transaction, intent.transfer_id, digest)
         if previous is not None:
             return previous
-        current = inspect_transfer(transaction, intent)
+        current = inspect_transfer(transaction, intent, limits=limits)
         if (
             verified is None
             or current.digest != verified.digest

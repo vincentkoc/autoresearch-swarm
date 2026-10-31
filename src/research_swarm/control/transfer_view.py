@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,9 +18,51 @@ from research_swarm.domain.orchestration import OrchestrationBinding
 from research_swarm.domain.orchestration_transfer import MAX_MANIFEST_BYTES, MAX_MANIFEST_ENTRIES
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import JsonObject, Transaction
+from research_swarm.state.sql import SqlRow, SqlValue
 
 TERMINAL_EXECUTION = ("succeeded", "failed", "cancelled", "not_started", "closed_unaccepted")
 FAILED_EXECUTION = {"failed", "cancelled", "not_started", "closed_unaccepted"}
+
+
+@dataclass(frozen=True)
+class TransferLimits:
+    max_records: int = 100000
+    max_entries: int = MAX_MANIFEST_ENTRIES
+    max_manifest_bytes: int = MAX_MANIFEST_BYTES
+    max_artifacts: int = 4096
+    max_artifact_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        for value, ceiling in (
+            (self.max_records, 100000),
+            (self.max_entries, MAX_MANIFEST_ENTRIES),
+            (self.max_manifest_bytes, MAX_MANIFEST_BYTES),
+            (self.max_artifacts, 4096),
+        ):
+            if type(value) is not int or not 1 <= value <= ceiling:
+                raise ValueError("Transfer limits must fit the native profile ceilings")
+        if self.max_artifact_bytes is not None and (
+            type(self.max_artifact_bytes) is not int or self.max_artifact_bytes < 1
+        ):
+            raise ValueError("Transfer artifact byte limit must be positive")
+
+
+DEFAULT_LIMITS = TransferLimits()
+
+
+def _rows(
+    transaction: Transaction, statement: str, parameters: tuple[SqlValue, ...], limit: int
+) -> list[SqlRow]:
+    # Hosted SQL bridges materialize a result before returning its cursor. Bound
+    # the SQL query itself, not just the later Python manifest accumulation.
+    rows = transaction.connection.execute(
+        statement + " LIMIT ?", (*parameters, limit + 1)
+    ).fetchall()
+    if len(rows) > limit:
+        raise ResearchError(
+            ErrorCode.RESOURCE_UNAVAILABLE, "Transfer rows exceed the profile bound"
+        )
+    return rows
 
 
 @dataclass(frozen=True)
@@ -43,15 +86,17 @@ class TransferView:
         )
 
 
-def _ref_values(value: Any, path: tuple[str, ...]) -> list[ArtifactRef]:
+def _ref_values(value: Any, path: tuple[str, ...]) -> Iterator[ArtifactRef]:
     if value is None:
-        return []
+        return
     if not path:
-        return [ArtifactRef.model_validate(value)]
-    if path[0] == "*":
+        yield ArtifactRef.model_validate(value)
+    elif path[0] == "*":
         values = value.values() if isinstance(value, dict) else value
-        return [reference for item in values for reference in _ref_values(item, path[1:])]
-    return _ref_values(value.get(path[0]), path[1:])
+        for item in values:
+            yield from _ref_values(item, path[1:])
+    else:
+        yield from _ref_values(value.get(path[0]), path[1:])
 
 
 # These typed references have independent source/evidence retention owners.
@@ -71,7 +116,12 @@ REFERENCE_PATHS = {
 }
 
 
-def require_quiescent(transaction: Transaction, campaign_id: str, evaluator_id: str | None) -> None:
+def require_quiescent(
+    transaction: Transaction,
+    campaign_id: str,
+    evaluator_id: str | None,
+    limits: TransferLimits = DEFAULT_LIMITS,
+) -> None:
     attempts = transaction.connection.execute(
         "SELECT id,state FROM records WHERE workspace_id=? AND campaign_id=? AND kind='attempt' "
         "AND state NOT IN (" + ",".join("?" for _ in TERMINAL_EXECUTION) + ") LIMIT 16",
@@ -110,9 +160,11 @@ def require_quiescent(transaction: Transaction, campaign_id: str, evaluator_id: 
             "Native budget reservations are unsettled",
             details={"reservation_ids": [row["id"] for row in reservations]},
         )
-    for row in transaction.connection.execute(
+    for row in _rows(
+        transaction,
         "SELECT payload FROM budgets WHERE workspace_id=? AND campaign_id=?",
         (transaction.workspace_id, campaign_id),
+        limits.max_records,
     ):
         account = BudgetAccount.model_validate_json(row["payload"])
         if account.uncertain or (account.kind == BudgetKind.CAPACITY and account.consumed):
@@ -123,11 +175,13 @@ def require_quiescent(transaction: Transaction, campaign_id: str, evaluator_id: 
             )
     if evaluator_id is None:
         return
-    for row in transaction.connection.execute(
+    for row in _rows(
+        transaction,
         "SELECT id,payload FROM records WHERE workspace_id=? AND campaign_id=? "
         "AND kind='evaluation_request' AND state='authorized' "
         "AND json_extract(payload,'$.request.evaluator_id')=?",
         (transaction.workspace_id, campaign_id, evaluator_id),
+        limits.max_records,
     ):
         authorization = strict_json_loads(row["payload"])
         job = transaction.get("job", authorization["job_id"])
@@ -137,10 +191,12 @@ def require_quiescent(transaction: Transaction, campaign_id: str, evaluator_id: 
                 "Work still requires the retiring evaluator",
                 details={"evaluation_request_id": row["id"], "job_id": job["id"]},
             )
-    for row in transaction.connection.execute(
+    for row in _rows(
+        transaction,
         "SELECT id,state,payload FROM records WHERE workspace_id=? AND campaign_id=? "
         "AND kind='confirmation_plan' AND json_extract(payload,'$.plan.evaluator_id')=?",
         (transaction.workspace_id, campaign_id, evaluator_id),
+        limits.max_records,
     ):
         panel = ConfirmationData.model_validate_json(row["payload"])
         if panel.decision_id is not None or row["state"] == "ineligible":
@@ -157,7 +213,12 @@ def require_quiescent(transaction: Transaction, campaign_id: str, evaluator_id: 
                 )
 
 
-def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) -> TransferView:
+def inspect_transfer(
+    transaction: Transaction,
+    intent: TransferOrchestration,
+    *,
+    limits: TransferLimits = DEFAULT_LIMITS,
+) -> TransferView:
     campaign = transaction.get("campaign", intent.campaign_id)
     binding_row = transaction.get("orchestration_binding", intent.campaign_id)
     binding = OrchestrationBinding.model_validate(binding_row["data"])
@@ -190,36 +251,34 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
             ).fetchone()
         ):
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Successor principal is not fresh")
-    require_quiescent(transaction, campaign["id"], binding.routes.get("evaluator"))
+    require_quiescent(transaction, campaign["id"], binding.routes.get("evaluator"), limits)
     entries: list[JsonObject] = []
     manifest_size = len(canonical_bytes({"entries": []}))
 
     def add_entry(entry: JsonObject) -> None:
         nonlocal manifest_size
         manifest_size += len(canonical_bytes(entry)) + bool(entries)
-        if len(entries) >= MAX_MANIFEST_ENTRIES or manifest_size > MAX_MANIFEST_BYTES:
+        if len(entries) >= limits.max_entries or manifest_size > limits.max_manifest_bytes:
             raise ResearchError(
-                ErrorCode.RESOURCE_UNAVAILABLE, "Transfer manifest exceeds the local profile bound"
+                ErrorCode.RESOURCE_UNAVAILABLE, "Transfer manifest exceeds the profile bound"
             )
         entries.append(entry)
 
     declared: dict[str, ArtifactRef] = {}
-    rows = transaction.connection.execute(
+    rows = _rows(
+        transaction,
         "SELECT kind,id FROM records WHERE workspace_id=? AND (campaign_id=? OR "
         "(kind='project_revision' AND id=?) OR (parent_id=? AND kind IN "
         "('campaign_funding','funding_projection','funding_settlement','funding_change'))) "
-        "ORDER BY kind,id LIMIT 100001",
+        "ORDER BY kind,id",
         (
             transaction.workspace_id,
             campaign["id"],
             data.contract.project_revision_id,
             campaign["id"],
         ),
-    ).fetchall()
-    if len(rows) > 100000:
-        raise ResearchError(
-            ErrorCode.RESOURCE_UNAVAILABLE, "Transfer manifest exceeds the local profile bound"
-        )
+        min(limits.max_records, limits.max_entries),
+    )
     for item in rows:
         row = transaction.get(item["kind"], item["id"])
         add_entry(
@@ -239,16 +298,25 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
                         ErrorCode.ARTIFACT_UNVERIFIED, "Required artifact identities disagree"
                     )
                 declared[reference.id] = reference
-    for sql_row in transaction.connection.execute(
+                if len(declared) > limits.max_artifacts:
+                    raise ResearchError(
+                        ErrorCode.RESOURCE_UNAVAILABLE,
+                        "Declared artifacts exceed the profile bound",
+                    )
+    for sql_row in _rows(
+        transaction,
         "SELECT dimension,payload FROM budgets WHERE workspace_id=? "
         "AND campaign_id=? ORDER BY dimension",
         (transaction.workspace_id, campaign["id"]),
+        min(limits.max_records, limits.max_entries),
     ):
         add_entry({"category": "budget_account", "value": strict_json_loads(sql_row["payload"])})
-    for sql_row in transaction.connection.execute(
+    for sql_row in _rows(
+        transaction,
         "SELECT id,owner_id,state,payload FROM budget_reservations WHERE workspace_id=? "
         "AND campaign_id=? ORDER BY id",
         (transaction.workspace_id, campaign["id"]),
+        min(limits.max_records, limits.max_entries),
     ):
         add_entry(
             {
@@ -260,6 +328,7 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
             }
         )
     retained: dict[str, ArtifactRef] = {}
+    artifact_bytes = 0
     owners = (
         "WITH owners(kind,id) AS (SELECT kind,id FROM records "
         "WHERE workspace_id=? AND campaign_id=? "
@@ -269,7 +338,8 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
         "AND r.state='retained' AND json_extract(r.payload,'$.retention.owner_kind')=o.kind "
         "AND json_extract(r.payload,'$.retention.owner_id')=o.id ORDER BY r.id"
     )
-    for item in transaction.connection.execute(
+    for item in _rows(
+        transaction,
         owners,
         (
             transaction.workspace_id,
@@ -277,6 +347,7 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
             data.contract.project_revision_id,
             transaction.workspace_id,
         ),
+        limits.max_records,
     ):
         row = transaction.get("artifact_reference", item["id"])
         retention = row["data"]["retention"]
@@ -286,10 +357,14 @@ def inspect_transfer(transaction: Transaction, intent: TransferOrchestration) ->
             transaction.get("artifact", retention["artifact_id"])["data"]
         )
         ArtifactCatalog.available(transaction, artifact.reference)
+        if artifact.reference.id not in retained:
+            artifact_bytes += artifact.reference.size_bytes
         retained[artifact.reference.id] = artifact.reference
-        if len(retained) > 4096:
+        if len(retained) > limits.max_artifacts or (
+            limits.max_artifact_bytes is not None and artifact_bytes > limits.max_artifact_bytes
+        ):
             raise ResearchError(
-                ErrorCode.RESOURCE_UNAVAILABLE, "Transfer artifacts exceed the local profile bound"
+                ErrorCode.RESOURCE_UNAVAILABLE, "Transfer artifacts exceed the profile bound"
             )
         add_entry(
             {
