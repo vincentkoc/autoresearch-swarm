@@ -58,6 +58,7 @@ jobs:
           tests/test_hosted_lifecycle.py
           tests/test_hosted_scientific.py
           tests/test_hosted_orchestration.py tests/test_turn_preparation.py
+          tests/test_async_delivery.py
           tests/test_cli_encoding.py tests/test_agent_research_cycle.py
           tests/test_supervision.py
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope

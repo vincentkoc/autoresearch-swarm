@@ -923,6 +923,13 @@ is invalid and the incumbent is suspended. Native journals, two run results and
 two budget settlements remain unchanged. This case needs its own passing runtime
 receipt and does not claim statistical confirmation or cloud deployment.
 
+At `956b079e4fe0dcd74d458d3713f1b613c0622de5`,
+[CI 41202953477](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41202953477)
+passed **14 actual workerd tests in 243.20 seconds**, including scientific
+closeout. Linux passed 447 tests in 210.76 seconds and macOS passed 447 in 199.15
+seconds; the Windows job was still running at this checkpoint. Saved-turn
+orchestration was added afterward and needs its own runtime receipt.
+
 ### Saved-turn delivery boundary
 
 `OrchestrationControl.prepare_execution()` selects the original saved action,
@@ -1000,6 +1007,29 @@ without consuming readiness or changing native journals or settlements. Source
 and collection checks are not runtime qualification; this probe needs a passing
 CI receipt. Naming the binding adapter `cloudflare-workflows` does not claim that
 a Workflow has executed it.
+
+### Async delivery contract
+
+`AsyncDeliveryKernel` exposes the same bootstrap, inspect, execute and wait
+operations over registered asynchronous `get` and `command` clients. Shared pure
+helpers own binding identity, actor-route selection, saved-work verification,
+deterministic delivery keys and outcome construction. The native kernel continues
+using its existing startup recovery and wait driver; its API and command keys
+remain unchanged.
+
+The async runtime imports no synchronous research client, native custody or
+startup machinery, web framework or vendor runtime. It acquires no clock witness
+and makes no research decision. The authoritative command service still checks
+the actor and saved turn and decides whether an effect or receipt can commit.
+Missing target responses retry the same key. Pending event waits remain pending;
+notification delivery cannot manufacture readiness. Timers and successor startup
+remain explicit unavailable capabilities of this async adapter.
+
+Local tests compare native and async outcomes on the same durable authority after
+lost replies, duplicate execution, event readiness and fencing. They reject changed
+bindings and route actors, refuse timers and real transferred successor startup,
+and enforce the import boundary in a fresh interpreter. These tests do not qualify
+a DO delivery facade or a running Cloudflare Workflow.
 
 ### Signed clock query boundary
 

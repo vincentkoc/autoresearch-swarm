@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an async saved-work delivery kernel over a narrow get/command client
+  protocol. Share binding checks, work identities, stable command keys and
+  outcomes with native delivery, while keeping native startup and thread-custody
+  dependencies out of the async runtime.
+
 - Add an actual workerd saved-evaluator probe with separate driver credentials,
   a target committed before its receipt witness fails, restart recovery without
   replanning or artifact reads, native scoring and persistent event-wakeup replay.

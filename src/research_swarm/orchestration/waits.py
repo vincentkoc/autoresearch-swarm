@@ -14,6 +14,7 @@ from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration_waits import WakeupDelivery, wakeup_destination_id
 from research_swarm.orchestration.custody import run_owned_step
+from research_swarm.orchestration.delivery_contract import delivery_key
 from research_swarm.state.database import JsonObject
 
 
@@ -37,7 +38,7 @@ class DurableWaitDriver:
             self.client.command(
                 "orchestration.reconcile_wait",
                 OrchestrationWaitTarget(wait_id=wait_id),
-                idempotency_key=record_digest("research.reconcile-wait-v1", {"wait_id": wait_id}),
+                idempotency_key=delivery_key("wait", wait_id),
             )["result"]
         )
 

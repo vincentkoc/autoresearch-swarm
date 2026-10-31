@@ -1,4 +1,4 @@
-"""One API-only delivery implementation shared by local and provider adapters."""
+"""Synchronous API-only delivery for native local and provider adapters."""
 
 from __future__ import annotations
 
@@ -7,11 +7,20 @@ from dataclasses import dataclass
 
 from research_swarm.client import ResearchClient
 from research_swarm.control.orchestration_models import DriveTurnTarget
-from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import DriverRoute, DriveTurn, OrchestrationBinding
 from research_swarm.domain.orchestration_waits import OrchestrationWait
 from research_swarm.orchestration.custody import run_owned_step as run_owned_step
+from research_swarm.orchestration.delivery_contract import binding_reference as binding_reference
+from research_swarm.orchestration.delivery_contract import (
+    current_binding,
+    delivery_key,
+    require_routes,
+    turn_outcome,
+    verify_work,
+    wait_outcome,
+    work_route,
+)
 from research_swarm.orchestration.delivery_models import (
     BindingReference,
     PendingWork,
@@ -22,7 +31,6 @@ from research_swarm.orchestration.delivery_models import (
 )
 from research_swarm.orchestration.startup import recover_driver_start
 from research_swarm.orchestration.waits import DurableWaitDriver
-from research_swarm.state.database import JsonObject
 
 
 @dataclass(frozen=True)
@@ -31,18 +39,7 @@ class DriverConnection:
     clients: dict[DriverRoute, ResearchClient]
 
     def __post_init__(self) -> None:
-        if set(self.clients) != set(self.binding.actors) or "control" not in self.clients:
-            raise ValueError("Register exactly the binding's control and evaluator clients")
-
-
-def binding_reference(binding: OrchestrationBinding) -> BindingReference:
-    return BindingReference(
-        workspace_id=binding.workspace_id,
-        campaign_id=binding.campaign_id,
-        epoch=binding.epoch,
-        configuration_digest=binding.configuration_digest,
-        actors={route: actor for route, actor in binding.routes.items()},
-    )
+        require_routes(self.binding, self.clients)
 
 
 class DeliveryKernel:
@@ -60,12 +57,8 @@ class DeliveryKernel:
     ) -> tuple[DriverConnection, OrchestrationBinding, bool]:
         connection = self._connection(reference)
         row = connection.clients["control"].get("orchestration_binding", reference.campaign_id)
-        binding = OrchestrationBinding.model_validate(row["data"])
-        return (
-            connection,
-            binding,
-            row["state"] == "active" and binding_reference(binding) == reference,
-        )
+        binding, active = current_binding(reference, row)
+        return connection, binding, active
 
     def bootstrap(self, request: StartupRequest) -> str:
         connection, binding, active = self._current(request.binding)
@@ -107,12 +100,7 @@ class DeliveryKernel:
 
     def _client(self, work: WorkReference) -> ResearchClient:
         connection = self._connection(work.binding)
-        matches = [
-            role for role in connection.clients if work.binding.actors[role] == work.actor_id
-        ]
-        if len(matches) != 1:
-            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Work route is not registered")
-        return connection.clients[matches[0]]
+        return connection.clients[work_route(work, connection.clients)]
 
     def execute(self, work: WorkReference) -> WorkOutcome:
         if work.kind != "turn":
@@ -123,15 +111,9 @@ class DeliveryKernel:
         result = client.command(
             "orchestration.execute_turn",
             DriveTurnTarget(turn_id=work.record_id),
-            idempotency_key=record_digest("research.drive-execute-v1", {"turn_id": work.record_id}),
+            idempotency_key=delivery_key("turn", work.record_id),
         )["result"]
-        evidence = result.get("closure") or result["receipt"]
-        return WorkOutcome(
-            "settled",
-            work.record_id,
-            evidence["data"].get("disposition", "closed_unacknowledged"),
-            evidence["id"],
-        )
+        return turn_outcome(work, result)
 
     def wait(self, work: WorkReference) -> WorkOutcome:
         if work.kind != "wait":
@@ -152,21 +134,6 @@ class DeliveryKernel:
             if error.code == ErrorCode.RESOURCE_UNAVAILABLE:
                 return WorkOutcome("pending", work.record_id)
             raise
-        readiness = result["readiness"]
-        return WorkOutcome(
-            "settled",
-            work.record_id,
-            readiness["data"]["cause"],
-            readiness["id"],
-            readiness["data"]["watermark"],
-        )
+        return wait_outcome(work, result)
 
-    @staticmethod
-    def _verify(work: WorkReference, value: JsonObject) -> None:
-        if (
-            value["campaign_id"] != work.binding.campaign_id
-            or value["epoch"] != work.binding.epoch
-            or value["configuration_digest"] != work.binding.configuration_digest
-            or value["actor_id"] != work.actor_id
-        ):
-            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Work reference differs")
+    _verify = staticmethod(verify_work)
