@@ -193,7 +193,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         return CommandContext(principal=actor, idempotency_key=new_id())
 
     async def worker_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:
-        actor.require("worker.query")
+        # Each worker operation enforces its own scope and exact session owner.
         return CommandContext(principal=actor, idempotency_key=new_id())
 
     async def input_context(actor: Annotated[Principal, Depends(principal)]) -> CommandContext:

@@ -149,6 +149,7 @@ from research_swarm.control.worker_lifecycle import (
     WorkerHeartbeat,
     WorkerLifecycle,
 )
+from research_swarm.control.worker_locality import AdvertiseWorkerCache, WorkerLocality
 from research_swarm.control.worker_outputs import (
     BeginWorkerUpload,
     WorkerOutputs,
@@ -258,6 +259,7 @@ class ResearchService:
         self.worker_turnover = WorkerTurnover(
             database, assignment_key, crypto_provider=self.crypto_provider
         )
+        self.worker_locality = WorkerLocality(database, self.workers)
         self.proposals = ProposalControl(database)
         self.population = PopulationControl(database)
         self.learning = LearningControl(database)
@@ -572,6 +574,11 @@ class ResearchService:
 
     def worker_heartbeat(self, context: CommandContext, request: WorkerHeartbeat) -> JsonObject:
         return self.worker_lifecycle.heartbeat(context, request)
+
+    def advertise_worker_cache(
+        self, context: CommandContext, request: AdvertiseWorkerCache
+    ) -> JsonObject:
+        return self.worker_locality.advertise(context, request)
 
     def set_worker_admission(
         self, context: CommandContext, request: SetWorkerAdmission

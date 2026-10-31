@@ -11,6 +11,7 @@ from pydantic import Field, ValidationError
 from research_swarm.control.acceptance import lease_row
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.queries import RecordCursor, summarize
+from research_swarm.control.worker_locality import cache_state
 from research_swarm.control.worker_sessions import historical_attempt_owner, historical_session
 from research_swarm.control.worker_state import admission_open, worker_state
 from research_swarm.control.workers import AttemptData, WorkerData, worker_authority
@@ -41,6 +42,7 @@ class WorkerRead(VersionedRecord):
         "worker_admission",
         "worker_presence",
         "worker_session",
+        "worker_cache",
         "worker_replacement",
         "historical_attempt",
     ]
@@ -94,8 +96,10 @@ class WorkerQueries:
         self.database = database
 
     def get(self, context: CommandContext, request: WorkerRead) -> JsonObject:
-        context.principal.require("worker.query")
         request = WorkerRead.model_validate(request)
+        context.principal.require(
+            "worker.publish" if request.kind == "worker_cache" else "worker.query"
+        )
 
         def read(connection: SqlSession) -> JsonObject:
             transaction = Transaction(connection, context)
@@ -113,6 +117,12 @@ class WorkerQueries:
                 )
                 return transaction.get("attempt", request.id)
             worker = worker_authority(transaction, request.worker_id, request.session_id)
+            if request.kind == "worker_cache":
+                if request.id != request.session_id:
+                    raise ResearchError(
+                        ErrorCode.AUTHORIZATION_DENIED, "Cache session identity differs"
+                    )
+                return cache_state(transaction, worker.binding)
             if request.kind == "worker_replacement":
                 if request.id != request.session_id:
                     raise ResearchError(
@@ -179,8 +189,12 @@ class WorkerQueries:
         return self.database.store.read(read)
 
     def list(self, context: CommandContext, request: WorkerQuery) -> JsonObject:
-        context.principal.require("worker.query")
         request = WorkerQuery.model_validate(request)
+        context.principal.require(
+            "read"
+            if request.kind == "offers" and "read" in context.principal.scopes
+            else "worker.query"
+        )
 
         def read(connection: SqlSession) -> JsonObject:
             transaction = Transaction(connection, context)

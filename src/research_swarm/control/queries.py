@@ -95,6 +95,7 @@ RecordKind = Literal[
     "run_result",
     "worker",
     "worker_session",
+    "worker_cache",
     "worker_fence",
     "worker_replacement",
     "worker_admission",
@@ -358,6 +359,20 @@ def summarize(row: JsonObject) -> JsonObject:
         "attempt_reconciliation",
     }:
         result["data"] = data
+    elif row["kind"] == "worker_cache":
+        observation = data["observation"]
+        advertisement = observation["advertisement"]
+        result["data"] = {
+            "binding": data["binding"],
+            "snapshot_id": advertisement["snapshot_id"],
+            "reference_count": len(advertisement["references"]),
+            "reported_bytes": sum(item["size_bytes"] for item in advertisement["references"]),
+            "truncated": advertisement["truncated"],
+            "trust": observation["trust"],
+            "clock_epoch": observation["clock_epoch"],
+            "observed_ms": observation["observed_ms"],
+            "ttl_ms": observation["ttl_ms"],
+        }
     elif row["kind"] == "candidate":
         result["data"] = {
             "hypothesis": data["hypothesis"][:1024],

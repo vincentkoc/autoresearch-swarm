@@ -90,6 +90,7 @@ from research_swarm.control.worker_lifecycle import (
     SetWorkerAdmission,
     WorkerHeartbeat,
 )
+from research_swarm.control.worker_locality import AdvertiseWorkerCache
 from research_swarm.control.worker_outputs import BeginWorkerUpload, WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession
@@ -505,6 +506,13 @@ COMMANDS = {
         "worker.publish",
         False,
         "Record presence and control acknowledgments without renewing execution authority.",
+    ),
+    "worker.cache_advertise": CommandDefinition(
+        AdvertiseWorkerCache,
+        "advertise_worker_cache",
+        "worker.publish",
+        True,
+        "Record expiring worker-reported locality hints without granting input access or leases.",
     ),
     "worker.set_admission": CommandDefinition(
         SetWorkerAdmission,

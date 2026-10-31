@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record bounded worker cache observations through the shared API with exact enrollment ownership, revision fencing and controller-time expiry. Preserve original timestamps on replay and keep hints separate from input, resource and scientific authority.
+
 - Add bounded cache residency observations that rehash actual bytes, filter workspace identity and expose truncation without creating an absent cache or granting input authority.
 
 - Reuse verified worker input bytes across attempts and restarts with fresh assignment authority, independent copies and bounded least-recently-used storage. Keep transfers outside the cache lock, recover interrupted publications, bypass unavailable disposable storage and preserve refusal of corrupt attempt inputs.

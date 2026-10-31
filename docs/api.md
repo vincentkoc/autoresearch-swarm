@@ -66,9 +66,12 @@ read at each page request. This is not a historical snapshot across pages.
 Campaign context reads its evidence and event watermark in one transaction.
 
 `POST /v1/worker/list` accepts `WorkerQuery` and `POST /v1/worker/get` accepts
-`WorkerRead`. These read-only operations require `worker.query`, not workspace
-`read`. Both bind the request to the authenticated worker principal and current
-session. Generic record, context, and event endpoints still require `read`.
+`WorkerRead`. These read-only operations normally require `worker.query`. Offer
+listing also accepts a legacy worker's workspace `read` scope; reading its own
+`worker_cache` observation requires `worker.publish`. Every variant binds the
+request to the authenticated worker principal and current session. These
+exceptions do not authorize other worker query kinds or clock sampling.
+Generic record, context, and event endpoints still require `read`.
 See [scoped worker discovery](worker-assignments.md#scoped-discovery-and-recovery).
 
 `POST /v1/worker/clock` accepts `ClockChallenge` and returns `SignedClockReply`

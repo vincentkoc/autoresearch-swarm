@@ -171,6 +171,10 @@ class WorkerControl:
             )
         )
 
+    def observation_time(self, worker: WorkerData) -> AuthorityTime:
+        """Qualified time for operational observations, without extending a lease."""
+        return self._time(worker)
+
     def clock(self, context: CommandContext, request: ClockChallenge) -> SignedClockReply:
         context.principal.require("worker.query")
         request = ClockChallenge.model_validate(request)

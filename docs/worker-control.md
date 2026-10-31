@@ -13,8 +13,10 @@ accept the new read and list kinds. No new worker credential scope is required.
 | --- | --- | --- | --- |
 | `worker.set_admission` | `worker.manage` | CAS on `worker_admission.revision` | Active or draining admission record |
 | `worker.heartbeat` | `worker.publish`, exact enrollment owner | Strictly increasing heartbeat sequence | Presence and admission snapshots |
+| `worker.cache_advertise` | `worker.publish`, exact enrollment owner | CAS on `worker_cache.revision` | Expiring, worker-reported cache observation |
 | `attempt.request_cancel` | `campaign.manage` | CAS on the attempt revision | Disposition and sticky control record, or `already_terminal` |
 | Worker get, `worker_admission` / `worker_presence` | `worker.query`, exact enrollment owner | Current read | Own operational record |
+| Worker get, `worker_cache` | `worker.publish`, exact enrollment owner | Current read | Own session's cache observation, or revision zero |
 | Worker list, `controls` | `worker.query`, exact enrollment owner | Insertion-watermark cursor | Requested cancellations, at most 100 per page |
 
 ## Independent records
@@ -44,6 +46,29 @@ before relying on them. A new driver instance does not reset the sequence.
 
 Receipt timestamps are informational. Missing heartbeats do not establish that
 a worker, supervisor, child, accelerator context, or reservation is gone.
+
+## Cache observations
+
+`AdvertiseWorkerCache` carries the full enrollment binding, a snapshot ID, up to
+128 distinct complete `ArtifactRef` values, inspected byte count and an explicit
+truncation flag. The worker inspects local bytes; the controller checks each
+reference against the current artifact catalog and labels the observation
+`worker_reported`. It does not independently attest residency.
+
+The first observation uses expected revision zero. Further observations use the
+current revision returned by `WorkerRead(kind="worker_cache", id=session_id)`.
+Publication records qualified controller time and its clock epoch. Hints expire
+after 60 seconds; a changed epoch, backwards time or unavailable time authority
+makes them unusable. Exact command replay preserves the original timestamp and
+expiry. Heartbeats do not refresh them. A newly verified snapshot needs a new
+command key and the current revision.
+Resubmitting the current snapshot ID with identical contents returns its old
+observation without refreshing time; changing its contents is a conflict.
+
+These observations grant no artifact access, retention, execution lease, resource
+reservation or scientific eligibility. Cache eviction is allowed after publication.
+Input materialization still checks its ordinary live authority. The API records
+advisory metadata; scheduler consumption is a separate integration.
 
 ## Drain linearization
 
