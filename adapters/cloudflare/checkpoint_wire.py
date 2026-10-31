@@ -60,10 +60,15 @@ def _decode(value, limit):
         raise invalid() from None
 
 
-def decode_checkpoint(encoded):
-    """Refuse oversized strings before parsing and bound each decoded allocation."""
+def require_rpc_string(encoded):
+    """Check the complete string before forwarding or parsing RPC input."""
     if type(encoded) is not str or len(encoded) > MAX_RPC_BYTES or not encoded.isascii():
         raise invalid()
+
+
+def decode_checkpoint(encoded):
+    """Refuse oversized strings before parsing and bound each decoded allocation."""
+    require_rpc_string(encoded)
     try:
         value = strict_json_loads(encoded)
     except (ValueError, RecursionError):

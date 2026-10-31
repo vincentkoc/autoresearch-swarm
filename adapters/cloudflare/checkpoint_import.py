@@ -171,12 +171,12 @@ def _require_receipt(sql, intent, image, receipt):
         raise ResearchError(ErrorCode.STALE_FENCE, "Inactive import phase differs")
 
 
-def import_checkpoint(
-    store,
+def verify_import_inputs(
     target_manifest,
     secrets,
     intent,
     *,
+    identity,
     credential,
     target_seed,
     envelope,
@@ -185,14 +185,14 @@ def import_checkpoint(
     expected_custody,
     crypto,
 ):
-    """Caller supplies trusted deployment/custody inputs; never take them from an image."""
+    """Check protected inputs and signed bytes before a target factory can initialize SQL."""
     secrets.require_bootstrap(credential)
     if secret_digest("bootstrap", credential) != target_manifest.bootstrap_credential_digest:
         raise ResearchError(
             ErrorCode.AUTHORIZATION_DENIED, "Import bootstrap belongs to another deployment"
         )
     intent = LogicalImportIntent.model_validate(intent)
-    target_manifest.require_store(store.identity)
+    target_manifest.require_store(identity)
     authority = target_manifest.configuration.authority
     issuer = next(
         item.principal
@@ -201,7 +201,7 @@ def import_checkpoint(
     )
     issuer.require("*")
     if (
-        store.identity != StoreIdentity(intent.target_backend, intent.target_location)
+        identity != StoreIdentity(intent.target_backend, intent.target_location)
         or intent.target_deployment_digest != target_manifest.digest
         or intent.operator_id != issuer.id
         or public_key(crypto, target_seed).hex() != intent.target_public_key
@@ -239,6 +239,46 @@ def import_checkpoint(
         or sum(item.row_count for item in manifest.tables) > limits.rows
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Inactive import source profile differs")
+    return image
+
+
+def import_checkpoint(
+    store,
+    target_manifest,
+    secrets,
+    intent,
+    *,
+    credential,
+    target_seed,
+    envelope,
+    bodies,
+    expected_source,
+    expected_custody,
+    crypto,
+):
+    """Reverify caller-supplied bytes; a prechecked image grants no mutation authority."""
+    secrets.require_bootstrap(credential)
+    intent = LogicalImportIntent.model_validate(intent)
+    image = verify_import_inputs(
+        target_manifest,
+        secrets,
+        intent,
+        identity=store.identity,
+        credential=credential,
+        target_seed=target_seed,
+        envelope=envelope,
+        bodies=bodies,
+        expected_source=expected_source,
+        expected_custody=expected_custody,
+        crypto=crypto,
+    )
+    manifest = image.manifest
+    limits = CaptureLimits()
+    issuer = next(
+        item.principal
+        for item in target_manifest.credentials
+        if item.principal.id == target_manifest.provisioning_actor_id
+    )
 
     def restore(sql):
         target_manifest.require_store(store.identity)

@@ -1939,17 +1939,64 @@ extra deployment metadata and different target identities refuse. Later legitima
 recovery transitions require a separate historical receipt lookup; they must not
 refresh this fingerprint to claim the original import still matches.
 
-This port has native SQLite transaction qualification only. Tests cover rollback
+The original import, capture and fingerprint helpers passed the native matrix at
+`253dc09ee51431fc7ace2e84ebd591ca330e73d9`: Linux 854 tests in 361.58 seconds,
+macOS 854 in 396.16 seconds, and Windows 848 with six skips in 1114.70 seconds.
+The same [qualification run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41215181158)
+passed 19 actual workerd tests in 484.51 seconds, including the shared capture and
+fingerprint probe. That runtime receipt predates source and target RPC and does
+not qualify actual workerd import.
+
+The import port has native SQLite transaction qualification only. Tests cover rollback
 at all three mutation phases, independent-connection races, invalid signed cuts,
 changes in all twelve tables, changed bootstrap pairings, exact worker archival
-and source preservation. Actual workerd import qualification and its operator
-transport are still required. No target R2 bytes are fetched or declared available.
+and source preservation. Actual workerd import qualification is still required.
+No target R2 bytes are fetched or declared available.
 Imported artifact rows are historical catalog evidence; byte restoration and
 verification must precede activation. The target has no completed provisioning or
 authority configuration and cannot open through the ordinary production router.
 Original-source election, recovery reconciliation, credential compatibility and
 activation remain mandatory. Re-exporting a subsequently recovered authority will
 also require explicit admission of its recovery metadata and custody history.
+
+Production now exposes `Bootstrap.checkpoint_import(credential, bundle_json)` and
+the matching fixed DO method. `Default` and HTTP expose neither operation. The
+private target binding `RESEARCH_CHECKPOINT_TARGET` has exactly these fields:
+
+```json
+{
+  "schema_version": "1.0",
+  "intent": "<LogicalImportIntent object>",
+  "expected_source": "<WitnessAuthorityScope object>",
+  "expected_custody": "<BackupCustodyPin object>",
+  "custody_seed_hex": "<separately generated 32-byte target custody seed>"
+}
+```
+
+This is a shape illustration. Keep the key and intent in protected operator
+configuration across retries/restarts. Requests carry only the credential and the
+opaque bundle; they cannot replace the source pins, target identity or import
+intent. Both private entrypoints authenticate and resolve the fixed target. The
+Bootstrap entrypoint checks the 6 MiB ASCII string bound before forwarding. The
+DO loads the bounded target binding after authentication and rejects reused
+assignment/dispatch key material or inconsistent source/custody scope.
+
+`verify_import_inputs()` checks target identity, key possession, signature and
+the complete pinned source image before the target factory can initialize SQL.
+The importer repeats that bounded verification inside the exclusive operation;
+the precheck result is not accepted as mutation authority. On a validly signed but
+relationally invalid image, a fresh factory may retain initialized empty schema,
+but the importer rolls back all imported domain state. Existing completed
+deployments refuse import. Imported state refuses ordinary provisioning and
+router opening. No target credential installation, witness or R2 operation runs.
+
+The wrapper's native tests cover pre-factory refusal, concurrent exact delivery,
+fresh runtime-owner replay, changed protected inputs, invalid signed cuts and
+mutual exclusion with provisioning. Actual multi-target workerd import remains
+pending. A later hosted source-election proof must bind the exact
+`LogicalImportIntent.digest`, including physical target and deployment. Existing
+native `RestoreClaimRequest` signatures lack those hosted fields and cannot alone
+authorize a hosted target; their native signature bytes remain unchanged.
 
 ## Required implementation slices
 

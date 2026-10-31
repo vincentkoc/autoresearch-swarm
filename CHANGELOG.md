@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Expose fixed-target inactive import through private Bootstrap RPC. Load the
+  retained target key and source pins from protected configuration, reject invalid
+  identity/signature/size before initialization, and independently reverify at import.
+  Existing deployments cannot be replaced and imported targets remain inactive.
+
 - Extend the actual production workerd probe through private seal/capture RPC,
   signature verification, lost replies and another runtime restart during a witness
   outage. Keep the fixture operator separate from production and check public denial.
