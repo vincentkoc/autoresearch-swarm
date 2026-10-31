@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -27,9 +28,8 @@ from research_swarm.domain.event_recovery import (
     RecoverySnapshotTarget,
 )
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import utc_now
+from research_swarm.domain.types import Name, Timestamp, VersionedRecord, utc_now
 from research_swarm.state.database import Database, JsonObject, Transaction, encode
-from research_swarm.state.sql import SqlSession
 
 
 @dataclass(frozen=True)
@@ -51,9 +51,26 @@ class SnapshotLimits:
 DEFAULT_LIMITS = SnapshotLimits()
 
 
+class SnapshotInstant(VersionedRecord):
+    timestamp: Timestamp
+    epoch: Name | None = None
+
+
+SnapshotClock = Callable[[Transaction], SnapshotInstant]
+CLOCK_JOIN = (
+    " LEFT JOIN records c ON c.workspace_id=s.workspace_id AND c.id=s.id "
+    "AND c.kind='recovery_snapshot_clock' "
+)
+CLOCK_EPOCH = "COALESCE(json_extract(c.payload,'$.epoch'),'')"
+
+
 def snapshot_row(transaction: Transaction, identifier: str) -> JsonObject:
     row = transaction.connection.execute(
-        "SELECT * FROM recovery_snapshots WHERE workspace_id=? AND id=? AND actor_id=?",
+        "SELECT s.*, "
+        + CLOCK_EPOCH
+        + " AS clock_epoch FROM recovery_snapshots s"
+        + CLOCK_JOIN
+        + "WHERE s.workspace_id=? AND s.id=? AND s.actor_id=?",
         (transaction.workspace_id, identifier, transaction.context.principal.id),
     ).fetchone()
     if row is None:
@@ -61,15 +78,19 @@ def snapshot_row(transaction: Transaction, identifier: str) -> JsonObject:
     return dict(row)
 
 
-def active_snapshot(transaction: Transaction, identifier: str) -> RecoverySnapshot:
+def active_snapshot(
+    transaction: Transaction, identifier: str, *, clock: SnapshotClock | None = None
+) -> RecoverySnapshot:
     row = snapshot_row(transaction, identifier)
+    instant = clock(transaction) if clock is not None else SnapshotInstant(timestamp=utc_now())
     floor = transaction.connection.execute(
         "SELECT event_floor FROM workspaces WHERE id=?", (transaction.workspace_id,)
     ).one()[0]
     if (
         row["released_at"] is not None
         or row["expired_at"] is not None
-        or row["expires_at"] <= utc_now()
+        or row["clock_epoch"] != (instant.epoch or "")
+        or row["expires_at"] <= instant.timestamp
         or floor > row["watermark"] + 1
     ):
         raise ResearchError(
@@ -81,19 +102,26 @@ def active_snapshot(transaction: Transaction, identifier: str) -> RecoverySnapsh
 
 
 def collect_expired(
-    transaction: Transaction, *, limit: int, actor_id: str | None = None
+    transaction: Transaction,
+    *,
+    limit: int,
+    actor_id: str | None = None,
+    instant: SnapshotInstant | None = None,
 ) -> list[str]:
-    now = utc_now()
+    observed = instant or SnapshotInstant(timestamp=utc_now())
+    now = observed.timestamp
     query = (
-        "SELECT id FROM recovery_snapshots WHERE workspace_id=? AND released_at IS NULL "
-        "AND expired_at IS NULL AND expires_at<=?"
+        "SELECT s.id FROM recovery_snapshots s"
+        + CLOCK_JOIN
+        + "WHERE s.workspace_id=? AND s.released_at IS NULL "
+        "AND s.expired_at IS NULL AND (s.expires_at<=? OR " + CLOCK_EPOCH + "<>?)"
     )
-    parameters: list[str | int] = [transaction.workspace_id, now]
+    parameters: list[str | int] = [transaction.workspace_id, now, observed.epoch or ""]
     if actor_id is not None:
-        query += " AND actor_id=?"
+        query += " AND s.actor_id=?"
         parameters.append(actor_id)
     rows = transaction.connection.execute(
-        query + " ORDER BY expires_at,id LIMIT ?", (*parameters, limit)
+        query + " ORDER BY s.expires_at,s.id LIMIT ?", (*parameters, limit)
     ).fetchall()
     for row in rows:
         transaction.connection.execute(
@@ -114,10 +142,20 @@ class EventRecovery:
         public_kinds: tuple[str, ...],
         *,
         limits: SnapshotLimits = DEFAULT_LIMITS,
+        clock: SnapshotClock | None = None,
     ) -> None:
         self.database = database
         self.public_kinds = tuple(sorted(public_kinds))
         self.limits = limits
+        self.clock = clock
+
+    def _now(self, transaction: Transaction) -> SnapshotInstant:
+        if self.clock is None:
+            return SnapshotInstant(timestamp=utc_now())
+        instant = self.clock(transaction)
+        if instant.epoch is None:
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Snapshot clock has no epoch")
+        return instant
 
     def create(self, context: CommandContext, intent: CreateRecoverySnapshot) -> JsonObject:
         max_items = min(intent.max_items, self.limits.max_items)
@@ -136,8 +174,9 @@ class EventRecovery:
                 if saved.actor_id != context.principal.id or saved.request_digest != request_digest:
                     raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Snapshot identity differs")
                 return saved.model_dump(mode="json")
-            now = utc_now()
-            collect_expired(transaction, limit=8, actor_id=context.principal.id)
+            instant = self._now(transaction)
+            now = instant.timestamp
+            collect_expired(transaction, limit=8, actor_id=context.principal.id, instant=instant)
             counts = transaction.connection.execute(
                 "SELECT COUNT(*) AS total,COALESCE(SUM(actor_id=?),0) AS owned "
                 "FROM recovery_snapshots WHERE workspace_id=? "
@@ -205,6 +244,13 @@ class EventRecovery:
                     encode(snapshot.model_dump(mode="json")),
                 ),
             )
+            if instant.epoch is not None:
+                transaction.insert(
+                    "recovery_snapshot_clock",
+                    snapshot.id,
+                    {"epoch": instant.epoch},
+                    state="immutable",
+                )
             count = size = 0
 
             def save(item: JsonObject) -> None:
@@ -266,7 +312,7 @@ class EventRecovery:
     def release(self, context: CommandContext, intent: RecoverySnapshotTarget) -> JsonObject:
         def release(transaction: Transaction) -> JsonObject:
             row = snapshot_row(transaction, intent.snapshot_id)
-            released = row["released_at"] or utc_now()
+            released = row["released_at"] or self._now(transaction).timestamp
             transaction.connection.execute(
                 "UPDATE recovery_snapshots SET released_at=? WHERE workspace_id=? AND id=?",
                 (released, transaction.workspace_id, intent.snapshot_id),
@@ -294,11 +340,14 @@ class EventRecovery:
                 raise ResearchError(
                     ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid event retention floor"
                 )
-            collect_expired(transaction, limit=64)
+            instant = self._now(transaction)
+            collect_expired(transaction, limit=64, instant=instant)
             pin = transaction.connection.execute(
-                "SELECT MIN(watermark) FROM recovery_snapshots WHERE workspace_id=? "
-                "AND released_at IS NULL AND expired_at IS NULL AND expires_at>?",
-                (transaction.workspace_id, utc_now()),
+                "SELECT MIN(s.watermark) FROM recovery_snapshots s"
+                + CLOCK_JOIN
+                + "WHERE s.workspace_id=? AND s.released_at IS NULL AND s.expired_at IS NULL "
+                "AND s.expires_at>? AND " + CLOCK_EPOCH + "=?",
+                (transaction.workspace_id, instant.timestamp, instant.epoch or ""),
             ).one()[0]
             if pin is not None and intent.event_floor > pin + 1:
                 raise ResearchError(
@@ -325,15 +374,18 @@ class EventRecovery:
             intent.model_dump(mode="json"),
             "stream.manage",
             lambda transaction: {
-                "expired_snapshot_ids": collect_expired(transaction, limit=intent.limit)
+                "expired_snapshot_ids": collect_expired(
+                    transaction, limit=intent.limit, instant=self._now(transaction)
+                )
             },
         )
 
     def page(self, context: CommandContext, intent: RecoveryPage) -> JsonObject:
         context.principal.require("read")
 
-        def read(connection: SqlSession) -> JsonObject:
-            snapshot = active_snapshot(Transaction(connection, context), intent.snapshot_id)
+        def read(transaction: Transaction) -> JsonObject:
+            snapshot = active_snapshot(transaction, intent.snapshot_id, clock=self._now)
+            connection = transaction.connection
             after = 0
             if intent.cursor is not None:
                 try:
@@ -384,13 +436,16 @@ class EventRecovery:
                 "next_cursor": cursor_out,
             }
 
-        return self.database.store.read(read)
+        return self.database.query(
+            context, "snapshot.page", intent.model_dump(mode="json"), "read", read
+        )
 
     def item(self, context: CommandContext, intent: RecoveryItem) -> JsonObject:
         context.principal.require("read")
 
-        def read(connection: SqlSession) -> JsonObject:
-            snapshot = active_snapshot(Transaction(connection, context), intent.snapshot_id)
+        def read(transaction: Transaction) -> JsonObject:
+            snapshot = active_snapshot(transaction, intent.snapshot_id, clock=self._now)
+            connection = transaction.connection
             row = connection.execute(
                 "SELECT content_digest,size_bytes,substr(content,?,?) AS part FROM recovery_items "
                 "WHERE workspace_id=? AND snapshot_id=? AND ordinal=?",
@@ -418,4 +473,6 @@ class EventRecovery:
                 "next_offset": intent.offset + len(row["part"]),
             }
 
-        return self.database.store.read(read)
+        return self.database.query(
+            context, "snapshot.item", intent.model_dump(mode="json"), "read", read
+        )

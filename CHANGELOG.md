@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Bind injected recovery clocks to private snapshot epochs. Use one checked
+  instant for expiry, collection and retention pins; refuse snapshots from another
+  clock domain. Route page/item reads through the query boundary so authenticated
+  source changes persist their fence before refusal, without command receipts.
+
 - Bound recovery snapshot SQL scans before adapters materialize their results.
   Allow smaller item, byte and aggregate retention profiles while preserving
   request identity and complete projections; overflow rolls back items and pins.

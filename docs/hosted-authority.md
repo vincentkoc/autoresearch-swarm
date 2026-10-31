@@ -1170,6 +1170,23 @@ watermark and content remain unchanged. These limits alone do not qualify hosted
 snapshot expiry or successor startup; that path still needs epoch-bound trusted
 time and a complete verified snapshot reader.
 
+The shared recovery service now accepts a trusted `SnapshotClock` that returns
+one timestamp and a required clock epoch. Creation persists that epoch in a
+private immutable record in the same transaction as snapshot contents. Public
+snapshot bytes and native UTC defaults remain unchanged. Active reads, bounded
+collection and event-floor pins compare only snapshots in the current clock
+domain; a new epoch invalidates old snapshots even if its timestamp regresses.
+The native UTC reader also refuses an epoch-bound snapshot instead of silently
+interpreting its deadline as wall time. Release and collection retain tombstones,
+and exact create/release replay does not renew the lifetime or require a clock.
+
+Page and item reads now use `Database.query`, which activates the operation's
+witness and persists a source-change fence before returning refusal. These reads
+produce no command acknowledgment. Witness tests cover same-epoch reads, source
+requalification, regressed timestamps, expiry boundaries, pinned event floors,
+atomic clock-record rollback and offline command replay. This shared foundation
+does not expose a hosted snapshot endpoint by itself.
+
 The same generic execution boundary supports `Database.query()`. Every query
 gets a fresh synchronous execution marker. Native queries use the existing read
 transaction. A configured witnessed query uses an outer write transaction only

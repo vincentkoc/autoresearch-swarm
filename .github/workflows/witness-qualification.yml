@@ -63,6 +63,7 @@ jobs:
           tests/test_transfer_preparation.py tests/test_orchestration_transfer.py
           tests/test_transfer_limits.py
           tests/test_snapshot_limits.py tests/test_event_recovery.py
+          tests/test_snapshot_time.py
           tests/test_hosted_transfers.py
           tests/test_hosted_transfer_evidence.py
           tests/test_cli_encoding.py tests/test_agent_research_cycle.py
