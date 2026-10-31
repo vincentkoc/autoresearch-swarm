@@ -39,10 +39,11 @@ def diagnostic(tmp_path):
     return NS(case=case, attempt=attempt, output=output, secret=secret, private=private)
 
 
-def test_failure_evidence_selects_facts_and_redacts_before_bounding(diagnostic):
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_failure_evidence_selects_facts_and_redacts_before_bounding(diagnostic, newline):
     d = diagnostic
-    (d.output / "stderr").write_text(
-        "x" * 12000 + "\n" + d.private + "\n" + d.secret + "\nfixture error"
+    (d.output / "stderr").write_bytes(
+        newline.join(("x" * 12000, d.private, d.secret, "fixture error")).encode()
     )
     rendered = publication_diagnostic(d.case, d.attempt)
     assert d.secret not in rendered and d.private not in rendered
@@ -55,7 +56,9 @@ def test_failure_evidence_selects_facts_and_redacts_before_bounding(diagnostic):
     assert len(result["closure_findings"]) == 4
     assert all(len(item) <= 512 for item in result["closure_findings"])
     assert len(result["stderr_tail"]) <= 2048
-    assert result["stderr_tail"].endswith("<redacted>\n<redacted>\nfixture error")
+    assert result["stderr_tail"].endswith(
+        newline.join(("<redacted>", "<redacted>", "fixture error"))
+    )
     assert result["logs"]["stderr"] == {
         "retained_bytes": 12000,
         "observed_bytes": 15000,
