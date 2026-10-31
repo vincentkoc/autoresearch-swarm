@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend the production reconciliation probe with a saved absolute-UTC timer.
+  Carry the pending wait across Workflow rotation and authority/Workflow restart,
+  then require timer readiness from the real native witness without an event hint.
+  Verify one readiness/delivery, stable replay and unchanged original execution
+  accounting. Collection passes; actual workerd execution remains pending.
+
 - Add an explicit hosted timer profile and allow asynchronous delivery of saved
   timer waits. Compare the unchanged absolute UTC threshold against one fresh
   transaction witness and record that same instant as readiness. Preserve event

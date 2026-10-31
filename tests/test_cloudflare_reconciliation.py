@@ -1,7 +1,9 @@
 """Production workerd reconciliation preserves original CPU evidence across restart."""
 
+import asyncio
 import copy
 from contextlib import ExitStack
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -17,14 +19,21 @@ from research_swarm.control.queries import RecordQuery
 from research_swarm.control.workers import WorkerData
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import RunResult
+from research_swarm.domain.orchestration import OrchestrationBinding
 from research_swarm.domain.time_providers import RequalifyTimeProvider
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
+from research_swarm.orchestration.cloudflare import CloudflareBridge, WorkflowOptions
+from research_swarm.orchestration.delivery_contract import binding_reference
+from research_swarm.orchestration.gateway_models import GatewayBinding
+from research_swarm.orchestration.waits import DurableWaitDriver
 from research_swarm.workers.clocks import native_clock
 from research_swarm.workers.journal_records import JournalState
 from research_swarm.workers.local import LocalWorker
 from tests.test_cloudflare_deployment import deployment as deployment
-from tests.test_cloudflare_native import build_current_sources, server
+from tests.test_cloudflare_hybrid import CONTROL, until
+from tests.test_cloudflare_hybrid import post as workflow_post
+from tests.test_cloudflare_native import build_current_sources, port, server
 from tests.test_cloudflare_native_source import Endpoint
 from tests.test_cloudflare_production import fixture_config, fixture_secrets, post, provider_call
 from tests.test_cloudflare_router import pytestmark as pytestmark
@@ -35,14 +44,14 @@ from tests.test_manifest import project as project
 from tests.test_time_witnesses import source
 
 
-def test_production_original_result_survives_clock_requalification_and_lost_replies(
+def test_production_result_and_timer_survive_clock_requalification_and_restarts(
     tmp_path, deployment, project
 ):
     build_current_sources(production=True)
     manifest, secrets = (copy.deepcopy(item) for item in deployment[:2])
     manifest["deliveries"] = []
     config_data = manifest["configuration"]
-    config_data["profile"] = "research-reconciliation-witness-v1"
+    config_data["profile"] = "research-timers-witness-v1"
     worker_credential = manifest["credentials"][2]
     worker_credential["principal"]["scopes"] = [
         "worker.query",
@@ -56,7 +65,11 @@ def test_production_original_result_survives_clock_requalification_and_lost_repl
     )
     private = tmp_path / "bindings"
     config = fixture_config(private)
-    options = {"config": "wrangler.operator-test.jsonc", "extra_configs": (config,)}
+    options = {
+        "config": "wrangler.operator-test.jsonc",
+        "extra_configs": (config,),
+        "listen_port": port(),
+    }
     with (
         server(tmp_path, sequence=1, **options) as url,
         httpx.Client(base_url=url, trust_env=False, timeout=30) as http,
@@ -94,6 +107,7 @@ def test_production_original_result_survives_clock_requalification_and_lost_repl
             operator = clients.enter_context(ResearchClient.connect(url, operator_token))
             client = clients.enter_context(ResearchClient.connect(url, worker_token))
             assert "attempt.reconcile" in operator.capabilities()["commands"]
+            assert operator.capabilities()["orchestration"]["timer_waits"] is True
             admitted = admit(operator, project)
             claimed, _ = enroll_and_claim(
                 operator,
@@ -230,6 +244,117 @@ def test_production_original_result_survives_clock_requalification_and_lost_repl
             assert {
                 name: value for name, value in settled["data"].items() if name != "disposition"
             } == {name: value for name, value in lease["data"].items() if name != "disposition"}
+
+            gateway, timer_actor = manifest["credentials"][1], manifest["credentials"][3]
+            configuration_digest = "sha256:" + "7" * 64
+            campaign = operator.get("campaign", admitted.campaign["id"])
+            binding_row = operator.command(
+                "orchestration.bind",
+                {
+                    "campaign_id": campaign["id"],
+                    "adapter": "cloudflare-workflows",
+                    "configuration_digest": configuration_digest,
+                    "routes": {"control": timer_actor["principal"]["id"]},
+                },
+                idempotency_key="timer-binding",
+                expected_revision=campaign["revision"],
+            )["result"]
+            operator.command(
+                "orchestration.register_delivery",
+                {
+                    "campaign_id": campaign["id"],
+                    "epoch": 1,
+                    "configuration_digest": configuration_digest,
+                    "gateway_credential_id": gateway["id"],
+                    "route_credentials": {"control": timer_actor["id"]},
+                },
+                idempotency_key="timer-route",
+                expected_revision=0,
+            )
+            reference = binding_reference(OrchestrationBinding.model_validate(binding_row["data"]))
+            gateway_binding = GatewayBinding.from_reference(reference).model_dump(mode="json")
+            variables = {
+                "AUTHORITY_PROFILE": "hosted-do-witness-v1",
+                "HOSTED_DELIVERY_ORIGIN": url,
+                "GATEWAY_TOKEN": secrets["credentials"][gateway["id"]],
+                "CONTROL_TOKEN": CONTROL,
+                "ALLOW_LOCAL_GATEWAY": "true",
+            }
+            workflow_options = WorkflowOptions(
+                poll_seconds=1, rotate_after=2, request_timeout_seconds=10
+            )
+            workflow_root = tmp_path / "workflow"
+            workflow_root.mkdir()
+            timer_token = secrets["credentials"][timer_actor["id"]]
+            with (
+                server(workflow_root, sequence=1, variables=variables) as workflow_url,
+                httpx.Client(
+                    base_url=workflow_url,
+                    headers={"authorization": "Bearer " + CONTROL},
+                    trust_env=False,
+                    timeout=30,
+                ) as workflow_http,
+                ResearchClient.connect(url, timer_token) as driver,
+            ):
+
+                async def start():
+                    async with CloudflareBridge(workflow_url, CONTROL) as bridge:
+                        return await bridge.start(reference, workflow_options)
+
+                workflow_id = asyncio.run(start())
+                initial = workflow_post(
+                    workflow_http, "/adapter/status", {"binding": gateway_binding}
+                )
+                operator.command(
+                    "report.create",
+                    {"campaign_id": campaign["id"]},
+                    idempotency_key="timer-clock-anchor-report",
+                )
+                # Acquire fresh witnessed time after Workflow startup; idle polls do not sample it.
+                wake_at = (
+                    datetime.fromtimestamp(
+                        (endpoint.responses[-1].payload.authority_time_ms + 60_000) / 1000, UTC
+                    )
+                    .isoformat(timespec="milliseconds")
+                    .replace("+00:00", "Z")
+                )
+                timer_request = {
+                    "wait_id": new_id(),
+                    "campaign_id": campaign["id"],
+                    "epoch": 1,
+                    "configuration_digest": configuration_digest,
+                    "condition": {
+                        "observed_watermark": driver.context(campaign["id"])["watermark"],
+                        "event_types": ["fixture.never"],
+                        "wake_at": wake_at,
+                    },
+                }
+                waiting = driver.command(
+                    "orchestration.record_wait",
+                    timer_request,
+                    idempotency_key="timer-wait",
+                    expected_revision=driver.get("orchestration_binding", campaign["id"])[
+                        "revision"
+                    ],
+                )["result"]["wait"]
+                assert waiting["state"] == "waiting"
+
+                def carried():
+                    status = workflow_post(
+                        workflow_http, "/adapter/status", {"binding": gateway_binding}
+                    )
+                    assert status["status"] != "errored", status
+                    assert driver.get("orchestration_wait", waiting["id"])["state"] == "waiting"
+                    pending = status["initial_pending"]
+                    return (
+                        status
+                        if status["generation"] > initial["generation"]
+                        and pending
+                        and pending["record_id"] == waiting["id"]
+                        else None
+                    )
+
+                checkpoint = until(carried, timeout=30)
             endpoint.mode = "unavailable"
             calls = len(endpoint.requests)
 
@@ -254,3 +379,66 @@ def test_production_original_result_survives_clock_requalification_and_lost_repl
             assert runner.journal.get(attempt_id) == entry
             assert runner.resources.availability() == {"cpu": 1}
             assert len(endpoint.requests) == calls
+            retained_wait = operator.get("orchestration_wait", waiting["id"])
+            assert retained_wait == waiting
+            with (
+                server(workflow_root, sequence=2, variables=variables) as workflow_url,
+                httpx.Client(
+                    base_url=workflow_url,
+                    headers={"authorization": "Bearer " + CONTROL},
+                    trust_env=False,
+                    timeout=30,
+                ) as workflow_http,
+                ResearchClient.connect(url, timer_token) as driver,
+            ):
+                restarted = workflow_post(
+                    workflow_http, "/adapter/status", {"binding": gateway_binding}
+                )
+                assert restarted["generation"] >= checkpoint["generation"]
+                assert restarted["initial_pending"]["record_id"] == waiting["id"]
+                assert (
+                    workflow_post(
+                        workflow_http,
+                        "/adapter/start",
+                        {
+                            "binding": gateway_binding,
+                            "options": workflow_options.model_dump(mode="json"),
+                        },
+                    )["id"]
+                    == workflow_id
+                )
+                endpoint.mode = "normal"
+                until(
+                    lambda: driver.get("orchestration_wait", waiting["id"])["state"] == "ready",
+                    timeout=120,
+                )
+
+                def delivered():
+                    status = workflow_post(
+                        workflow_http, "/adapter/status", {"binding": gateway_binding}
+                    )
+                    assert status["status"] != "errored", status
+                    return (
+                        status
+                        if status["generation"] > restarted["generation"]
+                        and status["initial_pending"] is None
+                        else None
+                    )
+
+                until(delivered)
+                readiness = driver.get("wait_readiness", waiting["id"])
+                assert readiness["data"]["cause"] == "timer"
+                assert readiness["data"]["event_id"] is None
+                assert readiness["data"]["ready_at"] >= wake_at
+                assert (
+                    driver.get("orchestration_wait", waiting["id"])["data"]["condition"]["wake_at"]
+                    == wake_at
+                )
+                durable = DurableWaitDriver(
+                    driver, campaign["id"], epoch=1, actor_id=timer_actor["principal"]["id"]
+                )
+                assert durable.reconcile(waiting["id"]) == durable.reconcile(waiting["id"])
+                assert len(operator.list(RecordQuery(kind="wait_readiness"))["items"]) == 1
+                assert len(operator.list(RecordQuery(kind="wakeup_delivery"))["items"]) == 1
+                assert operator.get("attempt", attempt_id) == accepted_attempt
+                assert operator.context(campaign["id"])["budget"] == budget

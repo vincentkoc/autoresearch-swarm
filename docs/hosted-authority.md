@@ -40,6 +40,16 @@ their event-only limits. Shared native and adapter tests cover the time boundary
 event priority, cancellation/revocation, fencing, restart and offline replay;
 actual Workflow/workerd qualification of this new profile remains pending.
 
+The production reconciliation probe now selects the timer profile and also starts
+a real Workflow before registering a threshold from the actual TLS witness's UTC
+observation. It requires a later generation to retain the pending wait, closes
+both owned runtimes, replays the original result offline, and verifies the saved
+wait before restarting Workflow delivery. With the witness restored and no event
+or wake hint, it requires one timer readiness, a later cleared pending generation,
+stable reconciliation replay and unchanged original execution accounting. The
+threshold is never moved to accommodate restart latency. The three authority
+startups and two Workflow startups are collected; actual runtime proof is pending.
+
 The optional `research-reconciliation-witness-v1` profile extends the startup
 profile with ordinary active-authority late-result handling. Select it explicitly
 in the protected deployment manifest; its configuration identity differs from
