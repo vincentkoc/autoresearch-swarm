@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Activate an elected hosted target through private operator RPC after original
+  execution, byte and driver obligations close. Verify bounded R2 bytes and a fresh
+  final witness, then retire original credentials, seal the deployment, activate
+  the gate and retain the acknowledgment atomically. Exact completed retries work
+  offline; fresh target workers use ordinary research APIs and the target can
+  reseal/export at its new epoch. This has SQLite/mock-R2 coverage; actual workerd
+  activation qualification remains pending.
+
 - Permit clock retirement during recovery only with an exact runtime-plan guard
   binding the provider snapshot, operation and authenticated discontinuity. Keep
   the target inactive and retain source retirement without consuming an activation

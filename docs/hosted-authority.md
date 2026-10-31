@@ -2299,8 +2299,7 @@ Golden fixtures freeze the runtime, activation and witness preimages. Native rec
 continues to reject logical admissions and cannot parse this hosted envelope. The shared
 atomic activation transition accepts either typed internal record; there is no generic
 wire decoder or public activation route. Offline verification establishes the recorded
-bindings, not current execution authority or a fresh elapsed-time observation. Hosted
-activation and atomic deployment sealing remain implementation work.
+bindings, not current execution authority or a fresh elapsed-time observation.
 
 The hosted activation-cut helper validates the exact portable schema and performs
 scalar SQL type/count/byte checks before calling the shared activation inspector.
@@ -2330,7 +2329,38 @@ Every retired credential must remain present and revoked. An active gate must re
 the original source seal; a later sealed gate must name matching immutable current-epoch
 seal history. Ordinary reopen and all successor checkpoint paths receive the same
 protected binding and injected cryptography. Constructed-history tests cover these
-contracts; they do not qualify the unfinished live activation transaction.
+verification contracts separately from the live activation transaction below.
+
+`Bootstrap.checkpoint_activate(bootstrap_credential, request_json)` now accepts a
+stable UUID `request_id`, exact gate `expected_revision`, and `ActivateRecovery`
+`payload`. Only the private named entrypoint and its fixed Durable Object expose
+this operation. The protected target plan and signed admission must match, the
+runtime must be prepared, and shared execution/byte/driver closure must hold.
+
+The adapter checks scalar/schema bounds, target storage quota and the exact
+credential-retirement inventory. It reads every selected R2 generation completely,
+then rechecks the cut before acquiring a fresh final witness. One synchronous outer
+transaction checks the cut and provider again, revokes original credentials,
+installs deployment metadata, activates the gate, and retains signed activation,
+events and command acknowledgment. Generated records must still fit the profile;
+any failure rolls the whole activation back. Authenticated source discontinuity
+instead persists a separate plan-bound clock retirement and leaves activation
+unacknowledged. Explicit requalification of a retired preparation is still required;
+the current preparation RPC cannot silently repair it.
+
+Completed retry verifies protected history and the exact retained acknowledgment
+without a witness or R2 reads. Later research and current provider changes do not
+invalidate that historical reply. Different request IDs or activation payloads
+refuse. Original credentials remain revoked, old driver bindings remain fenced,
+and paused campaigns do not resume automatically. Activation creates no scientific
+result or promotion.
+
+SQLite/mock-R2 tests exercise transaction faults after retirement/deployment/events,
+generated-row bounds, lost responses, concurrent operation gates, cancellation,
+byte failures, quota, admission/credential/provider drift and durable clock retirement.
+They also exercise original journal quarantine/closure, ordinary SDK research with a
+fresh epoch-2 worker, and target reseal/export. Actual workerd preparation/activation
+and separately authorized cloud deployment remain unqualified.
 
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
