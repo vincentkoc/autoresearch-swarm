@@ -832,7 +832,13 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             assert native_parent.is_running() and native_parent.create_time() == supervisor[1]
             native_root = psutil.Process(running.native.pid)
             assert native_root.is_running()
-            assert running.native.start_token == f"native-created:{native_root.create_time().hex()}"
+            if sys.platform == "win32":
+                current_start_token = f"native-created:{native_root.create_time().hex()}"
+            else:
+                from research_swarm.workers._posix import start_token
+
+                current_start_token = start_token(native_root)
+            assert running.native.start_token == current_start_token
             if cancel_offline:
                 attempt = pipeline.client.get("attempt", running.dispatch.attempt_id)
                 requested = pipeline.client.command(
