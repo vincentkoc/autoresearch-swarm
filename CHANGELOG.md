@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add an elected-target recovery router for original workers. It exposes bounded
+  historical reads, journal-only transfer and quarantined evidence submission through
+  the existing SDK wire contract. Current custody and credentials are rechecked before
+  replay and after R2 reads. It installs no execution clock or dispatch key; ordinary
+  hosted routing keeps its existing refusal behavior. Production routing is separate.
+
 - Separate hosted HTTP admission, scopes, body limits and capabilities from the
   shared wire handler. Explicit runtime policies retain authentication before body
   reads, capability reauthentication and the existing uncertain-delivery contract.

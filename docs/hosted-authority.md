@@ -2147,6 +2147,39 @@ accepted reply and requires exact replay after restart. This exercises route
 issuance without launching the claimed payload or delivering a native journal.
 The added assertions require a new workerd qualification receipt.
 
+`ExistingRecoveryRouter` supplies the original-worker delivery implementation for
+an explicitly selected recovery runtime. It opens existing state from protected
+target configuration, verifies the full elected admission and physical store, and
+uses only the target's bounded R2 binding. It does not install a witness provider,
+dispatch key or assignment signer. The ordinary router does not select this mode.
+Production HTTP routing and workerd qualification remain separate steps.
+
+The shared HTTP handler accepts a trusted immutable policy supplied by the runtime.
+The recovery policy advertises schemas for the five journal commands and only
+`worker_session` and `historical_attempt` reads. Tokens are authenticated before
+body consumption; capability responses authenticate again after the body await.
+Original non-expiring worker credentials retain their existing scopes and session
+ownership. Neither a global read scope nor an operator token substitutes for the
+original worker on historical reads or evidence delivery.
+
+Each recovery upload is bound to an unresolved original attempt. Only unnamed
+journals of at most one MiB are admitted; the configured R2 limit can reduce that
+bound. Complete offset-zero writes, canonical generation verification and permanent
+duplicate retirement use the existing storage implementation. Finalization parses
+the bounded journal and verifies its signed original grant in the same transaction
+that records transfer provenance. A missing canonical generation must be restored
+through the checkpoint artifact operation; a duplicate upload cannot replace it.
+
+`worker.submit_evidence` reads the complete verified journal, rechecks current
+identity/admission and selected evidence after I/O, and invokes the shared
+quarantine transaction. It creates no scientific result, operational settlement,
+successor attempt or new dispatch authority. Cached acknowledgments still require
+current identity and admission. Lost replies replay without a second event.
+SQLite/mock-R2 tests exercise a real signed claim and a durable NOT_STARTED journal,
+restart, revocation, admission changes during reads, invalid journals/assignments,
+and overlapping duplicate uploads. This is no-launch recovery evidence, not a
+native-execution or actual Cloudflare qualification claim.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase

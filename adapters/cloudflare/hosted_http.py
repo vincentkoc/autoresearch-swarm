@@ -136,8 +136,8 @@ def content_response(reference, content):
     )
 
 
-def capabilities(configuration):
-    commands = {
+def command_capabilities(names):
+    return {
         name: {
             "description": SHARED_COMMANDS[name].description,
             "scope": SHARED_COMMANDS[name].scope,
@@ -148,8 +148,12 @@ def capabilities(configuration):
             "expected_revision": SHARED_COMMANDS[name].expected_revision,
             "request_schema": SHARED_COMMANDS[name].request.model_json_schema(),
         }
-        for name in sorted(allowed_commands(configuration) - ARTIFACT_COMMANDS)
+        for name in sorted(names)
     }
+
+
+def capabilities(configuration):
+    commands = command_capabilities(allowed_commands(configuration) - ARTIFACT_COMMANDS)
     result = {
         "schema_version": "1.0",
         "profile": configuration.profile,

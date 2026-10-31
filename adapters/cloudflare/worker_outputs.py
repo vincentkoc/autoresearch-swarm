@@ -2,7 +2,11 @@
 
 import asyncio
 
-from research_swarm.control.recovery_operations import require_raw_operation
+from research_swarm.control.recovery_operations import (
+    recovery_context,
+    require_journal_upload,
+    require_raw_operation,
+)
 from research_swarm.control.worker_outputs import (
     BeginWorkerUpload,
     WorkerUploadTarget,
@@ -35,8 +39,9 @@ COMMANDS = frozenset(
 class HostedWorkerOutputs:
     commands = COMMANDS
 
-    def __init__(self, router):
+    def __init__(self, router, *, recovery=False):
         self.router = router
+        self.recovery = recovery
         self.database = router.database
         self.service = router.service.worker_outputs
 
@@ -58,8 +63,7 @@ class HostedWorkerOutputs:
             raise asyncio.CancelledError("Output transfer owner was cancelled")
 
     def _select(self, context, request, operation, payload):
-        # Hosted restoration has no admitted native recovery proof. This gate
-        # refuses inactive workspaces before any storage access, including reads.
+        # Raw byte operations require the same workspace capability as commands.
         require_raw_operation(self.database, context, operation, payload)
 
         def select(sql):
@@ -86,6 +90,20 @@ class HostedWorkerOutputs:
             payload,
         )
         normalized = request.model_dump(mode="json")
+        if self.recovery and operation == "worker.begin_upload":
+            context = recovery_context(
+                self.database,
+                context,
+                operation,
+                normalized,
+                attempt_id=request.attempt_id,
+                crypto_provider=self.service.crypto_provider,
+            )
+            require_journal_upload(
+                context, request.role, request.output_name, request.content.size_bytes
+            )
+        elif self.recovery:
+            context = self.service._recovery_context(context, operation, request)
         previous = self.database.replay(context, operation, normalized, "worker.outputs")
         if previous is not None:
             return previous
@@ -110,14 +128,18 @@ class HostedWorkerOutputs:
             _, data, row, upload, attempt = selected
             own = StoredBlob(reference=upload.reference(), generation=upload.id)
             catalog = self.router.artifacts._catalog(context, upload)
+            journal = None
             if operation == "worker.finalize_upload":
                 if data.artifact is None:
                     require_pending(attempt)
                 if row["state"] == "pending":
                     if upload.size_bytes == 0:
                         await self.router.objects.publish(upload, b"")
+                        body = b""
                     else:
-                        await self.router.objects.read(upload.workspace_id, own)
+                        body = await self.router.objects.read(upload.workspace_id, own)
+                    if context._recovery_operation is not None:
+                        journal = self.service._parse_journal(body)
                     if catalog is not None and catalog["state"] == "verified":
                         _, canonical = self.router.artifacts._selected(context, upload)
                         if canonical.generation != own.generation:
@@ -162,7 +184,7 @@ class HostedWorkerOutputs:
                 if self.router.artifacts._catalog_in(transaction, upload) != catalog:
                     raise ResearchError(ErrorCode.STALE_FENCE, "Canonical output changed")
                 if operation == "worker.finalize_upload":
-                    return self.service._finalize_in(transaction, request, own)
+                    return self.service._finalize_in(transaction, request, own, journal=journal)
                 if operation == "worker.abort_upload":
                     self.service._authorize_abort_in(transaction, request, row)
                     return self.router.service.artifacts.abort_upload_in(transaction, upload.id)
@@ -179,6 +201,8 @@ class HostedWorkerOutputs:
             self._identity(token, context)
             return self.database.execute(context, operation, normalized, "worker.outputs", callback)
 
+        if context._recovery_operation is not None:
+            return commit()
         return await self.router._witnessed(context, operation, normalized, commit)
 
     async def upload_part(self, token, context, payload, offset, content):
@@ -194,6 +218,8 @@ class HostedWorkerOutputs:
             "content_digest": content_digest(content),
         }
         operation = "worker.upload_part"
+        if self.recovery:
+            context = self.service._recovery_context(context, operation, request, normalized)
         selected = self._select(context, request, operation, normalized)
         _, _, row, upload, attempt = selected
         require_pending(attempt)
@@ -208,6 +234,8 @@ class HostedWorkerOutputs:
         self._identity(token, context)
         request = validated(WorkerUploadTarget, payload)
         normalized = request.model_dump(mode="json")
+        if self.recovery:
+            context = self.service._recovery_context(context, "worker.output", request)
         selected = self._select(context, request, "worker.output", normalized)
         _, data, row, upload, _ = selected
         catalog = self.router.artifacts._catalog(context, upload)

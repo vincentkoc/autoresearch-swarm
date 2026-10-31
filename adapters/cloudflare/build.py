@@ -60,6 +60,7 @@ PRODUCTION = (
     "checkpoint_turns.py",
     "checkpoint_artifacts.py",
     "checkpoint_routes.py",
+    "recovery_router.py",
 )
 TARGETS = {
     "qualification": (".generated", "local-qualification-v1\n", "entry.py", QUALIFICATION),
