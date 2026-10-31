@@ -157,7 +157,9 @@ def test_awaited_witness_excludes_other_operations_and_retry_discards_late_respo
                 with ThreadPoolExecutor(max_workers=2) as pool:
                     first = pool.submit(deliver, url, origin, first_key, bypass_gate=bypass)
                     try:
-                        assert fixture.event(fixture.arrivals, first_key).wait(10)
+                        if not fixture.event(fixture.arrivals, first_key).wait(10):
+                            result = first.result(timeout=10)
+                            pytest.fail(f"RPC returned before its witness request: {result!r}")
                         second = pool.submit(deliver, url, origin, second_key, bypass_gate=bypass)
                         assert fixture.event(fixture.ingress, second_key).wait(5)
                         if bypass:

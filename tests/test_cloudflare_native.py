@@ -90,6 +90,15 @@ def server(
     selected_port = port()
     url = f"http://127.0.0.1:{selected_port}"
     log = tmp_path / f"local-workerd-{sequence}.log"
+
+    def diagnostic():
+        text = log.read_text(errors="replace")[-8000:]
+        text = text.replace(str(ROOT.parents[1]), "<repo>").replace(str(tmp_path), "<fixture>")
+        for name, value in (variables or {}).items():
+            if "TOKEN" in name:
+                text = text.replace(value, "<fixture-token>")
+        return text
+
     with log.open("wb") as output:
         process = subprocess.Popen(
             [
@@ -129,16 +138,13 @@ def server(
                 except httpx.TransportError:
                     pass
                 if process.poll() is not None or time.monotonic() >= deadline:
-                    text = log.read_text(errors="replace")[-8000:]
-                    text = text.replace(str(ROOT.parents[1]), "<repo>").replace(
-                        str(tmp_path), "<fixture>"
-                    )
-                    for name, value in (variables or {}).items():
-                        if "TOKEN" in name:
-                            text = text.replace(value, "<fixture-token>")
-                    pytest.fail("Local workerd did not become ready:\n" + text)
+                    pytest.fail("Local workerd did not become ready:\n" + diagnostic())
                 time.sleep(0.1)
-            yield url
+            try:
+                yield url
+            except BaseException:
+                print("Local workerd failure diagnostic:\n" + diagnostic())
+                raise
         finally:
             close_owned_group(
                 process
