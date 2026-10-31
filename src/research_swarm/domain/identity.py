@@ -36,6 +36,7 @@ class CommandContext(Record):
     _recovery_operation: RecoveryOperationGuard | None = PrivateAttr(default=None)
     _recovery_reader: RecoveryReaderGuard | None = PrivateAttr(default=None)
     _recovery_turn: RecoveryTurnGuard | None = PrivateAttr(default=None)
+    _recovery_route: RecoveryRouteGuard | None = PrivateAttr(default=None)
     _recovery_activation: RecoveryActivationGuard | None = PrivateAttr(default=None)
 
 
@@ -50,6 +51,16 @@ class RecoveryAuthority:
     gate_revision: int
     control_epoch: int
     actor_id: str
+
+
+@dataclass(frozen=True)
+class RecoveryRouteGuard(RecoveryAuthority):
+    """Issue one original worker destination without permitting evidence or execution."""
+
+    request_digest: str
+    route_id: str
+    route_digest: str
+    nonexpiring_credential: bool
 
 
 @dataclass(frozen=True)

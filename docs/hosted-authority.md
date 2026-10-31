@@ -2114,6 +2114,31 @@ without an action acknowledgment, loses its accepted reply, and replays both
 admission and closure byte-for-byte after restart. The loser, public entrypoint and
 attempted execute-turn remain refused. The saved action remains unexecuted.
 
+`Bootstrap.checkpoint_route(bootstrap_credential, request_json)` issues an original
+worker route at the elected, admitted fixed target. The request contains a stable
+UUID `route_id`, original `attempt_id` and `credential_id`, plus normalized
+`source_controller_url` and `destination_url`. URLs require HTTPS outside loopback.
+The response is an accepted command acknowledgment; `result.data` contains the
+complete `SignedWorkerRecoveryRoute` for offline installation at the worker.
+
+One serialized SQL write verifies protected deployment/custody, current admission,
+the original attempt and immutable archived session, credential owner/scopes and
+the retained source election. Hosted credentials must be non-expiring; issuance
+does not substitute a wall clock for qualified time. A private guard binds the
+exact route and command and cannot authorize another recovery operation. The
+target signs synchronously, stores one immutable `worker_recovery_route`, emits
+one event and commits its acknowledgment together. No witness, R2 I/O, dispatch
+or accounting changes occur. A fresh command key cannot replace an existing route
+or emit another issuance event.
+
+Current checks precede cached replies. Revocation, changed admission, another
+physical target, conflicting route content or a missing retained record refuse
+without rewriting history. Lost replies and independent connection races replay
+the same committed acknowledgment. Native adapter tests exercise an SDK-created
+attempt through seal/import/election/admission/issuance, rollback after event
+creation, credential changes after guard minting and restart replay. Actual
+workerd issuance qualification and hosted journal delivery remain pending.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase

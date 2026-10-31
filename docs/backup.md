@@ -333,8 +333,10 @@ The source authenticates the target intent and deployment identity as a delegati
 these are not independently observed runtime facts. The receiving controller must
 also verify its actual deployment and current recovery admission. The route still
 binds the original worker session, credential, attempt, installation and destination,
-and cannot authorize execution. Installing and reopening such proofs is supported;
-hosted issuance and journal delivery remain separate implementation steps.
+and cannot authorize execution. Installing and reopening such proofs is supported.
+Hosted targets issue them through the private `Bootstrap.checkpoint_route` RPC
+described in [hosted authority](hosted-authority.md); hosted journal delivery still
+requires its separate runtime implementation.
 
 The original enrollment URL, token, driver identity and pending recovery intent
 remain unchanged. Each route gets a separate delivery directory, identity digest,

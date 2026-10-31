@@ -85,6 +85,13 @@ def require_workspace_mutation(
         and payload is not None
         and request_digest is not None
     ):
+        if context._recovery_route is not None:
+            from research_swarm.state.recovery_routes import require_recovery_route
+
+            require_recovery_route(
+                connection, context, authority, operation, payload, request_digest
+            )
+            return
         if context._recovery_turn is not None:
             from research_swarm.state.recovery_turns import require_recovery_turn
 

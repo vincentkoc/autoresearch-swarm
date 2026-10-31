@@ -6,7 +6,12 @@ from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.endpoints import controller_url
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, Principal
-from research_swarm.domain.recovery_routes import RecoveryRouteRequest, WorkerRecoveryRoute
+from research_swarm.domain.recovery_routes import (
+    RecoveryRouteRequest,
+    SignedWorkerRecoveryRoute,
+    WorkerRecoveryRoute,
+)
+from research_swarm.state.database import JsonObject, Transaction
 from research_swarm.state.sql import SqlSession
 
 
@@ -26,6 +31,8 @@ def route_from_snapshot(
     request: RecoveryRouteRequest,
     receipt: RestoreReceipt,
     admission: RecoveryAdmission,
+    *,
+    nonexpiring_credential: bool = False,
 ) -> WorkerRecoveryRoute:
     """The caller must verify current admission and its signing custody separately."""
     context.principal.require("*")
@@ -65,13 +72,17 @@ def route_from_snapshot(
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Recovery route attempt session differs")
     credential = sql.execute(
-        "SELECT workspace_id,principal,revoked FROM credentials WHERE id=? "
+        "SELECT workspace_id,principal,revoked,expires_at FROM credentials WHERE id=? "
         "AND typeof(principal)='text' AND length(CAST(principal AS BLOB))<=16384",
         (request.credential_id,),
     ).fetchone()
     if credential is None or credential["revoked"] or credential["workspace_id"] != workspace:
         raise ResearchError(
             ErrorCode.AUTHORIZATION_DENIED, "Original recovery credential is unavailable"
+        )
+    if nonexpiring_credential and credential["expires_at"] is not None:
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE, "Recovery cannot qualify an expiring credential"
         )
     principal = Principal.model_validate_json(credential["principal"])
     if principal.id != worker.principal_id or principal.workspace_id != workspace:
@@ -88,3 +99,45 @@ def route_from_snapshot(
         restoration=receipt,
         admission=admission,
     )
+
+
+def persist_route(transaction: Transaction, signed: SignedWorkerRecoveryRoute) -> JsonObject:
+    """The caller owns command admission; record, event and acknowledgment share its write."""
+    route = signed.route
+    row = transaction.connection.execute(
+        "SELECT 1 FROM records WHERE workspace_id=? AND kind='worker_recovery_route' AND id=?",
+        (transaction.workspace_id, route.route_id),
+    ).fetchone()
+    if row is not None:
+        bounded = transaction.connection.execute(
+            "SELECT payload FROM records WHERE workspace_id=? AND kind='worker_recovery_route' "
+            "AND id=? AND typeof(payload)='text' AND length(CAST(payload AS BLOB))<=4194304",
+            (transaction.workspace_id, route.route_id),
+        ).fetchone()
+        if bounded is None:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Retained recovery route exceeds its limit")
+        saved = transaction.get("worker_recovery_route", route.route_id)
+        if saved["data"] != signed.model_dump(mode="json") or (
+            saved["state"],
+            saved["revision"],
+            saved["campaign_id"],
+            saved["parent_id"],
+        ) != ("immutable", 1, None, route.restoration.restore_id):
+            raise ResearchError(ErrorCode.IDEMPOTENCY_CONFLICT, "Recovery route ID already differs")
+        return saved
+    saved = transaction.insert(
+        "worker_recovery_route",
+        route.route_id,
+        signed.model_dump(mode="json"),
+        state="immutable",
+        parent_id=route.restoration.restore_id,
+    )
+    transaction.event(
+        "worker.recovery_route_issued",
+        saved,
+        {
+            "attempt_id": route.attempt_id,
+            "restore_id": route.restoration.restore_id,
+        },
+    )
+    return saved

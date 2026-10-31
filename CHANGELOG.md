@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Issue original-worker recovery routes through private fixed-target RPC after
+  hosted election and admission. Bind current deployment, original custody and
+  non-expiring credential to a narrow issuance guard. Commit one immutable route,
+  event and acknowledgment atomically; replay rechecks authority and retained
+  content. Routes grant no new execution, scientific acceptance or activation.
+
 - Build original-worker recovery routes from one shared SQL snapshot of the
   attempt, archived session and credential. Bound payload reads, require the
   immutable session and current credential scopes, and recheck them before
