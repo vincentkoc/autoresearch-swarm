@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a private native witness endpoint with a pinned consumer digest,
+  authentication before body reads, bounded strict JSON, finite read timeouts
+  and sanitized errors. Keep deployment and hosted authority disabled.
+
 - Add a native clock-witness source with fixed authority scope, sampled
   observations, sticky continuity faults and independent process origins. Keep
   provider generation under controller ownership and network exposure disabled.

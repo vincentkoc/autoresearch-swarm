@@ -12,7 +12,8 @@ native source primitive observes the existing qualified clock implementation
 and preserves its fault latch; independent child processes establish distinct
 source origins locally. Wire validity does not qualify a deployment. The
 exclusive operation context, persisted retirement, authenticated source
-transport and hosted adapter remain to be implemented.
+deployment and hosted adapter remain to be implemented. The private HTTP source
+transport is locally verified; it does not establish Container routing.
 
 ## Decision and boundary
 
@@ -156,6 +157,34 @@ matching request scope is not network authentication. Current tests cover native
 sampling and process-origin separation plus synthetic continuity failures. They
 do not establish Container routing or hosted clock qualification.
 
+### Private source endpoint
+
+`create_time_witness_app` exposes `POST /v1/time-witness` around one native source
+and one explicitly provisioned consumer digest. It does not expose enrollment,
+source configuration, research commands or an OpenAPI document. The application
+factory starts no listener and deploys no service.
+
+The operator provisions a high-entropy bearer token privately to the consumer
+and its domain-separated digest to the source. The endpoint rejects missing,
+duplicate, malformed or incorrect authorization before consuming the body.
+It accepts one JSON content type and uncompressed input, limits the body to
+16 KiB and defaults to a one-second body-read timeout. Duplicate JSON keys and
+invalid schemas are refused before observing time. Credential rotation must
+follow the deployment's source-origin and requalification lifecycle.
+
+Successful replies are signed `SignedTimeWitness` records with `Cache-Control:
+no-store`. Errors contain only the stable code and retryability flag. A scope
+refusal is HTTP 403, an invalid clock origin is 409, and an unavailable source
+is 503. A body timeout is 408. Responses do not include source exception text,
+request bodies or credentials. The endpoint needs a private transport or an
+explicitly configured authenticated TLS route; the token is not transport
+encryption.
+
+The local suite includes a real HTTP/native observation and bounded ASGI tests
+for authentication ordering, partial input, disconnects and sanitized failures.
+Deploying this application, provisioning secrets and qualifying the hosted route
+remain separate work.
+
 ## Epochs, eviction and source replacement
 
 Distinguish three identities:
@@ -202,6 +231,9 @@ Use the command kernel's durable rejection/fencing boundary; rolling back the
 invalidation with the rejected command would restore stale authority. A transport
 timeout alone refuses that operation without retiring the source: absence of a
 reply is not authenticated evidence of a different clock origin.
+An unsigned HTTP error code alone is not epoch-change evidence either. It
+refuses the current operation; durable retirement needs a verified source change
+or an explicit authority action.
 Clock challenges and other read-only entry points can discover the same fault.
 They must persist an internal fencing transaction before returning refusal;
 command rejection hooks alone do not cover those paths.
