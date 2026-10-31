@@ -177,6 +177,7 @@ from research_swarm.domain.lifecycle import CampaignState, campaign_transition
 from research_swarm.domain.types import VersionedRecord, new_id, utc_now
 from research_swarm.evaluation.statistics import FixedPairedPolicy
 from research_swarm.projects.manifest import ResolvedProject, resolve_project
+from research_swarm.projects.source import SourceManifest
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.event_recovery import EventRecovery
@@ -719,49 +720,56 @@ class ResearchService:
                     ErrorCode.PROJECT_CONTRACT_INVALID, "Project manifest is invalid"
                 ) from error
 
-            def register(transaction: Transaction) -> JsonObject:
-                project_id = request.project_id or new_id()
-                previous_project = (
-                    transaction.get("project", project_id) if request.project_id else None
-                )
-                if previous_project is not None:
-                    check_revision(context, previous_project)
-                revision_id = new_id()
-                identity = resolved.manifest.project
-                project = ProjectData(
-                    slug=identity.slug,
-                    name=identity.name,
-                    description=identity.description,
-                    current_revision_id=revision_id,
-                )
-                revision = transaction.insert(
-                    "project_revision",
-                    revision_id,
-                    ProjectRevisionData(
-                        project_id=project_id,
-                        source_artifact=request.source_artifact,
-                        resolved=resolved,
-                    ).model_dump(mode="json"),
-                    state="immutable",
-                    parent_id=project_id,
-                )
-                retain_source(transaction, request.source_artifact, "project_revision", revision_id)
-                if previous_project is None:
-                    row = transaction.insert(
-                        "project", project_id, project.model_dump(mode="json"), state="active"
-                    )
-                else:
-                    row = transaction.update(
-                        "project",
-                        project_id,
-                        expected_revision=previous_project["revision"],
-                        data=project.model_dump(mode="json"),
-                        state="active",
-                    )
-                transaction.event("project.registered", row, {"project_revision_id": revision_id})
-                return {"project": row, "project_revision": revision}
+            return self._execute(
+                context,
+                operation,
+                request,
+                scope,
+                lambda transaction: self._register_project(transaction, request, resolved),
+            )
 
-            return self._execute(context, operation, request, scope, register)
+    @staticmethod
+    def _register_project(
+        transaction: Transaction, request: RegisterProject, resolved: ResolvedProject
+    ) -> JsonObject:
+        project_id = request.project_id or new_id()
+        previous_project = transaction.get("project", project_id) if request.project_id else None
+        if previous_project is not None:
+            check_revision(transaction.context, previous_project)
+        revision_id = new_id()
+        identity = resolved.manifest.project
+        project = ProjectData(
+            slug=identity.slug,
+            name=identity.name,
+            description=identity.description,
+            current_revision_id=revision_id,
+        )
+        revision = transaction.insert(
+            "project_revision",
+            revision_id,
+            ProjectRevisionData(
+                project_id=project_id,
+                source_artifact=request.source_artifact,
+                resolved=resolved,
+            ).model_dump(mode="json"),
+            state="immutable",
+            parent_id=project_id,
+        )
+        retain_source(transaction, request.source_artifact, "project_revision", revision_id)
+        if previous_project is None:
+            row = transaction.insert(
+                "project", project_id, project.model_dump(mode="json"), state="active"
+            )
+        else:
+            row = transaction.update(
+                "project",
+                project_id,
+                expected_revision=previous_project["revision"],
+                data=project.model_dump(mode="json"),
+                state="active",
+            )
+        transaction.event("project.registered", row, {"project_revision_id": revision_id})
+        return {"project": row, "project_revision": revision}
 
     @staticmethod
     def _create_campaign(
@@ -953,12 +961,20 @@ class ResearchService:
         if previous is not None:
             return previous
         with verified_source(self.artifacts, context, request.source_artifact) as (_, source):
+            return self._execute(
+                context,
+                operation,
+                request,
+                scope,
+                lambda transaction: self._propose_candidate(transaction, request, source),
+            )
 
-            def propose(transaction: Transaction) -> JsonObject:
-                check_revision(context, transaction.get("campaign", request.campaign_id))
-                return propose_candidate(transaction, request, source)
-
-            return self._execute(context, operation, request, scope, propose)
+    @staticmethod
+    def _propose_candidate(
+        transaction: Transaction, request: ProposeCandidate, source: SourceManifest
+    ) -> JsonObject:
+        check_revision(transaction.context, transaction.get("campaign", request.campaign_id))
+        return propose_candidate(transaction, request, source)
 
     def validate_candidate(self, context: CommandContext, request: ValidateCandidate) -> JsonObject:
         def validate(transaction: Transaction) -> JsonObject:

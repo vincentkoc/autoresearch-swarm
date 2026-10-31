@@ -13,6 +13,7 @@ from pydantic import TypeAdapter, ValidationError, model_validator
 
 from research_swarm.control.auth import CredentialStore
 from research_swarm.control.dispatch import dispatch_command, validate_command_input
+from research_swarm.control.queries import ResearchQueries
 from research_swarm.control.service import ResearchService
 from research_swarm.control.witness_commands import WitnessExecutionBoundary
 from research_swarm.control.witness_time import WitnessAuthorityTimeProvider
@@ -72,6 +73,32 @@ class HostedArtifactConfiguration(HostedConfiguration):
         return self
 
 
+class HostedResearchConfiguration(HostedArtifactConfiguration):
+    profile: Literal["research-admission-witness-v1"] = "research-admission-witness-v1"
+
+
+def supports_artifacts(configuration):
+    return isinstance(configuration, HostedArtifactConfiguration)
+
+
+def supports_research(configuration):
+    return isinstance(configuration, HostedResearchConfiguration)
+
+
+def allowed_commands(configuration):
+    if __package__:
+        from .artifact_router import COMMANDS as artifact_commands
+        from .research_admission import COMMANDS as research_commands
+    else:
+        from artifact_router import COMMANDS as artifact_commands
+        from research_admission import COMMANDS as research_commands
+    return (
+        COMMANDS
+        | (artifact_commands if supports_artifacts(configuration) else frozenset())
+        | (research_commands if supports_research(configuration) else frozenset())
+    )
+
+
 def dispatch_key_digest(key):
     if not isinstance(key, bytes) or len(key) < 32:
         raise ValueError("Hosted dispatch key must contain at least 32 bytes")
@@ -116,9 +143,9 @@ class ExistingResearchRouter:
         """Open only: provisioning, credentials and source qualification must already exist."""
 
         async def construct():
-            config = TypeAdapter(HostedConfiguration | HostedArtifactConfiguration).validate_python(
-                configuration
-            )
+            config = TypeAdapter(
+                HostedConfiguration | HostedArtifactConfiguration | HostedResearchConfiguration
+            ).validate_python(configuration)
             store = open_store()
             if (
                 (store.identity.backend, store.identity.location)
@@ -163,11 +190,15 @@ class ExistingResearchRouter:
                 crypto_provider=crypto,
             )
             instance.queries = WorkerQueries(instance.database, instance.service.worker_locality)
+            instance.records = ResearchQueries(instance.database)
             if __package__:
                 from .artifact_router import HostedArtifacts
+                from .research_admission import HostedResearchAdmission
             else:
                 from artifact_router import HostedArtifacts
+                from research_admission import HostedResearchAdmission
             instance.artifacts = HostedArtifacts(instance)
+            instance.research = HostedResearchAdmission(instance)
             return instance
 
         return await exclusive(state, construct)
@@ -288,6 +319,8 @@ class ExistingResearchRouter:
             )
             if operation.startswith("artifact."):
                 return await self.artifacts.command(token, context, operation, payload)
+            if operation in self.research.commands:
+                return await self.research.command(token, context, operation, payload)
             if operation not in COMMANDS:
                 raise unavailable()
             definition, request = validate_command_input(context, operation, payload)
@@ -326,6 +359,8 @@ class ExistingResearchRouter:
     async def query(self, token, operation, payload):
         async def read():
             context = self._context(token, idempotency_key=new_id())
+            if operation in {"get", "list"}:
+                return self.research.query(context, operation, payload)
             if operation == "artifact.upload_status":
                 return await self.artifacts.status(token, context, payload)
             if operation == "artifact.get":

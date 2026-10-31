@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an explicit hosted research-admission profile from ordinary source bundles
+  through signed CPU claims. Reuse native project, campaign, candidate, trial and
+  budget transactions; verify R2 source bytes before the fresh witness and retain
+  them atomically. Keep the existing hosted profiles and their capability bounds.
+
 - Share source archive validation and project resolution across native paths and
   immutable byte buffers. Verify every source entry without extraction, preserve
   existing digest preimages, and retain native extraction behavior.

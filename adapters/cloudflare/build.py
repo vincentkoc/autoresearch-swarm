@@ -25,6 +25,7 @@ shutil.copyfile(ROOT / "storage_qualification.py", output / "storage_qualificati
 shutil.copyfile(ROOT / "signing_qualification.py", output / "signing_qualification.py")
 shutil.copyfile(ROOT / "witness_qualification.py", output / "witness_qualification.py")
 shutil.copyfile(ROOT / "research_router.py", output / "research_router.py")
+shutil.copyfile(ROOT / "research_admission.py", output / "research_admission.py")
 shutil.copyfile(ROOT / "artifact_router.py", output / "artifact_router.py")
 shutil.copyfile(ROOT / "hosted_http.py", output / "hosted_http.py")
 shutil.copyfile(ROOT / "http_binding.py", output / "http_binding.py")

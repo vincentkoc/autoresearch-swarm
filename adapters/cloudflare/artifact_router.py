@@ -16,6 +16,11 @@ from research_swarm.state.database import Transaction
 from research_swarm.state.drive_guard import require_storage_authority
 from research_swarm.state.workspace_gate import require_workspace_mutation
 
+if __package__:
+    from .research_router import supports_artifacts
+else:
+    from research_router import supports_artifacts
+
 
 class UploadTarget(VersionedRecord):
     upload_id: ID
@@ -50,7 +55,7 @@ class HostedArtifacts:
         self.database, self.service = router.database, router.service.artifacts
 
     def _identity(self, token, context):
-        if self.router.configuration.profile != "worker-artifacts-witness-v1":
+        if not supports_artifacts(self.router.configuration):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Artifact profile is unavailable")
         current = self.router._context(
             token,

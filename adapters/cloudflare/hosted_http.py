@@ -21,17 +21,20 @@ from research_swarm.state.artifacts import BeginUpload
 if __package__:
     from .artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from .artifact_router import UploadTarget
-    from .research_router import COMMANDS as WORKER_COMMANDS
+    from .research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
+    from .research_router import allowed_commands, supports_artifacts, supports_research
 else:
     from artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from artifact_router import UploadTarget
-    from research_router import COMMANDS as WORKER_COMMANDS
+    from research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
+    from research_router import allowed_commands, supports_artifacts, supports_research
 
 
 MAX_JSON_BYTES = 1024**2
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 UPLOAD = re.compile(r"^/v1/artifact-uploads/(" + UUID + r")(/parts|/finalize)?$")
 ARTIFACT = re.compile(r"^/v1/artifacts/(" + UUID + r")(/content)?$")
+RECORD = re.compile(r"^/v1/records/([a-z_]+)/(" + UUID + r")$")
 BASE_HEADERS = {"cache-control": "no-store, no-transform", "x-content-type-options": "nosniff"}
 
 
@@ -86,7 +89,7 @@ def capabilities(configuration):
             "expected_revision": SHARED_COMMANDS[name].expected_revision,
             "request_schema": SHARED_COMMANDS[name].request.model_json_schema(),
         }
-        for name in sorted(WORKER_COMMANDS)
+        for name in sorted(allowed_commands(configuration) - ARTIFACT_COMMANDS)
     }
     result = {
         "schema_version": "1.0",
@@ -108,7 +111,7 @@ def capabilities(configuration):
             "worker_admission": "unqualified",
         },
     }
-    if configuration.profile == "worker-artifacts-witness-v1":
+    if supports_artifacts(configuration):
         for name in sorted(ARTIFACT_COMMANDS):
             request = BeginUpload if name == "artifact.begin_upload" else UploadTarget
             commands[name] = {
@@ -127,6 +130,21 @@ def capabilities(configuration):
             "range_requests": False,
             "storage_limit_bytes": configuration.storage_limit_bytes,
         }
+    if supports_research(configuration):
+        result["queries"] += ["get", "list"]
+        result["record_queries"] = {
+            "scope": "read",
+            "get": AdmissionRead.model_json_schema(),
+            "list": AdmissionQuery.model_json_schema(),
+        }
+        for name in SOURCE_COMMANDS:
+            commands[name]["required_scopes"] += ["read"]
+        result["execution"] = "cpu-claim-only"
+        result["clock"]["worker_admission"] = "explicit-profile-and-policy"
+        result["clock"]["policy_digest"] = configuration.source.policy.digest
+        result["worker_inputs"] = "unavailable"
+        result["worker_outputs"] = "unavailable"
+        result["evaluation"] = "unavailable"
     return result
 
 
@@ -154,9 +172,13 @@ def route(method, target):
             return "status", match[1], None
         if match := ARTIFACT.fullmatch(path):
             return "content" if match[2] else "metadata", match[1], None
+        if match := RECORD.fullmatch(path):
+            return "record", match[1], match[2]
     if method == "POST":
         if path == "/v1/artifact-uploads":
             return "command", "artifact.begin_upload", None
+        if path == "/v1/query":
+            return "records", "list", None
         if (match := UPLOAD.fullmatch(path)) and match[2] == "/finalize":
             return "finalize", match[1], None
         if re.fullmatch(r"/v1/commands/[a-z_]+\.[a-z_]+", path):
@@ -184,21 +206,20 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Ranges and encoded bodies are unavailable"
             )
-        if (
-            kind in {"upload", "status", "metadata", "content", "finalize"}
-            and router.configuration.profile != "worker-artifacts-witness-v1"
-        ):
+        if kind in {
+            "upload",
+            "status",
+            "metadata",
+            "content",
+            "finalize",
+        } and not supports_artifacts(router.configuration):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Artifact profile is unavailable")
-        if kind == "command":
-            allowed = WORKER_COMMANDS | (
-                ARTIFACT_COMMANDS
-                if router.configuration.profile == "worker-artifacts-witness-v1"
-                else frozenset()
+        if kind == "command" and identifier not in allowed_commands(router.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Command is outside this profile")
+        if kind in {"record", "records"} and not supports_research(router.configuration):
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Research queries are unavailable"
             )
-            if identifier not in allowed:
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE, "Command is outside this profile"
-                )
         if kind in {"upload", "status", "finalize"} or (
             kind == "command" and identifier in ARTIFACT_COMMANDS
         ):
@@ -206,6 +227,8 @@ async def handle(router, method, target, headers, read_body):
         elif kind == "command":
             definition = SHARED_COMMANDS[identifier]
             scopes = (definition.scope, *definition.additional_scopes)
+            if identifier in SOURCE_COMMANDS:
+                scopes += ("read",)
         else:
             scopes = ("worker.query",) if kind == "query" else ("read",)
         for scope in scopes:
@@ -229,7 +252,7 @@ async def handle(router, method, target, headers, read_body):
             router.configuration.storage.max_object_bytes
             if kind == "upload"
             else MAX_JSON_BYTES
-            if kind in {"query", "command"}
+            if kind in {"query", "command", "records"}
             else 0
         )
         body = await read_body(limit)
@@ -237,7 +260,7 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Request body exceeds its bound"
             )
-        if kind in {"query", "command"}:
+        if kind in {"query", "command", "records"}:
             payload = strict_json_loads(body)
             if not isinstance(payload, dict):
                 raise ResearchError(
@@ -254,6 +277,10 @@ async def handle(router, method, target, headers, read_body):
             )
         elif kind == "query":
             result = await router.query(token, identifier, payload)
+        elif kind == "records":
+            result = await router.query(token, "list", payload)
+        elif kind == "record":
+            result = await router.query(token, "get", {"kind": identifier, "id": offset})
         elif kind == "upload":
             result = {"offset": await router.upload_part(token, identifier, offset, body)}
         elif kind == "status":

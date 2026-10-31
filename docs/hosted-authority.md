@@ -1,7 +1,8 @@
 # Hosted authority with native clock witnesses
 
-Status: implementation design. This profile is not enabled or qualified. The
-existing [hybrid profile](cloudflare.md) remains the supported Cloudflare path.
+Status: staged implementation and bounded local runtime qualification. No
+production hosted authority is enabled. The existing
+[hybrid profile](cloudflare.md) remains the supported Cloudflare path.
 The original M5 requirement for authoritative Durable Object state and hosted
 recovery remains open.
 
@@ -13,10 +14,11 @@ and preserves its fault latch; independent child processes establish distinct
 source origins locally. Internal provider generations, explicit requalification
 and persisted retirement are locally verified. A one-use synchronous operation
 context is implemented. Wire validity does not qualify a deployment. Local
-workerd now qualifies the awaited ordering bridge with a synthetic witness;
-full service routing under that boundary, authenticated source deployment and
-the hosted adapter remain to be implemented. The private HTTP source transport is locally verified; it
-does not establish Container routing.
+workerd qualifies the awaited ordering bridge, bounded worker/artifact routing
+and the actual native source lifecycle. Ordinary research admission has separate
+tests and capability limits below. The complete hosted execution lifecycle and
+authenticated production deployment remain open. The private HTTP source
+transport does not establish Container routing.
 
 ## Decision and boundary
 
@@ -533,6 +535,50 @@ The complete command outcome is recorded before the witness closes. The outer
 SQL commit then follows while the hosting adapter still owns its ordering gate.
 Replays need neither a new witness nor a prepared boundary. Public hosted routing,
 query scopes and artifact preflight remain separate integration requirements.
+
+### Ordinary research admission profile
+
+`research-admission-witness-v1` is a separately provisioned configuration. It
+inherits bounded artifact transfers and adds `project.register`,
+`campaign.create/validate/seal/start`, `candidate.propose/validate`, `trial.submit`
+and `worker.claim_job`. An existing worker-only or artifact-only configuration
+does not acquire these operations. Their serialized configuration and capability
+contracts remain unchanged.
+
+Source commands authenticate current `read` and command scope before exact
+acknowledgment replay. New commands read the complete bounded R2 generation under
+the exclusive gate, verify the full ArtifactRef and every archive entry, and
+resolve the project contract from those immutable bytes. They recheck credentials,
+configuration and the catalog row before the witness and again before the shared
+transaction. Source retention, records and events commit together. No temporary
+filesystem, native reader pin, storage I/O or await enters that transaction.
+
+The native path keeps its existing file preflight and calls the same project and
+candidate transaction helpers. Prepared source objects are internal verification
+products; no API accepts a caller-authored resolved project or source manifest.
+Idempotency preimages remain the original typed command payloads.
+
+Claims require explicit enrollment for the hosted clock profile and exact policy,
+current worker/project authority, and the existing `python` CPU backend without
+accelerators. The shared claim transaction owns capacity, budget reservations,
+assignment signatures, timing sidecars and acceptance leases. No such records
+are synthesized by the adapter. A claim is permission to execute, not proof that
+execution occurred. This version does not expose worker input/output transfer,
+result publication or evaluation authorization/completion; its capability answer
+therefore says `cpu-claim-only`.
+
+The unchanged SDK uses `GET /v1/records/{kind}/{id}` and `POST /v1/query` for a
+bounded allowlist of project, campaign, candidate, trial, job, worker, attempt and
+acceptance metadata. These views require `read`; restricted worker credentials
+continue to use the existing scoped worker queries. The comparison, checkpoint,
+report and other research surfaces are not implied by this allowlist.
+
+Local tests exercise the complete ordinary SDK admission sequence, native CPU
+profile discovery, independent signature/time binding verification, exact replay
+with unavailable storage and witness, protected-file refusal, corrupted source,
+catalog/credential changes, cancellation, competing claims and current read
+permission on replay. They use SQLite with an asynchronous byte fixture and do
+not establish actual workerd qualification for this new profile.
 
 ### Signed clock query boundary
 
