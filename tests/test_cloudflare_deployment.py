@@ -114,13 +114,16 @@ def load(values, **options):
     return load_deployment(json.dumps(manifest), json.dumps(secrets), crypto=crypto, **options)
 
 
-def test_active_reconciliation_profile_preserves_explicit_manifest_identity(deployment):
+@pytest.mark.parametrize(
+    "profile", ["research-reconciliation-witness-v1", "research-timers-witness-v1"]
+)
+def test_extended_profiles_preserve_explicit_manifest_identity(deployment, profile):
     from adapters.cloudflare.hosted_http import capabilities
     from adapters.cloudflare.research_router import HostedReconciliationConfiguration
 
     previous, _ = load(deployment)
     original = previous.digest
-    deployment[0]["configuration"]["profile"] = "research-reconciliation-witness-v1"
+    deployment[0]["configuration"]["profile"] = profile
     manifest, _ = load(deployment)
     assert isinstance(manifest.configuration, HostedReconciliationConfiguration)
     assert manifest.digest != original
@@ -129,6 +132,7 @@ def test_active_reconciliation_profile_preserves_explicit_manifest_identity(depl
     assert advertised["commands"]["attempt.reconcile"]["scope"] == "attempt.reconcile"
     assert advertised["commands"]["attempt.reconcile"]["expected_revision"] is True
     assert advertised["publication"]["submission"] == "quarantine-without-settlement"
+    assert advertised["orchestration"]["timer_waits"] is (profile == "research-timers-witness-v1")
     assert "worker.submit_evidence" not in capabilities(previous.configuration)["commands"]
 
 

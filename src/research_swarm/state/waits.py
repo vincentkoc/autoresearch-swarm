@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -15,6 +16,8 @@ from research_swarm.domain.orchestration_waits import (
 )
 from research_swarm.domain.types import utc_now
 from research_swarm.state.database import JsonObject, Transaction
+
+WaitClock = Callable[[Transaction], str]
 
 
 def watermark(transaction: Transaction) -> int:
@@ -31,6 +34,8 @@ def wake_wait(
     row: JsonObject,
     cause: Literal["event", "timer", "fenced"],
     event: Event | None = None,
+    *,
+    ready_at: str | None = None,
 ) -> JsonObject:
     if row["state"] != "waiting":
         return row
@@ -49,7 +54,7 @@ def wake_wait(
         cause=cause,
         watermark=event.sequence if event else watermark(transaction),
         event_id=event.id if event else None,
-        ready_at=utc_now(),
+        ready_at=utc_now() if ready_at is None else ready_at,
     )
     transaction.insert(
         "wait_readiness",
@@ -102,7 +107,9 @@ def consider_event(transaction: Transaction, event: Event) -> None:
             wake_wait(transaction, row, "event", event)
 
 
-def reconcile_condition(transaction: Transaction, row: JsonObject) -> JsonObject:
+def reconcile_condition(
+    transaction: Transaction, row: JsonObject, *, clock: WaitClock | None = None
+) -> JsonObject:
     if row["state"] != "waiting":
         return row
     wait = OrchestrationWait.model_validate(row["data"])
@@ -129,8 +136,10 @@ def reconcile_condition(transaction: Transaction, row: JsonObject) -> JsonObject
     ).fetchone()
     if event is not None:
         return wake_wait(transaction, row, "event", Event.model_validate_json(event["payload"]))
-    if condition.wake_at is not None and utc_now() >= condition.wake_at:
-        return wake_wait(transaction, row, "timer")
+    if condition.wake_at is not None:
+        now = utc_now() if clock is None else clock(transaction)
+        if now >= condition.wake_at:
+            return wake_wait(transaction, row, "timer", ready_at=now)
     return row
 
 

@@ -26,6 +26,7 @@ if __package__:
     from .research_router import (
         HostedReconciliationConfiguration,
         HostedStartupConfiguration,
+        HostedTimerConfiguration,
         dispatch_key_digest,
     )
 else:
@@ -33,6 +34,7 @@ else:
     from research_router import (
         HostedReconciliationConfiguration,
         HostedStartupConfiguration,
+        HostedTimerConfiguration,
         dispatch_key_digest,
     )
 
@@ -115,9 +117,9 @@ class DeploymentManifest(VersionedRecord):
     namespace: Namespace
     authority_name: Name
     object_id: HexDigest
-    configuration: HostedStartupConfiguration | HostedReconciliationConfiguration = Field(
-        discriminator="profile"
-    )
+    configuration: (
+        HostedStartupConfiguration | HostedReconciliationConfiguration | HostedTimerConfiguration
+    ) = Field(discriminator="profile")
     witness_origin: str = Field(min_length=1, max_length=256)
     witness_timeout_ms: int = Field(default=1000, strict=True, ge=100, le=10000)
     witness_credential_digest: Digest

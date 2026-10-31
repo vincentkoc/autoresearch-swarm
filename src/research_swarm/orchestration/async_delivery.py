@@ -146,10 +146,6 @@ class AsyncDeliveryKernel:
             (await client.get("orchestration_wait", work.record_id))["data"]
         )
         verify_work(work, waited.model_dump(mode="json"))
-        if waited.condition.wake_at is not None:
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "Async timer waits are unavailable"
-            )
         try:
             result = await client.command(
                 "orchestration.reconcile_wait",

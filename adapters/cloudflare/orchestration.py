@@ -6,16 +6,23 @@ from typing import Literal
 from pydantic import Field
 
 from research_swarm.control.dispatch import dispatch_command, validate_command_input
+from research_swarm.control.orchestration_waits import OrchestrationWaitControl
 from research_swarm.control.recovery_operations import require_raw_operation
+from research_swarm.control.time_authority import ClockAuthorityScope
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord
 from research_swarm.state.database import Transaction
 
 if __package__:
-    from .research_router import supports_orchestration, supports_startup, validated
+    from .research_router import (
+        supports_orchestration,
+        supports_startup,
+        supports_timers,
+        validated,
+    )
     from .scientific import ScientificQuery, ScientificRead, ScientificRecordKind
 else:
-    from research_router import supports_orchestration, supports_startup, validated
+    from research_router import supports_orchestration, supports_startup, supports_timers, validated
     from scientific import ScientificQuery, ScientificRead, ScientificRecordKind
 
 COMMANDS = frozenset(
@@ -77,6 +84,24 @@ class HostedOrchestration:
         self.router = router
         self.database, self.service = router.database, router.service.orchestration
         self.registration_policy = None
+        if supports_timers(router.configuration):
+            router.service.orchestration_waits = OrchestrationWaitControl(
+                self.database, clock=self._clock
+            )
+
+    def _clock(self, transaction):
+        authority = self.router.configuration.authority
+        if transaction.workspace_id != authority.workspace_id:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Timer authority differs")
+        observed = self.router.boundary.provider.observe(
+            ClockAuthorityScope(
+                authority.workspace_id,
+                authority.controller_id,
+                authority.control_epoch,
+                authority.assignment_key_id,
+            )
+        )
+        return observed.datetime.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     def _identity(self, token, context):
         if not supports_orchestration(self.router.configuration):
@@ -113,7 +138,11 @@ class HostedOrchestration:
             return
         if operation == "orchestration.prepare_turn" and request.action.operation not in TARGETS:
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Saved target is unavailable")
-        if operation == "orchestration.record_wait" and request.condition.wake_at is not None:
+        if (
+            operation == "orchestration.record_wait"
+            and request.condition.wake_at is not None
+            and not supports_timers(self.router.configuration)
+        ):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Hosted timer waits are unavailable"
             )
@@ -137,7 +166,9 @@ class HostedOrchestration:
             elif operation == "orchestration.reconcile_wait":
                 wait = transaction.get("orchestration_wait", request.wait_id)["data"]
                 identifier = wait["campaign_id"]
-                if wait["condition"]["wake_at"] is not None:
+                if wait["condition"]["wake_at"] is not None and not supports_timers(
+                    self.router.configuration
+                ):
                     raise ResearchError(
                         ErrorCode.CAPABILITY_UNAVAILABLE, "Hosted timer waits are unavailable"
                     )

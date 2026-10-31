@@ -117,6 +117,10 @@ class HostedReconciliationConfiguration(HostedStartupConfiguration):
     profile: Literal["research-reconciliation-witness-v1"] = "research-reconciliation-witness-v1"
 
 
+class HostedTimerConfiguration(HostedReconciliationConfiguration):
+    profile: Literal["research-timers-witness-v1"] = "research-timers-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
@@ -163,6 +167,10 @@ def supports_startup(configuration):
 
 def supports_reconciliation(configuration):
     return isinstance(configuration, HostedReconciliationConfiguration)
+
+
+def supports_timers(configuration):
+    return isinstance(configuration, HostedTimerConfiguration)
 
 
 def allowed_commands(configuration):
@@ -264,6 +272,7 @@ class ExistingResearchRouter:
                 | HostedTransferConfiguration
                 | HostedStartupConfiguration
                 | HostedReconciliationConfiguration
+                | HostedTimerConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (

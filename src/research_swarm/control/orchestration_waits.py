@@ -18,7 +18,7 @@ from research_swarm.domain.orchestration_waits import (
 from research_swarm.domain.types import utc_now
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.drive_guard import require_driver_started
-from research_swarm.state.waits import consume_ready_wait, reconcile_condition, watermark
+from research_swarm.state.waits import WaitClock, consume_ready_wait, reconcile_condition, watermark
 
 
 class _WaitPending(Exception):
@@ -36,8 +36,8 @@ def wait_outcome(transaction: Transaction, row: JsonObject) -> JsonObject:
 
 
 class OrchestrationWaitControl:
-    def __init__(self, database: Database) -> None:
-        self.database = database
+    def __init__(self, database: Database, *, clock: WaitClock | None = None) -> None:
+        self.database, self.clock = database, clock
 
     def record(self, context: CommandContext, intent: RecordOrchestrationWait) -> JsonObject:
         def record(transaction: Transaction) -> JsonObject:
@@ -117,7 +117,9 @@ class OrchestrationWaitControl:
                 saved,
                 {"observed_watermark": intent.condition.observed_watermark},
             )
-            return wait_outcome(transaction, reconcile_condition(transaction, saved))
+            return wait_outcome(
+                transaction, reconcile_condition(transaction, saved, clock=self.clock)
+            )
 
         return self.database.execute(
             context,
@@ -133,7 +135,7 @@ class OrchestrationWaitControl:
             wait = OrchestrationWait.model_validate(row["data"])
             if wait.actor_id != context.principal.id:
                 context.principal.require("orchestration.manage")
-            updated = reconcile_condition(transaction, row)
+            updated = reconcile_condition(transaction, row, clock=self.clock)
             if updated["state"] == "waiting":
                 raise _WaitPending
             return wait_outcome(transaction, updated)

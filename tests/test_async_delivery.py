@@ -112,15 +112,22 @@ async def test_async_route_and_saved_work_identity_cannot_be_substituted(pipelin
     assert (await asynchronous.inspect(connected.binding)).work == work
 
 
-async def test_async_timer_waits_remain_explicitly_unsupported(pipeline):
+async def test_async_timer_waits_use_authority_and_replay_the_native_outcome(pipeline, monkeypatch):
     drivers = bind(pipeline)
-    record(pipeline, drivers, at="2099-01-01T00:00:00.000Z")
-    asynchronous, _, connected = kernels(pipeline, drivers)
+    at = "2099-01-01T00:00:00.000Z"
+    record(pipeline, drivers, types=("never.happens",), at=at)
+    asynchronous, native, connected = kernels(pipeline, drivers)
     work = (await asynchronous.inspect(connected.binding)).work
-    with pytest.raises(ResearchError) as timer:
-        await asynchronous.wait(work)
-    assert timer.value.code == ErrorCode.CAPABILITY_UNAVAILABLE
+    assert (await asynchronous.wait(work)).state == "pending"
     assert pipeline.client.get("orchestration_wait", work.record_id)["state"] == "waiting"
+    monkeypatch.setattr("research_swarm.state.waits.utc_now", lambda: at)
+    connected.clients["control"].lose_reply = True
+    with pytest.raises(TimeoutError, match="reply lost"):
+        await asynchronous.wait(work)
+    result = await asynchronous.wait(work)
+    assert result == native.wait(work)
+    assert result.state == "settled" and result.disposition == "timer"
+    assert pipeline.client.get("wait_readiness", work.record_id)["data"]["ready_at"] == at
 
 
 async def test_async_successor_requires_its_separate_startup_adapter(pipeline):

@@ -42,6 +42,7 @@ if __package__:
         supports_research,
         supports_scientific,
         supports_startup,
+        supports_timers,
         supports_transfer,
     )
     from .scientific import ScientificQuery, ScientificRead
@@ -69,6 +70,7 @@ else:
         supports_research,
         supports_scientific,
         supports_startup,
+        supports_timers,
         supports_transfer,
     )
     from scientific import ScientificQuery, ScientificRead
@@ -340,6 +342,10 @@ def capabilities(configuration):
         }
         result["publication"]["historical_acceptance"] = "explicit-current-authority-reconciliation"
         result["publication"]["submission"] = "quarantine-without-settlement"
+    if supports_timers(configuration):
+        result["orchestration"]["waits"] = "event-or-absolute-utc-threshold"
+        result["orchestration"]["timer_waits"] = True
+        result["orchestration"]["timer_clock"] = "transaction-native-witness"
     return result
 
 

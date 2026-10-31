@@ -61,6 +61,7 @@ jobs:
           tests/test_hosted_lifecycle.py
           tests/test_hosted_scientific.py
           tests/test_hosted_orchestration.py tests/test_turn_preparation.py
+          tests/test_hosted_timers.py tests/test_orchestration_waits.py
           tests/test_delivery_registration.py
           tests/test_async_delivery.py
           tests/test_async_successor.py

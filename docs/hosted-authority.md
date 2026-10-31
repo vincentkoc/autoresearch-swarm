@@ -24,6 +24,22 @@ transport does not establish Container routing.
 
 ## Decision and boundary
 
+The optional `research-timers-witness-v1` profile extends the reconciliation
+profile with durable timer waits. `wake_at` is an absolute UTC threshold, not a
+minimum elapsed duration. Its original value survives authority eviction,
+delivery retries and explicit clock requalification. The wait kernel samples
+the transaction's admitted witness only after checking already committed events;
+that same instant determines timer readiness and its `ready_at` value.
+
+Async delivery and Workflow polling request authoritative reconciliation. Their
+own clocks and wakeup notifications cannot declare the timer due. A witness outage
+or discontinuity stalls new readiness without resetting the threshold. A new
+qualified clock may compare the unchanged UTC value; native execution caps and
+acceptance leases retain their independent authority. Earlier profiles preserve
+their event-only limits. Shared native and adapter tests cover the time boundary,
+event priority, cancellation/revocation, fencing, restart and offline replay;
+actual Workflow/workerd qualification of this new profile remains pending.
+
 The optional `research-reconciliation-witness-v1` profile extends the startup
 profile with ordinary active-authority late-result handling. Select it explicitly
 in the protected deployment manifest; its configuration identity differs from

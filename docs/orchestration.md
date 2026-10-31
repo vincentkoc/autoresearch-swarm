@@ -266,6 +266,14 @@ Only one action or wait owns the binding at a time. The condition contains:
   in this campaign. Orchestration bookkeeping cannot wake itself.
 - `wake_at`: an optional absolute UTC timestamp, preserved across restarts.
 
+Async delivery submits the same reconciliation command as native delivery; it
+does not decide timer readiness itself. The hosted `research-timers-witness-v1`
+profile uses its transaction's admitted native witness to compare this threshold
+and records the same instant in readiness. Earlier hosted profiles remain
+event-only. An absolute UTC timer is not a minimum-duration guarantee across clock
+requalification. The original threshold is preserved; native execution deadlines
+and acceptance leases keep their separate contracts.
+
 Registration checks already committed events after the supplied watermark in
 the same transaction. Matching events that commit later create readiness and a
 pending delivery in their own domain transaction. This closes the gap between

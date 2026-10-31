@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add an explicit hosted timer profile and allow asynchronous delivery of saved
+  timer waits. Compare the unchanged absolute UTC threshold against one fresh
+  transaction witness and record that same instant as readiness. Preserve event
+  precedence, pending retries, offline acknowledgment replay and explicit recovery
+  after clock discontinuity. Earlier hosted profiles remain event-only. Native
+  tests pass; actual Workflow/workerd timer qualification remains separate.
+
 - Add a production workerd reconciliation probe with a real CPU worker and TLS
   clock source. Restart/requalify the clock without replacing the original attempt,
   retain the first rejected command, quarantine original evidence, lose accepted
