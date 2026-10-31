@@ -377,3 +377,70 @@ def test_authorization_io_failure_inside_cache_lock_is_not_bypassed(tmp_path):
         )
     assert not (tmp_path / "denied").exists()
     assert fixture.downloads == 1
+
+
+def test_bounded_snapshot_verifies_recent_bytes_and_filters_workspace(tmp_path):
+    fixture = Fixture(tmp_path / "cache")
+    assert fixture.cache.verified_snapshot().references == ()
+    assert not fixture.cache.root.exists()
+    first = fixture.reference
+    fixture.materialize(tmp_path / "first")
+    fixture.reference = Fixture.ref(fixture.content)
+    second = fixture.reference
+    fixture.materialize(tmp_path / "second")
+    foreign = InputCache(fixture.cache.root, new_id(), fixture.cache.limits)
+    foreign.materialize(
+        fixture.reference, tmp_path / "foreign", authorize=fixture.authorize, fetch=fixture.fetch
+    )
+    bounded = fixture.cache.verified_snapshot(byte_limit=len(fixture.content), entry_limit=1)
+    assert bounded.references == (second,)
+    assert bounded.truncated and bounded.examined_bytes == len(fixture.content)
+    full = fixture.cache.verified_snapshot()
+    assert full.references == (second, first)
+    assert not full.truncated and not full.cache_unavailable
+    assert full.examined_bytes == 2 * len(fixture.content)
+
+
+def test_snapshot_omits_same_size_corruption_and_never_downloads(tmp_path):
+    fixture = Fixture(tmp_path / "cache")
+    fixture.materialize(tmp_path / "first")
+    fixture.blob().write_bytes(b"x" * len(fixture.content))
+    snapshot = fixture.cache.verified_snapshot()
+    assert snapshot.references == ()
+    assert snapshot.examined_bytes == len(fixture.content)
+    assert not snapshot.cache_unavailable
+    assert not fixture.blob().exists()
+    assert fixture.downloads == 1
+
+
+def test_snapshot_skips_oversized_entries_and_exposes_unavailable_storage(tmp_path):
+    fixture = Fixture(tmp_path / "cache")
+    fixture.materialize(tmp_path / "first")
+    bounded = fixture.cache.verified_snapshot(byte_limit=1)
+    assert bounded.references == () and bounded.examined_bytes == 0 and bounded.truncated
+    (fixture.cache.root / "index.json").write_bytes(b"{")
+    unavailable = fixture.cache.verified_snapshot()
+    assert unavailable.references == () and unavailable.cache_unavailable
+
+
+def test_corrupt_entries_still_consume_the_snapshot_inspection_limit(tmp_path):
+    fixture = Fixture(tmp_path / "cache")
+    healthy = fixture.reference
+    fixture.materialize(tmp_path / "healthy")
+    fixture.reference = Fixture.ref(fixture.content)
+    fixture.materialize(tmp_path / "corrupt")
+    fixture.blob().write_bytes(b"x" * len(fixture.content))
+    bounded = fixture.cache.verified_snapshot(entry_limit=1)
+    assert bounded.references == () and bounded.truncated
+    assert bounded.examined_bytes == len(fixture.content)
+    assert fixture.cache.verified_snapshot().references == (healthy,)
+
+
+@pytest.mark.parametrize(
+    "limits", [{"byte_limit": -1}, {"entry_limit": True}, {"entry_limit": 1025}]
+)
+def test_snapshot_bounds_reject_before_cache_creation(tmp_path, limits):
+    fixture = Fixture(tmp_path / "cache")
+    with pytest.raises(ValueError):
+        fixture.cache.verified_snapshot(**limits)
+    assert not fixture.cache.root.exists()

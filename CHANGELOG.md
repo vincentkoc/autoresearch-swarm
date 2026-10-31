@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add bounded cache residency observations that rehash actual bytes, filter workspace identity and expose truncation without creating an absent cache or granting input authority.
+
 - Reuse verified worker input bytes across attempts and restarts with fresh assignment authority, independent copies and bounded least-recently-used storage. Keep transfers outside the cache lock, recover interrupted publications, bypass unavailable disposable storage and preserve refusal of corrupt attempt inputs.
 
 - Expose typed artifact metadata in local, HTTP and async SDK clients through the existing authenticated catalog route, without downloading content or granting worker assignment authority.

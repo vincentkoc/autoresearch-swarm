@@ -67,6 +67,14 @@ class MaterializedInput:
     cache_unavailable: bool = False
 
 
+@dataclass(frozen=True)
+class CacheSnapshot:
+    references: tuple[ArtifactRef, ...]
+    examined_bytes: int
+    truncated: bool
+    cache_unavailable: bool = False
+
+
 class _CacheUnavailable(Exception):
     pass
 
@@ -238,6 +246,46 @@ class InputCache:
         entries.append(entry)
         self._save(entries)
         sync_directory(self.root)
+
+    def verified_snapshot(
+        self, *, byte_limit: int = 256 * 1024**2, entry_limit: int = 128
+    ) -> CacheSnapshot:
+        """Bounded worker observations for advisory scheduling, never input authority.
+
+        Rehash recent resident bytes; omit oversized entries rather than claiming
+        their residency from an index. Call outside heartbeat/control executors.
+        """
+        if type(byte_limit) is not int or not 0 <= byte_limit <= 64 * 1024**3:
+            raise ValueError("Invalid cache observation byte bound")
+        if type(entry_limit) is not int or not 0 <= entry_limit <= 1024:
+            raise ValueError("Invalid cache observation entry bound")
+        if not self.root.exists() or not self.limits.max_bytes or not self.limits.max_entries:
+            return CacheSnapshot((), 0, False)
+        observed: list[ArtifactRef] = []
+        examined, checked, truncated = 0, 0, False
+        try:
+            with self._locked() as entries, _cache_io():
+                for entry in reversed(tuple(entries)):
+                    if entry.workspace_id != self.workspace_id:
+                        continue
+                    if checked >= entry_limit or examined + entry.reference.size_bytes > byte_limit:
+                        truncated = True
+                        continue
+                    examined += entry.reference.size_bytes
+                    checked += 1
+                    try:
+                        verify_input(self._path(entry), entry.reference)
+                    except ResearchError as error:
+                        if error.code != ErrorCode.ARTIFACT_UNVERIFIED:
+                            raise
+                        self._unlink(self._path(entry))
+                        entries.remove(entry)
+                    else:
+                        observed.append(entry.reference)
+                self._save(entries)
+        except _CacheUnavailable:
+            return CacheSnapshot((), examined, True, True)
+        return CacheSnapshot(tuple(observed), examined, truncated)
 
     def materialize(
         self,

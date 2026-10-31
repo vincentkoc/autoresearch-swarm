@@ -186,6 +186,14 @@ materialization result records its origin, avoided transfer bytes and whether ca
 storage was unavailable. These are local observations, not measured research gains
 or controller placement authority. Cache-aware scheduling is a separate contract.
 
+`InputCache.verified_snapshot()` provides a bounded inventory for scheduling hints.
+It rehashes recent bytes, filters by workspace, removes corrupt shared entries and
+reports truncation or unavailable storage explicitly. Its default inspection limits
+are 128 entries and 256 MiB; corrupt inspected entries consume those limits too.
+An absent cache stays absent. Snapshot hashing belongs outside worker heartbeat and
+control executors. A snapshot is an observation, not a residency reservation or an
+input-access grant.
+
 The launch sequence is:
 
 ~~~text
