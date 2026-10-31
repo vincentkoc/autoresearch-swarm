@@ -6,6 +6,7 @@ import {
 } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 import { ensureWorkflow } from "./hybrid_creation";
+import { deliveryConfiguration } from "./hybrid_transport";
 import {
   type Binding,
   type Parameters,
@@ -28,36 +29,23 @@ interface Env {
   RESEARCH_FLOW: Workflow<Parameters>;
   RESEARCH_REGISTRY: DurableObjectNamespace<DeliveryRegistry>;
   NATIVE_DELIVERY_ORIGIN: string;
+  HOSTED_DELIVERY_ORIGIN?: string;
   GATEWAY_TOKEN: string;
   CONTROL_TOKEN: string;
   ALLOW_LOCAL_GATEWAY?: string;
   AUTHORITY_PROFILE?: string;
 }
 
-function requireHybrid(env: Env): void {
-  if (env.AUTHORITY_PROFILE !== "hybrid-native-v1") {
-    throw new NonRetryableError("ADAPTER_CAPABILITY_UNSUPPORTED");
+function gatewayConfiguration(env: Env): { profile: string; origin: string } {
+  try {
+    return deliveryConfiguration(env);
+  } catch (error) {
+    throw new NonRetryableError(
+      error instanceof Error && error.message === "ADAPTER_CAPABILITY_UNSUPPORTED"
+        ? error.message
+        : "INVALID_GATEWAY_CONFIGURATION",
+    );
   }
-}
-
-function gatewayOrigin(env: Env): string {
-  requireHybrid(env);
-  const url = new URL(env.NATIVE_DELIVERY_ORIGIN);
-  const local =
-    env.ALLOW_LOCAL_GATEWAY === "true" &&
-    url.protocol === "http:" &&
-    ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
-  if (
-    (!local && url.protocol !== "https:") ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    url.pathname !== "/"
-  ) {
-    throw new NonRetryableError("INVALID_GATEWAY_CONFIGURATION");
-  }
-  return url.origin;
 }
 
 async function nativeCall(
@@ -66,7 +54,7 @@ async function nativeCall(
   payload: unknown,
   timeout: number,
 ): Promise<unknown> {
-  const origin = gatewayOrigin(env);
+  const { origin } = gatewayConfiguration(env);
   let response: Response;
   try {
     response = await fetch(origin + "/v1/delivery/" + operation, {
@@ -174,10 +162,7 @@ export class DeliveryRegistry extends DurableObject<Env> {
     predecessor: Parameters | null,
   ): Promise<string> {
     const bindingDigest = await digest(parameters.binding);
-    const configuration = await digest({
-      profile: this.env.AUTHORITY_PROFILE,
-      origin: gatewayOrigin(this.env),
-    });
+    const configuration = await digest(gatewayConfiguration(this.env));
     this.ctx.storage.transactionSync(() => {
       const kv = this.ctx.storage.kv;
       const registered = kv.get<string>("binding");
@@ -232,7 +217,7 @@ export class DeliveryRegistry extends DurableObject<Env> {
   }
 
   async start(value: unknown): Promise<string> {
-    requireHybrid(this.env);
+    gatewayConfiguration(this.env);
     const row = object(value, ["binding", "options"]);
     const parameters = parseParameters({
       binding: parseBinding(row.binding),
@@ -255,7 +240,7 @@ export class DeliveryRegistry extends DurableObject<Env> {
   }
 
   async authorize(value: unknown, id: string): Promise<boolean> {
-    requireHybrid(this.env);
+    gatewayConfiguration(this.env);
     const parameters = parseParameters(value);
     if ((await instanceId(parameters)) !== id)
       throw new NonRetryableError("WORKFLOW_ID_MISMATCH");
@@ -264,10 +249,7 @@ export class DeliveryRegistry extends DurableObject<Env> {
     );
     if (!saved || !same(saved, parameters))
       throw new NonRetryableError("WORKFLOW_INPUT_MISMATCH");
-    const configuration = await digest({
-      profile: this.env.AUTHORITY_PROFILE,
-      origin: gatewayOrigin(this.env),
-    });
+    const configuration = await digest(gatewayConfiguration(this.env));
     if (this.ctx.storage.kv.get<string>("configuration") !== configuration)
       throw new NonRetryableError("GATEWAY_CONFIGURATION_CHANGED");
     // Record existence before any native call, even when the create reply was lost.
@@ -357,7 +339,7 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Parameters> {
     event: WorkflowEvent<Parameters>,
     step: WorkflowStep,
   ): Promise<unknown> {
-    requireHybrid(this.env);
+    gatewayConfiguration(this.env);
     const parameters = parseParameters(event.payload);
     const owner = await registry(this.env, parameters.binding);
     const requireGeneration = async () => {
@@ -495,7 +477,7 @@ export default {
       return Response.json({ error: "AUTHORIZATION_DENIED" }, { status: 401 });
     }
     try {
-      requireHybrid(env);
+      gatewayConfiguration(env);
       const value = await readJSON(request);
       const row = object(
         value,

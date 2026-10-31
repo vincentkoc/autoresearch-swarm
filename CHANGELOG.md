@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add explicit Workflow transport selection for a witnessed DO delivery facade.
+  Keep native delivery as the default, refuse missing origins without fallback,
+  and bind both profiles to the same persisted profile/origin configuration checks.
+
 - Add a bounded hosted delivery facade with separate gateway and route
   credentials. Reuse the existing exclusive authority gate, recheck current
   credentials on replay, retain exact saved-work outcomes, and prevent request

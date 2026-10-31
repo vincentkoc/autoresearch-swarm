@@ -92,6 +92,16 @@ replan an ordinal, bypass a fence or grant a worker more execution time.
 
 ## Retry and ownership behavior
 
+The Workflow transport also recognizes `AUTHORITY_PROFILE=hosted-do-witness-v1`,
+with an explicit `HOSTED_DELIVERY_ORIGIN` pointing to the witnessed DO facade.
+`hybrid-native-v1` continues selecting `NATIVE_DELIVERY_ORIGIN` and remains the
+default configuration. Neither profile falls back to the other's origin. Both
+use the same bounded delivery protocol and persist the selected profile and
+normalized origin in the registry; changing either cannot reuse an existing
+generation's authority. Loopback HTTP still requires the explicit local override.
+This selector is implemented and covered by source-level tests. Actual Workflow
+delivery to the DO facade and deployed qualification need separate receipts.
+
 Persist the selected work reference before invoking `execute` or `wait`. After an
 uncertain reply, retry that exact reference. The existing command acknowledgment
 or closure record determines the outcome. Preserve one recovery ID while retrying

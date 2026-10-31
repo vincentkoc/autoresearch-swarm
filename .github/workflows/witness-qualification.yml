@@ -89,6 +89,8 @@ jobs:
         working-directory: adapters/cloudflare
       - run: npm run build
         working-directory: adapters/cloudflare
+      - run: npm run check:hybrid && npm run test:hybrid
+        working-directory: adapters/cloudflare
       - run: .venv/bin/uv run --frozen pywrangler sync
         working-directory: adapters/cloudflare
       - run: git diff --exit-code -- adapters/cloudflare/pylock.toml
