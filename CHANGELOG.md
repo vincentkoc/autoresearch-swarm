@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add actual DO/R2 artifact probes for lost responses, held transfers, duplicate
+  retirement, quota recovery, empty files and replay after process restart. Use
+  a bypass control to prove that the ordering test detects a missing gate.
+
 - Add an explicit hosted artifact profile over shared quota and upload lifecycle
   transactions. Authenticate before replay and byte access, recheck state after
   awaited I/O, and finish retirement through a separately replayable cleanup

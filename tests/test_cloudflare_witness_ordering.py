@@ -82,6 +82,13 @@ class WitnessHTTP:
                 if kind == "ingress":
                     fixture.event(fixture.ingress, key).set()
                     encoded = b"{}"
+                elif kind == "storage":
+                    fixture.event(fixture.arrivals, key).set()
+                    with fixture.lock:
+                        held = fixture.holds.get(key)
+                    if held is not None:
+                        assert held.wait(15), "Owned storage fixture was never released"
+                    encoded = b"{}"
                 else:
                     assert kind == "witness"
                     request = TimeWitnessRequest.model_validate_json(body)

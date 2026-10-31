@@ -63,8 +63,16 @@ class Qualification(DurableObject):
         probe = RouterProbe.model_validate_json(body)
         crypto = import_from_javascript("./crypto.mjs")
         transport = import_from_javascript("./fixture_transport.mjs")
+        artifact_arguments = {}
+        if probe.artifact_profile:
+            artifact_arguments = {
+                "bucket": python_to_rpc(self.env.ARTIFACTS),
+                "r2_module": import_from_javascript("./r2_io.mjs"),
+            }
         return json.dumps(
-            await exercise_router(self.ctx, str(self.ctx.id), probe, crypto, transport)
+            await exercise_router(
+                self.ctx, str(self.ctx.id), probe, crypto, transport, **artifact_arguments
+            )
         )
 
     async def witness_contract(self, case, fail_bootstrap):
@@ -260,6 +268,8 @@ class Default(WorkerEntrypoint):
             probe = RouterProbe.model_validate_json(text)
             transport = import_from_javascript("./fixture_transport.mjs")
             suffix = "-bypass" if probe.bypass_gate else ""
+            if probe.artifact_profile:
+                suffix += "-artifacts"
             stub = self.env.QUALIFICATION.getByName("shared-router-contract" + suffix)
             return await observed_rpc(
                 lambda: stub.research_contract(text), transport, probe.witness_origin, probe.key

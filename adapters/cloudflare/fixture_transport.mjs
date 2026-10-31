@@ -3,7 +3,7 @@ export async function request(origin, path, body, timeoutMs) {
   const url = new URL(origin);
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" ||
       url.username || url.password || url.pathname !== "/" || url.search || url.hash ||
-      !/^\/(?:witness|ingress)\/[a-z0-9-]{1,64}$/.test(path) ||
+      !/^\/(?:witness|ingress|storage)\/[a-z0-9-]{1,64}$/.test(path) ||
       !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000 ||
       typeof body !== "string" || new TextEncoder().encode(body).length > 16384) {
     throw new TypeError("Invalid local witness fixture request");

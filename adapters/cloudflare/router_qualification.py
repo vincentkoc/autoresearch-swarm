@@ -7,12 +7,19 @@ from durable_sql import DurableObjectStore
 from ed25519 import NobleEd25519
 from exclusive import exclusive
 from pydantic import Field
-from research_router import ExistingResearchRouter, HostedConfiguration, dispatch_key_digest
+from r2_binding import R2BindingTransport
+from research_router import (
+    ExistingResearchRouter,
+    HostedArtifactConfiguration,
+    HostedConfiguration,
+    dispatch_key_digest,
+)
 from witness_qualification import SEED, identifier
 
 from research_swarm.control.auth import CredentialStore
 from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.crypto import public_key
+from research_swarm.domain.artifacts import StoredBlob
 from research_swarm.domain.assignments import signing_key_id
 from research_swarm.domain.canonical import canonical_bytes, record_digest
 from research_swarm.domain.clocks import ClockPolicy
@@ -27,6 +34,7 @@ from research_swarm.domain.time_witnesses import (
 from research_swarm.domain.types import VersionedRecord
 from research_swarm.state.database import SCHEMA, Database, Transaction, encode
 from research_swarm.state.time_providers import TimeProviders
+from research_swarm.storage.async_r2 import BoundedR2Configuration, BoundedR2Objects
 
 NAMESPACE = "router-qualification"
 OPERATOR_TOKEN, WORKER_TOKEN = "rsw_" + "O" * 43, "rsw_" + "W" * 43
@@ -34,7 +42,9 @@ DISPATCH_KEY = b"\x00" * 32
 
 
 class RouterProbe(VersionedRecord):
-    action: Literal["provision", "command", "query", "inspect", "revoke", "expire"]
+    action: Literal[
+        "provision", "command", "query", "inspect", "revoke", "expire", "upload", "bytes"
+    ]
     key: str = Field(pattern=r"^[a-z0-9-]{1,64}$")
     operation: str = Field(default="", max_length=128)
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -43,6 +53,10 @@ class RouterProbe(VersionedRecord):
     witness_origin: str = Field(max_length=256)
     timeout_ms: int = Field(default=8000, strict=True, ge=100, le=10000)
     bypass_gate: bool = Field(default=False, strict=True)
+    artifact_profile: bool = Field(default=False, strict=True)
+    content_hex: str = Field(default="", max_length=8192, pattern=r"^(?:[0-9a-f]{2})*$")
+    offset: int = Field(default=0, strict=True, ge=0)
+    r2_fault: Literal["none", "unavailable", "lost-put", "held-put"] = "none"
 
 
 class UnserializedFixture:
@@ -188,9 +202,59 @@ def provision(state, object_id, crypto, config, principals):
     }
 
 
-async def exercise(state, object_id, probe, module, transport):
+class FixtureR2Transport(R2BindingTransport):
+    """Fault timing around actual R2 calls, never a replacement bucket implementation."""
+
+    def __init__(self, bucket, module, config, probe, http):
+        super().__init__(bucket, module, config)
+        self.probe, self.http = probe, http
+
+    async def get(self, *args, **kwargs):
+        if self.probe.r2_fault == "unavailable":
+            raise ResearchError(ErrorCode.TRANSPORT_UNAVAILABLE, "Fixture R2 unavailable")
+        return await super().get(*args, **kwargs)
+
+    async def put(self, *args, **kwargs):
+        if self.probe.r2_fault == "unavailable":
+            raise ResearchError(ErrorCode.TRANSPORT_UNAVAILABLE, "Fixture R2 unavailable")
+        if self.probe.r2_fault == "held-put" and kwargs["if_absent"]:
+            await self.http.request(
+                self.probe.witness_origin,
+                "/storage/" + self.probe.key,
+                "{}",
+                float(self.probe.timeout_ms),
+            )
+        result = await super().put(*args, **kwargs)
+        if self.probe.r2_fault == "lost-put" and kwargs["if_absent"]:
+            raise ResearchError(ErrorCode.TRANSPORT_UNAVAILABLE, "Fixture discarded PUT response")
+        return result
+
+
+async def exercise(state, object_id, probe, module, transport, *, bucket=None, r2_module=None):
     crypto = NobleEd25519(module)
     config, principals = configuration(object_id, crypto)
+    objects = None
+    if probe.artifact_profile:
+        config = HostedArtifactConfiguration(
+            **config.model_dump(exclude={"profile"}),
+            storage=BoundedR2Configuration(
+                workspace_id=config.authority.workspace_id,
+                bucket_identity="local-qualification",
+                prefix="router-artifacts-" + object_id,
+                max_object_bytes=4096,
+            ),
+            storage_limit_bytes=8192,
+        )
+        objects = BoundedR2Objects(
+            config.storage,
+            FixtureR2Transport(
+                bucket,
+                r2_module,
+                config.storage,
+                probe,
+                transport,
+            ),
+        )
 
     def open_store():
         return DurableObjectStore.open_existing(
@@ -226,6 +290,7 @@ async def exercise(state, object_id, probe, module, transport):
             assignment_key=SEED,
             crypto=crypto,
             acquire=acquire,
+            objects=objects,
         )
         if probe.action == "command":
             result = await router.command(
@@ -237,6 +302,25 @@ async def exercise(state, object_id, probe, module, transport):
             )
         elif probe.action == "query":
             result = await router.query(probe.token, probe.operation, probe.payload)
+        elif probe.action == "upload":
+            result = {
+                "received_bytes": await router.upload_part(
+                    probe.token,
+                    probe.payload["upload_id"],
+                    probe.offset,
+                    bytes.fromhex(probe.content_hex),
+                )
+            }
+        elif probe.action == "bytes":
+
+            async def read_bytes():
+                context = router._context(probe.token, idempotency_key=probe.key)
+                router.artifacts._admit(probe.token, context)
+                _, upload = router.artifacts._upload(context, probe.payload["upload_id"])
+                blob = StoredBlob(reference=upload.reference(), generation=upload.id)
+                return {"content_hex": (await objects.read(upload.workspace_id, blob)).hex()}
+
+            result = await exclusive(state, read_bytes)
         else:
 
             async def inspect():
