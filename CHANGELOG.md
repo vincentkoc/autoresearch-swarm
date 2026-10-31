@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Restore exact imported artifact generations through private fixed-target RPC.
+  Bound input bytes, require the admitted recovery and current artifact identity,
+  publish conditionally into the configured R2 destination, and verify full readback.
+  Recheck authority and catalog after I/O; retries preserve SQL, budgets and generation IDs.
+
 - Extend the six-startup workerd probe with a real prepared agent turn before
   source sealing. Close it only at the admitted target, lose the committed reply,
   replay after restart, and prove public and execute-turn refusal without inventing

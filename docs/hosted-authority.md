@@ -2112,6 +2112,24 @@ without an action acknowledgment, loses its accepted reply, and replays both
 admission and closure byte-for-byte after restart. The loser, public entrypoint and
 attempted execute-turn remain refused. The saved action remains unexecuted.
 
+`Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
+restores an imported artifact to the target's fixed R2 binding. Its request names
+the existing artifact ID and storage generation; bytes must be canonical lowercase
+hex and fit the existing one-MiB object profile before decoding. Current protected
+target configuration and admitted recovery authorize each call. The artifact row
+must remain verified and reconstruct the same content-addressed reference.
+
+The adapter creates only that original generation, conditionally, and reads back
+its complete bytes and metadata. Existing wrong bytes, absent readback or permanent
+retirement refuse. Lost PUT replies can retry the same generation. After I/O, the
+adapter rechecks admission, the artifact payload/revision and storage configuration
+before returning a verification receipt. This receipt does not activate research.
+There are no SQL mutations, duplicate quota charges, new artifact IDs or new
+references. A transfer that loses authority can leave its exact copied object;
+it receives no success receipt and does not delete or overwrite that generation.
+Native adapter fault tests pass; actual production R2 restoration qualification
+remains pending.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and

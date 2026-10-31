@@ -1,6 +1,7 @@
 """Production Worker: one fixed authority, with a separate private bootstrap entrypoint."""
 
 from checkpoint_admission import admit_target
+from checkpoint_artifacts import restore_target_artifact
 from checkpoint_election import elect_source
 from checkpoint_source import capture_source, seal_source
 from checkpoint_target import import_target, request_target
@@ -72,11 +73,23 @@ async def source_checkpoint(state, env, credential, request_json, operation):
     return result.body.decode()
 
 
-async def target_checkpoint(state, env, credential, operation, **arguments):
+def artifact_objects(env, manifest):
+    storage = manifest.configuration.storage
+    return BoundedR2Objects(
+        storage,
+        R2BindingTransport(
+            python_to_rpc(env.ARTIFACTS), import_from_javascript("./r2_io.mjs"), storage
+        ),
+    )
+
+
+async def target_checkpoint(state, env, credential, operation, *, artifact_io=False, **arguments):
     try:
         manifest, secrets, crypto = deployment(env)
         secrets.require_bootstrap(credential)
         fixed_target(env.RESEARCH_AUTHORITY, manifest, actual_id=state.id)
+        if artifact_io:
+            arguments["objects"] = artifact_objects(env, manifest)
         return await operation(
             state,
             lambda: DurableObjectStore.open_existing(
@@ -98,6 +111,17 @@ async def target_checkpoint(state, env, credential, operation, **arguments):
 
 
 class ResearchAuthority(DurableObject):
+    async def checkpoint_artifact(self, credential, request_json, content_hex):
+        return await target_checkpoint(
+            self.ctx,
+            self.env,
+            credential,
+            restore_target_artifact,
+            artifact_io=True,
+            request_json=request_json,
+            content_hex=content_hex,
+        )
+
     async def checkpoint_turn(self, credential, request_json):
         return await target_checkpoint(
             self.ctx, self.env, credential, reconcile_target_turn, request_json=request_json
@@ -157,15 +181,7 @@ class ResearchAuthority(DurableObject):
             manifest, secrets, crypto = deployment(self.env)
             fixed_target(self.env.RESEARCH_AUTHORITY, manifest, actual_id=self.ctx.id)
             acquire = witness(manifest, secrets)
-            storage = manifest.configuration.storage
-            objects = BoundedR2Objects(
-                storage,
-                R2BindingTransport(
-                    python_to_rpc(self.env.ARTIFACTS),
-                    import_from_javascript("./r2_io.mjs"),
-                    storage,
-                ),
-            )
+            objects = artifact_objects(self.env, manifest)
             bodies = import_from_javascript("./http_io.mjs")
             router = await open_router(
                 self.ctx,
@@ -230,6 +246,20 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def checkpoint_artifact(self, credential, request_json, content_hex):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_artifact(
+                credential, request_json, content_hex
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def checkpoint_turn(self, credential, request_json):
         try:
