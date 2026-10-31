@@ -121,7 +121,7 @@ def test_entire_roundtrip_is_charged_and_historical_evidence_does_not_admit_itse
 
 def test_description_admission_is_persisted_before_provisioning_and_cannot_drift(tmp_path):
     admission = AuthorityClockAdmission(policy_digest=ClockPolicy().digest)
-    root, registry = tmp_path / "worker", tmp_path / "machine.sqlite"
+    root, registry = tmp_path / "worker", tmp_path / "machine" / "resources.sqlite"
     description = describe_worker(root, machine_registry=registry, clock_admission=admission)
     assert (
         describe_worker(root, machine_registry=registry, clock_admission=admission) == description
@@ -186,7 +186,9 @@ def test_controller_requires_admission_before_claim_and_preserves_original_sessi
     assert "clock_admission" not in unadmitted.model_dump(mode="json")
     admission = AuthorityClockAdmission(policy_digest=provider.policy.digest)
     description = describe_worker(
-        tmp_path / "remote", machine_registry=tmp_path / "machine.sqlite", clock_admission=admission
+        tmp_path / "remote",
+        machine_registry=tmp_path / "machine" / "resources.sqlite",
+        clock_admission=admission,
     )
     bundle = provision(pipeline, description, tmp_path, "https://controller.example")
     assert bundle.worker.clock_admission == bundle.description.clock_admission == admission
@@ -209,7 +211,7 @@ def test_controller_requires_admission_before_claim_and_preserves_original_sessi
         worker_client,
         bundle.worker,
         root=tmp_path / "execution",
-        machine_registry=tmp_path / "machine.sqlite",
+        machine_registry=tmp_path / "machine" / "resources.sqlite",
     )
     assert local.clock_sampler.clock_admission == admission
     waiting = local.clock_sampler.begin()
