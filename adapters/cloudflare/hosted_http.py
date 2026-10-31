@@ -38,8 +38,11 @@ if __package__:
         supports_publication,
         supports_research,
         supports_scientific,
+        supports_transfer,
     )
     from .scientific import ScientificQuery, ScientificRead
+    from .transfers import LIMITS as TRANSFER_LIMITS
+    from .transfers import TransferQuery, TransferRead
 else:
     from artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from artifact_router import UploadTarget
@@ -58,8 +61,11 @@ else:
         supports_publication,
         supports_research,
         supports_scientific,
+        supports_transfer,
     )
     from scientific import ScientificQuery, ScientificRead
+    from transfers import LIMITS as TRANSFER_LIMITS
+    from transfers import TransferQuery, TransferRead
 
 
 MAX_JSON_BYTES = 1024**2
@@ -280,6 +286,21 @@ def capabilities(configuration):
             "timer_waits": False,
             "successor_startup": False,
             "context": ContextRead.model_json_schema(),
+        }
+    if supports_transfer(configuration):
+        result["record_queries"] = {
+            "scope": "read",
+            "get": TransferRead.model_json_schema(),
+            "list": TransferQuery.model_json_schema(),
+        }
+        result["orchestration"]["transfer"] = {
+            "max_records": TRANSFER_LIMITS.max_records,
+            "max_entries": TRANSFER_LIMITS.max_entries,
+            "max_manifest_bytes": TRANSFER_LIMITS.max_manifest_bytes,
+            "max_artifacts": TRANSFER_LIMITS.max_artifacts,
+            "max_artifact_bytes": TRANSFER_LIMITS.max_artifact_bytes,
+            "verification": "bounded-r2-before-witness",
+            "successor_startup": False,
         }
     return result
 

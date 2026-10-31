@@ -1012,9 +1012,13 @@ At `c97d86652083288787f1203fa367747e59246042`,
 [CI 41203847351](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41203847351)
 passed **15 actual workerd tests in 462.39 seconds**, including saved evaluator
 delivery and event-wait replay across authority restarts. Linux passed 463 tests
-in 242.52 seconds and macOS passed 463 in 183.49 seconds; Windows was still running
-at this checkpoint. The two-process Workflow/facade probe was added afterward and
-requires its own receipt.
+in 242.52 seconds and macOS passed 463 in 183.49 seconds. Windows finished with
+458 passed, four skips and one setup error in 804.39 seconds: the native clock
+refused a sample wider than its 50 ms admission limit during `candidate.propose`,
+before worker enrollment or execution. The run is not a full matrix pass; the
+clock guard remains unchanged. Scheduling contention was not established as the
+cause. The two-process Workflow/facade probe was added afterward and requires its
+own receipt.
 
 ### Async delivery contract
 
@@ -1083,6 +1087,14 @@ leaves readiness unconsumed, a domain fence retires delivery, and a changed orig
 cannot reuse the transport registration. Collection/source checks are not runtime
 qualification; this probe needs a passing CI receipt.
 
+At `c24779e74b36dfb7e9cde1d611ba718e93eb57cb`,
+[CI 41205018578](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41205018578)
+passed TypeScript checking but failed Prettier on `hybrid.ts`. The Node and workerd
+integration steps were not reached. Commit `13930d0` formats that condition; it
+needs a clean CI formatting receipt and the actual runtime probe remains pending.
+The same run passed 478 native adapter tests on Linux in 265.82 seconds and on
+macOS in 175.43 seconds; Windows was still running at this checkpoint.
+
 ### Transfer preparation boundary
 
 `OrchestrationTransferControl._prepare_in()` selects an immutable transfer view
@@ -1107,6 +1119,32 @@ traversal yields incrementally, and both preparation and commit enforce the
 selected profile. Exceeding a bound refuses the transfer; it never truncates a
 checkpoint or treats missing evidence as absent custody. Smaller valid profiles
 produce the same view and checkpoint digests as the native profile.
+
+The explicit `research-transfer-witness-v1` profile exposes
+`orchestration.transfer` and bounded reads of its checkpoint, chunks, binding
+history and startup records. The operator needs read, management and drive scopes
+even for command replay. Before its one fresh witness, the adapter selects a
+shared transfer view and exact artifact catalog records, verifies each required
+R2 generation, then rechecks the entire selection. The final transaction rechecks
+catalog identity and uses the shared `_commit()` with the same limits. Exact
+command replay uses no R2 or witness; the same transfer identity under a new key
+reuses its immutable receipt with one new command acknowledgment.
+
+This profile permits at most 4,096 rows per bounded scan, 8,192 manifest entries,
+4 MiB of manifest bytes, 32 required artifacts and 8 MiB of aggregate artifact
+bytes, with the configured per-object storage bound still enforced. Required
+retention and the existing exclusive gate protect verification; no native pin or
+reader session is borrowed. Oversized, missing or changed evidence refuses the
+operation before an ownership change.
+
+Native adapter tests preserve queued jobs, trials, native authority and budgets;
+recover absent, accepted and rejected saved targets without redelivery; test
+competing transfers, rollback, cancellation, credential revocation and artifact
+mutation; and keep an assigned retiring evaluator until actual native scoring and
+its independent receipt complete. The successor receives pending startup records.
+Automatic snapshot recovery and `acknowledge_start` remain unavailable in this
+profile, so transfer acceptance does not claim executable successor recovery.
+Actual workerd transfer and deployed qualification remain separate work.
 
 ### Signed clock query boundary
 

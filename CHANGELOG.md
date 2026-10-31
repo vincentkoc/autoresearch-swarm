@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an explicit hosted transfer profile that verifies bounded R2 evidence
+  before the shared atomic ownership change. Preserve queued work, native authority
+  and budgets, reconcile saved target acknowledgments without redelivery, and keep
+  successor startup unavailable until its separate recovery path is qualified.
+
 - Add narrower transfer inspection profiles for bounded runtimes. Bound SQL
   materialization, manifest records/bytes and required artifact counts/bytes;
   reapply the same limits at commit without changing accepted transfer identities.
