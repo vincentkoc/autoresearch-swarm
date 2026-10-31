@@ -4,16 +4,18 @@ import copy
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 
 import httpx
 
 from adapters.cloudflare.checkpoint_wire import MAX_RPC_BYTES, decode_checkpoint
-from adapters.cloudflare.deployment import DeploymentManifest, authority_id, secret_digest
+from adapters.cloudflare.deployment import DeploymentManifest, authority_id
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.checkpoints.elections import verify_election, verify_election_request
 from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.client import ResearchClient
 from research_swarm.control.observations import PublishAttempt
+from research_swarm.control.queries import RecordQuery
 from research_swarm.control.recovery_proofs import verify_admission
 from research_swarm.control.recovery_routes import verify_logical_recovery_route
 from research_swarm.control.worker_outputs import WorkerOutputIntent
@@ -30,9 +32,11 @@ from research_swarm.domain.recovery_routes import SignedWorkerRecoveryRoute
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import write_private
+from research_swarm.workers.clock_estimates import ClockSampler
 from research_swarm.workers.clocks import native_clock
 from research_swarm.workers.journal_records import JournalState
 from research_swarm.workers.local import LocalWorker
+from tests.test_checkpoint_runtime import fresh_target_values
 from tests.test_cloudflare_deployment import deployment as deployment
 from tests.test_cloudflare_native import ROOT, build_current_sources, server
 from tests.test_cloudflare_native_source import Endpoint
@@ -44,7 +48,7 @@ from tests.test_cloudflare_production import (
     post,
 )
 from tests.test_cloudflare_router import pytestmark as pytestmark
-from tests.test_hosted_research import admit, enroll_and_claim
+from tests.test_hosted_research import admit, enroll_and_claim, enrollment
 from tests.test_hosted_result_publication import TRAIN
 from tests.test_http_delivery import serving, tls_certificate
 from tests.test_manifest import project as project
@@ -117,6 +121,7 @@ def target_call(
     artifact=None,
     route=None,
     closure=None,
+    activation=None,
 ):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
@@ -129,6 +134,7 @@ def target_call(
             "artifact_json": json.dumps(artifact),
             "route_json": json.dumps(route),
             "closure_json": json.dumps(closure),
+            "activation_json": json.dumps(activation),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -186,11 +192,14 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
     certificate, key = tls_certificate(tmp_path)
     app = create_time_witness_app(endpoint, witness_consumer_digest(secrets["witness_consumer"]))
     operator_token = secrets["credentials"][manifest["credentials"][0]["id"]]
-    with serving(app, ssl_certfile=str(certificate), ssl_keyfile=str(key)) as origin:
+    with (
+        serving(app, ssl_certfile=str(certificate), ssl_keyfile=str(key)) as origin,
+        ExitStack() as target_lifetime,
+    ):
         manifest["witness_origin"] = origin
         custody = fixture_custody(manifest, deployment[2])
-        targets, target_secrets = {}, {}
-        for letter, token in (("a", "T" * 43), ("b", "U" * 43)):
+        targets, target_secrets, target_endpoints = {}, {}, {}
+        for index, (letter, token) in enumerate((("a", "T" * 43), ("b", "U" * 43))):
             targets[letter], target_secrets[letter] = (
                 copy.deepcopy(manifest),
                 copy.deepcopy(secrets),
@@ -205,8 +214,35 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             targets[letter]["configuration"]["storage"].update(
                 bucket_identity="synthetic-target-" + letter, prefix="research-target-" + letter
             )
-            targets[letter]["bootstrap_credential_digest"] = secret_digest("bootstrap", token)
-            target_secrets[letter]["bootstrap"] = token
+            targets[letter], target_secrets[letter] = fresh_target_values(
+                targets[letter],
+                deployment[2],
+                seed=bytes([181 + index * 2]) * 32,
+                dispatch=bytes([182 + index * 2]) * 32,
+                bootstrap=token,
+                consumer=chr(ord("M") + index) * 43,
+                credential_letter=chr(ord("a") + index * 4),
+            )
+            target_descriptor = descriptor.model_copy(update={"id": new_id()})
+            targets[letter]["configuration"]["source"] = target_descriptor.model_dump(mode="json")
+            target_endpoints[letter] = Endpoint(
+                WitnessAuthorityScope.model_validate(targets[letter]["configuration"]["authority"]),
+                target_descriptor,
+            )
+            target_app = create_time_witness_app(
+                target_endpoints[letter],
+                witness_consumer_digest(target_secrets[letter]["witness_consumer"]),
+            )
+            targets[letter]["witness_origin"] = target_lifetime.enter_context(
+                serving(target_app, ssl_certfile=str(certificate), ssl_keyfile=str(key))
+            )
+        token_sets = [
+            set(item["credentials"].values()) for item in (secrets, *target_secrets.values())
+        ]
+        assert len(set.union(*token_sets)) == sum(map(len, token_sets))
+        assert (
+            len({item["assignment_seed_hex"] for item in (secrets, *target_secrets.values())}) == 3
+        )
         bindings = {}
 
         def configure():
@@ -800,6 +836,58 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 "attempts": "1",
                 "execution_ms": str(original_journal.outcome.elapsed_ms),
             }
+            for remaining in image.artifacts[1:]:
+                restored = target_call(
+                    http,
+                    winner,
+                    "artifact",
+                    target_secrets[winner]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    artifact={
+                        "backup_id": image.seal.backup_id,
+                        "manifest_digest": image.digest,
+                        "artifact_id": remaining.reference.id,
+                        "generation": remaining.generation,
+                    },
+                ).json()
+                assert restored["result"]["artifact"] == remaining.model_dump(mode="json")
+
+            def runtime_call(letter, action, *, credential=None, drop=False, activation=None):
+                return target_call(
+                    http,
+                    letter,
+                    action,
+                    credential or target_secrets[letter]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    drop=drop,
+                    activation=activation,
+                )
+
+            assert runtime_call(winner, "default-prepare-runtime").json() == {"denied": True}
+            assert "error" in runtime_call(loser, "prepare-runtime").json()
+            assert (
+                runtime_call(winner, "prepare-runtime", credential="wrong").json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            assert runtime_call(winner, "prepare-runtime", drop=True).text == "{"
+            prepared_runtime = runtime_call(winner, "prepare-runtime").text
+            prepared_value = json.loads(prepared_runtime)["receipt"]
+            assert prepared_value["provider"]["scope"]["control_epoch"] == 2
+            target_witness_calls = len(target_endpoints[winner].requests)
+            assert target_witness_calls == 1
+            target_endpoints[winner].mode = "unavailable"
+            fresh_token = target_secrets[winner]["credentials"][
+                targets[winner]["credentials"][0]["id"]
+            ]
+            assert (
+                http.get(
+                    f"/fixture/target-{winner}/capabilities",
+                    headers={"authorization": "Bearer " + fresh_token},
+                ).status_code
+                != 200
+            )
             assert len(endpoint.requests) == witness_calls
 
         with (
@@ -928,5 +1016,108 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                     ).status_code
                     != 200
                 )
+            assert checkpoint(http, secrets["bootstrap"], capture, capture=True).text == captured
+            assert len(endpoint.requests) == witness_calls
+            assert runtime_call(winner, "prepare-runtime").text == prepared_runtime
+            assert len(target_endpoints[winner].requests) == target_witness_calls
+            activation_request = {
+                "request_id": new_id(),
+                # Import advances sealed -> restoring; admission advances -> recovering.
+                "expected_revision": image.seal_revision + 2,
+                "payload": {
+                    "restore_id": receipts[winner]["restore_id"],
+                    "expected_control_epoch": 2,
+                    "reason": "Original CPU and driver obligations closed; target prepared",
+                },
+            }
+            assert runtime_call(
+                winner, "default-activate", activation=activation_request
+            ).json() == {"denied": True}
+            assert (
+                runtime_call(
+                    winner, "activate", credential="wrong", activation=activation_request
+                ).json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            assert "error" in runtime_call(loser, "activate", activation=activation_request).json()
+            target_endpoints[winner].mode = "normal"
+            assert (
+                runtime_call(winner, "activate", activation=activation_request, drop=True).text
+                == "{"
+            )
+            accepted_activation = runtime_call(
+                winner, "activate", activation=activation_request
+            ).text
+            activated = json.loads(accepted_activation)
+            assert activated["disposition"] == "accepted"
+            assert activated["result"]["data"]["profile"] == "hosted-recovery-activation-v1"
+            assert len(target_endpoints[winner].requests) == target_witness_calls + 1
+            target_endpoints[winner].mode = "unavailable"
+
+        with (
+            server(tmp_path, sequence=7, **options) as url,
+            httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
+            ResearchClient.connect(url + f"/fixture/authority-{winner}", fresh_token) as current,
+        ):
+            assert (
+                runtime_call(winner, "activate", activation=activation_request).text
+                == accepted_activation
+            )
+            assert len(target_endpoints[winner].requests) == target_witness_calls + 1
+            assert current.capabilities()["execution"] != "unavailable"
+            assert (
+                current.get("attempt", original_journal.dispatch.attempt_id) == settled["attempt"]
+            )
+            assert current.list(RecordQuery(kind="run_result"))["items"] == []
+            assert current.get("campaign", admitted.campaign["id"])["state"] == "paused"
+            for token in secrets["credentials"].values():
+                assert (
+                    http.get(
+                        f"/fixture/target-{winner}/capabilities",
+                        headers={"authorization": "Bearer " + token},
+                    ).status_code
+                    == 401
+                )
+            assert (
+                http.get(
+                    f"/fixture/recovery-{winner}/v1/capabilities",
+                    headers={"authorization": "Bearer " + operator_token},
+                ).status_code
+                != 200
+            )
+            assert (
+                http.get(
+                    f"/fixture/target-{loser}/capabilities",
+                    headers={"authorization": "Bearer " + fresh_token},
+                ).status_code
+                != 200
+            )
+            target_endpoints[winner].mode = "normal"
+            enroll = enrollment(
+                targets[winner]["provisioning_actor_id"],
+                current.capabilities()["clock"]["policy_digest"],
+            )
+            enrolled = current.command("worker.enroll", enroll, idempotency_key="new-target-worker")
+            fresh_worker = WorkerData.model_validate(enrolled["result"]["data"])
+            assert fresh_worker.binding.control_epoch == 2
+            assert fresh_worker.binding.worker_session_id != worker.binding.worker_session_id
+            assert (
+                fresh_worker.assignment_authority.key_id
+                == targets[winner]["configuration"]["authority"]["assignment_key_id"]
+            )
+            sampler = ClockSampler(
+                fresh_worker.assignment_authority, clock_admission=fresh_worker.clock_admission
+            )
+            pending = sampler.begin()
+            pending.complete(current.worker_clock(pending.challenge))
+            assert len(target_endpoints[winner].requests) > target_witness_calls + 1
+            assert (
+                current.command("worker.enroll", enroll, idempotency_key="new-target-worker")
+                == enrolled
+            )
+            assert (
+                runtime_call(winner, "activate", activation=activation_request).text
+                == accepted_activation
+            )
             assert checkpoint(http, secrets["bootstrap"], capture, capture=True).text == captured
             assert len(endpoint.requests) == witness_calls

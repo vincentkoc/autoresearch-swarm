@@ -1,6 +1,7 @@
 """Fresh protected target runtime preparation under real signed logical recovery."""
 
 import asyncio
+import copy
 import json
 from dataclasses import replace
 
@@ -37,15 +38,23 @@ imported = fixtures.imported
 elected = fixtures.elected
 
 
-def fresh_target(raw, source):
-    seed, dispatch = b"u" * 32, b"v" * 32
-    public = public_key(source.crypto, seed).hex()
+def fresh_target_values(
+    raw,
+    crypto,
+    *,
+    seed=b"u" * 32,
+    dispatch=b"v" * 32,
+    bootstrap="T" * 43,
+    consumer="Y" * 43,
+    credential_letter="K",
+):
+    public = public_key(crypto, seed).hex()
     raw["configuration"]["assignment_public_key"] = public
     raw["configuration"]["authority"]["assignment_key_id"] = signing_key_id(public)
     raw["configuration"]["dispatch_key_digest"] = dispatch_key_digest(dispatch)
     members, tokens, ids = [], {}, {}
     for index, previous in enumerate(raw["credentials"]):
-        identifier, token = new_id(), "rsw_" + chr(ord("K") + index) * 43
+        identifier, token = new_id(), "rsw_" + chr(ord(credential_letter) + index) * 43
         ids[previous["id"]] = identifier
         tokens[identifier] = token
         members.append(
@@ -65,13 +74,30 @@ def fresh_target(raw, source):
     secrets = {
         "assignment_seed_hex": seed.hex(),
         "dispatch_key_hex": dispatch.hex(),
-        "bootstrap": "T" * 43,
-        "witness_consumer": "Y" * 43,
+        "bootstrap": bootstrap,
+        "witness_consumer": consumer,
         "credentials": tokens,
     }
     raw["bootstrap_credential_digest"] = secret_digest("bootstrap", secrets["bootstrap"])
     raw["witness_credential_digest"] = secret_digest("witness", secrets["witness_consumer"])
+    return raw, secrets
+
+
+def fresh_target(raw, source):
+    raw, secrets = fresh_target_values(raw, source.crypto)
     return load_deployment(json.dumps(raw), json.dumps(secrets), crypto=source.crypto)
+
+
+def test_independent_target_fixture_rosters_are_disjoint_before_import(deployment):
+    raw, original, crypto = deployment
+    tokens = [set(original["credentials"].values())]
+    for letter in ("a", "e"):
+        manifest, secrets = fresh_target_values(
+            copy.deepcopy(raw), crypto, credential_letter=letter
+        )
+        load_deployment(json.dumps(manifest), json.dumps(secrets), crypto=crypto)
+        tokens.append(set(secrets["credentials"].values()))
+    assert len(set.union(*tokens)) == sum(map(len, tokens))
 
 
 @pytest.fixture

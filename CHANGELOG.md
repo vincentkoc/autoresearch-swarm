@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend the production workerd recovery probe to seven startups. Freeze separate
+  target runtimes and native witnesses before election, restore the full artifact
+  inventory, prepare and activate only the winner, and verify lost-response replay
+  after restart with its witness offline. Check fresh ordinary API access, old-token
+  refusal and a newly enrolled target worker. The new sequence awaits its runtime run.
+
 - Activate an elected hosted target through private operator RPC after original
   execution, byte and driver obligations close. Verify bounded R2 bytes and a fresh
   final witness, then retire original credentials, seal the deployment, activate

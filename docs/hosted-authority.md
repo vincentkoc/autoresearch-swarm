@@ -2362,6 +2362,21 @@ They also exercise original journal quarantine/closure, ordinary SDK research wi
 fresh epoch-2 worker, and target reseal/export. Actual workerd preparation/activation
 and separately authorized cloud deployment remain unqualified.
 
+The production probe now extends to seven startups. It fixes distinct assignment,
+dispatch, bootstrap, API-credential and witness-consumer material for both targets
+before signing their import intents. Independent native witness endpoints remain
+alive across Worker restarts while the original source witness stays unavailable.
+The elected target restores all image artifacts, preserves the closed original CPU
+journal and saved-turn settlement, then prepares its runtime before startup six.
+
+Startup six first checks every existing recovery replay, then activates with one
+frozen request and loses its accepted reply. Startup seven repeats that reply with
+the target witness offline, checks ordinary API history and original-token refusal,
+then reenables its witness to enroll and calibrate a fresh target worker. Only fixed
+local fixture bindings expose these test routes; production public routing is unchanged.
+The fixture and native regression checks pass, but this seven-startup sequence still
+requires its actual workerd run.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase

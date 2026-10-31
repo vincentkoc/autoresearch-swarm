@@ -18,6 +18,7 @@ function request(action, { letter = "a", drop = false } = {}) {
       turn_json: "synthetic-saved-turn",
       route_json: '{"route_id":"fixture-route"}',
       closure_json: '{"payload":{"attempt_id":"original-attempt"}}',
+      activation_json: '{"request_id":"activation-request"}',
       artifact_json:
         '{"artifact_id":"artifact","generation":"generation","backup_id":"backup","manifest_digest":"image"}',
     }),
@@ -497,4 +498,90 @@ test("closure failure and default-route refusal cannot masquerade as lost succes
     ).json(),
     { denied: true },
   );
+});
+
+for (const [action, method, accepted] of [
+  [
+    "prepare-runtime",
+    "checkpoint_prepare_runtime",
+    { receipt: { plan_digest: "plan", provider_revision: 2 } },
+  ],
+  [
+    "activate",
+    "checkpoint_activate",
+    {
+      disposition: "accepted",
+      result: {
+        data: {
+          profile: "hosted-recovery-activation-v1",
+          request_id: "activation-request",
+        },
+      },
+    },
+  ],
+]) {
+  test(`${action} drops only a verified success from its fixed private target`, async () => {
+    let value = accepted;
+    const env = {
+      TARGET_A_BOOTSTRAP: { [method]: () => assert.fail("Wrong target") },
+      TARGET_B_BOOTSTRAP: {
+        async [method](credential, payload) {
+          assert.equal(credential, "target-credential");
+          if (action === "activate")
+            assert.equal(payload, '{"request_id":"activation-request"}');
+          return JSON.stringify(value);
+        },
+      },
+    };
+    const call = (drop) =>
+      operator.fetch(request(action, { letter: "b", drop }), env);
+    assert.deepEqual(await (await call(false)).json(), accepted);
+    assert.equal(await (await call(true)).text(), "{");
+    for (const invalid of [
+      { error: { code: "STALE_FENCE" } },
+      { disposition: "accepted", result: {} },
+    ]) {
+      value = invalid;
+      const reply = await call(true);
+      assert.equal(reply.status, 409);
+      assert.deepEqual(await reply.json(), invalid);
+    }
+    assert.deepEqual(
+      await (
+        await operator.fetch(request("default-" + action), { TARGET_A_API: {} })
+      ).json(),
+      { denied: true },
+    );
+  });
+}
+
+test("ordinary target forwarding preserves caller credentials and never selects recovery", async () => {
+  const reply = await operator.fetch(
+    new Request("http://localhost/fixture/authority-b/v1/capabilities", {
+      headers: { authorization: "Bearer fresh-target" },
+    }),
+    {
+      TARGET_A_API: {
+        fetch() {
+          assert.fail("Wrong target");
+        },
+      },
+      TARGET_B_RECOVERY: {
+        fetch() {
+          assert.fail("Wrong ingress");
+        },
+      },
+      TARGET_B_API: {
+        async fetch(request) {
+          assert.equal(new URL(request.url).pathname, "/v1/capabilities");
+          assert.equal(
+            request.headers.get("authorization"),
+            "Bearer fresh-target",
+          );
+          return new Response("active");
+        },
+      },
+    },
+  );
+  assert.equal(await reply.text(), "active");
 });

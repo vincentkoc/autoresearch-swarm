@@ -19,6 +19,14 @@ export default {
       url.pathname = recovery[2];
       return api.fetch(new Request(url, request));
     }
+    const authority = url.pathname.match(
+      /^\/fixture\/authority-(a|b)(\/v1\/.*)$/,
+    );
+    if (authority) {
+      const api = authority[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
+      url.pathname = authority[2];
+      return api.fetch(new Request(url, request));
+    }
     if (request.method === "GET" && url.pathname === "/fixture/targets") {
       return Response.json({
         a: env.TARGET_A_AUTHORITY.idFromName("primary").toString(),
@@ -26,7 +34,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|closure|default-closure|artifact|default-artifact|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|route|default-route|closure|default-closure|artifact|default-artifact|prepare-runtime|default-prepare-runtime|activate|default-activate|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -52,6 +60,33 @@ export default {
       Number.parseInt(pair, 16),
     );
     const input = JSON.parse(new TextDecoder().decode(bytes));
+    if (action === "prepare-runtime" || action === "activate") {
+      const result =
+        action === "prepare-runtime"
+          ? await bootstrap.checkpoint_prepare_runtime(input.credential)
+          : await bootstrap.checkpoint_activate(
+              input.credential,
+              input.activation_json,
+            );
+      if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
+        const value = JSON.parse(result);
+        const valid =
+          action === "prepare-runtime"
+            ? typeof value.receipt?.plan_digest === "string" &&
+              value.receipt?.provider_revision >= 1
+            : value.disposition === "accepted" &&
+              value.result?.data?.profile === "hosted-recovery-activation-v1" &&
+              value.result?.data?.request_id ===
+                JSON.parse(input.activation_json).request_id;
+        if (!valid) return new Response(result, { status: 409 });
+        return new Response("{", {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(result, {
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (action === "artifact") {
       const source = await env.RESEARCH_BOOTSTRAP.checkpoint_read_artifact(
         input.source_credential,
@@ -173,6 +208,8 @@ export default {
       action === "default-turn" ||
       action === "default-route" ||
       action === "default-closure" ||
+      action === "default-prepare-runtime" ||
+      action === "default-activate" ||
       action === "default-artifact"
     ) {
       try {
@@ -186,6 +223,13 @@ export default {
           await api.checkpoint_route(input.credential, input.route_json);
         else if (action === "default-closure")
           await api.checkpoint_closure(input.credential, input.closure_json);
+        else if (action === "default-prepare-runtime")
+          await api.checkpoint_prepare_runtime(input.credential);
+        else if (action === "default-activate")
+          await api.checkpoint_activate(
+            input.credential,
+            input.activation_json,
+          );
         else if (action === "default-artifact")
           await api.checkpoint_artifact(
             input.credential,
