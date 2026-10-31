@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an explicit hosted output profile with the existing scoped SDK upload
+  routes. Verify complete R2 generations before shared publication, retain
+  attempt/role provenance across deduplication, and finish abort/duplicate
+  retirement through a separate command without global artifact permissions.
+
 - Let scoped worker cleanup finish an interrupted abort after confirmed byte
   retirement. Complete upload and provenance states atomically, retain quota on
   failure, and preserve the original abort acknowledgment and recovery guards.

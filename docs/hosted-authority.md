@@ -622,14 +622,48 @@ at `dceafc3` in [CI 41198736103](https://github.com/vincentkoc/autoresearch-swar
 nine workerd tests passed in 219.17 seconds, including scoped source and named-input
 downloads and restart replay. Targeted native tests passed on Linux (351), macOS
 (351) and Windows (347, with four skips). This is local runtime qualification;
-cloud deployment, outputs, result publication and evaluator completion remain open.
+cloud deployment, output runtime qualification, result publication and evaluator
+completion remain open.
 
 Worker-output preparation now shares the native begin and publication transaction
 callbacks. Publication checks the exact upload reference and generation before
 retaining evidence and writing its scoped provenance. Recovery publication also
 requires a bounded parsed journal and verifies its original grant in the final
 transaction. Byte verification and journal parsing remain internal preflight
-responsibilities; these helpers alone do not enable a hosted output route.
+responsibilities. The shared callbacks do not grant transport or recovery authority.
+
+### Buffered scoped worker outputs
+
+`research-outputs-witness-v1` explicitly extends the input profile with the existing
+`worker.begin_upload`, `worker.finalize_upload`, `worker.abort_upload` and
+`worker.cleanup_upload` commands, plus `POST /v1/worker/output` and
+`PUT /v1/worker/output/parts`. These routes require only `worker.outputs` and retain
+the SDK schemas. Older profiles refuse them before consuming a request body.
+
+Every upload belongs to the original worker session, attempt, role and optional
+declared output name. A fenced or replaced session can still preserve its evidence;
+this grants no execution or input authority. Current-session revocation and current
+credential revocation still prevent fresh operations. Exact accepted commands can
+replay without storage or clock access, after current credential authentication.
+
+Transfers contain the complete declared object at offset zero, bounded by the
+provisioned R2 limit. The authority gate spans storage I/O. Finalization verifies
+the generation and any existing canonical copy before acquiring a fresh witness.
+The shared transaction rechecks provenance and the catalog selection, retains the
+evidence, and records the receipt. No storage operation or native pin occurs after
+that witness. Publication leaves the attempt and its budget settlement unchanged.
+
+Cleanup is explicit. Abort records an intent and keeps storage quota occupied.
+Cleanup retires the exact generation before atomically completing both upload
+records. Duplicate cleanup verifies the canonical copy before retiring the surplus
+generation. An uncertain storage operation or failed final witness leaves cleanup
+retryable and quota reserved. Finalization never depends on implicit cleanup.
+
+This profile refuses sealed or recovering workspaces before byte access; hosted
+restoration has no qualified native recovery authority. Local adapter tests cover
+the unchanged SDK, restricted scopes, historical ownership, verification faults,
+revocation, cancellation, ordering, retry and quota retention. Actual workerd output
+qualification and result/evaluator publication remain separate work.
 
 ### Signed clock query boundary
 

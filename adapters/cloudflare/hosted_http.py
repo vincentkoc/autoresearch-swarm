@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from research_swarm.control.dispatch import COMMANDS as SHARED_COMMANDS
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
+from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.clocks import ClockChallenge
@@ -27,6 +28,7 @@ if __package__:
         allowed_commands,
         supports_artifacts,
         supports_inputs,
+        supports_outputs,
         supports_research,
     )
 else:
@@ -37,6 +39,7 @@ else:
         allowed_commands,
         supports_artifacts,
         supports_inputs,
+        supports_outputs,
         supports_research,
     )
 
@@ -180,6 +183,17 @@ def capabilities(configuration):
             "max_object_bytes": configuration.storage.max_object_bytes,
             "range_requests": False,
         }
+    if supports_outputs(configuration):
+        result["execution"] = "cpu-claim-and-transfers"
+        result["worker_outputs"] = {
+            "scope": "worker.outputs",
+            "request_schema": WorkerUploadTarget.model_json_schema(),
+            "transfer": "complete-body-offset-zero",
+            "max_object_bytes": configuration.storage.max_object_bytes,
+            "cleanup": "explicit-command",
+            "abort": "intent-then-cleanup",
+            "recovery": "unavailable",
+        }
     return result
 
 
@@ -192,6 +206,14 @@ def route(method, target):
     if len(query) != len(pairs):
         raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Repeated query parameter")
     path = url.path
+    if method == "PUT" and path == "/v1/worker/output/parts":
+        if set(query) - {"worker_id", "session_id", "attempt_id", "upload_id", "offset"}:
+            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid worker upload query")
+        raw_offset = query.pop("offset", "0")
+        if not re.fullmatch(r"0|[1-9][0-9]{0,15}", raw_offset):
+            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid upload offset")
+        request = WorkerUploadTarget.model_validate(query)
+        return "worker-upload", request.model_dump(mode="json"), int(raw_offset)
     if method == "PUT" and (match := UPLOAD.fullmatch(path)) and match[2] == "/parts":
         if set(query) - {"offset"} or not re.fullmatch(
             r"0|[1-9][0-9]{0,15}", query.get("offset", "0")
@@ -216,6 +238,8 @@ def route(method, target):
             return "records", "list", None
         if path in {"/v1/worker/input", "/v1/worker/input/content"}:
             return "worker-content" if path.endswith("/content") else "input", "worker.input", None
+        if path == "/v1/worker/output":
+            return "output", "worker.output", None
         if (match := UPLOAD.fullmatch(path)) and match[2] == "/finalize":
             return "finalize", match[1], None
         if re.fullmatch(r"/v1/commands/[a-z_]+\.[a-z_]+", path):
@@ -259,6 +283,8 @@ async def handle(router, method, target, headers, read_body):
             )
         if kind in {"input", "worker-content"} and not supports_inputs(router.configuration):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Worker inputs are unavailable")
+        if kind in {"output", "worker-upload"} and not supports_outputs(router.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Worker outputs are unavailable")
         if kind in {"upload", "status", "finalize"} or (
             kind == "command" and identifier in ARTIFACT_COMMANDS
         ):
@@ -270,13 +296,15 @@ async def handle(router, method, target, headers, read_body):
                 scopes += ("read",)
         elif kind in {"input", "worker-content"}:
             scopes = ("worker.inputs",)
+        elif kind in {"output", "worker-upload"}:
+            scopes = ("worker.outputs",)
         else:
             scopes = ("worker.query",) if kind == "query" else ("read",)
         for scope in scopes:
             actor.require(scope)
         mode = (
             "upload_part"
-            if kind == "upload"
+            if kind in {"upload", "worker-upload"}
             else "command"
             if kind in {"command", "finalize"}
             else "query"
@@ -291,9 +319,9 @@ async def handle(router, method, target, headers, read_body):
                 raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid expected revision")
         limit = (
             router.configuration.storage.max_object_bytes
-            if kind == "upload"
+            if kind in {"upload", "worker-upload"}
             else MAX_JSON_BYTES
-            if kind in {"query", "command", "records", "input", "worker-content"}
+            if kind in {"query", "command", "records", "input", "worker-content", "output"}
             else 0
         )
         body = await read_body(limit)
@@ -301,7 +329,7 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Request body exceeds its bound"
             )
-        if kind in {"query", "command", "records", "input", "worker-content"}:
+        if kind in {"query", "command", "records", "input", "worker-content", "output"}:
             payload = strict_json_loads(body)
             if not isinstance(payload, dict):
                 raise ResearchError(
@@ -316,7 +344,7 @@ async def handle(router, method, target, headers, read_body):
                 idempotency_key=key,
                 expected_revision=int(revision) if revision is not None else None,
             )
-        elif kind in {"query", "input"}:
+        elif kind in {"query", "input", "output"}:
             result = await router.query(token, identifier, payload)
         elif kind == "worker-content":
             reference, content = await router.worker_content(token, payload)
@@ -327,6 +355,8 @@ async def handle(router, method, target, headers, read_body):
             result = await router.query(token, "get", {"kind": identifier, "id": offset})
         elif kind == "upload":
             result = {"offset": await router.upload_part(token, identifier, offset, body)}
+        elif kind == "worker-upload":
+            result = {"offset": await router.worker_upload_part(token, identifier, offset, body)}
         elif kind == "status":
             result = await router.query(token, "artifact.upload_status", {"upload_id": identifier})
         elif kind == "metadata":

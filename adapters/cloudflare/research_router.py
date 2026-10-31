@@ -81,6 +81,10 @@ class HostedInputConfiguration(HostedResearchConfiguration):
     profile: Literal["research-inputs-witness-v1"] = "research-inputs-witness-v1"
 
 
+class HostedOutputConfiguration(HostedInputConfiguration):
+    profile: Literal["research-outputs-witness-v1"] = "research-outputs-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
@@ -93,17 +97,24 @@ def supports_inputs(configuration):
     return isinstance(configuration, HostedInputConfiguration)
 
 
+def supports_outputs(configuration):
+    return isinstance(configuration, HostedOutputConfiguration)
+
+
 def allowed_commands(configuration):
     if __package__:
         from .artifact_router import COMMANDS as artifact_commands
         from .research_admission import COMMANDS as research_commands
+        from .worker_outputs import COMMANDS as output_commands
     else:
         from artifact_router import COMMANDS as artifact_commands
         from research_admission import COMMANDS as research_commands
+        from worker_outputs import COMMANDS as output_commands
     return (
         COMMANDS
         | (artifact_commands if supports_artifacts(configuration) else frozenset())
         | (research_commands if supports_research(configuration) else frozenset())
+        | (output_commands if supports_outputs(configuration) else frozenset())
     )
 
 
@@ -156,6 +167,7 @@ class ExistingResearchRouter:
                 | HostedArtifactConfiguration
                 | HostedResearchConfiguration
                 | HostedInputConfiguration
+                | HostedOutputConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (
@@ -206,13 +218,16 @@ class ExistingResearchRouter:
                 from .artifact_router import HostedArtifacts
                 from .research_admission import HostedResearchAdmission
                 from .worker_inputs import HostedWorkerInputs
+                from .worker_outputs import HostedWorkerOutputs
             else:
                 from artifact_router import HostedArtifacts
                 from research_admission import HostedResearchAdmission
                 from worker_inputs import HostedWorkerInputs
+                from worker_outputs import HostedWorkerOutputs
             instance.artifacts = HostedArtifacts(instance)
             instance.research = HostedResearchAdmission(instance)
             instance.inputs = HostedWorkerInputs(instance)
+            instance.outputs = HostedWorkerOutputs(instance)
             return instance
 
         return await exclusive(state, construct)
@@ -335,6 +350,8 @@ class ExistingResearchRouter:
                 return await self.artifacts.command(token, context, operation, payload)
             if operation in self.research.commands:
                 return await self.research.command(token, context, operation, payload)
+            if operation in self.outputs.commands:
+                return await self.outputs.command(token, context, operation, payload)
             if operation not in COMMANDS:
                 raise unavailable()
             definition, request = validate_command_input(context, operation, payload)
@@ -377,6 +394,13 @@ class ExistingResearchRouter:
 
         return await exclusive(self.state, read)
 
+    async def worker_upload_part(self, token, payload, offset, content):
+        async def write():
+            context = self._context(token, idempotency_key=new_id())
+            return await self.outputs.upload_part(token, context, payload, offset, content)
+
+        return await exclusive(self.state, write)
+
     async def query(self, token, operation, payload):
         async def read():
             context = self._context(token, idempotency_key=new_id())
@@ -385,6 +409,8 @@ class ExistingResearchRouter:
             if operation == "worker.input":
                 reference, _ = await self.inputs.read(token, context, payload, content=False)
                 return reference.model_dump(mode="json")
+            if operation == "worker.output":
+                return await self.outputs.status(token, context, payload)
             if operation == "artifact.upload_status":
                 return await self.artifacts.status(token, context, payload)
             if operation == "artifact.get":
