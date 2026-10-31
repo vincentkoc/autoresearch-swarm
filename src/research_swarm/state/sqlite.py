@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import sqlite3
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -136,5 +136,5 @@ class SQLiteStore:
     def backup(self, destination: Path) -> None:
         if destination.exists():
             raise FileExistsError(destination)
-        with self.connect() as source, sqlite3.connect(destination) as target:
+        with self.connect() as source, closing(sqlite3.connect(destination)) as target, target:
             source.connection.backup(target)

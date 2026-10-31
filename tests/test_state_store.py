@@ -1,6 +1,8 @@
 """The command kernel uses callback storage without a native connection escape hatch."""
 
 import builtins
+import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -27,6 +29,47 @@ class CallbacksOnly:
     def write(self, callback):
         self.writes += 1
         return self.store.write(callback)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_backup_closes_retained_connections_before_return(
+    database, context, tmp_path, monkeypatch, fail
+):
+    create_campaign(database, context("before-backup"))
+    connect = sqlite3.connect
+    retained = []
+
+    class Connection(sqlite3.Connection):
+        def backup(self, target, **kwargs):
+            if fail:
+                raise RuntimeError("Injected backup failure")
+            return super().backup(target, **kwargs)
+
+    def keep_connection(*args, **kwargs):
+        connection = connect(*args, factory=Connection, **kwargs)
+        retained.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", keep_connection)
+    target = tmp_path / "snapshot.sqlite"
+    if fail:
+        with pytest.raises(RuntimeError, match="Injected backup failure"):
+            database.backup(target)
+    else:
+        database.backup(target)
+        with closing(connect(target)) as copy:
+            assert (
+                copy.execute("SELECT COUNT(*) FROM records WHERE kind='campaign'").fetchone()[0]
+                == 1
+            )
+    assert len(retained) == 2
+    for connection in retained:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("SELECT 1")
+    # Windows rejects either operation while the destination handle remains open.
+    moved = target.with_suffix(".closed")
+    target.rename(moved)
+    moved.unlink()
 
 
 @pytest.mark.parametrize("counter", ["revision", "next_sequence", "delivery_attempts"])
