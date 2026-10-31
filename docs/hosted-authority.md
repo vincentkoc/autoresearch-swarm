@@ -914,6 +914,21 @@ is invalid and the incumbent is suspended. Native journals, two run results and
 two budget settlements remain unchanged. This case needs its own passing runtime
 receipt and does not claim statistical confirmation or cloud deployment.
 
+### Saved-turn delivery boundary
+
+`OrchestrationControl.prepare_execution()` selects the original saved action,
+checks its route actor and current action scopes, preserves target/delivery key
+separation, and returns either the previous acknowledgment or an internal guarded
+target context. Preparation performs no target effect and creates no receipt.
+The target transaction still verifies the saved turn, current binding and epoch;
+fencing after preparation prevents a new effect.
+
+The native executor uses this same preparation. A target acknowledgment with a
+missing delivery receipt skips target dispatch and finishes only the receipt.
+This seam lets an async adapter prepare bytes and obtain a target witness before
+obtaining a different witness for receipt completion. It does not itself expose
+hosted orchestration or permit one witness to cover two commands.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

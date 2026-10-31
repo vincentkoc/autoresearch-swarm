@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Separate saved-turn execution preparation from target delivery and receipt
+  completion. Preserve the private target guard and current action scopes, so
+  async adapters can use separate transaction boundaries and recover committed
+  targets without dispatching them again.
+
 - Extend the actual workerd probe through observed baseline selection, atomic
   campaign completion, immutable reports and late evidence correction. Replay
   successful and rejected closeout commands after restart without rerunning work.

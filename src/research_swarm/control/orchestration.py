@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import ValidationError
@@ -121,6 +122,15 @@ def action_campaign(transaction: Transaction, action: DriveAction) -> str:
         "evaluation.complete": ("evaluation_request", "request_id"),
     }[action.operation]
     return str(transaction.get(kind, str(action.payload[field]))["campaign_id"])
+
+
+@dataclass(frozen=True)
+class PreparedTurnExecution:
+    """Internal delivery selection; the target transaction still checks its saved guard."""
+
+    turn: DriveTurn
+    previous: JsonObject | None
+    target_context: CommandContext | None = None
 
 
 class OrchestrationControl:
@@ -396,7 +406,14 @@ class OrchestrationControl:
             context, operation, intent.model_dump(mode="json"), "orchestration.drive", finish
         )
 
-    def execute(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
+    def prepare_execution(
+        self, context: CommandContext, intent: DriveTurnTarget
+    ) -> PreparedTurnExecution:
+        """Select an exact target without dispatching or acknowledging it.
+
+        Async transports can deliver the guarded target and finish its receipt under
+        separate transaction boundaries. Preparation never grants mutation authority.
+        """
         operation = "orchestration.execute_turn"
         context.principal.require("orchestration.drive")
         turn, response, closed = self._read(context, intent.turn_id, execute=True)
@@ -404,7 +421,7 @@ class OrchestrationControl:
             context, operation, intent.model_dump(mode="json"), "orchestration.drive"
         )
         if previous is not None:
-            return previous
+            return PreparedTurnExecution(turn, previous)
         if context.idempotency_key == turn.action.idempotency_key:
             raise ResearchError(
                 ErrorCode.IDEMPOTENCY_CONFLICT, "Target and delivery keys must differ"
@@ -418,14 +435,26 @@ class OrchestrationControl:
                 ),
                 DriveGuard(intent.turn_id, turn.action.request_digest),
             )
+            return PreparedTurnExecution(turn, None, target)
+        return PreparedTurnExecution(turn, None)
+
+    def execute(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
+        prepared = self.prepare_execution(context, intent)
+        if prepared.previous is not None:
+            return prepared.previous
+        if prepared.target_context is not None:
             try:
-                self.dispatch(target, turn.action.operation, turn.action.payload)
+                self.dispatch(
+                    prepared.target_context,
+                    prepared.turn.action.operation,
+                    prepared.turn.action.payload,
+                )
             except Exception:
                 # Preflight refusal is not a durable rejection. Recover only an actual target ack.
                 _, response, closed = self._read(context, intent.turn_id, execute=True)
                 if response is None and not closed:
                     raise
-        return self._finish(context, operation, intent)
+        return self._finish(context, "orchestration.execute_turn", intent)
 
     def reconcile(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
         operation = "orchestration.reconcile_turn"
