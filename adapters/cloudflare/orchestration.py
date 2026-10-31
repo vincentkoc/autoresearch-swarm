@@ -12,10 +12,10 @@ from research_swarm.domain.types import ID, VersionedRecord
 from research_swarm.state.database import Transaction
 
 if __package__:
-    from .research_router import supports_orchestration, validated
+    from .research_router import supports_orchestration, supports_startup, validated
     from .scientific import ScientificQuery, ScientificRead, ScientificRecordKind
 else:
-    from research_router import supports_orchestration, validated
+    from research_router import supports_orchestration, supports_startup, validated
     from scientific import ScientificQuery, ScientificRead, ScientificRecordKind
 
 COMMANDS = frozenset(
@@ -137,7 +137,9 @@ class HostedOrchestration:
             else:
                 identifier = request.campaign_id
             binding = transaction.get("orchestration_binding", identifier)["data"]
-            if binding.get("start_ids") is not None:
+            if binding.get("start_ids") is not None and not supports_startup(
+                self.router.configuration
+            ):
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE, "Successor startup is unavailable"
                 )

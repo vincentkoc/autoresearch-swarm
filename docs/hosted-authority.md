@@ -1214,6 +1214,44 @@ retirement across reopening, nested copied-context queries, asynchronous-reader
 refusal and rollback when fencing fails. Hosted transport ordering and deployment
 qualification are still required.
 
+### Hosted successor startup
+
+`research-startup-witness-v1` extends the transfer profile with
+`stream.create_snapshot`, `stream.release_snapshot`, bounded operator
+`stream.collect_expired`, and `orchestration.acknowledge_start`. The ordinary SDK
+uses POST `/v1/snapshot/page` and `/v1/snapshot/item` for actor-scoped recovery.
+Each operation checks current credentials and profile, and each fresh timed
+operation obtains its own witness under the authority gate. Ownership, cursor
+identity, item existence and offset bounds are checked before time acquisition.
+Queries recheck ownership and lifetime inside the shared query transaction.
+Exact committed commands replay without source access or renewed lifetimes.
+
+Snapshots permit at most 4,096 items, 4 MiB each and 32 MiB retained across the
+workspace. The normal per-actor/workspace snapshot-count limits still apply.
+Operator expiry collection requires `stream.manage`, uses the same clock epoch,
+and reclaims at most the requested 64-snapshot ceiling. It prevents snapshots
+abandoned by revoked or retired readers from permanently consuming shared quota.
+Event-floor administration remains unavailable in this profile.
+
+`recover_driver_start()` verifies the immutable checkpoint digest, ordered chunk
+identities, manifest count and aggregate digest. It then exhausts `SnapshotReader`
+at or beyond the checkpoint watermark, verifying every chunk, item digest,
+ordinal and byte/item total. Only then does it acknowledge that route's start
+revision and release disposable snapshot contents. The domain still requires a
+separate acknowledgment for each driver route. An acknowledgment is the driver's
+attestation; the API does not independently prove that an arbitrary client ran
+the SDK verifier. The provided SDK path supplies that full verification.
+
+Native adapter tests run this unchanged SDK over the hosted HTTP adapter through
+authority reopen, then execute one successor report. They cover lost create,
+acknowledge and release responses; corrupt checkpoint/content refusal; wrong
+actors and scopes; source replacement; cancellation and revocation after witness
+acquisition; and abandoned-reader quota recovery. Native worker authority and
+budgets stay unchanged. Older transfer/orchestration profiles retain their
+startup refusal. Automatic async delivery bootstrap remains unavailable: the
+external SDK performs separate bounded HTTP calls rather than holding one DO
+gate across the entire recovery. Actual workerd and deployed receipts are pending.
+
 ### Offer and input query boundaries
 
 `WorkerQueries.validate_list()` checks the existing scope rule, current ownership

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a hosted successor-startup profile using the existing SDK's checkpoint and
+  complete snapshot verification. Expose bounded actor-scoped snapshot reads,
+  explicit startup acknowledgment and operator expiry collection through checked
+  time. Preserve old-profile refusal, native authority and independent driver
+  readiness; automatic Workflow bootstrap remains unavailable.
+
 - Bind injected recovery clocks to private snapshot epochs. Use one checked
   instant for expiry, collection and retention pins; refuse snapshots from another
   clock domain. Route page/item reads through the query boundary so authenticated

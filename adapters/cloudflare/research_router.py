@@ -109,6 +109,10 @@ class HostedTransferConfiguration(HostedOrchestrationConfiguration):
     profile: Literal["research-transfer-witness-v1"] = "research-transfer-witness-v1"
 
 
+class HostedStartupConfiguration(HostedTransferConfiguration):
+    profile: Literal["research-startup-witness-v1"] = "research-startup-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
@@ -149,6 +153,10 @@ def supports_transfer(configuration):
     return isinstance(configuration, HostedTransferConfiguration)
 
 
+def supports_startup(configuration):
+    return isinstance(configuration, HostedStartupConfiguration)
+
+
 def allowed_commands(configuration):
     if __package__:
         from .artifact_router import COMMANDS as artifact_commands
@@ -158,6 +166,7 @@ def allowed_commands(configuration):
         from .research_admission import COMMANDS as research_commands
         from .result_publication import COMMANDS as publication_commands
         from .scientific import COMMANDS as scientific_commands
+        from .startup import COMMANDS as startup_commands
         from .transfers import COMMANDS as transfer_commands
         from .worker_outputs import COMMANDS as output_commands
     else:
@@ -168,6 +177,7 @@ def allowed_commands(configuration):
         from research_admission import COMMANDS as research_commands
         from result_publication import COMMANDS as publication_commands
         from scientific import COMMANDS as scientific_commands
+        from startup import COMMANDS as startup_commands
         from transfers import COMMANDS as transfer_commands
         from worker_outputs import COMMANDS as output_commands
     return (
@@ -181,6 +191,7 @@ def allowed_commands(configuration):
         | (scientific_commands if supports_scientific(configuration) else frozenset())
         | (orchestration_commands if supports_orchestration(configuration) else frozenset())
         | (transfer_commands if supports_transfer(configuration) else frozenset())
+        | (startup_commands if supports_startup(configuration) else frozenset())
     )
 
 
@@ -240,6 +251,7 @@ class ExistingResearchRouter:
                 | HostedScientificConfiguration
                 | HostedOrchestrationConfiguration
                 | HostedTransferConfiguration
+                | HostedStartupConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (
@@ -294,6 +306,7 @@ class ExistingResearchRouter:
                 from .research_admission import HostedResearchAdmission
                 from .result_publication import HostedResultPublication
                 from .scientific import HostedScientific
+                from .startup import HostedStartup
                 from .transfers import HostedTransfers
                 from .worker_inputs import HostedWorkerInputs
                 from .worker_outputs import HostedWorkerOutputs
@@ -305,6 +318,7 @@ class ExistingResearchRouter:
                 from research_admission import HostedResearchAdmission
                 from result_publication import HostedResultPublication
                 from scientific import HostedScientific
+                from startup import HostedStartup
                 from transfers import HostedTransfers
                 from worker_inputs import HostedWorkerInputs
                 from worker_outputs import HostedWorkerOutputs
@@ -318,6 +332,7 @@ class ExistingResearchRouter:
             instance.scientific = HostedScientific(instance)
             instance.orchestration = HostedOrchestration(instance)
             instance.transfers = HostedTransfers(instance)
+            instance.startup = HostedStartup(instance)
             return instance
 
         return await exclusive(state, construct)
@@ -467,6 +482,8 @@ class ExistingResearchRouter:
             return await self.orchestration.command(token, context, operation, payload)
         if operation in self.transfers.commands:
             return await self.transfers.command(token, context, operation, payload)
+        if operation in self.startup.commands:
+            return await self.startup.command(token, context, operation, payload)
         if operation not in COMMANDS:
             raise unavailable()
         definition, request = validate_command_input(context, operation, payload)
@@ -517,6 +534,8 @@ class ExistingResearchRouter:
     async def query(self, token, operation, payload):
         async def read():
             context = self._context(token, idempotency_key=new_id())
+            if operation in {"snapshot.page", "snapshot.item"}:
+                return await self.startup.query(token, context, operation, payload)
             if operation in {"get", "list"}:
                 if supports_transfer(self.configuration):
                     return self.transfers.query(token, context, operation, payload)

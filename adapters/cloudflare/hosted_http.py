@@ -18,6 +18,7 @@ from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.state.artifacts import BeginUpload
 
 if __package__:
@@ -38,9 +39,11 @@ if __package__:
         supports_publication,
         supports_research,
         supports_scientific,
+        supports_startup,
         supports_transfer,
     )
     from .scientific import ScientificQuery, ScientificRead
+    from .startup import LIMITS as SNAPSHOT_LIMITS
     from .transfers import LIMITS as TRANSFER_LIMITS
     from .transfers import TransferQuery, TransferRead
 else:
@@ -61,9 +64,11 @@ else:
         supports_publication,
         supports_research,
         supports_scientific,
+        supports_startup,
         supports_transfer,
     )
     from scientific import ScientificQuery, ScientificRead
+    from startup import LIMITS as SNAPSHOT_LIMITS
     from transfers import LIMITS as TRANSFER_LIMITS
     from transfers import TransferQuery, TransferRead
 
@@ -302,6 +307,22 @@ def capabilities(configuration):
             "verification": "bounded-r2-before-witness",
             "successor_startup": False,
         }
+    if supports_startup(configuration):
+        result["queries"] += ["snapshot.page", "snapshot.item"]
+        result["orchestration"]["successor_startup"] = "verified-external-sdk"
+        result["orchestration"]["transfer"]["successor_startup"] = "verified-external-sdk"
+        result["recovery"] = {
+            "scope": "read",
+            "max_items": SNAPSHOT_LIMITS.max_items,
+            "max_bytes": SNAPSHOT_LIMITS.max_bytes,
+            "max_retained_bytes": SNAPSHOT_LIMITS.max_retained_bytes,
+            "clock": "authority-epoch",
+            "page": RecoveryPage.model_json_schema(),
+            "item": RecoveryItem.model_json_schema(),
+            "automatic_delivery_bootstrap": False,
+            "expiry_collection": "bounded-operator-command",
+            "event_floor_administration": False,
+        }
     return result
 
 
@@ -346,6 +367,8 @@ def route(method, target):
         if match := RECORD.fullmatch(path):
             return "record", match[1], match[2]
     if method == "POST":
+        if path in {"/v1/snapshot/page", "/v1/snapshot/item"}:
+            return "snapshot", path.removeprefix("/v1/").replace("/", "."), None
         if path == "/v1/artifact-uploads":
             return "command", "artifact.begin_upload", None
         if path == "/v1/query":
@@ -391,6 +414,10 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Artifact profile is unavailable")
         if kind == "command" and identifier not in allowed_commands(router.configuration):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Command is outside this profile")
+        if kind == "snapshot" and not supports_startup(router.configuration):
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Snapshots are outside this profile"
+            )
         if kind == "context" and not supports_orchestration(router.configuration):
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Context is outside this profile")
         if kind in {"record", "records"} and not supports_research(router.configuration):
@@ -437,7 +464,8 @@ async def handle(router, method, target, headers, read_body):
             router.configuration.storage.max_object_bytes
             if kind in {"upload", "worker-upload"}
             else MAX_JSON_BYTES
-            if kind in {"query", "command", "records", "input", "worker-content", "output"}
+            if kind
+            in {"query", "command", "records", "input", "worker-content", "output", "snapshot"}
             else 0
         )
         body = await read_body(limit)
@@ -445,7 +473,7 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Request body exceeds its bound"
             )
-        if kind in {"query", "command", "records", "input", "worker-content", "output"}:
+        if kind in {"query", "command", "records", "input", "worker-content", "output", "snapshot"}:
             payload = strict_json_loads(body)
             if not isinstance(payload, dict):
                 raise ResearchError(
@@ -460,7 +488,7 @@ async def handle(router, method, target, headers, read_body):
                 idempotency_key=key,
                 expected_revision=int(revision) if revision is not None else None,
             )
-        elif kind in {"query", "input", "output"}:
+        elif kind in {"query", "input", "output", "snapshot"}:
             result = await router.query(token, identifier, payload)
         elif kind == "worker-content":
             reference, content = await router.worker_content(token, payload)

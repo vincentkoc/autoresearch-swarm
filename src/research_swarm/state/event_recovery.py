@@ -64,6 +64,28 @@ CLOCK_JOIN = (
 CLOCK_EPOCH = "COALESCE(json_extract(c.payload,'$.epoch'),'')"
 
 
+def page_after(snapshot: RecoverySnapshot, intent: RecoveryPage) -> int:
+    if intent.cursor is None:
+        return 0
+    try:
+        cursor = RecoveryCursor.model_validate(
+            strict_json_loads(
+                base64.b64decode(intent.cursor.encode("ascii"), altchars=b"-_", validate=True)
+            )
+        )
+        if (cursor.snapshot_id, cursor.scope_digest, cursor.watermark) != (
+            snapshot.id,
+            snapshot.scope_digest,
+            snapshot.watermark,
+        ) or cursor.after > snapshot.item_count:
+            raise ValueError("Recovery cursor belongs to another snapshot")
+        return cursor.after
+    except (ValueError, UnicodeError, binascii.Error, ValidationError) as error:
+        raise ResearchError(
+            ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid recovery cursor"
+        ) from error
+
+
 def snapshot_row(transaction: Transaction, identifier: str) -> JsonObject:
     row = transaction.connection.execute(
         "SELECT s.*, "
@@ -386,27 +408,7 @@ class EventRecovery:
         def read(transaction: Transaction) -> JsonObject:
             snapshot = active_snapshot(transaction, intent.snapshot_id, clock=self._now)
             connection = transaction.connection
-            after = 0
-            if intent.cursor is not None:
-                try:
-                    cursor = RecoveryCursor.model_validate(
-                        strict_json_loads(
-                            base64.b64decode(
-                                intent.cursor.encode("ascii"), altchars=b"-_", validate=True
-                            )
-                        )
-                    )
-                    if (cursor.snapshot_id, cursor.scope_digest, cursor.watermark) != (
-                        snapshot.id,
-                        snapshot.scope_digest,
-                        snapshot.watermark,
-                    ) or cursor.after > snapshot.item_count:
-                        raise ValueError("Recovery cursor belongs to another snapshot")
-                    after = cursor.after
-                except (ValueError, UnicodeError, binascii.Error, ValidationError) as error:
-                    raise ResearchError(
-                        ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid recovery cursor"
-                    ) from error
+            after = page_after(snapshot, intent)
             items = [
                 dict(row)
                 for row in connection.execute(
@@ -476,3 +478,33 @@ class EventRecovery:
         return self.database.query(
             context, "snapshot.item", intent.model_dump(mode="json"), "read", read
         )
+
+    def validate_read(self, context: CommandContext, intent: RecoveryPage | RecoveryItem) -> None:
+        """Check ownership and request identity before a hosted adapter acquires time."""
+        context.principal.require("read")
+
+        def read(transaction: Transaction) -> None:
+            row = snapshot_row(transaction, intent.snapshot_id)
+            if row["released_at"] is not None or row["expired_at"] is not None:
+                raise ResearchError(
+                    ErrorCode.SNAPSHOT_EXPIRED,
+                    "Recovery snapshot is no longer usable; start a new recovery",
+                    details={"recovery_command": "stream.create_snapshot"},
+                )
+            snapshot = RecoverySnapshot.model_validate_json(row["payload"])
+            if isinstance(intent, RecoveryPage):
+                page_after(snapshot, intent)
+                return
+            item = transaction.connection.execute(
+                "SELECT size_bytes FROM recovery_items "
+                "WHERE workspace_id=? AND snapshot_id=? AND ordinal=?",
+                (transaction.workspace_id, intent.snapshot_id, intent.ordinal),
+            ).fetchone()
+            if item is None:
+                raise ResearchError(ErrorCode.NOT_FOUND, "Recovery item not found")
+            if intent.offset > item["size_bytes"]:
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID, "Recovery item offset is out of range"
+                )
+
+        self.database.store.read(lambda sql: read(Transaction(sql, context)))
