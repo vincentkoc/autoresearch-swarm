@@ -24,6 +24,31 @@ transport does not establish Container routing.
 
 ## Decision and boundary
 
+The optional `research-reconciliation-witness-v1` profile extends the startup
+profile with ordinary active-authority late-result handling. Select it explicitly
+in the protected deployment manifest; its configuration identity differs from
+`research-startup-witness-v1`. Existing deployments do not silently gain commands.
+
+`worker.submit_evidence` retains original, role-authorized artifacts in quarantine.
+It does not accept a result or settle execution costs. `attempt.reconcile` requires
+its own operator scope, the current controller/epoch and the exact attempt revision.
+It verifies original signed dispatch, timing, native closure and workload evidence,
+then atomically records acceptance, settlement and an immutable reconciliation.
+The receipt preserves the previous acceptance lease and its disposition. Settlement
+does not renew that lease, alter native deadlines or produce an evaluator receipt.
+
+Both commands verify every referenced R2 generation before a fresh witness and
+recheck the selected authority and artifacts in the final transaction. They share
+the publication limits of 32 artifact roles and 8 MiB of distinct evidence bytes.
+Exact committed acknowledgments replay after reopen without byte reads or a new
+witness, while current credentials and protected configuration remain required.
+Malformed evidence can remain quarantined; it cannot pass reconciliation.
+
+Native CPU tests cover expiry, scoped acceptance, unchanged native grants,
+rollback, revocation/CAS/catalog races, unknown execution and offline replay.
+This is adapter proof on SQLite, not actual workerd or deployed qualification.
+The separate recovery receiver remains journal-only and cannot accept research.
+
 Keep research state, command deduplication, budgets, leases, events and outbox
 effects in one SQLite Durable Object authority. Use a small native service to
 observe time. On Cloudflare, that service can run in a Container. It must not

@@ -27,6 +27,7 @@ if __package__:
     from .evaluations import EvaluationQuery, EvaluationRead
     from .lifecycle import LifecycleQuery, LifecycleRead
     from .orchestration import TARGETS, ContextRead, OrchestrationQuery, OrchestrationRead
+    from .reconciliation import ReconciliationQuery, ReconciliationRead
     from .research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from .research_router import (
         allowed_commands,
@@ -37,6 +38,7 @@ if __package__:
         supports_orchestration,
         supports_outputs,
         supports_publication,
+        supports_reconciliation,
         supports_research,
         supports_scientific,
         supports_startup,
@@ -52,6 +54,7 @@ else:
     from evaluations import EvaluationQuery, EvaluationRead
     from lifecycle import LifecycleQuery, LifecycleRead
     from orchestration import TARGETS, ContextRead, OrchestrationQuery, OrchestrationRead
+    from reconciliation import ReconciliationQuery, ReconciliationRead
     from research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from research_router import (
         allowed_commands,
@@ -62,6 +65,7 @@ else:
         supports_orchestration,
         supports_outputs,
         supports_publication,
+        supports_reconciliation,
         supports_research,
         supports_scientific,
         supports_startup,
@@ -328,6 +332,14 @@ def capabilities(configuration):
             "expiry_collection": "bounded-operator-command",
             "event_floor_administration": False,
         }
+    if supports_reconciliation(configuration):
+        result["record_queries"] = {
+            "scope": "read",
+            "get": ReconciliationRead.model_json_schema(),
+            "list": ReconciliationQuery.model_json_schema(),
+        }
+        result["publication"]["historical_acceptance"] = "explicit-current-authority-reconciliation"
+        result["publication"]["submission"] = "quarantine-without-settlement"
     return result
 
 

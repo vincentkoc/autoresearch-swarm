@@ -23,10 +23,18 @@ from research_swarm.state.sql import StoreIdentity
 
 if __package__:
     from .delivery_router import DeliveryRegistration
-    from .research_router import HostedStartupConfiguration, dispatch_key_digest
+    from .research_router import (
+        HostedReconciliationConfiguration,
+        HostedStartupConfiguration,
+        dispatch_key_digest,
+    )
 else:
     from delivery_router import DeliveryRegistration
-    from research_router import HostedStartupConfiguration, dispatch_key_digest
+    from research_router import (
+        HostedReconciliationConfiguration,
+        HostedStartupConfiguration,
+        dispatch_key_digest,
+    )
 
 MAX_DEPLOYMENT_BYTES = 256 * 1024
 MAX_SECRET_BYTES = 32 * 1024
@@ -107,7 +115,9 @@ class DeploymentManifest(VersionedRecord):
     namespace: Namespace
     authority_name: Name
     object_id: HexDigest
-    configuration: HostedStartupConfiguration
+    configuration: HostedStartupConfiguration | HostedReconciliationConfiguration = Field(
+        discriminator="profile"
+    )
     witness_origin: str = Field(min_length=1, max_length=256)
     witness_timeout_ms: int = Field(default=1000, strict=True, ge=100, le=10000)
     witness_credential_digest: Digest

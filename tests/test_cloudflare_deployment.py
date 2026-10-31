@@ -114,6 +114,24 @@ def load(values, **options):
     return load_deployment(json.dumps(manifest), json.dumps(secrets), crypto=crypto, **options)
 
 
+def test_active_reconciliation_profile_preserves_explicit_manifest_identity(deployment):
+    from adapters.cloudflare.hosted_http import capabilities
+    from adapters.cloudflare.research_router import HostedReconciliationConfiguration
+
+    previous, _ = load(deployment)
+    original = previous.digest
+    deployment[0]["configuration"]["profile"] = "research-reconciliation-witness-v1"
+    manifest, _ = load(deployment)
+    assert isinstance(manifest.configuration, HostedReconciliationConfiguration)
+    assert manifest.digest != original
+    assert previous.digest == original
+    advertised = capabilities(manifest.configuration)
+    assert advertised["commands"]["attempt.reconcile"]["scope"] == "attempt.reconcile"
+    assert advertised["commands"]["attempt.reconcile"]["expected_revision"] is True
+    assert advertised["publication"]["submission"] == "quarantine-without-settlement"
+    assert "worker.submit_evidence" not in capabilities(previous.configuration)["commands"]
+
+
 def test_public_manifest_secret_roster_and_physical_authority_agree(deployment):
     raw, raw_secrets, _ = deployment
     manifest, secrets = load(deployment)

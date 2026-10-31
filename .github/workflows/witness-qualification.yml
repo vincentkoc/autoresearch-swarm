@@ -54,6 +54,7 @@ jobs:
           tests/test_hosted_worker_inputs.py
           tests/test_hosted_worker_outputs.py
           tests/test_hosted_result_publication.py tests/test_publication_diagnostic.py
+          tests/test_hosted_reconciliation.py
           tests/test_observation_bytes.py
           tests/test_evaluation_preparation.py
           tests/test_hosted_evaluations.py

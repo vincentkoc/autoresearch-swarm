@@ -19,6 +19,7 @@ COMMON = (
     "worker_inputs.py",
     "worker_outputs.py",
     "result_publication.py",
+    "reconciliation.py",
     "evaluations.py",
     "lifecycle.py",
     "scientific.py",

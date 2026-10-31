@@ -113,6 +113,10 @@ class HostedStartupConfiguration(HostedTransferConfiguration):
     profile: Literal["research-startup-witness-v1"] = "research-startup-witness-v1"
 
 
+class HostedReconciliationConfiguration(HostedStartupConfiguration):
+    profile: Literal["research-reconciliation-witness-v1"] = "research-reconciliation-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
@@ -157,12 +161,17 @@ def supports_startup(configuration):
     return isinstance(configuration, HostedStartupConfiguration)
 
 
+def supports_reconciliation(configuration):
+    return isinstance(configuration, HostedReconciliationConfiguration)
+
+
 def allowed_commands(configuration):
     if __package__:
         from .artifact_router import COMMANDS as artifact_commands
         from .evaluations import COMMANDS as evaluation_commands
         from .lifecycle import COMMANDS as lifecycle_commands
         from .orchestration import COMMANDS as orchestration_commands
+        from .reconciliation import COMMANDS as reconciliation_commands
         from .research_admission import COMMANDS as research_commands
         from .result_publication import COMMANDS as publication_commands
         from .scientific import COMMANDS as scientific_commands
@@ -174,6 +183,7 @@ def allowed_commands(configuration):
         from evaluations import COMMANDS as evaluation_commands
         from lifecycle import COMMANDS as lifecycle_commands
         from orchestration import COMMANDS as orchestration_commands
+        from reconciliation import COMMANDS as reconciliation_commands
         from research_admission import COMMANDS as research_commands
         from result_publication import COMMANDS as publication_commands
         from scientific import COMMANDS as scientific_commands
@@ -192,6 +202,7 @@ def allowed_commands(configuration):
         | (orchestration_commands if supports_orchestration(configuration) else frozenset())
         | (transfer_commands if supports_transfer(configuration) else frozenset())
         | (startup_commands if supports_startup(configuration) else frozenset())
+        | (reconciliation_commands if supports_reconciliation(configuration) else frozenset())
     )
 
 
@@ -252,6 +263,7 @@ class ExistingResearchRouter:
                 | HostedOrchestrationConfiguration
                 | HostedTransferConfiguration
                 | HostedStartupConfiguration
+                | HostedReconciliationConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (
@@ -303,6 +315,7 @@ class ExistingResearchRouter:
                 from .evaluations import HostedEvaluations
                 from .lifecycle import HostedLifecycle
                 from .orchestration import HostedOrchestration
+                from .reconciliation import HostedReconciliation
                 from .research_admission import HostedResearchAdmission
                 from .result_publication import HostedResultPublication
                 from .scientific import HostedScientific
@@ -315,6 +328,7 @@ class ExistingResearchRouter:
                 from evaluations import HostedEvaluations
                 from lifecycle import HostedLifecycle
                 from orchestration import HostedOrchestration
+                from reconciliation import HostedReconciliation
                 from research_admission import HostedResearchAdmission
                 from result_publication import HostedResultPublication
                 from scientific import HostedScientific
@@ -327,6 +341,7 @@ class ExistingResearchRouter:
             instance.inputs = HostedWorkerInputs(instance)
             instance.outputs = HostedWorkerOutputs(instance)
             instance.publication = HostedResultPublication(instance)
+            instance.reconciliation = HostedReconciliation(instance)
             instance.evaluations = HostedEvaluations(instance)
             instance.lifecycle = HostedLifecycle(instance)
             instance.scientific = HostedScientific(instance)
@@ -472,6 +487,8 @@ class ExistingResearchRouter:
             return await self.outputs.command(token, context, operation, payload)
         if operation in self.publication.commands:
             return await self.publication.command(token, context, operation, payload)
+        if operation in self.reconciliation.commands:
+            return await self.reconciliation.command(token, context, operation, payload)
         if operation in self.evaluations.commands:
             return await self.evaluations.command(token, context, operation, payload)
         if operation in self.lifecycle.commands:
@@ -537,6 +554,8 @@ class ExistingResearchRouter:
             if operation in {"snapshot.page", "snapshot.item"}:
                 return await self.startup.query(token, context, operation, payload)
             if operation in {"get", "list"}:
+                if supports_reconciliation(self.configuration):
+                    return self.reconciliation.query(token, context, operation, payload)
                 if supports_transfer(self.configuration):
                     return self.transfers.query(token, context, operation, payload)
                 if supports_orchestration(self.configuration):

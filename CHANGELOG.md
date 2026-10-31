@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add an explicit hosted active-reconciliation profile. Original workers can
+  quarantine bounded evidence, and scoped operators can reconcile proven closure
+  under current authority. Preserve original grants and expired-lease evidence,
+  settle costs once, and replay accepted commands without storage or clock access.
+  Earlier profiles and the recovery-only receiver retain their limits. Native CPU
+  adapter tests pass; actual workerd qualification of this new profile is separate.
+
 - Add fresh-deployment active-clock recovery to the existing production probe,
   preserving its startup count. Discover the restart through an ordinary command,
   replay a lost private requalification reply during outage, retain the rejected
