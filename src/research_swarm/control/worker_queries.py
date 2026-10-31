@@ -50,6 +50,49 @@ class WorkerRead(VersionedRecord):
     id: ID
 
 
+def list_scope(context: CommandContext, request: WorkerQuery) -> str:
+    return (
+        "read"
+        if request.kind == "offers" and "read" in context.principal.scopes
+        else "worker.query"
+    )
+
+
+def list_position(
+    transaction: Transaction, request: WorkerQuery
+) -> tuple[WorkerData, RecordCursor]:
+    worker = (
+        WorkerData.model_validate(
+            historical_session(transaction, request.worker_id, request.session_id)["data"]
+        )
+        if request.kind == "historical_pending"
+        else worker_authority(transaction, request.worker_id, request.session_id)
+    )
+    scope_fields: JsonObject = {
+        "binding": worker.binding.model_dump(mode="json"),
+        "kind": request.kind,
+        "actor_id": transaction.context.principal.id,
+    }
+    if request.campaign_id is not None:
+        scope_fields["campaign_id"] = request.campaign_id
+    scope = record_digest("research.worker-page", scope_fields)
+    if request.cursor is None:
+        through = transaction.connection.execute(
+            "SELECT COALESCE(MAX(rowid),0) FROM records WHERE workspace_id=?",
+            (transaction.workspace_id,),
+        ).one()[0]
+        return worker, RecordCursor(scope_digest=scope, after=0, through=through)
+    try:
+        cursor = RecordCursor.model_validate(
+            strict_json_loads(base64.b64decode(request.cursor, altchars=b"-_", validate=True))
+        )
+    except (ValueError, binascii.Error, ValidationError) as error:
+        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid worker cursor") from error
+    if cursor.scope_digest != scope or cursor.after > cursor.through:
+        raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker cursor scope differs")
+    return worker, cursor
+
+
 def eligible_offer(transaction: Transaction, worker: WorkerData, row: JsonObject) -> bool:
     if not admission_open(transaction, worker.binding):
         return False
@@ -189,52 +232,22 @@ class WorkerQueries:
 
         return self.database.store.read(read)
 
-    def list(self, context: CommandContext, request: WorkerQuery) -> JsonObject:
+    def validate_list(self, context: CommandContext, request: WorkerQuery) -> None:
+        """Authenticate ownership and cursor binding before any hosted witness I/O."""
         request = WorkerQuery.model_validate(request)
-        context.principal.require(
-            "read"
-            if request.kind == "offers" and "read" in context.principal.scopes
-            else "worker.query"
+        context.principal.require(list_scope(context, request))
+        self.database.store.read(
+            lambda connection: list_position(Transaction(connection, context), request)
         )
 
-        def read(connection: SqlSession) -> JsonObject:
-            transaction = Transaction(connection, context)
-            worker = (
-                WorkerData.model_validate(
-                    historical_session(transaction, request.worker_id, request.session_id)["data"]
-                )
-                if request.kind == "historical_pending"
-                else worker_authority(transaction, request.worker_id, request.session_id)
-            )
-            scope_fields: JsonObject = {
-                "binding": worker.binding.model_dump(mode="json"),
-                "kind": request.kind,
-                "actor_id": context.principal.id,
-            }
-            if request.campaign_id is not None:
-                scope_fields["campaign_id"] = request.campaign_id
-            scope = record_digest("research.worker-page", scope_fields)
-            if request.cursor is None:
-                through = connection.execute(
-                    "SELECT COALESCE(MAX(rowid),0) FROM records WHERE workspace_id=?",
-                    (transaction.workspace_id,),
-                ).one()[0]
-                cursor = RecordCursor(scope_digest=scope, after=0, through=through)
-            else:
-                try:
-                    cursor = RecordCursor.model_validate(
-                        strict_json_loads(
-                            base64.b64decode(request.cursor, altchars=b"-_", validate=True)
-                        )
-                    )
-                except (ValueError, binascii.Error, ValidationError) as error:
-                    raise ResearchError(
-                        ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid worker cursor"
-                    ) from error
-                if cursor.scope_digest != scope or cursor.after > cursor.through:
-                    raise ResearchError(
-                        ErrorCode.AUTHORIZATION_DENIED, "Worker cursor scope differs"
-                    )
+    def list(self, context: CommandContext, request: WorkerQuery) -> JsonObject:
+        request = WorkerQuery.model_validate(request)
+        required = list_scope(context, request)
+        context.principal.require(required)
+
+        def read(transaction: Transaction) -> JsonObject:
+            connection = transaction.connection
+            worker, cursor = list_position(transaction, request)
             if request.kind == "offers" and not admission_open(transaction, worker.binding):
                 return {"items": [], "next_cursor": None, "scanned": 0}
             kind = {
@@ -315,4 +328,8 @@ class WorkerQueries:
                 "scanned": len(scanned),
             }
 
-        return self.database.store.read(read)
+        if request.kind == "offers":
+            return self.database.query(
+                context, "worker.list", request.model_dump(mode="json"), required, read
+            )
+        return self.database.store.read(lambda connection: read(Transaction(connection, context)))

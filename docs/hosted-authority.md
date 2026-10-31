@@ -327,11 +327,11 @@ Python context. The marker grants no authority and is restored in `finally`.
 Query callbacks can operate without a command marker, while nested commands still
 receive a different marker.
 
-`WorkerControl.clock()` now has its own query operation boundary, so a nested
-clock query cannot sign another nonce with the outer timestamp. The hosted
-integration must apply the same rule to every other time-consuming query,
-including offers and artifact input authorization; those routes remain separate
-integration work.
+`WorkerControl.clock()` has its own query operation boundary, so a nested clock
+query cannot sign another nonce with the outer timestamp. Offer ranking and
+input metadata use the same boundary. Hosted routing must prepare each query
+independently after its time-free authorization preflight. Artifact pin commands
+remain separate integration work.
 
 Completion or callback failure consumes the turn. Awaitables and generators are
 refused; no callback may suspend or perform external I/O. After the callback,
@@ -396,6 +396,29 @@ preflight refusal without a witness, changed ownership, persisted source
 retirement across reopening, nested copied-context queries, asynchronous-reader
 refusal and rollback when fencing fails. Hosted transport ordering and deployment
 qualification are still required.
+
+### Offer and input query boundaries
+
+`WorkerQueries.validate_list()` checks the existing scope rule, current ownership
+and cursor binding without reading time. `list(kind="offers")` repeats those
+checks within `Database.query("worker.list")` before evaluating locality. Native
+locality still ignores an unavailable cache hint. Pending, historical-pending,
+control and record views remain time-free so clock outages do not hide recovery
+evidence. Cursor identity, scan bounds and eligibility semantics are unchanged.
+
+`WorkerArtifacts.validate_input()` checks assignment ownership, pending status,
+exact input identity and catalog availability without obtaining time. The
+`worker.input` query repeats them and checks the existing assignment-clock binding
+and expiry before returning metadata. It creates neither a read pin nor an
+acknowledgment. A changed authenticated source can still commit a conservative
+fence before the query refuses.
+
+Content streaming is a later operation. Its derived `artifact.pin` command
+requires its own replay check and prepared witness for timed input authorization.
+It cannot borrow the metadata query's observation. Physical verification,
+streaming and `artifact.unpin` cleanup must occur outside the metadata/pin witness
+lifetime. Hosted content streaming remains unavailable until its adapter wires
+those separate boundaries; native readers retain their existing behavior.
 
 ### Async ordering bridge
 

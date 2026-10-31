@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Give worker offer ranking and input metadata their own witnessed query scope
+  and time-free authorization preflight. Keep recovery views independent of
+  clocks, preserve native locality fallback, and create no read pin or command
+  acknowledgment from a metadata lookup.
+
 - Allow targeted witness qualification for native platforms, Windows or workerd
   so a provider-specific retry does not repeat unrelated successful jobs.
 

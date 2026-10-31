@@ -50,14 +50,26 @@ def assigned_attempt(
     return worker, attempt
 
 
-def input_reference(
-    transaction: Transaction, request: WorkerArtifactRead, workers: WorkerControl | None = None
-) -> ArtifactRef:
+def assigned_input(
+    transaction: Transaction, request: WorkerArtifactRead
+) -> tuple[WorkerData, AttemptData, ArtifactRef]:
+    """Check input ownership without observing time or granting a read pin."""
     worker, attempt = assigned_attempt(
         transaction, request.worker_id, request.session_id, request.attempt_id
     )
     if attempt.publication_status != "pending":
         raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Input grant is already settled")
+    references = [attempt.source_artifact, *attempt.inputs.values()]
+    reference = next((ref for ref in references if ref.id == request.artifact_id), None)
+    if reference is None:
+        raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Artifact is not an assigned input")
+    return worker, attempt, reference
+
+
+def input_reference(
+    transaction: Transaction, request: WorkerArtifactRead, workers: WorkerControl | None = None
+) -> ArtifactRef:
+    worker, attempt, reference = assigned_input(transaction, request)
     if workers is None:
         if worker.clock_mode != "local-utc-v1" or attempt.assignment_time is not None:
             raise ResearchError(ErrorCode.STALE_FENCE, "Issuing clock authority is unavailable")
@@ -66,10 +78,6 @@ def input_reference(
         now = workers.input_time(worker, attempt)
     if min(attempt.dispatch.expires_at, attempt.dispatch.hard_deadline_at) <= now:
         raise ResearchError(ErrorCode.STALE_FENCE, "Input acquisition grant has expired")
-    references = [attempt.source_artifact, *attempt.inputs.values()]
-    reference = next((ref for ref in references if ref.id == request.artifact_id), None)
-    if reference is None:
-        raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Artifact is not an assigned input")
     return reference
 
 
@@ -87,16 +95,29 @@ class WorkerArtifacts:
         self.database, self.artifacts = database, artifacts
         self.workers = workers
 
-    def input_metadata(self, context: CommandContext, request: WorkerArtifactRead) -> ArtifactRef:
+    def validate_input(self, context: CommandContext, request: WorkerArtifactRead) -> ArtifactRef:
+        """Authenticate the complete input target before a hosted witness request."""
         context.principal.require("worker.inputs")
         request = WorkerArtifactRead.model_validate(request)
 
         def read(connection: SqlSession) -> ArtifactRef:
             transaction = Transaction(connection, context)
-            reference = input_reference(transaction, request, self.workers)
+            _, _, reference = assigned_input(transaction, request)
             return ArtifactCatalog.available(transaction, reference).reference
 
         return self.database.store.read(read)
+
+    def input_metadata(self, context: CommandContext, request: WorkerArtifactRead) -> ArtifactRef:
+        context.principal.require("worker.inputs")
+        request = WorkerArtifactRead.model_validate(request)
+
+        def read(transaction: Transaction) -> ArtifactRef:
+            reference = input_reference(transaction, request, self.workers)
+            return ArtifactCatalog.available(transaction, reference).reference
+
+        return self.database.query(
+            context, "worker.input", request.model_dump(mode="json"), "worker.inputs", read
+        )
 
     @contextmanager
     def input_reader(
