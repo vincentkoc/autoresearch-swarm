@@ -327,11 +327,11 @@ Python context. The marker grants no authority and is restored in `finally`.
 Query callbacks can operate without a command marker, while nested commands still
 receive a different marker.
 
-Public query entry points do not yet install their own operation boundaries.
-The hosted integration must scope every time-consuming query, including
-`WorkerControl.clock()`, so a nested query cannot sign a different nonce with
-the outer timestamp. The primitive's command marker does not establish that
-query-isolation property.
+`WorkerControl.clock()` now has its own query operation boundary, so a nested
+clock query cannot sign another nonce with the outer timestamp. The hosted
+integration must apply the same rule to every other time-consuming query,
+including offers and artifact input authorization; those routes remain separate
+integration work.
 
 Completion or callback failure consumes the turn. Awaitables and generators are
 refused; no callback may suspend or perform external I/O. After the callback,
@@ -346,12 +346,12 @@ must not be disguised as a native profile to bypass that boundary.
 
 ### Command transaction boundary
 
-`Database` accepts an optional internal `CommandBoundary`; native construction
+`Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command
 marker and outer write transaction.
 
-`WitnessCommandBoundary` wraps the complete decision callback: handler savepoint,
+`WitnessExecutionBoundary` wraps the complete decision callback: handler savepoint,
 rejection hooks and acknowledgment persistence. This scope matters because an
 acceptance-expiry hook can need the same witnessed time after the handler rolls
 back. Closing the witness at handler exit would break that legitimate fence.
@@ -367,6 +367,35 @@ The complete command outcome is recorded before the witness closes. The outer
 SQL commit then follows while the hosting adapter still owns its ordering gate.
 Replays need neither a new witness nor a prepared boundary. Public hosted routing,
 query scopes and artifact preflight remain separate integration requirements.
+
+### Signed clock query boundary
+
+The same generic execution boundary supports `Database.query()`. Every query
+gets a fresh synchronous execution marker. Native queries use the existing read
+transaction. A configured witnessed query uses an outer write transaction only
+to persist conservative fencing; its domain reader remains read-only and runs
+inside a savepoint.
+
+The reader's result must be synchronous before it is wrapped in an internal
+`QueryOutcome`. The boundary must return that exact outcome object and call the
+decision or rejection path once. A reader refusal rolls back its savepoint,
+applies any source fence and returns the failure object for outer commit. The
+database raises the refusal after commit. A fencing or boundary failure rolls
+back the whole transaction. Queries create no command acknowledgments or replay
+cache, and a legitimate `None` result remains a successful read.
+
+`WorkerControl.validate_clock()` checks query scope, current worker/session
+ownership, calibrated mode and assignment-signing authority without obtaining
+time. Hosted routing must call it before witness acquisition. `clock()` repeats
+those checks inside the query callback before signing the nonce-bound reply.
+The existing transport DTO is unchanged. The earlier internal names
+`CommandBoundary` and `WitnessCommandBoundary` remain import aliases.
+
+Local tests use actual worker enrollment and signed clock replies. They cover
+preflight refusal without a witness, changed ownership, persisted source
+retirement across reopening, nested copied-context queries, asynchronous-reader
+refusal and rollback when fencing fails. Hosted transport ordering and deployment
+qualification are still required.
 
 ## Native worker calibration
 

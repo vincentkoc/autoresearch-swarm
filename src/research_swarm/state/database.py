@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import Event
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
-from research_swarm.state.boundaries import CommandBoundary
+from research_swarm.state.boundaries import ExecutionBoundary, QueryOutcome, synchronous_value
 from research_swarm.state.events import event_page
 from research_swarm.state.execution import command_execution
 from research_swarm.state.sql import (
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from research_swarm.state.sqlite import SQLiteSession, SQLiteStore
 
 JsonObject = dict[str, Any]
+T = TypeVar("T")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -332,7 +333,7 @@ class Database:
         path: Path,
         *,
         busy_timeout_ms: int = 10_000,
-        execution_boundary: CommandBoundary | None = None,
+        execution_boundary: ExecutionBoundary | None = None,
     ) -> None:
         from research_swarm.state.sqlite import SQLiteStore
 
@@ -343,7 +344,7 @@ class Database:
 
     @classmethod
     def from_store(
-        cls, store: StateStore, *, execution_boundary: CommandBoundary | None = None
+        cls, store: StateStore, *, execution_boundary: ExecutionBoundary | None = None
     ) -> Database:
         """Bind the shared command kernel to an already initialized authority store."""
         instance = cls.__new__(cls)
@@ -536,6 +537,73 @@ class Database:
 
         response = self.store.write(apply)
         return _deliver(dict(response))
+
+    @command_execution()
+    def query(
+        self,
+        context: CommandContext,
+        name: str,
+        payload: Mapping[str, Any],
+        scope: str,
+        reader: Callable[[Transaction], T],
+    ) -> T:
+        """Read one operation; hosted fencing commits before a query refusal escapes.
+
+        Queries create no command acknowledgment. Their domain reader remains
+        read-only; a configured outer write exists only for conservative fences.
+        """
+        context.principal.require(scope)
+
+        def read(connection: SqlSession) -> T:
+            return synchronous_value(reader(Transaction(connection, context)))
+
+        if self._execution_boundary is None:
+            return self.store.read(read)
+        boundary = self._execution_boundary
+
+        def apply(connection: SqlSession) -> QueryOutcome[T]:
+            from research_swarm.state.workspace_gate import require_workspace_mutation
+
+            require_workspace_mutation(connection, context.principal.workspace_id, name)
+            transaction = Transaction(connection, context)
+
+            def reject(error: ResearchError) -> QueryOutcome[T]:
+                boundary.rejected(transaction, name=name, payload=payload, error=error)
+                return QueryOutcome(error=error)
+
+            def perform() -> QueryOutcome[T]:
+                try:
+                    value = connection.atomic(read)
+                except ResearchError as error:
+                    return reject(error)
+                return QueryOutcome(value=value)
+
+            invoked = False
+            emitted: QueryOutcome[T] | None = None
+
+            def once(callback: Callable[[], QueryOutcome[T]]) -> QueryOutcome[T]:
+                nonlocal invoked, emitted
+                if invoked:
+                    raise RuntimeError("Query boundary invoked more than one outcome")
+                invoked = True
+                emitted = callback()
+                return emitted
+
+            result = boundary.invoke(
+                transaction,
+                name=name,
+                payload=payload,
+                perform=lambda: once(perform),
+                reject=lambda error: once(lambda: reject(error)),
+            )
+            if emitted is None or result is not emitted:
+                raise RuntimeError("Query boundary did not preserve its outcome")
+            return result
+
+        outcome = self.store.write(apply)
+        if outcome.error is not None:
+            raise outcome.error
+        return cast(T, outcome.value)
 
     def replay(
         self, context: CommandContext, operation: str, payload: Mapping[str, Any], scope: str

@@ -1,4 +1,4 @@
-"""Opaque synchronous command identity; this marker grants no authority."""
+"""Opaque synchronous operation identity; this marker grants no authority."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager

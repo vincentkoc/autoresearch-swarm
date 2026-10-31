@@ -1,19 +1,21 @@
-"""Prepared witnessed command decisions, including their rejection hooks."""
+"""Prepared witnessed command and query decisions, including conservative fences."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, TypeVar
 
 from research_swarm.control.witness_time import WitnessAuthorityTimeProvider, WitnessTurn
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
-from research_swarm.state.database import JsonObject, Transaction
+from research_swarm.state.database import Transaction
 from research_swarm.state.time_providers import ProviderChanged, ProviderSnapshot, TimeProviders
 
+T = TypeVar("T")
 
-class WitnessCommandBoundary:
+
+class WitnessExecutionBoundary:
     def __init__(self, registry: TimeProviders, provider: WitnessAuthorityTimeProvider) -> None:
         if registry.store != provider.authority_identity:
             raise ValueError("Witness registry and provider authority differ")
@@ -41,14 +43,16 @@ class WitnessCommandBoundary:
         *,
         name: str,
         payload: Mapping[str, Any],
-        perform: Callable[[], JsonObject],
-        reject: Callable[[ResearchError], JsonObject],
-    ) -> JsonObject:
+        perform: Callable[[], T],
+        reject: Callable[[ResearchError], T],
+    ) -> T:
         if self._turn is None:
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Command has no prepared witness")
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Operation has no prepared witness"
+            )
         started = False
 
-        def decision() -> JsonObject:
+        def decision() -> T:
             nonlocal started
             started = True
             return perform()
@@ -75,3 +79,6 @@ class WitnessCommandBoundary:
         if self._turn is None or error.evidence.operation.request != self._turn.request:
             raise ResearchError(ErrorCode.STALE_FENCE, "Provider fence belongs to another turn")
         self.registry.fence(transaction, error.evidence, name=name, payload=payload)
+
+
+WitnessCommandBoundary = WitnessExecutionBoundary

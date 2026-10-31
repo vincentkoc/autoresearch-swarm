@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Give signed clock queries their own checked execution scope and time-free
+  authorization preflight. Preserve native read transactions; configured witness
+  boundaries commit conservative query fences before returning refusal, with no
+  command acknowledgment or query replay cache. Reject nested timestamp borrowing
+  and asynchronous reader results.
+
 - Add an optional synchronous command boundary spanning handler rollback,
   rejection hooks and acknowledgment. Keep one witnessed instant available to
   legitimate hooks, persist source-change fences once, and reject boundary

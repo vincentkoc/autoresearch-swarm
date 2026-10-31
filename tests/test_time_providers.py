@@ -26,7 +26,7 @@ from tests.test_time_witnesses import (
 
 
 class Registry:
-    def __init__(self, database, context):
+    def __init__(self, database, context, *, assignment_key_id=None):
         self.database, self.context = database, context
         self.providers = TimeProviders(database.authority_identity)
         controller = database.store.read(
@@ -35,6 +35,10 @@ class Registry:
         self.authority = scope().authority.model_copy(
             update={"workspace_id": context().principal.workspace_id, "controller_id": controller}
         )
+        if assignment_key_id is not None:
+            self.authority = self.authority.model_copy(
+                update={"assignment_key_id": assignment_key_id}
+            )
         self.write(
             context(revision=0), lambda tx: self.providers.register(tx, self.authority, source())
         )

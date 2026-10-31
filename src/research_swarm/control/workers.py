@@ -52,7 +52,6 @@ from research_swarm.domain.workers import EngineCapabilities as EngineCapabiliti
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
-from research_swarm.state.sql import SqlSession
 from research_swarm.workers.authority import WorkerBinding, authorize_dispatch
 from research_swarm.workers.clock_signatures import ClockSigner, ClockVerifier
 from research_swarm.workers.signatures import AssignmentSigner
@@ -176,19 +175,30 @@ class WorkerControl:
         """Qualified time for operational observations, without extending a lease."""
         return self._time(worker)
 
+    def _clock_worker(self, transaction: Transaction, request: ClockChallenge) -> WorkerData:
+        worker = worker_authority(transaction, request.worker_id, request.session_id)
+        if worker.clock_mode != "bounded-continuous-v1":
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE,
+                "Worker is enrolled for local UTC, not calibrated authority time",
+            )
+        self._clock_signer(worker)
+        return worker
+
+    def validate_clock(self, context: CommandContext, request: ClockChallenge) -> WorkerData:
+        """Authenticate a clock request before witness I/O, without obtaining time."""
+        context.principal.require("worker.query")
+        request = ClockChallenge.model_validate(request)
+        return self.database.store.read(
+            lambda connection: self._clock_worker(Transaction(connection, context), request)
+        )
+
     def clock(self, context: CommandContext, request: ClockChallenge) -> SignedClockReply:
         context.principal.require("worker.query")
         request = ClockChallenge.model_validate(request)
 
-        def read(connection: SqlSession) -> SignedClockReply:
-            worker = worker_authority(
-                Transaction(connection, context), request.worker_id, request.session_id
-            )
-            if worker.clock_mode != "bounded-continuous-v1":
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE,
-                    "Worker is enrolled for local UTC, not calibrated authority time",
-                )
+        def read(transaction: Transaction) -> SignedClockReply:
+            worker = self._clock_worker(transaction, request)
             observed = self._time(worker)
             return self._clock_signer(worker).reply(
                 ClockReplyPayload(
@@ -201,7 +211,9 @@ class WorkerControl:
                 )
             )
 
-        return self.database.store.read(read)
+        return self.database.query(
+            context, "worker.clock", request.model_dump(mode="json"), "worker.query", read
+        )
 
     def input_time(self, worker: WorkerData, attempt: AttemptData) -> str:
         if worker.clock_mode == "local-utc-v1":
