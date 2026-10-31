@@ -83,12 +83,14 @@ def runtime_failure(error=None, *, mode="query"):
     )
 
 
-async def open_router(state, open_existing, manifest, secrets, *, crypto, acquire, objects):
+async def open_router(
+    state, open_existing, manifest, secrets, *, crypto, acquire, objects, recovery_binding=None
+):
     """The ordinary entrypoint has no initializer, credential installer or repair path."""
 
     def sealed_store():
         store = open_existing()
-        require_deployment(store, manifest)
+        require_deployment(store, manifest, crypto=crypto, recovery_binding=recovery_binding)
         return store
 
     router = await ExistingResearchRouter.open(

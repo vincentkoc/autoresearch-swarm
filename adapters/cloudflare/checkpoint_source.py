@@ -104,16 +104,19 @@ def parse_checkpoint_request(raw_json, model):
 class SourceStore:
     """Bind shared command transactions to one admitted outer source write."""
 
-    def __init__(self, store, sql, manifest, token, custody):
+    def __init__(self, store, sql, manifest, token, custody, *, crypto=None, recovery_binding=None):
         self.store, self.manifest, self.token, self.custody = store, manifest, token, custody
         self.sql = sql
         self.identity = store.identity
+        self.crypto, self.recovery_binding = crypto, recovery_binding
 
     def _admit(self, sql, callback):
         manifest, scope = self.manifest, self.manifest.configuration.authority
         manifest.require_store(self.store.identity)
         principal = require_source_operator_in(sql, manifest, self.token)
-        require_checkpoint_schema(sql, manifest)
+        require_checkpoint_schema(
+            sql, manifest, crypto=self.crypto, recovery_binding=self.recovery_binding
+        )
         preflight_rows(sql, CaptureLimits())
         context = CommandContext(principal=principal, idempotency_key="checkpoint-source-admission")
         provider = TimeProviders(self.identity).load(Transaction(sql, context), scope)
@@ -148,7 +151,17 @@ def source_operator(manifest, secrets):
 
 
 async def seal_source(
-    state, open_store, manifest, secrets, *, identity, credential, source_json, request_json, crypto
+    state,
+    open_store,
+    manifest,
+    secrets,
+    *,
+    identity,
+    credential,
+    source_json,
+    request_json,
+    crypto,
+    recovery_binding=None,
 ):
     custody = load_source(source_json, manifest, secrets, credential=credential, crypto=crypto)
     manifest.require_store(identity)
@@ -166,7 +179,15 @@ async def seal_source(
         manifest.require_store(store.identity)
 
         def commit(sql):
-            bound = SourceStore(store, sql, manifest, token, custody)
+            bound = SourceStore(
+                store,
+                sql,
+                manifest,
+                token,
+                custody,
+                crypto=crypto,
+                recovery_binding=recovery_binding,
+            )
             fresh = (
                 sql.execute(
                     "SELECT 1 FROM records WHERE workspace_id=? AND "
@@ -204,6 +225,8 @@ async def seal_source(
                 token=token,
                 backup_id=request.seal.backup_id,
                 expected_custody=custody.binding.pin,
+                crypto=crypto,
+                recovery_binding=recovery_binding,
             )
             return {"schema_version": "1.0", "seal": sealed, "custody": registered}
 
@@ -213,7 +236,17 @@ async def seal_source(
 
 
 async def capture_source(
-    state, open_store, manifest, secrets, *, identity, credential, source_json, request_json, crypto
+    state,
+    open_store,
+    manifest,
+    secrets,
+    *,
+    identity,
+    credential,
+    source_json,
+    request_json,
+    crypto,
+    recovery_binding=None,
 ):
     custody = load_source(source_json, manifest, secrets, credential=credential, crypto=crypto)
     manifest.require_store(identity)
@@ -227,6 +260,8 @@ async def capture_source(
             token=token,
             backup_id=request.backup_id,
             expected_custody=custody.binding.pin,
+            crypto=crypto,
+            recovery_binding=recovery_binding,
         )
         signed = sign_manifest(image.manifest, custody.seed, crypto=crypto)
         return encode_checkpoint(signed, image.bodies)

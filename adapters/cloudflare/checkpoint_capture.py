@@ -53,7 +53,15 @@ def require_source_operator_in(sql, manifest, token):
 
 
 def capture_checkpoint(
-    store, manifest, *, token, backup_id, expected_custody: BackupCustodyPin, limits=None
+    store,
+    manifest,
+    *,
+    token,
+    backup_id,
+    expected_custody: BackupCustodyPin,
+    limits=None,
+    crypto=None,
+    recovery_binding=None,
 ):
     """Internal source port; the caller owns custody and any later publication/election."""
     manifest.require_store(store.identity)
@@ -63,7 +71,7 @@ def capture_checkpoint(
     def capture(sql):
         manifest.require_store(store.identity)
         principal = require_source_operator_in(sql, manifest, token)
-        require_checkpoint_schema(sql, manifest)
+        require_checkpoint_schema(sql, manifest, crypto=crypto, recovery_binding=recovery_binding)
         inventory = preflight_rows(sql, limits)
         config = manifest.configuration
         cut = inspect_sealed_cut(

@@ -46,3 +46,17 @@ def saved_import(sql, intent):
         raise ResearchError(ErrorCode.STALE_FENCE, "Inactive import intent differs")
     receipt = RestoreReceipt.model_validate_json(row["receipt"])
     return receipt, row["state_digest"]
+
+
+def history_record(sql, workspace, kind, identifier, *, state="immutable", limit=1024 * 1024):
+    """Selected retained evidence only; no mutable provider or research projection."""
+    row = sql.execute(
+        "SELECT payload,revision FROM records WHERE workspace_id=? AND kind=? AND id=? "
+        "AND state=? AND typeof(revision)='integer' AND revision>=1 "
+        "AND campaign_id IS NULL AND parent_id IS NULL "
+        "AND typeof(payload)='text' AND length(CAST(payload AS BLOB))<=?",
+        (workspace, kind, identifier, state, limit),
+    ).fetchone()
+    if row is None or (state == "immutable" and row["revision"] != 1):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Retained recovery history differs")
+    return row

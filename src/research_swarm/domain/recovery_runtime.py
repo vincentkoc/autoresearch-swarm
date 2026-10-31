@@ -73,6 +73,21 @@ class HostedActivationRuntime(VersionedRecord):
         return record_digest("research.hosted-activation-runtime.v1", self.model_dump(mode="json"))
 
 
+class RuntimePreparationReceipt(VersionedRecord):
+    plan_digest: Digest
+    restoration_digest: Digest
+    admission_digest: Digest
+    provider_revision: Revision
+    provider: TimeProviderData
+    prepared_at: Timestamp
+
+    @property
+    def digest(self) -> str:
+        return record_digest(
+            "research.runtime-preparation-envelope.v1", self.model_dump(mode="json")
+        )
+
+
 class HostedRecoveryActivation(VersionedRecord):
     profile: Literal["hosted-recovery-activation-v1"] = "hosted-recovery-activation-v1"
     request_id: ID
@@ -106,4 +121,10 @@ class HostedRecoveryActivation(VersionedRecord):
         return record_digest(
             "research.hosted-recovery-activation.v1",
             self.model_dump(mode="json", exclude={"target_signature"}),
+        )
+
+    @property
+    def digest(self) -> str:
+        return record_digest(
+            "research.hosted-recovery-activation-envelope.v1", self.model_dump(mode="json")
         )

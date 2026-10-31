@@ -2,6 +2,8 @@
 
 import asyncio
 
+from pydantic import Field
+
 from research_swarm.control.auth import CredentialStore
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -12,8 +14,12 @@ from research_swarm.state.schema_contracts import TABLES, require_credentials_sc
 from research_swarm.state.time_providers import TimeProviders
 
 if __package__:
+    from .activation_history import require_completed_activation
+    from .checkpoint_history import IMPORT_TABLE
     from .exclusive import exclusive
 else:
+    from activation_history import require_completed_activation
+    from checkpoint_history import IMPORT_TABLE
     from exclusive import exclusive
 
 OPERATION = "deployment.provision"
@@ -28,6 +34,9 @@ class ProvisioningReceipt(VersionedRecord):
     provider_generation: ID
     source_epoch: ID
     provisioned_at: Timestamp
+    recovery_activation_digest: Digest | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 def exists(sql, name):
@@ -43,6 +52,20 @@ def intent(sql, manifest):
     require_table(
         sql, "hosted_provisioning", "singleton digest manifest state receipt", ("singleton",)
     )
+    if (
+        sql.execute("SELECT COUNT(*) FROM (SELECT 1 FROM hosted_provisioning LIMIT 2)").one()[0]
+        != 1
+        or sql.execute(
+            "SELECT 1 FROM hosted_provisioning WHERE typeof(singleton)!='integer' OR singleton!=1 "
+            "OR typeof(digest)!='text' OR length(CAST(digest AS BLOB))!=71 "
+            "OR typeof(manifest)!='text' OR length(CAST(manifest AS BLOB))>262144 "
+            "OR state NOT IN ('prepared','complete') OR typeof(state)!='text' "
+            "OR (receipt IS NOT NULL AND (typeof(receipt)!='text' "
+            "OR length(CAST(receipt AS BLOB))>16384)) LIMIT 1"
+        ).fetchone()
+        is not None
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Provisioning metadata exceeds its contract")
     row = sql.execute("SELECT * FROM hosted_provisioning LIMIT 2").one()
     if (
         row["singleton"] != 1
@@ -55,18 +78,34 @@ def intent(sql, manifest):
     return row
 
 
-def require_deployment(store, manifest):
+def require_deployment(store, manifest, *, crypto=None, recovery_binding=None):
     """Read-only reopen seal; never repair configuration or reinstall credentials."""
     manifest.require_store(store.identity)
 
-    return store.read(lambda sql: require_deployment_in(sql, manifest))
+    return store.read(
+        lambda sql: require_deployment_in(
+            sql, manifest, crypto=crypto, recovery_binding=recovery_binding
+        )
+    )
 
 
-def require_deployment_in(sql, manifest):
+def require_deployment_in(sql, manifest, *, crypto=None, recovery_binding=None):
     row = intent(sql, manifest)
     if row["state"] != "complete":
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Deployment is not provisioned")
     require_table(sql, "hosted_authority_config", "singleton digest payload", ("singleton",))
+    if (
+        sql.execute("SELECT COUNT(*) FROM (SELECT 1 FROM hosted_authority_config LIMIT 2)").one()[0]
+        != 1
+        or sql.execute(
+            "SELECT 1 FROM hosted_authority_config WHERE typeof(singleton)!='integer' "
+            "OR singleton!=1 "
+            "OR typeof(digest)!='text' OR length(CAST(digest AS BLOB))!=71 "
+            "OR typeof(payload)!='text' OR length(CAST(payload AS BLOB))>262144 LIMIT 1"
+        ).fetchone()
+        is not None
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Provisioned configuration exceeds its contract")
     configured = sql.execute("SELECT * FROM hosted_authority_config LIMIT 2").one()
     config = manifest.configuration
     if (
@@ -84,7 +123,54 @@ def require_deployment_in(sql, manifest):
         or receipt.activation_id != config.authority.activation_id
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Provisioning receipt differs")
+    imported = exists(sql, IMPORT_TABLE)
+    if not (
+        imported
+        == (receipt.recovery_activation_digest is not None)
+        == (recovery_binding is not None)
+    ):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Provisioned recovery binding is absent")
+    if imported:
+        completed = require_completed_activation(
+            sql, manifest, recovery_binding, receipt.recovery_activation_digest, crypto=crypto
+        )
+        if (receipt.provider_generation, receipt.source_epoch) != (
+            completed.runtime.provider.scope.provider_generation,
+            completed.runtime.provider.source_epoch,
+        ):
+            raise ResearchError(ErrorCode.STALE_FENCE, "Provisioned activation provider differs")
     return receipt.model_dump(mode="json")
+
+
+def write_deployment_intent(sql, manifest):
+    """Caller owns initialization or an admitted recovery activation transaction."""
+    sql.execute(
+        "CREATE TABLE hosted_provisioning "
+        "(singleton INTEGER PRIMARY KEY CHECK(singleton=1),"
+        "digest TEXT NOT NULL,manifest TEXT NOT NULL,state TEXT NOT NULL,receipt TEXT)"
+    )
+    sql.execute(
+        "INSERT INTO hosted_provisioning VALUES (1,?,?,'prepared',NULL)",
+        (manifest.digest, encode(manifest.model_dump(mode="json"))),
+    )
+
+
+def complete_deployment_in(sql, manifest, receipt):
+    receipt = ProvisioningReceipt.model_validate(receipt).model_dump(mode="json")
+    if intent(sql, manifest)["state"] != "prepared" or exists(sql, "hosted_authority_config"):
+        raise ResearchError(ErrorCode.STALE_FENCE, "Deployment completion state changed")
+    sql.execute(
+        "CREATE TABLE hosted_authority_config "
+        "(singleton INTEGER PRIMARY KEY CHECK(singleton=1),digest TEXT,payload TEXT)"
+    )
+    sql.execute(
+        "INSERT INTO hosted_authority_config VALUES (1,?,?)",
+        (manifest.configuration.digest, encode(manifest.configuration.model_dump(mode="json"))),
+    )
+    sql.execute(
+        "UPDATE hosted_provisioning SET state='complete',receipt=? WHERE singleton=1",
+        (encode(receipt),),
+    )
 
 
 def _fresh(sql):
@@ -139,18 +225,7 @@ def _prepare(store, manifest, secrets, registry, context):
     def prepare(sql):
         if not exists(sql, "hosted_provisioning"):
             _fresh(sql)
-            sql.execute(
-                "CREATE TABLE hosted_provisioning "
-                "(singleton INTEGER PRIMARY KEY CHECK(singleton=1),"
-                "digest TEXT NOT NULL,manifest TEXT NOT NULL,state TEXT NOT NULL,receipt TEXT)"
-            )
-            sql.execute(
-                "INSERT INTO hosted_provisioning VALUES (1,?,?,'prepared',NULL)",
-                (
-                    manifest.digest,
-                    encode(manifest.model_dump(mode="json")),
-                ),
-            )
+            write_deployment_intent(sql, manifest)
             authority = manifest.configuration.authority
             sql.execute(
                 "INSERT INTO workspaces(id,controller_id,control_epoch) VALUES (?,?,?)",
@@ -206,7 +281,7 @@ async def provision(state, open_store, manifest, secrets, *, identity, credentia
         )
         prepared = _prepare(store, manifest, secrets, registry, context)
         if prepared is None:
-            return require_deployment(store, manifest)
+            return require_deployment(store, manifest, crypto=crypto)
         context = context.model_copy(update={"expected_revision": prepared.revision})
         payload = {"manifest_digest": manifest.digest}
         binding, pending = registry.prepare(context, prepared, OPERATION, payload)
@@ -243,21 +318,7 @@ async def provision(state, open_store, manifest, secrets, *, identity, credentia
                 source_epoch=admitted.data.source_epoch,
                 provisioned_at=utc_now(),
             ).model_dump(mode="json")
-            sql.execute(
-                "CREATE TABLE hosted_authority_config "
-                "(singleton INTEGER PRIMARY KEY CHECK(singleton=1),digest TEXT,payload TEXT)"
-            )
-            sql.execute(
-                "INSERT INTO hosted_authority_config VALUES (1,?,?)",
-                (
-                    manifest.configuration.digest,
-                    encode(manifest.configuration.model_dump(mode="json")),
-                ),
-            )
-            sql.execute(
-                "UPDATE hosted_provisioning SET state='complete',receipt=? WHERE singleton=1",
-                (encode(receipt),),
-            )
+            complete_deployment_in(sql, manifest, receipt)
             return receipt
 
         return store.write(complete)

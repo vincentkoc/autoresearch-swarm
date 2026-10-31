@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Verify completed hosted recovery against protected source/target pins on ordinary
+  reopen and later checkpoint export. Bind the deployment receipt to the signed
+  activation and historical runtime, retain old credential revocations, and verify
+  current seal history. Later research and clock requalification do not rewrite
+  activation evidence. Removing stored recovery markers cannot downgrade a protected
+  recovered deployment to ordinary provisioning.
+
 - Bound hosted activation inspection before payload projection: exact portable
   schema, at most 8 MiB and 8,192 rows, and separate artifact count/byte limits.
   Preserve the shared native activation digest and select the exact non-target

@@ -8,10 +8,12 @@ from research_swarm.state.schema_contracts import unsupported
 if __package__:
     from .checkpoint_anchor import TABLE as ELECTION_TABLE
     from .checkpoint_anchor import require_election_schema
+    from .checkpoint_history import IMPORT_TABLE
     from .provisioning import require_deployment_in
 else:
     from checkpoint_anchor import TABLE as ELECTION_TABLE
     from checkpoint_anchor import require_election_schema
+    from checkpoint_history import IMPORT_TABLE
     from provisioning import require_deployment_in
 
 METADATA = {
@@ -31,7 +33,7 @@ METADATA = {
 }
 
 
-def require_checkpoint_schema(sql, manifest):
+def require_checkpoint_schema(sql, manifest, *, crypto=None, recovery_binding=None):
     # Both Cloudflare prefixes are reserved, including _cf_METADATA alarm state.
     # Never inspect their columns or export provider-owned rows.
     objects = sql.execute(
@@ -44,6 +46,9 @@ def require_checkpoint_schema(sql, manifest):
     allowed = set(TABLES) | set(METADATA)
     if ELECTION_TABLE in names:
         allowed.add(ELECTION_TABLE)
+    if IMPORT_TABLE in names:
+        # require_deployment_in verifies its bounded schema and completed custody chain.
+        allowed.add(IMPORT_TABLE)
     if len(objects) > 128 or any(
         row["type"] not in {"table", "index"}
         or row["tbl_name"] not in allowed
@@ -84,4 +89,4 @@ def require_checkpoint_schema(sql, manifest):
     versions = sql.execute("SELECT singleton,version FROM research_schema LIMIT 2").one()
     if (versions[0], versions[1]) != (1, SCHEMA_VERSION):
         raise unsupported()
-    require_deployment_in(sql, manifest)
+    require_deployment_in(sql, manifest, crypto=crypto, recovery_binding=recovery_binding)

@@ -2292,7 +2292,7 @@ continues to reject logical admissions and cannot parse this hosted envelope. Th
 atomic activation transition accepts either typed internal record; there is no generic
 wire decoder or public activation route. Offline verification establishes the recorded
 bindings, not current execution authority or a fresh elapsed-time observation. Hosted
-activation, deployment sealing and completed-lifecycle replay remain implementation work.
+activation and atomic deployment sealing remain implementation work.
 
 The hosted activation-cut helper validates the exact portable schema and performs
 scalar SQL type/count/byte checks before calling the shared activation inspector.
@@ -2308,6 +2308,21 @@ revoked historical rows. The final adapter transaction must repeat schema/scalar
 preflight **before** entering `Database.execute` through its existing SQL session:
 the activation guard projects the view before the command handler runs. The helper
 does not read R2 bytes, revoke credentials or change the workspace gate.
+
+Completed deployment verification now requires the protected `RESEARCH_CHECKPOINT_TARGET`
+binding, retained import metadata and a provisioning receipt with the signed activation
+envelope digest. All three must agree; deleting stored markers cannot make a protected
+recovered deployment ordinary. The target setting is validated against the actual
+deployment and store before only its public binding reaches the verifier.
+
+The verifier checks the original election/admission, frozen runtime plan/preparation,
+activation signatures and historical provider identity. It never compares the signed
+activation against a recomputed current research view or a later provider generation.
+Every retired credential must remain present and revoked. An active gate must retain
+the original source seal; a later sealed gate must name matching immutable current-epoch
+seal history. Ordinary reopen and all successor checkpoint paths receive the same
+protected binding and injected cryptography. Constructed-history tests cover these
+contracts; they do not qualify the unfinished live activation transaction.
 
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names

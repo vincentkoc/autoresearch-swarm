@@ -35,7 +35,17 @@ else:
 
 
 async def elect_source(
-    state, open_store, manifest, secrets, *, identity, credential, source_json, request_json, crypto
+    state,
+    open_store,
+    manifest,
+    secrets,
+    *,
+    identity,
+    credential,
+    source_json,
+    request_json,
+    crypto,
+    recovery_binding=None,
 ):
     custody = load_source(source_json, manifest, secrets, credential=credential, crypto=crypto)
     manifest.require_store(identity)
@@ -60,7 +70,15 @@ async def elect_source(
         manifest.require_store(store.identity)
 
         def commit(sql):
-            bound = SourceStore(store, sql, manifest, token, custody)
+            bound = SourceStore(
+                store,
+                sql,
+                manifest,
+                token,
+                custody,
+                crypto=crypto,
+                recovery_binding=recovery_binding,
+            )
 
             def select(admitted):
                 anchor = require_anchor_in(
@@ -92,6 +110,8 @@ async def elect_source(
                     token=token,
                     backup_id=request.request.signed_request.request.backup_id,
                     expected_custody=custody.binding.pin,
+                    crypto=crypto,
+                    recovery_binding=recovery_binding,
                 ).manifest
                 if intent.manifest_digest != image.digest:
                     raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint election image changed")

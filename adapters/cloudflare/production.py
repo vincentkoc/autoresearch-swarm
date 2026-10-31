@@ -7,7 +7,7 @@ from checkpoint_election import elect_source
 from checkpoint_routes import issue_target_route
 from checkpoint_runtime import prepare_target_runtime
 from checkpoint_source import capture_source, seal_source
-from checkpoint_target import import_target, request_target
+from checkpoint_target import import_target, request_target, retained_target_binding
 from checkpoint_turns import reconcile_target_turn
 from checkpoint_wire import require_rpc_string
 from deployment import load_deployment
@@ -51,11 +51,22 @@ def witness(manifest, secrets):
     )
 
 
+def recovery_binding(env, manifest, secrets, identity, crypto):
+    return retained_target_binding(
+        getattr(env, "RESEARCH_CHECKPOINT_TARGET", None),
+        manifest,
+        secrets,
+        identity=identity,
+        crypto=crypto,
+    )
+
+
 async def source_checkpoint(state, env, credential, request_json, operation, *, artifact_io=False):
     try:
         manifest, secrets, crypto = deployment(env)
         secrets.require_bootstrap(credential)
         fixed_target(env.RESEARCH_AUTHORITY, manifest, actual_id=state.id)
+        identity = StoreIdentity("cloudflare-do", manifest.namespace + "/" + str(state.id))
         arguments = {"objects": artifact_objects(env, manifest)} if artifact_io else {}
         result = await operation(
             state,
@@ -64,11 +75,12 @@ async def source_checkpoint(state, env, credential, request_json, operation, *, 
             ),
             manifest,
             secrets,
-            identity=StoreIdentity("cloudflare-do", manifest.namespace + "/" + str(state.id)),
+            identity=identity,
             credential=credential,
             source_json=getattr(env, "RESEARCH_CHECKPOINT_SOURCE", None),
             request_json=request_json,
             crypto=crypto,
+            recovery_binding=recovery_binding(env, manifest, secrets, identity, crypto),
             **arguments,
         )
         return result if isinstance(result, str) else json_response(result).body.decode()
@@ -261,6 +273,13 @@ class ResearchAuthority(DurableObject):
                 crypto=crypto,
                 acquire=acquire,
                 objects=objects,
+                recovery_binding=recovery_binding(
+                    self.env,
+                    manifest,
+                    secrets,
+                    StoreIdentity("cloudflare-do", manifest.namespace + "/" + str(self.ctx.id)),
+                    crypto,
+                ),
             )
             result = await serve(
                 router,

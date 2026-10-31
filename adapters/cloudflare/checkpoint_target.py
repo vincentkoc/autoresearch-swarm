@@ -83,6 +83,26 @@ def load_target(raw_json, manifest, secrets, *, credential):
         ) from None
 
 
+def retained_target_binding(raw_json, manifest, secrets, *, identity, crypto):
+    """Load protected pins for ordinary reopen or successor export after activation."""
+    if raw_json is None:
+        return None
+    custody = load_target(raw_json, manifest, secrets, credential=secrets.bootstrap)
+    binding = custody.binding
+    verify_target_configuration(
+        manifest,
+        secrets,
+        binding.intent,
+        identity=identity,
+        credential=secrets.bootstrap,
+        target_seed=custody.seed,
+        expected_source=binding.expected_source,
+        expected_custody=binding.expected_custody,
+        crypto=crypto,
+    )
+    return binding
+
+
 async def import_target(
     state, open_store, manifest, secrets, *, identity, credential, target_json, bundle_json, crypto
 ):

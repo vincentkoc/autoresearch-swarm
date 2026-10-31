@@ -6,12 +6,13 @@ from dataclasses import asdict
 from research_swarm.control.auth import CredentialStore
 from research_swarm.control.recovery_authority import recovery_authority
 from research_swarm.crypto import public_key
-from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, RecoveryRuntimeGuard
 from research_swarm.domain.recovery_runtime import RecoveryRuntimePlan
-from research_swarm.domain.time_providers import TimeProviderData
-from research_swarm.domain.types import Digest, Revision, Timestamp, VersionedRecord, utc_now
+from research_swarm.domain.recovery_runtime import (
+    RuntimePreparationReceipt as RuntimePreparationReceipt,
+)
+from research_swarm.domain.types import utc_now
 from research_swarm.state.database import Database, Transaction, _request_digest, encode
 from research_swarm.state.recovery_guard import require_recovery_authority
 from research_swarm.state.recovery_runtime import PLAN_KIND
@@ -40,21 +41,6 @@ else:
 
 OPERATION = "workspace.prepare_runtime"
 RECEIPT_KIND = "recovery_runtime_preparation"
-
-
-class RuntimePreparationReceipt(VersionedRecord):
-    plan_digest: Digest
-    restoration_digest: Digest
-    admission_digest: Digest
-    provider_revision: Revision
-    provider: TimeProviderData
-    prepared_at: Timestamp
-
-    @property
-    def digest(self):
-        return record_digest(
-            "research.runtime-preparation-envelope.v1", self.model_dump(mode="json")
-        )
 
 
 def runtime_plan(manifest, secrets, custody, crypto):
