@@ -27,7 +27,7 @@ class CapturedLogicalImage:
     bodies: tuple[bytes, ...] = field(repr=False)
 
 
-def _operator(sql, manifest, token):
+def require_source_operator_in(sql, manifest, token):
     expected = next(
         item for item in manifest.credentials if item.principal.id == manifest.provisioning_actor_id
     )
@@ -60,7 +60,7 @@ def capture_checkpoint(
 
     def capture(sql):
         manifest.require_store(store.identity)
-        principal = _operator(sql, manifest, token)
+        principal = require_source_operator_in(sql, manifest, token)
         require_checkpoint_schema(sql, manifest)
         inventory = preflight_rows(sql, limits)
         config = manifest.configuration

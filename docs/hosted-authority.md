@@ -1789,6 +1789,62 @@ and the full private RPC path still need actual workerd qualification.
 Sources: [RPC limits](https://developers.cloudflare.com/workers/runtime-apis/rpc/#limitations),
 [Python RPC](https://developers.cloudflare.com/changelog/post/2026-08-03-python-javascript-rpc/).
 
+## Private source checkpoint API
+
+Production `Bootstrap` and its fixed `ResearchAuthority` expose binding-only
+`checkpoint_seal(credential, request_json)` and
+`checkpoint_capture(credential, request_json)`. Both authenticate bootstrap and
+the fixed physical target; the DO repeats those checks. `Default` exposes neither
+method, and HTTP checkpoint routes remain absent. The ordinary agent API is
+unchanged. This source API has native transaction tests; actual private RPC
+qualification remains pending.
+
+The optional protected `RESEARCH_CHECKPOINT_SOURCE` binding contains:
+
+```json
+{
+  "schema_version": "1.0",
+  "deployment_digest": "<exact deployment digest>",
+  "authority": "<complete WitnessAuthorityScope object>",
+  "pin": "<BackupCustodyPin object>",
+  "custody_seed_hex": "<separately generated 32-byte custody seed>"
+}
+```
+
+This is a shape illustration, not a deployable credential file. Keep the binding
+in protected operator custody across restarts; neither RPC generates a replacement
+key. The loader checks the complete deployment and authority, pin epoch, public
+key possession and separation from assignment/dispatch keys before opening state.
+It loads only after bootstrap authentication. Secret representations and errors
+are redacted. Existing `RESEARCH_SECRETS` configuration stays unchanged.
+
+The seal request contains `schema_version`, a stable UUID `request_id`, the
+`expected_revision` of the workspace gate (zero when absent), and a `seal` object
+using the shared `SealWorkspace` contract. It must name the deployment's current
+controller and epoch. The source executes the existing seal and custody commands
+under one outer SQL write and the DO exclusive gate, with separate stable
+idempotency keys and command identities. Each command checks current root credential validity, full schema
+and deployment, source bounds, provider authority and existing custody before
+consulting saved command outcomes. Revocation therefore also refuses a retry.
+
+The existing commands execute through nested SQL savepoints. Before the outer
+commit, a complete capture validates the generated cut, records, acknowledgments
+and manifest against the source profile. An interruption or capacity refusal rolls
+back both commands, including their events and acknowledgments; no partly sealed,
+unexportable authority remains. Retry the exact request after a transport failure;
+do not change its request ID, reason, revision or backup ID. A lost final reply
+returns the original two receipts without new events. A
+different preexisting custody pin refuses without replacing it. Neither phase
+claims that a running experiment has stopped or releases its reserved resources.
+
+Capture accepts `schema_version` and `backup_id`. It returns the bounded transport
+string above, signing only the manifest constructed by verified source capture.
+There is no arbitrary-message signing method. An unchanged source produces the
+same bytes; a changed cut produces a new image identity. The operator must retain
+the exact exported bundle for a later target import. These operations need no
+fresh clock witness or R2 access. Artifact rows remain catalog evidence, and
+original-source election, byte restoration and target activation remain separate.
+
 ## Shared inactive restore transaction
 
 `checkpoints.inactive.restore_inactive_in()` extracts the existing native restore

@@ -52,6 +52,7 @@ PRODUCTION = (
     "checkpoint_capture.py",
     "checkpoint_import.py",
     "checkpoint_wire.py",
+    "checkpoint_source.py",
 )
 TARGETS = {
     "qualification": (".generated", "local-qualification-v1\n", "entry.py", QUALIFICATION),

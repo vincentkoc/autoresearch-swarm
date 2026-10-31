@@ -1,5 +1,6 @@
 """Production Worker: one fixed authority, with a separate private bootstrap entrypoint."""
 
+from checkpoint_source import capture_source, seal_source
 from deployment import load_deployment
 from durable_sql import DurableObjectStore
 from ed25519 import NobleEd25519
@@ -40,7 +41,39 @@ def witness(manifest, secrets):
     )
 
 
+async def source_checkpoint(state, env, credential, request_json, operation):
+    try:
+        manifest, secrets, crypto = deployment(env)
+        secrets.require_bootstrap(credential)
+        fixed_target(env.RESEARCH_AUTHORITY, manifest, actual_id=state.id)
+        result = await operation(
+            state,
+            lambda: DurableObjectStore.open_existing(
+                state.storage, namespace=manifest.namespace, object_id=str(state.id)
+            ),
+            manifest,
+            secrets,
+            identity=StoreIdentity("cloudflare-do", manifest.namespace + "/" + str(state.id)),
+            credential=credential,
+            source_json=getattr(env, "RESEARCH_CHECKPOINT_SOURCE", None),
+            request_json=request_json,
+            crypto=crypto,
+        )
+        return result if isinstance(result, str) else json_response(result).body.decode()
+    except ResearchError as error:
+        result = runtime_failure(error, mode="command")
+    except Exception:
+        result = runtime_failure(mode="command")
+    return result.body.decode()
+
+
 class ResearchAuthority(DurableObject):
+    async def checkpoint_seal(self, credential, request_json):
+        return await source_checkpoint(self.ctx, self.env, credential, request_json, seal_source)
+
+    async def checkpoint_capture(self, credential, request_json):
+        return await source_checkpoint(self.ctx, self.env, credential, request_json, capture_source)
+
     async def fetch(self, request):
         mode = "query"
         try:
@@ -121,6 +154,34 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def checkpoint_seal(self, credential, request_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_seal(
+                credential, request_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
+
+    async def checkpoint_capture(self, credential, request_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_capture(
+                credential, request_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def provision(self, credential):
         try:

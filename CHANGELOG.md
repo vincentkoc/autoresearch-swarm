@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Expose source seal and signed capture through private, fixed-target Bootstrap
+  RPC. Retain custody in an optional protected binding, recheck the current root
+  credential at each command, and commit seal/pin plus capture-capacity admission
+  atomically. Interrupted or oversized pairs roll back; exact replies remain replayable.
+  Public routes and ordinary agents gain no checkpoint or signing authority.
+
 - Define one bounded ASCII RPC transport for signed checkpoint envelopes and
   ordered chunks. Enforce the complete 6 MiB message cap before parsing and the
   source byte limits before decoding; transport does not verify or authorize import.
