@@ -25,7 +25,14 @@ from tests.test_manifest import project as project
 from tests.test_time_witnesses import source
 
 
-def client_at(url, token, input_profile=False, output_profile=False, publication_profile=False):
+def client_at(
+    url,
+    token,
+    input_profile=False,
+    output_profile=False,
+    publication_profile=False,
+    evaluation_profile=False,
+):
     client = connect(url, token)
     client.transport.http.headers["x-fixture-research-profile"] = "true"
     if input_profile:
@@ -34,10 +41,18 @@ def client_at(url, token, input_profile=False, output_profile=False, publication
         client.transport.http.headers["x-fixture-output-profile"] = "true"
     if publication_profile:
         client.transport.http.headers["x-fixture-publication-profile"] = "true"
+    if evaluation_profile:
+        client.transport.http.headers["x-fixture-evaluation-profile"] = "true"
     return client
 
 
-def inspect(url, input_profile=False, output_profile=False, publication_profile=False):
+def inspect(
+    url,
+    input_profile=False,
+    output_profile=False,
+    publication_profile=False,
+    evaluation_profile=False,
+):
     return control(
         url,
         "inspect",
@@ -45,6 +60,7 @@ def inspect(url, input_profile=False, output_profile=False, publication_profile=
         input_profile=input_profile,
         output_profile=output_profile,
         publication_profile=publication_profile,
+        evaluation_profile=evaluation_profile,
     )
 
 

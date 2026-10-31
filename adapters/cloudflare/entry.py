@@ -362,6 +362,8 @@ class Default(WorkerEntrypoint):
                 name = "shared-native-research-outputs"
             if request.headers.get("x-fixture-publication-profile") == "true":
                 name = "shared-native-research-publication"
+            if request.headers.get("x-fixture-evaluation-profile") == "true":
+                name = "shared-native-research-evaluation"
             stub = self.env.QUALIFICATION.getByName(name)
             try:
                 kind, _, _ = http_route(request.method, request.url)
@@ -393,7 +395,9 @@ class Default(WorkerEntrypoint):
                 return Response("Request too large", status=413)
             probe = NativeProbe.model_validate_json(text)
             stub = self.env.QUALIFICATION.getByName(
-                "shared-native-research-publication"
+                "shared-native-research-evaluation"
+                if probe.evaluation_profile
+                else "shared-native-research-publication"
                 if probe.publication_profile
                 else "shared-native-research-outputs"
                 if probe.output_profile

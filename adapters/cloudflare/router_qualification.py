@@ -12,6 +12,7 @@ from research_router import (
     ExistingResearchRouter,
     HostedArtifactConfiguration,
     HostedConfiguration,
+    HostedEvaluationConfiguration,
     HostedInputConfiguration,
     HostedOutputConfiguration,
     HostedPublicationConfiguration,
@@ -42,6 +43,7 @@ from research_swarm.storage.async_r2 import BoundedR2Configuration, BoundedR2Obj
 
 NAMESPACE = "router-qualification"
 OPERATOR_TOKEN, WORKER_TOKEN = "rsw_" + "O" * 43, "rsw_" + "W" * 43
+EVALUATOR_TOKEN = "rsw_" + "E" * 43
 DISPATCH_KEY = b"\x00" * 32
 
 
@@ -70,6 +72,18 @@ class UnserializedFixture:
         await callback()
 
 
+def fixture_credentials(principals):
+    count = len(principals)
+    return tuple(
+        zip(
+            ("operator", "worker", "evaluator")[:count],
+            principals,
+            (OPERATOR_TOKEN, WORKER_TOKEN, EVALUATOR_TOKEN)[:count],
+            strict=True,
+        )
+    )
+
+
 def configuration(
     object_id,
     crypto,
@@ -79,8 +93,10 @@ def configuration(
     input_profile=False,
     output_profile=False,
     publication_profile=False,
+    evaluation_profile=False,
     source=None,
 ):
+    publication_profile = publication_profile or evaluation_profile
     output_profile = output_profile or publication_profile
     input_profile = input_profile or output_profile
     research_profile = research_profile or input_profile
@@ -107,6 +123,14 @@ def configuration(
             | ({"worker.outputs"} if output_profile else set()),
         ),
     )
+    if evaluation_profile:
+        principals += (
+            Principal(
+                id=identifier("router-evaluator-principal"),
+                workspace_id=principals[0].workspace_id,
+                scopes={"read", "evaluation.publish"},
+            ),
+        )
     config = HostedConfiguration(
         store_location=f"{NAMESPACE}/{object_id}",
         authority=WitnessAuthorityScope(
@@ -125,14 +149,17 @@ def configuration(
             {
                 "principals": [principal.model_dump(mode="json") for principal in principals],
                 "tokens": [
-                    CredentialStore._digest(token) for token in (OPERATOR_TOKEN, WORKER_TOKEN)
+                    CredentialStore._digest(token)
+                    for _, _, token in fixture_credentials(principals)
                 ],
             },
         ),
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedPublicationConfiguration
+            HostedEvaluationConfiguration
+            if evaluation_profile
+            else HostedPublicationConfiguration
             if publication_profile
             else HostedOutputConfiguration
             if output_profile
@@ -172,9 +199,7 @@ def prepare_provision(state, object_id, crypto, config, principals, *, native_or
     database = Database.from_store(store)
     database.bootstrap(config.authority.workspace_id, config.authority.controller_id)
     credentials = CredentialStore(database)
-    for name, principal, token in zip(
-        ("operator", "worker"), principals, (OPERATOR_TOKEN, WORKER_TOKEN), strict=True
-    ):
+    for name, principal, token in fixture_credentials(principals):
         credentials.install(
             principals[0],
             principal,
@@ -243,7 +268,7 @@ def provision(state, object_id, crypto, config, principals):
 
 
 def provisioned(principals):
-    return {
+    result = {
         "operator_token": OPERATOR_TOKEN,
         "worker_token": WORKER_TOKEN,
         "enrollment": {
@@ -262,6 +287,9 @@ def provisioned(principals):
             ],
         },
     }
+    if len(principals) == 3:
+        result.update(evaluator_token=EVALUATOR_TOKEN, evaluator_id=principals[2].id)
+    return result
 
 
 class FixtureR2Transport(R2BindingTransport):

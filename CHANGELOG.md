@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an actual workerd two-stage evaluation probe with a separate evaluator
+  credential. Exercise manifest authorization, native scoring, independent receipt
+  creation, lost replies and offline restart replay with exactly two settlements.
+
 - Add an explicit hosted evaluator profile with the existing authorization,
   completion and record-query API. Keep evaluator identity separate from workers,
   publish input manifests through witnessed quota-accounted transfers, and recover

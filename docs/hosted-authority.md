@@ -781,6 +781,16 @@ evaluation and cloud deployment require separate evidence. Hosted historical
 acceptance, restoration, confirmation-plan creation and promotion remain outside
 this profile.
 
+The actual workerd fixture now provisions this profile with a third, separately
+scoped evaluator credential. Its ordinary project executes training and scoring
+as two native CPU stages. The probe loses the authorization and completion
+responses after their commits, replays them with R2 and the witness unavailable,
+and repeats replay after restarting only workerd. It checks two closed journals,
+two run results and settlements, one evaluator receipt, unchanged trial evidence,
+and no promotion or reader sessions. Older fixture profiles retain their original
+two credentials and configuration digest inputs. This test requires its own
+passing runtime receipt; source and collection checks alone are not qualification.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query
