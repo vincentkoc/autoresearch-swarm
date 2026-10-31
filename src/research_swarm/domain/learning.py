@@ -87,6 +87,7 @@ class DecisionTrace(VersionedRecord):
 
 class LearningEvidence(VersionedRecord):
     kind: Literal[
+        "population_change",
         "proposal_request",
         "proposal_response",
         "policy_transition",

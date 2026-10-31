@@ -15,8 +15,9 @@ from research_swarm.control.learning_models import (
 )
 from research_swarm.control.models import CampaignData
 from research_swarm.control.policy_guard import freeze_binding, require_plan_binding
+from research_swarm.control.population_parents import require_frozen_parent
 from research_swarm.control.proposals import ProposalControl, search_state
-from research_swarm.control.search_models import ProposalRequest, SearchState
+from research_swarm.control.search_models import ProposalRequest, SearchState, proposal_incumbent_id
 from research_swarm.control.workers import authority
 from research_swarm.domain.artifacts import ArtifactRetention
 from research_swarm.domain.canonical import record_digest
@@ -50,12 +51,14 @@ def live_proposal(transaction: Transaction, identifier: str) -> tuple[JsonObject
         authority(transaction) != (request.controller_id, request.control_epoch)
         or campaign.contract_digest != request.campaign_contract_digest
         or campaign.incumbent_revision != request.incumbent_revision
-        or campaign.incumbent_candidate_id != request.parent_candidate_id
+        or campaign.incumbent_candidate_id != proposal_incumbent_id(request)
         or campaign.incumbent_evaluation_id != request.context["incumbent_evaluation_id"]
         or campaign.incumbent_eligibility != "eligible"
         or record_digest("research.proposal-context", request.context) != request.context_digest
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Learning proposal context is no longer current")
+    if request.parent_selection is not None:
+        require_frozen_parent(transaction, request.parent_selection, request.campaign_id, campaign)
     return row, request
 
 
@@ -94,7 +97,7 @@ def freeze_episode(
         controller_id=request.controller_id,
         control_epoch=request.control_epoch,
         incumbent_revision=request.incumbent_revision,
-        comparator_candidate_id=request.parent_candidate_id,
+        comparator_candidate_id=proposal_incumbent_id(request),
         comparator_evaluation_id=comparator_id,
         comparison_digest=comparator.comparison_digest,
     )

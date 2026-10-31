@@ -314,6 +314,11 @@ def summarize(row: JsonObject) -> JsonObject:
         }
         if data.get("theme_id") is not None:
             result["data"]["theme_id"] = data["theme_id"]
+        if data.get("parent_selection") is not None:
+            result["data"]["parent_selection"] = {
+                key: data["parent_selection"][key] for key in ("reference", "change_id")
+            }
+            result["data"]["comparator_candidate_id"] = data["comparator_candidate_id"]
     elif row["kind"] == "proposal_response":
         result["data"] = {
             key: data[key]

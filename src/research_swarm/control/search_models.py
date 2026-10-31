@@ -6,6 +6,7 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from research_swarm.control.population_models import FrozenPopulationParent, PopulationParentRef
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.types import (
     ID,
@@ -49,6 +50,9 @@ class RequestProposal(VersionedRecord):
     expected_control_epoch: Revision
     instructions: str = Field(default="", max_length=8192)
     theme_id: Name | None = Field(default=None, exclude_if=lambda value: value is None)
+    parent_selection: PopulationParentRef | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ProposalRequest(VersionedRecord):
@@ -70,6 +74,29 @@ class ProposalRequest(VersionedRecord):
     requested_at: Timestamp
     budget_reservation_id: ID
     theme_id: Name | None = Field(default=None, exclude_if=lambda value: value is None)
+    parent_selection: FrozenPopulationParent | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    comparator_candidate_id: ID | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def matching_archive_parent(self) -> Self:
+        if (self.parent_selection is None) != (self.comparator_candidate_id is None):
+            raise ValueError("Archive ancestry requires an explicit comparator")
+        if self.parent_selection is not None:
+            member = self.parent_selection.member
+            if (
+                self.parent_candidate_id != member.request.candidate_id
+                or self.parent_candidate_id != self.parent_selection.reference.member_id
+                or self.parent_source != member.source_artifact
+                or self.campaign_id != member.request.campaign_id
+            ):
+                raise ValueError("Proposal source differs from its frozen archive parent")
+        return self
+
+
+def proposal_incumbent_id(request: ProposalRequest) -> str:
+    return request.comparator_candidate_id or request.parent_candidate_id
 
 
 class ReportedAgentUsage(VersionedRecord):

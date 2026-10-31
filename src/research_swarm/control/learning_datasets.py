@@ -21,10 +21,12 @@ from research_swarm.control.models import (
     TrialData,
 )
 from research_swarm.control.policy_guard import require_plan_binding
+from research_swarm.control.population_parents import require_frozen_parent
 from research_swarm.control.search_models import (
     ProposalAdmission,
     ProposalRequest,
     ProposalResponse,
+    proposal_incumbent_id,
 )
 from research_swarm.control.search_observations import trial_facts
 from research_swarm.domain.canonical import canonical_bytes, record_digest
@@ -89,10 +91,16 @@ def qualified_episode(
         or request.campaign_id != campaign_id
         or campaign.contract_digest != episode.campaign_contract_digest
         or request.context["incumbent_evaluation_id"] != episode.comparator_evaluation_id
+        or proposal_incumbent_id(request) != episode.comparator_candidate_id
         or committed.source_artifact.digest != trace.source_digest
         or plan.request.action_artifacts.get(trace.action_id) != committed.source_artifact
     ):
         blocked(request_id, "decision_or_context_changed")
+    if request.parent_selection is not None:
+        require_frozen_parent(transaction, request.parent_selection, campaign_id, campaign)
+        capture_record(
+            transaction, "population_change", request.parent_selection.change_id, evidence
+        )
     if optional_record(transaction, "proposal_response", request_id) is None:
         blocked(request_id, "response_missing")
     response = ProposalResponse.model_validate(
@@ -144,7 +152,7 @@ def qualified_episode(
         candidate.campaign_id != campaign_id
         or candidate.proposer_id != episode.proposer_id
         or candidate.source_artifact != committed.source_artifact
-        or candidate.parent_ids != (episode.comparator_candidate_id,)
+        or candidate.parent_ids != (request.parent_candidate_id,)
         or trial.candidate_id != admission.candidate_id
         or trial.validation_id != admission.validation_id
         or trial.spec.campaign_id != campaign_id

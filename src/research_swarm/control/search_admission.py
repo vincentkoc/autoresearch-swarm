@@ -12,6 +12,7 @@ from research_swarm.control.commands import ProposeCandidate, SubmitTrial
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.learning_guard import require_learning_policy
 from research_swarm.control.models import CampaignData
+from research_swarm.control.population_parents import require_frozen_parent
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.proposals import search_state, write_search_state
 from research_swarm.control.search_models import (
@@ -20,6 +21,7 @@ from research_swarm.control.search_models import (
     ProposalRequest,
     ProposalResponse,
     SearchState,
+    proposal_incumbent_id,
 )
 from research_swarm.control.workers import authority
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -99,7 +101,7 @@ class SearchAdmission:
             )
         if (
             request.incumbent_revision != campaign.incumbent_revision
-            or request.parent_candidate_id != campaign.incumbent_candidate_id
+            or proposal_incumbent_id(request) != campaign.incumbent_candidate_id
             or request.campaign_contract_digest != campaign.contract_digest
             or request.policy_version != state.policy_version
         ):
@@ -113,6 +115,10 @@ class SearchAdmission:
         eligible_evaluation(
             transaction, campaign.incumbent_evaluation_id, intent.campaign_id, campaign
         )
+        if request.parent_selection is not None:
+            require_frozen_parent(
+                transaction, request.parent_selection, intent.campaign_id, campaign
+            )
         slots = 1 if state.policy == "greedy" else campaign.contract.search.max_parallel_trials
         if len(state.pending_request_ids) + len(state.active_trial_ids) > slots:
             raise ResearchError(

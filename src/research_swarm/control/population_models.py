@@ -47,3 +47,14 @@ class PopulationChange(VersionedRecord):
     actor_id: ID
     reason: str = Field(min_length=1, max_length=2048)
     recorded_at: Timestamp
+
+
+class PopulationParentRef(VersionedRecord):
+    member_id: ID
+    revision: int = Field(strict=True, ge=1, le=9_007_199_254_740_991)
+
+
+class FrozenPopulationParent(VersionedRecord):
+    reference: PopulationParentRef
+    change_id: ID
+    member: PopulationMember

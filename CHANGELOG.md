@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Let external proposal controllers choose a retained research parent while preserving the incumbent as the independent promotion and learning comparator. Freeze archive ancestry, recheck evidence at admission, preserve issued choices across retirement and retain canonical lineage for duplicate responses.
+
 - Add a bounded research archive with atomic retention, retirement and reactivation, current evidence checks and immutable membership history. Preserve useful alternatives independently of promotion, expose them through the shared agent API and include them in captured reports.
 
 - Preserve report digests, capture watermarks and authenticated detail references in bounded agent summaries. Large MCP detail reads return useful navigation without losing successful command identities or changing the stored report.

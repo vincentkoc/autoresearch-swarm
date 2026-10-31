@@ -197,6 +197,33 @@ immutable changes. Reports capture bounded membership alongside the incumbent;
 retention-time evidence is not a promise of current eligibility. Corrections
 preserve history and prevent reuse of invalid evidence.
 
+With `external-v1` search, a proposal request may select an archive parent:
+
+~~~json
+{"parent_selection":{"member_id":"<candidate-id>","revision":1}}
+~~~
+
+Supply this field alongside the normal campaign, proposer, seed and authority
+fields. The controller requires the exact active membership revision and freezes
+its immutable change record, source and evidence. Omitting it keeps the incumbent
+as the source parent. Greedy and portfolio policies keep their existing parent
+rules; they do not silently become evolutionary search policies.
+
+The resulting request separates `parent_candidate_id` from
+`comparator_candidate_id`. A child of retained branch B can be evaluated against
+incumbent A. Mutation validation still uses the sealed project contract.
+Retiring or re-retaining B affects future requests; an issued request retains its
+original ancestry until explicitly cancelled or invalidated by its evidence or
+authority. Admission rechecks that original evidence after source-byte preflight.
+Corrections preserve responses and request costs. Exact accepted-command replay
+still returns its original acknowledgment.
+
+Duplicate source responses link to the existing candidate without rewriting its
+parents or inventing a new trial. The proposal history keeps the alternate parent
+choice. Learning episodes use the incumbent for their reward comparator and the
+selected parent for code ancestry; qualified trajectories include the frozen
+archive change and recheck its evidence.
+
 A proposal request assigns research work to one principal. It freezes an eligible
 incumbent, parent source, seed, instructions, bounded evidence context, event
 watermark, and controller epoch. It does not execute an LLM call. Any external

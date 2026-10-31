@@ -8,6 +8,7 @@ from research_swarm.control.benchmark_trials import require_ordinary_proposal
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.learning_guard import require_learning_response
 from research_swarm.control.models import CampaignData, CandidateData
+from research_swarm.control.population_parents import freeze_parent
 from research_swarm.control.portfolio import portfolio_contract, validate_portfolio_request
 from research_swarm.control.queries import summarize
 from research_swarm.control.search_models import (
@@ -170,9 +171,17 @@ class ProposalControl:
         slots = 1 if state.policy == "greedy" else campaign.contract.search.max_parallel_trials
         if len(state.pending_request_ids) + len(state.active_trial_ids) >= slots:
             raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Search slots are occupied")
-        parent = CandidateData.model_validate(
-            transaction.get("candidate", campaign.incumbent_candidate_id)["data"]
+        selected_parent = (
+            freeze_parent(transaction, request.parent_selection, request.campaign_id, campaign)
+            if request.parent_selection is not None
+            else None
         )
+        parent_id = (
+            selected_parent.member.request.candidate_id
+            if selected_parent is not None
+            else campaign.incumbent_candidate_id
+        )
+        parent = CandidateData.model_validate(transaction.get("candidate", parent_id)["data"])
         account = BudgetLedger.account(transaction, request.campaign_id, "proposal_requests")
         if account.unit != "count" or account.kind != BudgetKind.CUMULATIVE:
             raise ResearchError(
@@ -215,6 +224,9 @@ class ProposalControl:
             ),
             "usage_authority": "External model usage is agent-reported, not verified billing.",
         }
+        if selected_parent is not None:
+            snapshot["parent_selection"] = selected_parent.model_dump(mode="json")
+            snapshot["comparator_candidate_id"] = campaign.incumbent_candidate_id
         if len(canonical_bytes(snapshot)) > MAX_CONTEXT_BYTES:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Proposal context exceeds its bound"
@@ -229,7 +241,11 @@ class ProposalControl:
             policy_version=state.policy_version,
             campaign_contract_digest=state.campaign_contract_digest,
             incumbent_revision=campaign.incumbent_revision,
-            parent_candidate_id=campaign.incumbent_candidate_id,
+            parent_candidate_id=parent_id,
+            parent_selection=selected_parent,
+            comparator_candidate_id=(
+                campaign.incumbent_candidate_id if selected_parent is not None else None
+            ),
             parent_source=parent.source_artifact,
             seed=request.seed,
             instructions=request.instructions,

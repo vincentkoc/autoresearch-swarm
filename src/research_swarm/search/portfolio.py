@@ -121,7 +121,8 @@ class PortfolioPolicy:
             request = view.request["data"]
             if (
                 request["incumbent_revision"] != campaign.incumbent_revision
-                or request["parent_candidate_id"] != campaign.incumbent_candidate_id
+                or (request.get("comparator_candidate_id") or request["parent_candidate_id"])
+                != campaign.incumbent_candidate_id
                 or request["controller_id"] != authority["controller_id"]
                 or request["control_epoch"] != authority["control_epoch"]
                 or request["campaign_contract_digest"] != campaign.contract_digest
