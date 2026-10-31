@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: Native matrix or isolated restart diagnosis
+        description: Native matrix, isolated restart diagnosis or clock witnesses
         type: choice
         default: native
-        options: [native, recovery]
+        options: [native, recovery, witness]
 
 permissions:
   contents: read
@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 15
     env:
       UV_PYTHON: "3.12"
+      RESEARCH_REQUIRE_NODE: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -39,6 +40,9 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
       - run: uv sync --locked --group dev --python 3.12
       - name: Native ownership, recovery and cancellation
         if: inputs.suite == 'native'
@@ -52,6 +56,9 @@ jobs:
           tests/test_offer_locality.py
           tests/test_cache_reporting.py
           tests/test_clock_channel.py
+          tests/test_time_witnesses.py
+          tests/test_native_time_witnesses.py
+          tests/test_time_witness_http.py
           tests/test_temporal_history.py
           tests/test_recovery_activation.py::test_real_process_exit_at_activation_has_one_recoverable_commit
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
@@ -61,6 +68,14 @@ jobs:
           tests/test_r2_runtime.py
           tests/test_worker_recovery.py::test_original_driver_and_attempt_locks_are_respected
           tests/test_recovery_routes.py::test_tampered_or_missing_original_custody_refuses_delivery
+      - name: Native clock witnesses and independent wire verification
+        if: inputs.suite == 'witness'
+        run: >-
+          uv run --no-sync pytest -q --tb=short
+          tests/test_native_clocks.py
+          tests/test_time_witnesses.py
+          tests/test_native_time_witnesses.py
+          tests/test_time_witness_http.py
       - name: Independent worker restart
         if: inputs.suite == 'recovery'
         run: >-
