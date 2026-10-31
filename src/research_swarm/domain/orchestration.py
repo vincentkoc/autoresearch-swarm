@@ -67,6 +67,32 @@ class OrchestrationOwner(VersionedRecord):
     actor_id: ID
 
 
+class DeliveryRegistration(VersionedRecord):
+    workspace_id: ID
+    campaign_id: ID
+    epoch: int = Field(strict=True, ge=1)
+    configuration_digest: Digest
+    gateway_credential_id: ID
+    gateway_actor_id: ID
+    route_credentials: dict[DriverRoute, ID] = Field(min_length=1, max_length=2)
+    routes: dict[DriverRoute, ID] = Field(min_length=1, max_length=2)
+    registered_by: ID
+    registered_at: Timestamp
+
+    @model_validator(mode="after")
+    def distinct_routes(self) -> DeliveryRegistration:
+        actors = [self.gateway_actor_id, *self.routes.values()]
+        credentials = [self.gateway_credential_id, *self.route_credentials.values()]
+        if (
+            "control" not in self.routes
+            or set(self.routes) != set(self.route_credentials)
+            or len(set(actors)) != len(actors)
+            or len(set(credentials)) != len(credentials)
+        ):
+            raise ValueError("Separate gateway and exact distinct driver routes are required")
+        return self
+
+
 class DriveTurn(VersionedRecord):
     campaign_id: ID
     epoch: int = Field(strict=True, ge=1)

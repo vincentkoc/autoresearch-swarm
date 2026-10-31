@@ -21,6 +21,21 @@ class BindOrchestration(VersionedRecord):
         return self
 
 
+class RegisterDelivery(VersionedRecord):
+    campaign_id: ID
+    epoch: int = Field(strict=True, ge=1)
+    configuration_digest: Digest
+    gateway_credential_id: ID
+    route_credentials: dict[DriverRoute, ID] = Field(min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def distinct_credentials(self) -> Self:
+        identifiers = [self.gateway_credential_id, *self.route_credentials.values()]
+        if "control" not in self.route_credentials or len(set(identifiers)) != len(identifiers):
+            raise ValueError("Distinct gateway and route credentials are required")
+        return self
+
+
 class PrepareDriveTurn(VersionedRecord):
     campaign_id: ID
     epoch: int = Field(strict=True, ge=1)

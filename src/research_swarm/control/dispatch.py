@@ -63,6 +63,7 @@ from research_swarm.control.orchestration_models import (
     DriveTurnTarget,
     FenceOrchestration,
     PrepareDriveTurn,
+    RegisterDelivery,
     TransferOrchestration,
 )
 from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
@@ -379,6 +380,14 @@ COMMANDS = {
         "orchestration.manage",
         True,
         "Assign dedicated driver actors without changing native worker authority.",
+    ),
+    "orchestration.register_delivery": CommandDefinition(
+        RegisterDelivery,
+        "register_delivery",
+        "orchestration.manage",
+        True,
+        "Register one gateway and exact credential IDs for an existing driver binding.",
+        additional_scopes=("auth.manage",),
     ),
     "orchestration.prepare_turn": CommandDefinition(
         PrepareDriveTurn,

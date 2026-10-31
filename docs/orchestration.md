@@ -58,6 +58,53 @@ change the campaign's state. Async cancellation drains its already-admitted API
 step before releasing the checkpoint or allowing the caller to close clients.
 Domain records remain the authoritative evidence.
 
+## Register gateway delivery after campaign creation
+
+The shared `orchestration.register_delivery` command freezes delegation for an
+existing binding. It requires `orchestration.manage`, `auth.manage`, and
+`expected_revision=0`. The request carries no tokens:
+
+```python
+receipt = operator.command(
+    "orchestration.register_delivery",
+    {
+        "campaign_id": campaign_id,
+        "epoch": 1,
+        "configuration_digest": configuration_digest,
+        "gateway_credential_id": gateway_credential_id,
+        "route_credentials": {
+            "control": control_credential_id,
+            "evaluator": evaluator_credential_id,
+        },
+    },
+    idempotency_key="register-delivery",
+    expected_revision=0,
+)
+```
+
+The command derives workspace and actors from current server-owned credentials.
+The gateway needs `orchestration.deliver`; each route needs `read` and
+`orchestration.drive`, and must match the active binding and its dedicated owner
+record. Revoked, missing, expiring or foreign credentials refuse. The gateway must
+be distinct from all route actors. Registration does not grant additional scopes.
+The operator must hold every scope of each delegated principal, matching the
+credential issuer's existing scope ceiling.
+
+One immutable `delivery_registration` record is keyed by gateway actor. Its event
+and acknowledgment commit in the same transaction. Concurrent identical requests
+converge on that record; a different credential set or binding cannot overwrite it.
+Moving to another epoch requires a separate gateway registration.
+
+The exact original command replays its historical receipt after the binding is
+fenced or a target credential is revoked. The caller must still authenticate and
+hold both required scopes. A new idempotency key performs fresh live checks before
+returning even an identical registration. Neither receipt authorizes execution:
+delivery must resolve current credentials and recheck current binding ownership.
+
+This shared command defines the durable record. Each delivery adapter must
+explicitly support resolving it and provide protected token custody; it does not
+replace an adapter's existing in-memory registrations automatically.
+
 ## Bind dedicated principals
 
 An operator uses `orchestration.bind` with `orchestration.manage`, the current

@@ -59,6 +59,7 @@ from research_swarm.control.confirmation import (
     ConfirmationControl,
     CreateConfirmationPlan,
 )
+from research_swarm.control.delivery_registration import register_delivery
 from research_swarm.control.evaluations import (
     AuthorizeEvaluation,
     CompleteEvaluation,
@@ -107,6 +108,7 @@ from research_swarm.control.orchestration_models import (
     DriveTurnTarget,
     FenceOrchestration,
     PrepareDriveTurn,
+    RegisterDelivery,
     TransferOrchestration,
 )
 from research_swarm.control.orchestration_transfer import OrchestrationTransferControl
@@ -402,6 +404,9 @@ class ResearchService:
 
     def bind_orchestration(self, context: CommandContext, intent: BindOrchestration) -> JsonObject:
         return self.orchestration.bind(context, intent)
+
+    def register_delivery(self, context: CommandContext, intent: RegisterDelivery) -> JsonObject:
+        return register_delivery(self.database, context, intent)
 
     def record_orchestration_wait(
         self, context: CommandContext, intent: RecordOrchestrationWait

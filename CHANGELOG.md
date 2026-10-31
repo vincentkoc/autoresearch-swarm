@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `orchestration.register_delivery` to the shared command API. Freeze one
+  gateway's delegation to an existing campaign epoch using credential IDs only;
+  check current scopes and route ownership, preserve historical receipts, and
+  commit registration, event and acknowledgment together.
+
 - Extend the actual workerd successor probe with Workflow delivery after SDK
   recovery. Partial recovery refuses; duplicate Workflow starts share one driver,
   which records the accepted successor receipt before any client replay.
