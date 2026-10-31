@@ -42,7 +42,7 @@ function gatewayConfiguration(env: Env): { profile: string; origin: string } {
   } catch (error) {
     throw new NonRetryableError(
       error instanceof Error &&
-      error.message === "ADAPTER_CAPABILITY_UNSUPPORTED"
+        error.message === "ADAPTER_CAPABILITY_UNSUPPORTED"
         ? error.message
         : "INVALID_GATEWAY_CONFIGURATION",
     );
