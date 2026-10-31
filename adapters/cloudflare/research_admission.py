@@ -68,8 +68,11 @@ class HostedResearchAdmission:
         self.database, self.service = router.database, router.service
 
     def _profile(self):
-        # Kept independent of the router module to avoid an import cycle.
-        if self.router.configuration.profile != "research-admission-witness-v1":
+        if __package__:
+            from .research_router import supports_research
+        else:
+            from research_router import supports_research
+        if not supports_research(self.router.configuration):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Research admission is unavailable"
             )

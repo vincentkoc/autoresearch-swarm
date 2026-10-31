@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlsplit
 from pydantic import ValidationError
 
 from research_swarm.control.dispatch import COMMANDS as SHARED_COMMANDS
+from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.clocks import ClockChallenge
@@ -22,12 +23,22 @@ if __package__:
     from .artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from .artifact_router import UploadTarget
     from .research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
-    from .research_router import allowed_commands, supports_artifacts, supports_research
+    from .research_router import (
+        allowed_commands,
+        supports_artifacts,
+        supports_inputs,
+        supports_research,
+    )
 else:
     from artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from artifact_router import UploadTarget
     from research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
-    from research_router import allowed_commands, supports_artifacts, supports_research
+    from research_router import (
+        allowed_commands,
+        supports_artifacts,
+        supports_inputs,
+        supports_research,
+    )
 
 
 MAX_JSON_BYTES = 1024**2
@@ -74,6 +85,21 @@ def failure(error, *, unauthenticated=False):
     }.get(error.code, 409)
     return json_response(
         error.as_dict(), status, headers={"www-authenticate": "Bearer"} if status == 401 else None
+    )
+
+
+def content_response(reference, content):
+    return HTTPResponse(
+        200,
+        content,
+        {
+            **BASE_HEADERS,
+            "content-type": reference.media_type,
+            "content-length": str(reference.size_bytes),
+            "content-encoding": "identity",
+            "etag": '"' + reference.digest + '"',
+            "content-disposition": 'attachment; filename="' + reference.id + '"',
+        },
     )
 
 
@@ -145,6 +171,15 @@ def capabilities(configuration):
         result["worker_inputs"] = "unavailable"
         result["worker_outputs"] = "unavailable"
         result["evaluation"] = "unavailable"
+    if supports_inputs(configuration):
+        result["execution"] = "cpu-claim-and-inputs"
+        result["worker_inputs"] = {
+            "scope": "worker.inputs",
+            "request_schema": WorkerArtifactRead.model_json_schema(),
+            "transfer": "verified-buffer",
+            "max_object_bytes": configuration.storage.max_object_bytes,
+            "range_requests": False,
+        }
     return result
 
 
@@ -179,6 +214,8 @@ def route(method, target):
             return "command", "artifact.begin_upload", None
         if path == "/v1/query":
             return "records", "list", None
+        if path in {"/v1/worker/input", "/v1/worker/input/content"}:
+            return "worker-content" if path.endswith("/content") else "input", "worker.input", None
         if (match := UPLOAD.fullmatch(path)) and match[2] == "/finalize":
             return "finalize", match[1], None
         if re.fullmatch(r"/v1/commands/[a-z_]+\.[a-z_]+", path):
@@ -220,6 +257,8 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Research queries are unavailable"
             )
+        if kind in {"input", "worker-content"} and not supports_inputs(router.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Worker inputs are unavailable")
         if kind in {"upload", "status", "finalize"} or (
             kind == "command" and identifier in ARTIFACT_COMMANDS
         ):
@@ -229,6 +268,8 @@ async def handle(router, method, target, headers, read_body):
             scopes = (definition.scope, *definition.additional_scopes)
             if identifier in SOURCE_COMMANDS:
                 scopes += ("read",)
+        elif kind in {"input", "worker-content"}:
+            scopes = ("worker.inputs",)
         else:
             scopes = ("worker.query",) if kind == "query" else ("read",)
         for scope in scopes:
@@ -252,7 +293,7 @@ async def handle(router, method, target, headers, read_body):
             router.configuration.storage.max_object_bytes
             if kind == "upload"
             else MAX_JSON_BYTES
-            if kind in {"query", "command", "records"}
+            if kind in {"query", "command", "records", "input", "worker-content"}
             else 0
         )
         body = await read_body(limit)
@@ -260,7 +301,7 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Request body exceeds its bound"
             )
-        if kind in {"query", "command", "records"}:
+        if kind in {"query", "command", "records", "input", "worker-content"}:
             payload = strict_json_loads(body)
             if not isinstance(payload, dict):
                 raise ResearchError(
@@ -275,8 +316,11 @@ async def handle(router, method, target, headers, read_body):
                 idempotency_key=key,
                 expected_revision=int(revision) if revision is not None else None,
             )
-        elif kind == "query":
+        elif kind in {"query", "input"}:
             result = await router.query(token, identifier, payload)
+        elif kind == "worker-content":
+            reference, content = await router.worker_content(token, payload)
+            return content_response(reference, content)
         elif kind == "records":
             result = await router.query(token, "list", payload)
         elif kind == "record":
@@ -289,18 +333,7 @@ async def handle(router, method, target, headers, read_body):
             result = await router.query(token, "artifact.get", {"id": identifier})
         elif kind == "content":
             reference, content = await router.artifact_content(token, identifier)
-            return HTTPResponse(
-                200,
-                content,
-                {
-                    **BASE_HEADERS,
-                    "content-type": reference.media_type,
-                    "content-length": str(reference.size_bytes),
-                    "content-encoding": "identity",
-                    "etag": '"' + reference.digest + '"',
-                    "content-disposition": 'attachment; filename="' + reference.id + '"',
-                },
-            )
+            return content_response(reference, content)
         else:
             (await router.authenticate(token)).require("read")
             result = capabilities(router.configuration)

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import BinaryIO
 
 from research_swarm.control.workers import AttemptData, WorkerControl, WorkerData, worker_authority
+from research_swarm.domain.artifacts import ArtifactRecord
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
@@ -108,12 +109,25 @@ class WorkerArtifacts:
         return self.database.store.read(read)
 
     def input_metadata(self, context: CommandContext, request: WorkerArtifactRead) -> ArtifactRef:
+        return self._input_record(context, request).reference
+
+    def _input_record(
+        self,
+        context: CommandContext,
+        request: WorkerArtifactRead,
+        *,
+        expected: ArtifactRecord | None = None,
+    ) -> ArtifactRecord:
+        """Authorize the current input; expected is internal, verified preparation evidence."""
         context.principal.require("worker.inputs")
         request = WorkerArtifactRead.model_validate(request)
 
-        def read(transaction: Transaction) -> ArtifactRef:
+        def read(transaction: Transaction) -> ArtifactRecord:
             reference = input_reference(transaction, request, self.workers)
-            return ArtifactCatalog.available(transaction, reference).reference
+            record = ArtifactCatalog.available(transaction, reference)
+            if expected is not None and record != expected:
+                raise ResearchError(ErrorCode.STALE_FENCE, "Assigned input generation changed")
+            return record
 
         return self.database.query(
             context, "worker.input", request.model_dump(mode="json"), "worker.inputs", read

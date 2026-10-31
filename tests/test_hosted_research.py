@@ -60,7 +60,9 @@ async def research(hosted):
 
 
 @contextmanager
-def sdk(h, loop):
+def sdk(h, loop, *, token=None):
+    token = token or h.operator.token
+
     def route(request):
         async def deliver():
             async def read(limit):
@@ -74,17 +76,17 @@ def sdk(h, loop):
         result = asyncio.run_coroutine_threadsafe(deliver(), loop).result(timeout=10)
         return httpx.Response(result.status, content=result.body, headers=dict(result.headers))
 
-    with ResearchClient.connect("http://127.0.0.1", h.operator.token) as client:
+    with ResearchClient.connect("http://127.0.0.1", token) as client:
         client.transport.http.close()
         client.transport.http = httpx.Client(
             base_url="http://127.0.0.1",
             transport=httpx.MockTransport(route),
-            headers={"authorization": "Bearer " + h.operator.token},
+            headers={"authorization": "Bearer " + token},
         )
         yield client
 
 
-def admit(client, root):
+def admit(client, root, *, input_artifacts=None):
     """The same unchanged SDK sequence is also exercised against real workerd."""
     registered = client.register_project(root, idempotency_key="source")
     project = registered["result"]["project"]
@@ -96,6 +98,7 @@ def admit(client, root):
             "name": "Hosted ordinary project",
             "primary_metric": "loss",
             "limits": [item.model_dump(mode="json") for item in LIMITS],
+            "input_artifacts": input_artifacts or {},
         },
         idempotency_key="campaign",
     )["result"]
@@ -169,7 +172,7 @@ def enrollment(principal_id, policy_digest, **changes):
 def enroll_and_claim(client, admitted, principal_id, *, worker_client=None):
     worker_client = worker_client or client
     caps = client.capabilities()
-    assert caps["execution"] == "cpu-claim-only"
+    assert caps["execution"] in {"cpu-claim-only", "cpu-claim-and-inputs"}
     enrolled = client.command(
         "worker.enroll",
         enrollment(principal_id, caps["clock"]["policy_digest"]),

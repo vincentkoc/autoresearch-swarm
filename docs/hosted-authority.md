@@ -580,6 +580,39 @@ catalog/credential changes, cancellation, competing claims and current read
 permission on replay. They use SQLite with an asynchronous byte fixture and do
 not establish actual workerd qualification for this new profile.
 
+### Buffered scoped worker inputs
+
+`research-inputs-witness-v1` explicitly extends the admission profile with
+`POST /v1/worker/input` and `POST /v1/worker/input/content`. Both retain the
+existing SDK request schema and require only `worker.inputs`. Existing profiles
+refuse these routes before consuming a body. Global artifact reads remain
+unavailable to restricted workers.
+
+The adapter checks current worker/session, project scope, unsettled assignment,
+explicit hosted clock admission and membership in the signed assignment's source
+or named inputs before storage access. Metadata requests take a fresh witness.
+Content requests first capture the complete catalog record and verify its bounded
+R2 generation while holding the exclusive gate. After storage completes, a fresh
+witness precedes the shared `worker.input` query. That final query rechecks
+ownership, settlement, signed time binding, issuance epoch/policy, expiry and the
+expected catalog record. No client can supply the expected-record argument.
+
+A grant that expires during storage I/O releases no bytes. A successful response
+contains an immutable complete buffer; no storage reader remains active during
+HTTP delivery. The path therefore creates no pin, reader session, command
+acknowledgment or cleanup obligation. It is limited by the configured maximum
+object size and supports neither ranges nor a streaming R2 reader. A future
+streaming implementation requires a separate custody contract.
+
+Local tests use credentials containing only `worker.inputs`, download ordinary
+source and a named campaign input through the unchanged SDK, and refuse global
+read access. Faults cover invalid ownership, settled grants, missing admission,
+policy mismatch, expiry during a held read, corrupted/missing/retired/oversized
+objects, catalog change after verification, revocation, source epoch change and
+cancellation. A queued revocation orders after the completed read, then prevents
+the next request. These are local adapter tests, not workerd or cloud deployment
+qualification. Outputs, result publication and evaluator completion remain open.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

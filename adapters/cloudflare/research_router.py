@@ -77,12 +77,20 @@ class HostedResearchConfiguration(HostedArtifactConfiguration):
     profile: Literal["research-admission-witness-v1"] = "research-admission-witness-v1"
 
 
+class HostedInputConfiguration(HostedResearchConfiguration):
+    profile: Literal["research-inputs-witness-v1"] = "research-inputs-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
 
 def supports_research(configuration):
     return isinstance(configuration, HostedResearchConfiguration)
+
+
+def supports_inputs(configuration):
+    return isinstance(configuration, HostedInputConfiguration)
 
 
 def allowed_commands(configuration):
@@ -144,7 +152,10 @@ class ExistingResearchRouter:
 
         async def construct():
             config = TypeAdapter(
-                HostedConfiguration | HostedArtifactConfiguration | HostedResearchConfiguration
+                HostedConfiguration
+                | HostedArtifactConfiguration
+                | HostedResearchConfiguration
+                | HostedInputConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (
@@ -194,11 +205,14 @@ class ExistingResearchRouter:
             if __package__:
                 from .artifact_router import HostedArtifacts
                 from .research_admission import HostedResearchAdmission
+                from .worker_inputs import HostedWorkerInputs
             else:
                 from artifact_router import HostedArtifacts
                 from research_admission import HostedResearchAdmission
+                from worker_inputs import HostedWorkerInputs
             instance.artifacts = HostedArtifacts(instance)
             instance.research = HostedResearchAdmission(instance)
+            instance.inputs = HostedWorkerInputs(instance)
             return instance
 
         return await exclusive(state, construct)
@@ -356,11 +370,21 @@ class ExistingResearchRouter:
 
         return await exclusive(self.state, read)
 
+    async def worker_content(self, token, payload):
+        async def read():
+            context = self._context(token, idempotency_key=new_id())
+            return await self.inputs.read(token, context, payload, content=True)
+
+        return await exclusive(self.state, read)
+
     async def query(self, token, operation, payload):
         async def read():
             context = self._context(token, idempotency_key=new_id())
             if operation in {"get", "list"}:
                 return self.research.query(context, operation, payload)
+            if operation == "worker.input":
+                reference, _ = await self.inputs.read(token, context, payload, content=False)
+                return reference.model_dump(mode="json")
             if operation == "artifact.upload_status":
                 return await self.artifacts.status(token, context, payload)
             if operation == "artifact.get":

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a separately provisioned hosted input profile. Workers download only assigned
+  source and named inputs using their scoped SDK routes; complete R2 verification
+  precedes fresh expiry/epoch authorization, without global read access or pins.
+
 - Add a separate workerd research-admission probe using real R2, a native witness,
   ordinary SDK requests and a scoped CPU worker. Exercise lost acknowledgments,
   outage replay, owned runtime restart and independent native deadline validation.
