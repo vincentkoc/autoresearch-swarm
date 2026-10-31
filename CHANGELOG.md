@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve internal source-change evidence only after witness signature and
+  exact-request verification. Keep generic stale errors and transport refusals
+  separate from evidence that may support a durable clock fence.
+
 - Add a private native witness endpoint with a pinned consumer digest,
   authentication before body reads, bounded strict JSON, finite read timeouts
   and sanitized errors. Keep deployment and hosted authority disabled.

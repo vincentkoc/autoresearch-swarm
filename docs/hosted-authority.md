@@ -123,6 +123,15 @@ context. Multiple time-dependent checks within that synchronous operation use
 the same declared point. A different scope, nested replacement, use after the
 turn, changed operation digest or reused nonce fails closed.
 
+Only after signature and exact-request verification can a source-configuration
+mismatch produce `AuthenticatedSourceMismatch` evidence through
+`WitnessSourceChanged`. Its serialized error contains no proof or source details.
+The internal evidence can support a later durable fence after checking the
+original provider generation and revision; it cannot supply time to an operation.
+A generic `STALE_FENCE`, wrong nonce, wrong request binding or bad signature is
+not retirement evidence. An authenticated changed epoch with otherwise matching
+source configuration remains a `VerifiedTimeWitness` for the registry to assess.
+
 If the witness reply is uncertain before the domain transaction begins, abandon
 that prepared context. A new attempt obtains a new nonce and observation. Do not
 persist a timestamp and use it to admit the command on a later retry. Once the

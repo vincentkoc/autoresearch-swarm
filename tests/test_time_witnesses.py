@@ -12,6 +12,7 @@ from research_swarm.control.time_witnesses import (
     MAX_WITNESS_BYTES,
     PendingTimeWitness,
     WitnessSigner,
+    WitnessSourceChanged,
     decode_time_witness,
     witness_epoch,
     witness_signing_bytes,
@@ -148,6 +149,35 @@ def test_authenticated_response_cannot_change_pinned_source_configuration(field:
     with pytest.raises(ResearchError) as error:
         waiting.complete(encoded(authenticate_arbitrary(value)))
     assert error.value.code == ErrorCode.STALE_FENCE
+    assert isinstance(error.value, WitnessSourceChanged)
+    assert error.value.evidence.witness.payload == value
+    assert error.value.evidence.expected_source == source()
+    assert error.value.as_dict()["error"]["details"] == {}
+    assert "evidence" not in error.value.as_dict()
+
+
+@pytest.mark.parametrize("invalid", ["nonce", "scope", "signature"])
+def test_wrong_request_or_signature_cannot_create_source_retirement_evidence(invalid: str) -> None:
+    waiting = pending()
+    changed = payload(waiting.request).model_dump(mode="json")
+    changed["native_profile"] = "unqualified-clock"
+    if invalid == "nonce":
+        changed["request"]["nonce"] = identifier(99)
+    elif invalid == "scope":
+        changed["request"]["scope"]["provider_generation"] = identifier(99)
+    response = authenticate_arbitrary(TimeWitnessPayload.model_validate(changed)).model_dump(
+        mode="json"
+    )
+    if invalid == "signature":
+        response["signature"] = "0" * 128
+    with pytest.raises(ResearchError) as error:
+        waiting.complete(canonical_bytes(response))
+    assert not isinstance(error.value, WitnessSourceChanged)
+    assert error.value.code == (
+        ErrorCode.AUTHORIZATION_DENIED if invalid == "signature" else ErrorCode.STALE_FENCE
+    )
+    with pytest.raises(ResearchError, match="consumed"):
+        waiting.complete(encoded(signed(payload(waiting.request))))
 
 
 @pytest.mark.parametrize("field", ["signature", "key_id", "timestamp"])

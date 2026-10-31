@@ -120,6 +120,30 @@ class VerifiedTimeWitness:
         return witness_epoch(payload.request.scope, self.source, payload.source_epoch)
 
 
+@dataclass(frozen=True)
+class AuthenticatedSourceMismatch:
+    """An exact-request signed response with changed source configuration.
+
+    Retirement still requires the current durable provider binding and revision.
+    This is never a usable time observation or a transport-deserialized product.
+    """
+
+    witness: SignedTimeWitness
+    expected_source: WitnessSource
+
+
+class WitnessSourceChanged(ResearchError):
+    def __init__(self, evidence: AuthenticatedSourceMismatch) -> None:
+        super().__init__(
+            ErrorCode.STALE_FENCE, "Authenticated witness source configuration changed"
+        )
+        self._evidence = evidence
+
+    @property
+    def evidence(self) -> AuthenticatedSourceMismatch:
+        return self._evidence
+
+
 class PendingTimeWitness:
     """A fresh request accepts at most one completion, including failed verification."""
 
@@ -167,7 +191,10 @@ class PendingTimeWitness:
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED, "Witness authentication failed"
             ) from error
-        _require_source(self.source, witness.payload)
         if witness.payload.request != self._request:
             raise ResearchError(ErrorCode.STALE_FENCE, "Witness operation binding differs")
+        try:
+            _require_source(self.source, witness.payload)
+        except ResearchError:
+            raise WitnessSourceChanged(AuthenticatedSourceMismatch(witness, self.source)) from None
         return VerifiedTimeWitness(witness, self.source)
