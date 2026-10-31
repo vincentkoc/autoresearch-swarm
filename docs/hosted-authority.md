@@ -5,9 +5,9 @@ execution qualified in local workerd under an explicitly admitted native witness
 No production Cloudflare deployment has been performed. The existing
 [hybrid profile](cloudflare.md) remains available; it has separate qualification.
 The full M5 exit remains open. Nine-startup recovery and fresh-deployment clock
-management have local workerd proof at `daee81a`. Active reconciliation and timer
-rotation/runtime restart have local workerd proof at `95f3138`; pending-wait clock
-discontinuity and explicit errored-Workflow recovery are later, unqualified changes.
+management have local workerd proof at `daee81a`. Active reconciliation, timer
+rotation/runtime restart, pending-wait clock discontinuity and explicit
+errored-Workflow recovery have local workerd proof at `1eab4e7`.
 Deployed/fleet qualification is separate.
 
 The witness wire records, domain-separated signatures, pinned source checks,
@@ -40,8 +40,8 @@ qualified clock may compare the unchanged UTC value; native execution caps and
 acceptance leases retain their independent authority. Earlier profiles preserve
 their event-only limits. Shared native and adapter tests cover the time boundary,
 event priority, cancellation/revocation, fencing, restart and offline replay;
-baseline Workflow/workerd qualification is recorded below. The later clock-fence
-delivery recovery requires its own runtime receipt.
+Workflow/workerd qualification, including clock-fence delivery recovery, is
+recorded below.
 
 Hosted wait delivery derives its reconciliation key from the wait and the current
 authoritative provider generation. A verified retirement leaves delivery pending
@@ -59,8 +59,8 @@ the native clock while that wait is pending, and requires continued Workflow
 rotation under the durable provider fence. It then closes both owned runtimes,
 replays the original result offline, and verifies the saved wait before restarting
 Workflow delivery. Explicit requalification preserves the rejected delivery key.
-With the witness restored and no event
-or wake hint, it requires one timer readiness, a later cleared pending generation,
+With the witness restored and no event or wake hint, it requires one timer readiness,
+a later cleared pending generation,
 stable reconciliation replay and unchanged original execution accounting. The
 threshold is never moved to accommodate restart latency. The three authority
 startups and two Workflow startups before that new discontinuity assertion passed
@@ -69,7 +69,11 @@ at `95f313881a089b073a7560e5f4a8ddb43a492ed0`: **21 passes in 1,051.42 seconds**
 The same run passed 1,522 tests on Linux and macOS, and 1,516 with six explicit
 skips on Windows. All four jobs completed successfully.
 The stronger pending-clock-fence assertions and explicit errored-Workflow recovery
-remain pending. The earlier pass does not qualify those later changes.
+then passed in [run 41238120989](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41238120989/job/124648505702)
+at `1eab4e7d6ea784dfc6b5bed1080673e0bec45ffb`: **23 passes in 625.84 seconds**.
+The same revision passed 1,542 tests each on Linux and macOS, and 1,536 with six
+explicit skips on Windows. This is local workerd and native-platform qualification;
+it does not qualify an actual Cloudflare account deployment or physical GPU fleet.
 
 The optional `research-reconciliation-witness-v1` profile extends the startup
 profile with ordinary active-authority late-result handling. Select it explicitly
@@ -104,8 +108,9 @@ identity to observe the old acceptance epoch's refusal. It then drops accepted
 submission and reconciliation responses and replays them after workerd restart
 with the witness unavailable. The assertions preserve the original journal,
 assignment, lease evidence and accounting, with one result and no evaluator receipt.
-The probe is collected and its fixture fault injection is tested; actual runtime
-execution remains pending.
+The probe passed in local workerd at `95f3138`, then passed with the stronger
+pending-timer recovery assertions at `1eab4e7`, as recorded above. This verifies
+the production entrypoint in the local runtime, not a deployed account.
 
 Keep research state, command deduplication, budgets, leases, events and outbox
 effects in one SQLite Durable Object authority. Use a small native service to
@@ -432,8 +437,8 @@ and closure obligations; new work must obtain fresh calibration.
 SQLite/signed-witness tests cover races, lost acknowledgments, rollback, revocation,
 altered/oversized evidence and repeated source retirement. An activated-target
 integration preserves an unresolved attempt and its accounting while qualifying a
-fresh worker. Production RPCs are implemented; actual workerd qualification of
-these two management methods remains pending.
+fresh worker. Production RPCs passed actual local workerd qualification at
+`daee81a` and again in the latest `1eab4e7` run. Deployed routing remains separate.
 
 The separate fresh-deployment production probe now discovers an actual native
 source restart through a new `report.create` command, obtains its fenced state

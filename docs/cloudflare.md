@@ -306,7 +306,10 @@ errored provider instances are not reset by this operation.
 generation. Pure registry and SDK tests cover concurrency, storage rollback,
 lookup refusal, lost replies and exact replay. The actual two-startup workerd
 probe requires one settled effect from the original saved turn after terminal failure;
-that new runtime qualification is pending.
+it passed in [run 41238120989](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41238120989/job/124648505702)
+at `1eab4e7d6ea784dfc6b5bed1080673e0bec45ffb`, alongside 22 other workerd tests.
+The same revision passed the native Linux/macOS/Windows qualification matrix.
+This does not establish deployed Cloudflare recovery behavior.
 
 Wake hints do not establish readiness. Normal polling rechecks the native
 condition when hints are lost. The local fixture proves both resumed history
