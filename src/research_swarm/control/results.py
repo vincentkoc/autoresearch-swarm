@@ -28,7 +28,7 @@ from research_swarm.control.worker_state import settle_cancellation
 from research_swarm.control.workers import AttemptData, worker_authority
 from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.artifacts import ArtifactRecord, ArtifactRetention, StoredBlob
-from research_swarm.domain.canonical import record_digest, strict_json_loads
+from research_swarm.domain.canonical import content_digest, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef, RunResult
 from research_swarm.domain.identity import CommandContext
@@ -38,8 +38,23 @@ from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
-from research_swarm.state.sql import SqlSession
 from research_swarm.workers.journal_records import JournalEntry
+
+MAX_OBSERVATION_BYTES = 1024 * 1024
+
+
+def decode_observation_bytes(reference: ArtifactRef, content: bytes) -> JsonObject:
+    """Decode one bounded observation, independently bound to its immutable reference."""
+    if reference.size_bytes > MAX_OBSERVATION_BYTES or len(content) > MAX_OBSERVATION_BYTES:
+        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Observation exceeds its size bound")
+    if len(content) != reference.size_bytes or content_digest(content) != reference.digest:
+        raise ResearchError(
+            ErrorCode.ARTIFACT_UNVERIFIED, "Observation bytes differ from reference"
+        )
+    value = strict_json_loads(content)
+    if not isinstance(value, dict):
+        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Observation must be an object")
+    return dict(value)
 
 
 class ResultControl:
@@ -102,19 +117,9 @@ class ResultControl:
     def _publish_preflight(self, context: CommandContext, request: PublishAttempt) -> JsonObject:
         payload = request.model_dump(mode="json")
 
-        def read(connection: SqlSession) -> tuple[AttemptData, WorkerData]:
-            transaction = Transaction(connection, context)
-            admitted = AttemptData.model_validate(
-                transaction.get("attempt", request.attempt_id)["data"]
-            )
-            worker = worker_authority(
-                transaction,
-                admitted.dispatch.worker_id,
-                admitted.dispatch.worker_session_id,
-            )
-            return admitted, worker
-
-        admitted, worker = self.database.store.read(read)
+        admitted, worker = self.database.store.read(
+            lambda connection: self._publication_owner_in(Transaction(connection, context), request)
+        )
         with self.pin_evidence(
             context, request, admitted, worker, scope="worker.publish"
         ) as records:
@@ -134,6 +139,57 @@ class ResultControl:
                     transaction, request, error
                 ),
             )
+
+    @staticmethod
+    def _publication_owner_in(
+        transaction: Transaction, request: PublishAttempt
+    ) -> tuple[AttemptData, WorkerData]:
+        transaction.context.principal.require("worker.publish")
+        attempt = AttemptData.model_validate(transaction.get("attempt", request.attempt_id)["data"])
+        worker = worker_authority(
+            transaction, attempt.dispatch.worker_id, attempt.dispatch.worker_session_id
+        )
+        return attempt, worker
+
+    @staticmethod
+    def _evidence_record_in(
+        transaction: Transaction,
+        attempt: AttemptData,
+        worker: WorkerData,
+        intent: WorkerOutputIntent,
+        reference: ArtifactRef,
+        *,
+        scope: str,
+    ) -> ArtifactRecord:
+        """Select evidence under caller-established publication or reconciliation authority."""
+        transaction.context.principal.require(scope)
+        if worker.project_ids is not None:
+            verify_evidence_receipt(transaction, intent, reference, worker, attempt)
+        elif scope != "attempt.reconcile":
+            transaction.context.principal.require("read")
+        return ArtifactCatalog.available(transaction, reference)
+
+    def _evidence_records_in(
+        self,
+        transaction: Transaction,
+        request: PublishAttempt,
+        attempt: AttemptData,
+        worker: WorkerData,
+        *,
+        scope: str,
+    ) -> dict[str, ArtifactRecord]:
+        records = {}
+        for role, name, reference in evidence_roles(request):
+            # Authorize each role before coalescing identical byte reads.
+            records[reference.id] = self._evidence_record_in(
+                transaction,
+                attempt,
+                worker,
+                output_intent(attempt, role, name),
+                reference,
+                scope=scope,
+            )
+        return records
 
     def _fence_rejection(
         self, transaction: Transaction, request: PublishAttempt, error: ResearchError
@@ -169,8 +225,9 @@ class ResultControl:
                     reference: ArtifactRef,
                     intent: WorkerOutputIntent = intent,
                 ) -> None:
-                    if worker.project_ids is not None:
-                        verify_evidence_receipt(transaction, intent, reference, worker, attempt)
+                    self._evidence_record_in(
+                        transaction, attempt, worker, intent, reference, scope=scope
+                    )
 
                 manager = (
                     self.artifacts.pinned_authorized(
@@ -184,16 +241,14 @@ class ResultControl:
 
     def _read(self, record: ArtifactRecord) -> JsonObject:
         reference = record.reference
-        if reference.size_bytes > 1024 * 1024:
+        if reference.size_bytes > MAX_OBSERVATION_BYTES:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Observation exceeds its size bound")
         with self.artifacts.store.reader(
             record.workspace_id,
             StoredBlob(reference=reference, generation=record.storage_generation),
         ) as stream:
-            value = strict_json_loads(stream.read(1024 * 1024 + 1))
-        if not isinstance(value, dict):
-            raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Observation must be an object")
-        return dict(value)
+            content = stream.read(MAX_OBSERVATION_BYTES + 1)
+        return decode_observation_bytes(reference, content)
 
     def _accept(
         self,

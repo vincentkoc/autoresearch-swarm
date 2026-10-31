@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Share current result-owner and per-role evidence selection with byte adapters.
+  Decode observations only after exact size/digest and 1 MiB checks; preserve
+  native pin lifetimes, legacy read scopes and independent reconciliation authority.
+
 - Extend the actual native-witness workerd/R2 probe to scoped output publication,
   duplicate and abort cleanup, lost responses, and exact SDK replay after restart.
   Keep provider qualification separate from the passing local adapter tests.

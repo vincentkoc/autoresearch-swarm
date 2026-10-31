@@ -672,6 +672,13 @@ then replays those commands after an owned workerd restart with storage and the
 native source unavailable. The synthetic artifacts do not claim to be valid model
 results. A passing run receipt is required before calling this runtime qualified.
 
+Result preparation now has shared current-owner and role-specific catalog selectors,
+plus a byte decoder that verifies the immutable reference, 1 MiB bound, strict JSON
+and object shape. Every role is authorized before identical reads are coalesced.
+The native path keeps its original pin lifetime and acceptance transaction;
+historical reconciliation remains a separately authorized operation. These seams
+do not themselves expose hosted result or evaluator publication.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query
