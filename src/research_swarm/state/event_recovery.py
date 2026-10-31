@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from pydantic import ValidationError
@@ -29,6 +30,25 @@ from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import utc_now
 from research_swarm.state.database import Database, JsonObject, Transaction, encode
 from research_swarm.state.sql import SqlSession
+
+
+@dataclass(frozen=True)
+class SnapshotLimits:
+    max_items: int = 100_000
+    max_bytes: int = 256 * 1024 * 1024
+    max_retained_bytes: int = 1024**3
+
+    def __post_init__(self) -> None:
+        for value, ceiling in (
+            (self.max_items, 100_000),
+            (self.max_bytes, 256 * 1024 * 1024),
+            (self.max_retained_bytes, 1024**3),
+        ):
+            if type(value) is not int or not 1 <= value <= ceiling:
+                raise ValueError("Snapshot limits must fit the native profile ceilings")
+
+
+DEFAULT_LIMITS = SnapshotLimits()
 
 
 def snapshot_row(transaction: Transaction, identifier: str) -> JsonObject:
@@ -88,11 +108,21 @@ def collect_expired(
 
 
 class EventRecovery:
-    def __init__(self, database: Database, public_kinds: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        database: Database,
+        public_kinds: tuple[str, ...],
+        *,
+        limits: SnapshotLimits = DEFAULT_LIMITS,
+    ) -> None:
         self.database = database
         self.public_kinds = tuple(sorted(public_kinds))
+        self.limits = limits
 
     def create(self, context: CommandContext, intent: CreateRecoverySnapshot) -> JsonObject:
+        max_items = min(intent.max_items, self.limits.max_items)
+        max_bytes = min(intent.max_bytes, self.limits.max_bytes)
+
         def create(transaction: Transaction) -> JsonObject:
             request_digest = record_digest(
                 "research.recovery-request-v1", intent.model_dump(mode="json")
@@ -182,7 +212,11 @@ class EventRecovery:
                 content = canonical_bytes(item)
                 count += 1
                 size += len(content)
-                if count > intent.max_items or size > intent.max_bytes or retained + size > 1024**3:
+                if (
+                    count > max_items
+                    or size > max_bytes
+                    or retained + size > self.limits.max_retained_bytes
+                ):
                     raise ResearchError(
                         ErrorCode.RESOURCE_UNAVAILABLE,
                         "Recovery snapshot exceeds its declared bounds",
@@ -203,8 +237,8 @@ class EventRecovery:
             rows = transaction.connection.execute(
                 "SELECT kind,id FROM records WHERE workspace_id=? AND kind IN ("
                 + placeholders
-                + ") ORDER BY kind,id",
-                (transaction.workspace_id, *self.public_kinds),
+                + ") ORDER BY kind,id LIMIT ?",
+                (transaction.workspace_id, *self.public_kinds, max_items + 1),
             )
             for row in rows:
                 save({"type": "record", "value": transaction.get(row["kind"], row["id"])})
@@ -214,8 +248,8 @@ class EventRecovery:
                 ("budget_entries", "budget_entry", "id"),
             ):
                 for row in transaction.connection.execute(
-                    f"SELECT payload FROM {table} WHERE workspace_id=? ORDER BY {order}",
-                    (transaction.workspace_id,),
+                    f"SELECT payload FROM {table} WHERE workspace_id=? ORDER BY {order} LIMIT ?",
+                    (transaction.workspace_id, max_items - count + 1),
                 ):
                     save({"type": name, "value": strict_json_loads(row["payload"])})
             snapshot = snapshot.model_copy(update={"item_count": count, "size_bytes": size})

@@ -1160,6 +1160,16 @@ workerd run and deployed qualification still need separate passing receipts.
 
 ### Signed clock query boundary
 
+`SnapshotLimits` provides shared recovery projection ceilings. Effective item
+and byte limits are the smaller of the request and adapter profile; aggregate
+retained bytes include other active snapshots in the workspace. Record and budget
+scans include a SQL limit with one overflow sentinel before a hosted bridge can
+materialize rows. A bound failure rolls back every item and retention pin instead
+of returning a partial view. Default limits and accepted snapshot scope, ordering,
+watermark and content remain unchanged. These limits alone do not qualify hosted
+snapshot expiry or successor startup; that path still needs epoch-bound trusted
+time and a complete verified snapshot reader.
+
 The same generic execution boundary supports `Database.query()`. Every query
 gets a fresh synchronous execution marker. Native queries use the existing read
 transaction. A configured witnessed query uses an outer write transaction only

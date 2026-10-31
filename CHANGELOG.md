@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Bound recovery snapshot SQL scans before adapters materialize their results.
+  Allow smaller item, byte and aggregate retention profiles while preserving
+  request identity and complete projections; overflow rolls back items and pins.
+
 - Add an actual workerd transfer probe with distinct successor credentials,
   bounded authority/budget inspection, target receipt recovery, lost transfer
   replies and offline restart replay. Keep queued work and pending startup
