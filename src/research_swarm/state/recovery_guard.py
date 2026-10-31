@@ -49,6 +49,22 @@ def require_recovery_authority(
         or context._drive_guard is not None
     ):
         raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Recovery operation proof is required")
+    runtime = context._recovery_runtime
+    if runtime is not None and (
+        proof is not runtime
+        or any(
+            guard is not None
+            for guard in (
+                context._recovery_guard,
+                context._recovery_operation,
+                context._recovery_reader,
+                context._recovery_turn,
+                context._recovery_route,
+                context._recovery_activation,
+            )
+        )
+    ):
+        raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Recovery capabilities cannot mix")
     workspace = context.principal.workspace_id
 
     def record(kind: str, identifier: str) -> tuple[str, int, dict[str, Any]]:

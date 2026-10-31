@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a private recovery-runtime preparation guard. It binds each fresh credential
+  and clock-provider mutation to an immutable target plan, current elected admission
+  and exact operation. Reused credentials, mixed capabilities and use after activation
+  refuse. Ordinary installation replay and witness request identities stay unchanged;
+  hosted preparation and activation remain separate adapter work.
+
 - Extend the six-startup workerd recovery probe with a real original CPU execution,
   journal transfer through the named recovery ingress, quarantine, and private
   operational closure. Verify lost closure replies and exact upload/submission/closure

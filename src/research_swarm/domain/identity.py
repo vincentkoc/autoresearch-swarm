@@ -38,6 +38,7 @@ class CommandContext(Record):
     _recovery_turn: RecoveryTurnGuard | None = PrivateAttr(default=None)
     _recovery_route: RecoveryRouteGuard | None = PrivateAttr(default=None)
     _recovery_activation: RecoveryActivationGuard | None = PrivateAttr(default=None)
+    _recovery_runtime: RecoveryRuntimeGuard | None = PrivateAttr(default=None)
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,15 @@ class RecoveryRouteGuard(RecoveryAuthority):
     route_id: str
     route_digest: str
     nonexpiring_credential: bool
+
+
+@dataclass(frozen=True)
+class RecoveryRuntimeGuard(RecoveryAuthority):
+    """One preparation effect under an immutable plan; never execution authority."""
+
+    plan_digest: str
+    operation: str
+    request_digest: str
 
 
 @dataclass(frozen=True)

@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 from pydantic import TypeAdapter
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.identity import Principal
+from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import ID, Timestamp, new_id, utc_now
-from research_swarm.state.database import Database, encode
+from research_swarm.state.database import Database, _request_digest, encode
 from research_swarm.state.schema_contracts import require_credentials_schema
-from research_swarm.state.sql import SqlSession
+from research_swarm.state.sql import SqlSession, StoreIdentity
 from research_swarm.state.workspace_gate import require_workspace_mutation
 
 
@@ -114,6 +114,8 @@ class CredentialStore:
         *,
         identifier: str,
         token: str,
+        context: CommandContext | None = None,
+        authority: StoreIdentity | None = None,
     ) -> IssuedCredential:
         """Install one credential without committing or opening another transaction."""
         principal = cls._authorize(issuer, principal)
@@ -121,6 +123,25 @@ class CredentialStore:
         if re.fullmatch(r"rsw_[A-Za-z0-9_-]{43}", token) is None:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid enrollment credential")
         digest = cls._digest(token)
+        if (context is None) != (authority is None) or (
+            context is not None and context.principal != issuer
+        ):
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Credential owner context differs")
+        if context is not None:
+            payload = {
+                "id": identifier,
+                "principal": principal.model_dump(mode="json"),
+                "token_digest": digest,
+            }
+            require_workspace_mutation(
+                connection,
+                principal.workspace_id,
+                "credential.install",
+                context=context,
+                authority=authority,
+                payload=payload,
+                request_digest=_request_digest(context, "credential.install", payload),
+            )
         rows = connection.execute(
             "SELECT * FROM credentials WHERE id=? OR token_digest=?", (identifier, digest)
         ).fetchall()
@@ -140,7 +161,8 @@ class CredentialStore:
                     "Enrollment credential differs or is no longer active",
                 )
         else:
-            require_workspace_mutation(connection, principal.workspace_id, "credential.install")
+            if context is None:
+                require_workspace_mutation(connection, principal.workspace_id, "credential.install")
             connection.execute(
                 "INSERT INTO credentials"
                 "(id,token_digest,workspace_id,principal,created_at) VALUES (?,?,?,?,?)",

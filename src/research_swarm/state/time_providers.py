@@ -30,7 +30,7 @@ from research_swarm.domain.time_witnesses import (
     WitnessSource,
 )
 from research_swarm.domain.types import new_id, utc_now
-from research_swarm.state.database import JsonObject, Transaction
+from research_swarm.state.database import JsonObject, Transaction, _request_digest
 from research_swarm.state.sql import StoreIdentity
 from research_swarm.state.workspace_gate import require_workspace_mutation
 
@@ -58,6 +58,30 @@ class WitnessOperationBinding:
     expected: ProviderSnapshot
     source: WitnessSource
     request: TimeWitnessRequest
+
+
+def registration_payload(authority: WitnessAuthorityScope, source: WitnessSource) -> JsonObject:
+    return {
+        "authority": authority.model_dump(mode="json"),
+        "source": source.model_dump(mode="json"),
+    }
+
+
+def qualification_payload(
+    operation: WitnessOperationBinding, name: str, payload: Mapping[str, Any]
+) -> JsonObject:
+    """A gate preimage separate from the unchanged witness request preimage."""
+    return {
+        "name": name,
+        "payload": dict(payload),
+        "expected": {
+            "revision": operation.expected.revision,
+            "state": operation.expected.state,
+            "data": operation.expected.data.model_dump(mode="json"),
+        },
+        "source": operation.source.model_dump(mode="json"),
+        "request": operation.request.model_dump(mode="json"),
+    }
 
 
 @dataclass(frozen=True)
@@ -123,7 +147,13 @@ class TimeProviders:
                 ErrorCode.REVISION_CONFLICT, "Provider registration requires revision zero"
             )
         require_workspace_mutation(
-            transaction.connection, transaction.workspace_id, "time_provider.register"
+            transaction.connection,
+            transaction.workspace_id,
+            "time_provider.register",
+            context=transaction.context,
+            authority=self.store,
+            payload=(payload := registration_payload(authority, source)),
+            request_digest=_request_digest(transaction.context, "time_provider.register", payload),
         )
         data = TimeProviderData(
             scope=WitnessScope(**authority.model_dump(), provider_generation=new_id()),
@@ -269,7 +299,15 @@ class TimeProviders:
         current = self._current(transaction, operation, name, payload)
         witness = self._proof(operation, proposed)
         require_workspace_mutation(
-            transaction.connection, transaction.workspace_id, "time_provider.requalify"
+            transaction.connection,
+            transaction.workspace_id,
+            "time_provider.requalify",
+            context=transaction.context,
+            authority=self.store,
+            payload=(gate_payload := qualification_payload(operation, name, payload)),
+            request_digest=_request_digest(
+                transaction.context, "time_provider.requalify", gate_payload
+            ),
         )
         if current.state != "unqualified":
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Time provider is already qualified")
@@ -307,7 +345,10 @@ class TimeProviders:
         operation = evidence.operation
         self._binding(transaction, operation, name, payload)
         require_workspace_mutation(
-            transaction.connection, transaction.workspace_id, "time_provider.fence"
+            transaction.connection,
+            transaction.workspace_id,
+            "time_provider.fence",
+            context=transaction.context,
         )
         expected = operation.expected
         if expected.state != "qualified" or expected.data.source_epoch is None:

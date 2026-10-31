@@ -2246,6 +2246,22 @@ restarting every Worker, the original upload, submission and closure acknowledgm
 must replay unchanged, while historical attempt reads show `closed_unaccepted`.
 This extension remains pending actual workerd qualification.
 
+The shared kernel now has a private `RecoveryRuntimeGuard` for preparing an elected
+target. Its immutable `RecoveryRuntimePlan` binds deployment/configuration digests,
+the full target provider authority/source and a bounded roster of credential IDs,
+principals and token digests. The guard permits only installation of fresh credentials,
+registration of that provider and qualification from an exact witness request.
+It rechecks the recovering phase before the ordinary active-state shortcut and refuses
+mixed recovery or driver capabilities. A credential ID or token already in storage
+always refuses on this path, including matching, revoked or expiring rows.
+
+The adapter must commit the plan, complete fresh roster and unqualified provider in
+one transaction. Resume must verify that set without reinstalling or repairing it.
+Qualification must recheck the protected plan and roster after awaiting its witness.
+These adapter operations and subsequent activation are not implemented by the guard;
+it cannot authorize execution, fencing, scientific acceptance or activation. The
+existing native witness request preimage and ordinary credential replay are unchanged.
+
 `Bootstrap.checkpoint_artifact(bootstrap_credential, request_json, content_hex)`
 restores an imported artifact to the target's fixed R2 binding. Its request names
 the existing artifact ID and storage generation; bytes must be canonical lowercase

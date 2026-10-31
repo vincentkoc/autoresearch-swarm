@@ -16,6 +16,7 @@ def require_recovery_admission(
     proof = context._recovery_guard
     if (
         proof is None
+        or context._recovery_runtime is not None
         or proof.authority != (authority.backend, authority.location)
         or proof.request_digest != request_digest
     ):
@@ -72,6 +73,18 @@ def require_workspace_mutation(
     payload: Mapping[str, Any] | None = None,
     request_digest: str | None = None,
 ) -> None:
+    if context is not None and context._recovery_runtime is not None:
+        from research_swarm.state.recovery_runtime import require_recovery_runtime
+
+        if (
+            context.principal.workspace_id != workspace_id
+            or authority is None
+            or payload is None
+            or request_digest is None
+        ):
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Runtime preparation is incomplete")
+        require_recovery_runtime(connection, context, authority, operation, payload, request_digest)
+        return
     row = connection.execute(
         "SELECT state,payload FROM records WHERE workspace_id=? AND kind='workspace_gate' AND id=?",
         (workspace_id, workspace_id),
