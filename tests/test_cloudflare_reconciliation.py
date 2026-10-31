@@ -13,6 +13,7 @@ from adapters.cloudflare.deployment import (
     authority_id,
     credential_manifest_digest,
 )
+from adapters.cloudflare.wait_delivery import wait_delivery_key
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.client import ResearchClient
 from research_swarm.control.queries import RecordQuery
@@ -355,11 +356,35 @@ def test_production_result_and_timer_survive_clock_requalification_and_restarts(
                     )
 
                 checkpoint = until(carried, timeout=30)
+                timer_provider = provider_call(http, secrets["bootstrap"]).json()["provider"]
+                timer_key = wait_delivery_key(
+                    waiting["id"], timer_provider["data"]["scope"]["provider_generation"]
+                )
+                endpoint.restart()
+
+                def clock_fenced():
+                    provider = provider_call(http, secrets["bootstrap"]).json()["provider"]
+                    return provider if provider["state"] == "unqualified" else None
+
+                timer_fence = until(clock_fenced)
+                with pytest.raises(ResearchError) as timer_rejection:
+                    driver.command(
+                        "orchestration.reconcile_wait",
+                        {"wait_id": waiting["id"]},
+                        idempotency_key=timer_key,
+                    )
+                assert timer_rejection.value.code == ErrorCode.STALE_FENCE
+                initial = workflow_post(
+                    workflow_http, "/adapter/status", {"binding": gateway_binding}
+                )
+                checkpoint = until(carried, timeout=30)
+                assert provider_call(http, secrets["bootstrap"]).json()["provider"] == timer_fence
             endpoint.mode = "unavailable"
             calls = len(endpoint.requests)
 
         with (
             server(tmp_path, sequence=3, **options) as url,
+            httpx.Client(base_url=url, trust_env=False, timeout=30) as http,
             ResearchClient.connect(url, operator_token) as operator,
             ResearchClient.connect(url, worker_token) as client,
         ):
@@ -408,6 +433,25 @@ def test_production_result_and_timer_survive_clock_requalification_and_restarts(
                     == workflow_id
                 )
                 endpoint.mode = "normal"
+                timer_requalification = RequalifyTimeProvider(
+                    request_id=new_id(),
+                    expected_provider_revision=timer_fence["revision"],
+                    expected_provider_generation=timer_fence["data"]["scope"][
+                        "provider_generation"
+                    ],
+                    reason="Resume the original timer after its admitted clock restarted",
+                )
+                response = provider_call(
+                    http, secrets["bootstrap"], timer_requalification.model_dump(mode="json")
+                ).json()
+                assert response["disposition"] == "accepted"
+                with pytest.raises(ResearchError) as retained_timer_rejection:
+                    driver.command(
+                        "orchestration.reconcile_wait",
+                        {"wait_id": waiting["id"]},
+                        idempotency_key=timer_key,
+                    )
+                assert retained_timer_rejection.value.code == ErrorCode.STALE_FENCE
                 until(
                     lambda: driver.get("orchestration_wait", waiting["id"])["state"] == "ready",
                     timeout=120,

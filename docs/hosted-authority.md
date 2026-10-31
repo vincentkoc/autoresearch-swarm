@@ -51,9 +51,12 @@ mutation, including after sealing. Native/local delivery keeps its existing keys
 
 The production reconciliation probe now selects the timer profile and also starts
 a real Workflow before registering a threshold from the actual TLS witness's UTC
-observation. It requires a later generation to retain the pending wait, closes
-both owned runtimes, replays the original result offline, and verifies the saved
-wait before restarting Workflow delivery. With the witness restored and no event
+observation. It requires a later generation to retain the pending wait, restarts
+the native clock while that wait is pending, and requires continued Workflow
+rotation under the durable provider fence. It then closes both owned runtimes,
+replays the original result offline, and verifies the saved wait before restarting
+Workflow delivery. Explicit requalification preserves the rejected delivery key.
+With the witness restored and no event
 or wake hint, it requires one timer readiness, a later cleared pending generation,
 stable reconciliation replay and unchanged original execution accounting. The
 threshold is never moved to accommodate restart latency. The three authority

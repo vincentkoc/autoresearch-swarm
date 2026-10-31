@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extend actual-runtime timer qualification with a native clock restart while the
+  Workflow is waiting. Require rotation under the durable fence, restart both
+  runtimes, requalify explicitly, and retain the rejected delivery acknowledgment
+  before settling the unchanged timer once. Actual workerd execution is pending.
+
 - Keep hosted wait delivery live across explicit clock requalification. Scope its
   reconciliation key to the authoritative provider generation, preserve rejected
   acknowledgments and the original UTC threshold, and return pending only for a
