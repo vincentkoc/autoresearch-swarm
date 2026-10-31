@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the actual workerd probe through observed baseline selection, atomic
+  campaign completion, immutable reports and late evidence correction. Replay
+  successful and rejected closeout commands after restart without rerunning work.
+
 - Add hosted scientific closeout through the shared promotion, evidence correction,
   report and settled campaign transactions. Preserve observed-versus-confirmed
   evidence, incumbent revision checks, immutable reports and exact historical

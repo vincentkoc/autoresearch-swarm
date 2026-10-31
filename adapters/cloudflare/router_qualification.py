@@ -18,6 +18,7 @@ from research_router import (
     HostedOutputConfiguration,
     HostedPublicationConfiguration,
     HostedResearchConfiguration,
+    HostedScientificConfiguration,
     dispatch_key_digest,
 )
 from witness_qualification import SEED, identifier
@@ -96,8 +97,10 @@ def configuration(
     publication_profile=False,
     evaluation_profile=False,
     lifecycle_profile=False,
+    scientific_profile=False,
     source=None,
 ):
+    lifecycle_profile = lifecycle_profile or scientific_profile
     evaluation_profile = evaluation_profile or lifecycle_profile
     publication_profile = publication_profile or evaluation_profile
     output_profile = output_profile or publication_profile
@@ -160,7 +163,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedLifecycleConfiguration
+            HostedScientificConfiguration
+            if scientific_profile
+            else HostedLifecycleConfiguration
             if lifecycle_profile
             else HostedEvaluationConfiguration
             if evaluation_profile

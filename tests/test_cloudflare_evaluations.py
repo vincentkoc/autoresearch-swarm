@@ -9,6 +9,7 @@ from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEval
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.worker_lifecycle import WorkerHeartbeat
 from research_swarm.control.workers import WorkerData
+from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
@@ -47,12 +48,16 @@ def closed(runner, identifier):
     return entry
 
 
-@pytest.mark.parametrize("lifecycle_profile", [False, True])
-def test_two_stage_trial_independent_receipt_and_offline_restart_replay(
-    tmp_path, project, lifecycle_profile
-):
-    options = {"evaluation_profile": True, "lifecycle_profile": lifecycle_profile}
-    lifecycle_replays = []
+@pytest.mark.parametrize("profile", ["evaluation", "lifecycle", "scientific"])
+def test_two_stage_trial_independent_receipt_and_offline_restart_replay(tmp_path, project, profile):
+    lifecycle_profile = profile in {"lifecycle", "scientific"}
+    scientific_profile = profile == "scientific"
+    options = {
+        "evaluation_profile": True,
+        "lifecycle_profile": lifecycle_profile,
+        "scientific_profile": scientific_profile,
+    }
+    command_replays = []
     build_current_sources()
     (project / "train.py").write_text(TRAIN)
     (project / "evaluate.py").write_text(EVALUATE)
@@ -66,11 +71,7 @@ def test_two_stage_trial_independent_receipt_and_offline_restart_replay(
     with ExitStack() as lifetime:
         with server(tmp_path, sequence=1) as url:
             config = control(url, "describe", source=descriptor.model_dump(mode="json"), **options)
-            assert config["profile"] == (
-                "research-lifecycle-witness-v1"
-                if lifecycle_profile
-                else "research-evaluation-witness-v1"
-            )
+            assert config["profile"] == f"research-{profile}-witness-v1"
             endpoint = Endpoint(
                 WitnessAuthorityScope.model_validate(config["authority"]), descriptor
             )
@@ -125,7 +126,7 @@ def test_two_stage_trial_independent_receipt_and_offline_restart_replay(
                     if drop:
                         lost_reply(client, operation, request, **kwargs)
                     accepted = client.command(operation, request, **kwargs)
-                    lifecycle_replays.append((role, operation, request, kwargs, accepted))
+                    command_replays.append((role, operation, request, kwargs, accepted))
                     return accepted["result"]
 
                 if lifecycle_profile:
@@ -259,6 +260,97 @@ def test_two_stage_trial_independent_receipt_and_offline_restart_replay(
                 assert inspect(url, **options) == before
                 assert len(endpoint.requests) == calls
 
+                if scientific_profile:
+                    endpoint.mode = "normal"
+                    assessed = control_command(
+                        "operator",
+                        "promotion.assess",
+                        {
+                            "campaign_id": admitted.campaign["id"],
+                            "candidate_evaluation_id": result["id"],
+                            "expected_incumbent_revision": 0,
+                        },
+                        "assess",
+                    )
+                    assert assessed["data"]["decision"]["reason_codes"] == ["baseline_initialized"]
+                    assert assessed["data"]["decision"]["improvement"] is None
+                    assert assessed["data"]["evidence_level"] == "observed"
+                    selection = {"decision_id": assessed["id"]}
+                    control_command("operator", "promotion.commit", selection, "select")
+                    campaign = operator.get("campaign", admitted.campaign["id"])
+                    assert campaign["data"]["incumbent_revision"] == 1
+                    finished = control_command(
+                        "operator",
+                        "campaign.complete",
+                        {"campaign_id": campaign["id"], "reason": "Fixture closeout"},
+                        "finish",
+                        campaign["revision"],
+                        drop=True,
+                    )
+                    report = finished["report"]
+                    assert finished["campaign"]["state"] == "completed"
+                    assert finished["campaign"]["data"]["final_report_id"] == report["id"]
+                    assert report["state"] == "immutable"
+                    content = report["data"]
+                    assert content["report_digest"] == record_digest(
+                        "research.report",
+                        {key: value for key, value in content.items() if key != "report_digest"},
+                    )
+                    assert (
+                        content["snapshot"]["campaign_revision"] == finished["campaign"]["revision"]
+                    )
+                    assert content["snapshot"]["incumbent"]["evidence_level"] == "observed"
+                    assert all(
+                        row["reserved"] == row["uncertain"] == "0"
+                        for row in content["snapshot"]["budget"]
+                    )
+                    control_command(
+                        "operator",
+                        "evidence.invalidate",
+                        {
+                            "target": {"kind": "evaluation_receipt", "id": result["id"]},
+                            "reason": "Fixture late correction",
+                        },
+                        "correction",
+                    )
+                    assert operator.get("report", report["id"]) == report
+                    assert evaluator.get("evaluation_receipt", result["id"]) == result
+                    assert operator.get("promotion", assessed["id"])["state"] == "affected"
+                    suspended = operator.get("campaign", campaign["id"])
+                    assert suspended["state"] == "completed"
+                    assert suspended["data"]["incumbent_revision"] == 2
+                    assert suspended["data"]["incumbent_eligibility"] == "suspended"
+                    recent = control_command(
+                        "operator",
+                        "report.create",
+                        {"campaign_id": campaign["id"], "recent_limit": 1},
+                        "corrected-report",
+                    )
+                    assert recent["id"] != report["id"]
+                    snapshot = recent["data"]["snapshot"]
+                    assert snapshot["incumbent"]["eligibility"] == "suspended"
+                    assert not snapshot["recent_evaluations"][0]["eligible"]
+                    assert (
+                        snapshot["recent_evaluations"][0]["data"]
+                        == content["snapshot"]["recent_evaluations"][0]["data"]
+                    )
+                    with pytest.raises(ResearchError) as invalidated:
+                        operator.command(
+                            "promotion.commit", selection, idempotency_key="fresh-select"
+                        )
+                    assert invalidated.value.code == ErrorCode.EVIDENCE_INVALIDATED
+                    assert len(operator.list(RecordQuery(kind="report"))["items"]) == 2
+                    assert len(operator.list(RecordQuery(kind="evidence_correction"))["items"]) == 1
+                    before, calls = inspect(url, **options), len(endpoint.requests)
+                    assert before["evidence_counts"] == {
+                        "run_result": 2,
+                        "evaluation_receipt": 1,
+                        "promotion": 1,
+                        "artifact_read_session": 0,
+                    }
+                    assert len(before["settlements"]) == 2
+                    endpoint.mode = "unavailable"
+
         with (
             server(tmp_path, sequence=2) as url,
             client_at(url, setup["operator_token"], **options) as operator,
@@ -267,7 +359,7 @@ def test_two_stage_trial_independent_receipt_and_offline_restart_replay(
         ):
             for client in (operator, worker_client, evaluator):
                 client.transport.http.headers["x-fixture-r2-fault"] = "unavailable"
-            for role, operation, request, kwargs, accepted in lifecycle_replays:
+            for role, operation, request, kwargs, accepted in command_replays:
                 client = operator if role == "operator" else worker_client
                 assert client.command(operation, request, **kwargs) == accepted
             assert (
@@ -281,7 +373,16 @@ def test_two_stage_trial_independent_receipt_and_offline_restart_replay(
             )
             assert evaluator.get("evaluation_receipt", result["id"]) == result
             assert len(evaluator.list(RecordQuery(kind="evaluation_receipt"))["items"]) == 1
-            assert operator.get("trial", trial_id)["data"]["evaluation_status"] == "valid"
+            assert operator.get("trial", trial_id)["data"]["evaluation_status"] == (
+                "invalid" if scientific_profile else "valid"
+            )
+            if scientific_profile:
+                assert operator.get("report", report["id"]) == report
+                assert operator.get("report", recent["id"]) == recent
+                assert operator.get("campaign", campaign["id"]) == suspended
+                with pytest.raises(ResearchError) as invalidated:
+                    operator.command("promotion.commit", selection, idempotency_key="fresh-select")
+                assert invalidated.value.code == ErrorCode.EVIDENCE_INVALIDATED
             runner.client = worker_client
             assert runner.execute(trained["id"]) == trained
             assert runner.execute(scored["id"]) == scored

@@ -904,6 +904,16 @@ and offline replay. This profile needs separate actual workerd qualification.
 Confirmation-plan creation, unresolved-resource scientific completion, orchestration
 transfer and hosted restoration remain outside this profile.
 
+The actual workerd fixture includes a third scientific profile case alongside the
+evaluator and lifecycle cases. It selects the observed baseline, loses the final
+completion reply after commit, applies a late correction and creates a current
+report. After workerd restart it replays all successful acknowledgments and the
+fresh-key invalidated promotion rejection with source and R2 unavailable. The
+original report and evaluator receipt remain immutable; current trial eligibility
+is invalid and the incumbent is suspended. Native journals, two run results and
+two budget settlements remain unchanged. This case needs its own passing runtime
+receipt and does not claim statistical confirmation or cloud deployment.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

@@ -33,6 +33,7 @@ def client_at(
     publication_profile=False,
     evaluation_profile=False,
     lifecycle_profile=False,
+    scientific_profile=False,
 ):
     client = connect(url, token)
     client.transport.http.headers["x-fixture-research-profile"] = "true"
@@ -46,6 +47,8 @@ def client_at(
         client.transport.http.headers["x-fixture-evaluation-profile"] = "true"
     if lifecycle_profile:
         client.transport.http.headers["x-fixture-lifecycle-profile"] = "true"
+    if scientific_profile:
+        client.transport.http.headers["x-fixture-scientific-profile"] = "true"
     return client
 
 
@@ -56,6 +59,7 @@ def inspect(
     publication_profile=False,
     evaluation_profile=False,
     lifecycle_profile=False,
+    scientific_profile=False,
 ):
     return control(
         url,
@@ -66,6 +70,7 @@ def inspect(
         publication_profile=publication_profile,
         evaluation_profile=evaluation_profile,
         lifecycle_profile=lifecycle_profile,
+        scientific_profile=scientific_profile,
     )
 
 
