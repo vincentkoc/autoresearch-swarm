@@ -66,9 +66,9 @@ class UnserializedFixture:
         await callback()
 
 
-def configuration(object_id, crypto, *, artifact_profile=False):
+def configuration(object_id, crypto, *, artifact_profile=False, source=None):
     public = public_key(crypto, SEED).hex()
-    source = WitnessSource(
+    source = source or WitnessSource(
         id=identifier("source"),
         public_key=public,
         key_id=witness_key_id(public),
@@ -124,8 +124,12 @@ def configuration(object_id, crypto, *, artifact_profile=False):
     return config, principals
 
 
-def provision(state, object_id, crypto, config, principals):
-    """One explicit synthetic setup operation. Never called by ordinary requests."""
+def prepare_provision(state, object_id, crypto, config, principals, *, native_origin=None):
+    """Explicit fixture setup, returning a one-use admission completion callback.
+
+    No SQL transaction spans witness I/O. An interrupted setup stays unqualified;
+    this fixture is not a resumable production provisioner.
+    """
     store = DurableObjectStore(
         state.storage, namespace=NAMESPACE, object_id=object_id, schema=SCHEMA
     )
@@ -159,12 +163,44 @@ def provision(state, object_id, crypto, config, principals):
         principal=principals[0], idempotency_key="qualify", expected_revision=initial.revision
     )
     binding, pending = registry.prepare(admission, initial, "fixture.admission", {})
-    proof = pending.complete(
+
+    def complete(data):
+        proof = pending.complete(data)
+
+        def save(sql):
+            registry.requalify(
+                Transaction(sql, admission), binding, proof, name="fixture.admission", payload={}
+            )
+            sql.execute(
+                "CREATE TABLE hosted_authority_config "
+                "(singleton INTEGER PRIMARY KEY CHECK(singleton=1),digest TEXT,payload TEXT)"
+            )
+            sql.execute(
+                "INSERT INTO hosted_authority_config VALUES (1,?,?)",
+                (config.digest, encode(config.model_dump(mode="json"))),
+            )
+            if native_origin is not None:
+                sql.execute(
+                    "CREATE TABLE native_witness_transport "
+                    "(singleton INTEGER PRIMARY KEY CHECK(singleton=1),origin TEXT NOT NULL)"
+                )
+                sql.execute("INSERT INTO native_witness_transport VALUES (1,?)", (native_origin,))
+
+        store.write(save)
+        return provisioned(principals)
+
+    return pending.request, complete
+
+
+def provision(state, object_id, crypto, config, principals):
+    """Synthetic setup only; the native fixture uses an actual remote source."""
+    request, complete = prepare_provision(state, object_id, crypto, config, principals)
+    return complete(
         canonical_bytes(
             WitnessSigner(config.source, SEED, crypto_provider=crypto)
             .sign(
                 TimeWitnessPayload(
-                    request=pending.request,
+                    request=request,
                     source_id=config.source.id,
                     source_epoch=identifier("epoch-1"),
                     native_profile=config.source.native_profile,
@@ -175,23 +211,9 @@ def provision(state, object_id, crypto, config, principals):
             .model_dump(mode="json")
         )
     )
-    store.write(
-        lambda sql: registry.requalify(
-            Transaction(sql, admission), binding, proof, name="fixture.admission", payload={}
-        )
-    )
 
-    def save(sql):
-        sql.execute(
-            "CREATE TABLE hosted_authority_config "
-            "(singleton INTEGER PRIMARY KEY CHECK(singleton=1),digest TEXT,payload TEXT)"
-        )
-        sql.execute(
-            "INSERT INTO hosted_authority_config VALUES (1,?,?)",
-            (config.digest, encode(config.model_dump(mode="json"))),
-        )
 
-    store.write(save)
+def provisioned(principals):
     return {
         "operator_token": OPERATOR_TOKEN,
         "worker_token": WORKER_TOKEN,

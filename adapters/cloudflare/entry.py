@@ -15,6 +15,8 @@ from hosted_http import failure, uncertain
 from hosted_http import handle as handle_http
 from hosted_http import route as http_route
 from http_binding import HTTPBodyReader
+from native_router_qualification import NativeProbe, open_native_router
+from native_router_qualification import exercise as exercise_native_router
 from pydantic import Field
 from r2_qualification import exercise as exercise_r2
 from router_qualification import RouterProbe, configuration, open_router
@@ -86,17 +88,23 @@ class Qualification(DurableObject):
                 r2_fault=request.headers.get("x-fixture-r2-fault") or "none",
             )
             crypto = NobleEd25519(module)
-            config, _ = configuration(str(self.ctx.id), crypto, artifact_profile=True)
-            router = await open_router(
-                self.ctx,
-                str(self.ctx.id),
-                probe,
-                config,
-                crypto,
-                transport,
-                bucket=python_to_rpc(self.env.ARTIFACTS),
-                r2_module=r2,
-            )
+            if request.headers.get("x-fixture-native-source") == "true":
+                native_transport = import_from_javascript("./witness_io.mjs")
+                router = await open_native_router(
+                    self.ctx, str(self.ctx.id), crypto, native_transport
+                )
+            else:
+                config, _ = configuration(str(self.ctx.id), crypto, artifact_profile=True)
+                router = await open_router(
+                    self.ctx,
+                    str(self.ctx.id),
+                    probe,
+                    config,
+                    crypto,
+                    transport,
+                    bucket=python_to_rpc(self.env.ARTIFACTS),
+                    r2_module=r2,
+                )
             result = await handle_http(
                 router,
                 request.method,
@@ -114,6 +122,15 @@ class Qualification(DurableObject):
         ):
             return Response("{", headers={"content-type": "application/json"})
         return Response(result.body, status=result.status, headers=dict(result.headers))
+
+    async def native_contract(self, body):
+        crypto = NobleEd25519(import_from_javascript("./crypto.mjs"))
+        transport = import_from_javascript("./witness_io.mjs")
+        return json.dumps(
+            await exercise_native_router(
+                self.ctx, str(self.ctx.id), NativeProbe.model_validate_json(body), crypto, transport
+            )
+        )
 
     async def r2_contract(self, case):
         module = import_from_javascript("./r2_io.mjs")
@@ -314,7 +331,12 @@ class Default(WorkerEntrypoint):
         if url.hostname not in {"127.0.0.1", "localhost"}:
             return Response("Local qualification only", status=403)
         if url.path.startswith("/v1/"):
-            stub = self.env.QUALIFICATION.getByName("shared-router-contract-artifacts")
+            name = (
+                "shared-native-router-contract"
+                if request.headers.get("x-fixture-native-source") == "true"
+                else "shared-router-contract-artifacts"
+            )
+            stub = self.env.QUALIFICATION.getByName(name)
             try:
                 kind, _, _ = http_route(request.method, request.url)
                 mode = (
@@ -339,6 +361,16 @@ class Default(WorkerEntrypoint):
                 return Response(result.body, status=result.status, headers=dict(result.headers))
         if request.method != "POST":
             return Response("Not found", status=404)
+        if url.path == "/native-research":
+            text = await request.text()
+            if len(text.encode()) > 4096:
+                return Response("Request too large", status=413)
+            probe = NativeProbe.model_validate_json(text)
+            stub = self.env.QUALIFICATION.getByName("shared-native-router-contract")
+            return Response(
+                await stub.native_contract(probe.model_dump_json()),
+                headers={"content-type": "application/json"},
+            )
         if url.path.startswith("/r2-bytes/"):
             case = url.path.removeprefix("/r2-bytes/")
             if case not in {"roundtrip", "limit", "lost-response", "late", "retired", "corrupt"}:

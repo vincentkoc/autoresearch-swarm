@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a local runtime qualification that admits a real native clock source through
+  authenticated HTTP, produces shared-service signed worker clock replies and
+  distinguishes controller restart from source restart. Publish qualification
+  with configuration atomically; retain the native worker admission refusal.
+
 - Add a deployment-configured witness HTTP transport with a fixed endpoint,
   explicit consumer credential, HTTPS default, bounded exchange lifetime and
   response bytes. Refuse redirects and late completion; preserve independent

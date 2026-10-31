@@ -207,8 +207,18 @@ lifecycle qualification and hosted worker admission remain separate.
 
 Run the dependency-free transport tests with
 `node --test adapters/cloudflare/witness_io.test.mjs` from the repository root.
-They include real loopback HTTP and adversarial stream/timeout cases. This is
-not yet evidence for the full native-source-to-workerd chain or a deployment.
+They include real loopback HTTP and adversarial stream/timeout cases.
+
+`test_cloudflare_native_source.py` separately exercises the complete local chain:
+an actual `NativeWitnessSource`, the authenticated native endpoint, this transport,
+the DO router and shared worker clock replies. The fixture discovers the DO scope
+before constructing the source and preserves its actual native descriptor. It
+holds source responses beyond the deadline, checks acknowledgment replay during
+outage, and distinguishes workerd restart from a new native clock origin. Source
+restart must durably fence the provider before explicit requalification. Native
+workers still refuse the hosted clock profile. This test requires the same opt-in
+and clean workerd environment as the other runtime probes; its presence alone is
+not a passing runtime receipt or production deployment evidence.
 
 ## Agent API facade
 

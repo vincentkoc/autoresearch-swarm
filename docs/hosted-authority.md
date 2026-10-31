@@ -496,8 +496,13 @@ input errors merely because serialization raised `ValueError`. Domain rejection
 acknowledgments retain their original command identity and body. The HTTP module
 does not provision an authority, bind a public endpoint or deploy credentials.
 Unit tests drive the unchanged `ResearchClient` through its actual HTTP transport
-with a mock network boundary; a Workers ingress and real HTTP runtime probe are
-still required before claiming provider qualification for this API slice.
+with a mock network boundary. The actual Workers ingress subsequently passed at
+`7d33b2f` in [run 41195858674](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41195858674):
+six runtime tests passed in 137.23 seconds. The SDK sent binary and empty uploads,
+downloaded verified bytes, recovered a lost finalize response, reopened durable
+state and replayed cleanup with R2 disabled. Credential revocation waited behind
+an admitted read and denied the next download. This local runtime receipt uses
+synthetic authority time; it does not admit native workers or qualify deployment.
 
 The Workers body bridge (`http_binding.py` and `http_io.mjs`) enforces that bound
 while reading and refuses an unconfirmed read after five seconds. Ready chunk
