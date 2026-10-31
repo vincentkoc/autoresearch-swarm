@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Group reported observed scores by exact comparison identity and qualify confirmed selections against their full frozen evidence panels. Preserve policy and baseline lineages, exclude uncommitted or corrected evidence, and leave best-confirmed claims unset when history is incomplete instead of inventing a cross-plan scalar ranking.
+
 - Capture research scope, declared stopping rules, committed baseline evidence, source lineage and file digests, trial outcomes, historical execution profiles and open resource obligations in immutable reports. Pin selection evidence outside recent-history windows, expose truncation explicitly, and reject oversized reports without partial publication.
 
 - Show each reported evaluation's authorized measurement trust, exposure class, evaluator and panel authority. Keep confirmed selection separate from protected or official evaluation, which remain explicitly unqualified in both JSON and Markdown reports.

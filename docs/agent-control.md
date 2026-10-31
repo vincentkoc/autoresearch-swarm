@@ -149,6 +149,22 @@ Open questions are derived from captured unresolved records. Suggested next
 actions navigate that evidence; they neither grant mutation authority nor execute
 search, evaluation, promotion or worker reconciliation.
 
+`observed_cohorts` groups currently eligible measurements by their exact comparison
+digest, including execution fingerprints. It preserves metric direction and ties.
+A partial capture labels its extrema as belonging to the captured cohort; it does
+not claim a campaign-wide or cross-hardware winner.
+
+`research.confirmed_cohorts` uses historical commit evidence, the complete current
+confirmation panel and its frozen policy. Each cohort separates comparison
+identity, policy parameters and baseline reinitialization lineage. When promotion
+history is fully captured, its selected candidate is the last committed qualified
+confirmation by incumbent revision. The report does not rank first-seed scores,
+p-values or effects measured against different comparators, and it invents no
+absolute aggregate metric. Incomplete history leaves `best_confirmed` unset.
+The actual incumbent and any suspension remain separate; historical selections
+never authorize rollback. Corrections affect new captures without rewriting old
+reports or issuing new assessments.
+
 ## Durable external proposals
 
 A proposal request assigns research work to one principal. It freezes an eligible

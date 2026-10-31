@@ -10,6 +10,7 @@ import pytest
 from research_swarm.control.commands import ProposeCandidate, SubmitTrial, ValidateCandidate
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
+from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.validity import EvidenceReference
 from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -226,6 +227,14 @@ def test_comparison_uses_training_hardware_not_only_evaluator(
         assess(pipeline, receipt, "hardware-mismatch", 1)
     assert failure.value.code == ErrorCode.COMPARISON_INELIGIBLE
     assert "contracts differ" in failure.value.message
+    report = pipeline.client.command(
+        "report.create",
+        ReportCampaign(campaign_id=pipeline.campaign["id"]),
+        idempotency_key="separate-hardware-report",
+    )["result"]["data"]["snapshot"]
+    assert report["evaluation_window"]["complete"]
+    assert len(report["observed_cohorts"]) == 2
+    assert all(item["observation_count"] == 1 for item in report["observed_cohorts"])
 
 
 def test_explicit_reinitialization_uses_fresh_evidence_without_claiming_improvement(

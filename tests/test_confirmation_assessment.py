@@ -90,21 +90,46 @@ def test_complete_fixed_panel_selects_confirmed_candidate_or_rejects_failed_real
     assert assessment["data"]["gate"]["p_value"]["denominator"] == "32"
     assert assessment["data"]["evidence_level"] == "confirmed"
     assert len(assessment["data"]["decision"]["evaluation_ids"]) == 10
+    uncommitted = pipeline.client.command(
+        "report.create",
+        ReportCampaign(campaign_id=campaign["id"]),
+        idempotency_key="report-uncommitted-confirmation",
+    )["result"]["data"]["snapshot"]["research"]
+    assert uncommitted["confirmed_cohorts"] == []
+    pending = next(
+        item for item in uncommitted["promotions"]["items"] if item["id"] == assessment["id"]
+    )
+    assert pending["confirmation_status"] == "uncommitted"
     assert commit(pipeline, assessment, "commit-confirmed")["state"] == "committed"
     selected = pipeline.client.get("campaign", campaign["id"])["data"]
     assert selected["incumbent_candidate_id"] == intent.candidate_id
     assert (
         selected["incumbent_revision"] == 2 and selected["incumbent_evidence_level"] == "confirmed"
     )
-    report = pipeline.client.command(
+    report_row = pipeline.client.command(
         "report.create",
         ReportCampaign(campaign_id=campaign["id"]),
         idempotency_key="report-confirmed-selection",
-    )["result"]["data"]
+    )["result"]
+    report = report_row["data"]
     snapshot = report["snapshot"]
     assert snapshot["incumbent"]["evidence_level"] == "confirmed"
     assert snapshot["evaluation_claim_support"]["protected"] is False
     assert snapshot["evaluation_claim_support"]["official"] is False
+    cohort = snapshot["research"]["confirmed_cohorts"][0]
+    assert cohort["status"] == "selected" and cohort["history_complete"]
+    assert cohort["aggregate_metric"] is None
+    assert cohort["best_confirmed"]["candidate_id"] == intent.candidate_id
+    assert cohort["best_confirmed"]["promotion_id"] == assessment["id"]
+    assert cohort["best_confirmed"]["selected_incumbent_revision"] == 2
+    assert cohort["best_confirmed"]["is_current_incumbent"] is True
+    confirmed = next(
+        item
+        for item in snapshot["research"]["promotions"]["items"]
+        if item["id"] == assessment["id"]
+    )["confirmation"]
+    assert len(confirmed["per_seed_evidence"]) == 10
+    assert confirmed["gate"] == assessment["data"]["gate"]
     exposures = {
         item["data"]["exposure_authorization_id"]
         for item in snapshot["recent_evaluations"]
@@ -146,3 +171,17 @@ def test_complete_fixed_panel_selects_confirmed_candidate_or_rejects_failed_real
         pipeline.client.get("campaign", campaign["id"])["data"]["incumbent_eligibility"]
         == "suspended"
     )
+    corrected = pipeline.client.command(
+        "report.create",
+        ReportCampaign(campaign_id=campaign["id"]),
+        idempotency_key="report-corrected-confirmation",
+    )["result"]["data"]["snapshot"]
+    assert corrected["incumbent"]["eligibility"] == "suspended"
+    assert corrected["research"]["confirmed_cohorts"] == []
+    changed = next(
+        item
+        for item in corrected["research"]["promotions"]["items"]
+        if item["id"] == assessment["id"]
+    )
+    assert changed["confirmation_status"] == "ineligible"
+    assert pipeline.client.get("report", report_row["id"]) == report_row

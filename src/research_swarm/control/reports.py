@@ -11,6 +11,7 @@ from research_swarm.control.models import CampaignData
 from research_swarm.control.obligations import operational_context
 from research_swarm.control.queries import summarize
 from research_swarm.control.report_details import research_details
+from research_swarm.control.report_selection import observed_cohorts
 from research_swarm.domain.budgets import BudgetAccount
 from research_swarm.domain.canonical import canonical_bytes, record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -140,6 +141,41 @@ def detail_markdown(details: JsonObject) -> list[str]:
             f"`{attempt['profile']['execution_fingerprint']}` | "
             f"{result['exit_code'] if result else 'unknown'} | "
             f"{result['elapsed_ms'] if result else 'unknown'} |"
+        )
+    if promotions := details.get("promotions"):
+        lines.extend(
+            [
+                "",
+                "## Confirmed policy selections",
+                "",
+                f"Captured {promotions['included']} of {promotions['total']} promotion records. "
+                f"Complete: {promotions['complete']}.",
+                "",
+            ]
+        )
+        for cohort in details["confirmed_cohorts"]:
+            selected = cohort["best_confirmed"]
+            lines.append(
+                f"Cohort `{cohort['cohort_digest']}`: "
+                + (
+                    f"candidate `{selected['candidate_id']}`, selected by committed promotion "
+                    f"`{selected['promotion_id']}` at incumbent revision "
+                    f"{selected['selected_incumbent_revision']}."
+                    if selected
+                    else f"{cohort['status']}; no best-confirmed claim is made."
+                )
+            )
+            lines.append("")
+        if not details["confirmed_cohorts"]:
+            lines.extend(["No currently qualified committed confirmation is included.", ""])
+        lines.extend(
+            [
+                "Each cohort keeps its comparison identity, frozen confirmation policy and "
+                "baseline lineage. Selection follows committed incumbent revisions, not first-seed "
+                "scores, p-values or comparator-specific effects. Raw gates and per-seed evidence "
+                "remain in JSON. Historical selection does not restore an earlier incumbent.",
+                "",
+            ]
         )
     reservations = details["resource_disposition"]["open_reservations"]
     lines.extend(
@@ -271,6 +307,29 @@ def markdown(snapshot: JsonObject) -> str:
             f"{data['exposure_class']} | {'yes' if evaluation['eligible'] else 'no'} |"
         )
     lines.append("")
+    if cohorts := snapshot.get("observed_cohorts"):
+        lines.extend(["## Observed comparison cohorts", ""])
+        for cohort in cohorts:
+            lines.append(
+                f"Comparison `{cohort['comparison_digest']}`; scope: {cohort['scope']}; "
+                f"captured observations: {cohort['observation_count']}."
+            )
+            lines.append("")
+            for observed in cohort["best_observed"]:
+                metric = observed["metric"]
+                lines.append(
+                    f"- Evaluation `{observed['evaluation_id']}`: "
+                    f"{literal(metric['name'])} = {metric['value']} {literal(metric['unit'])}; "
+                    f"candidate `{observed['candidate_id']}`."
+                )
+            lines.append("")
+        lines.extend(
+            [
+                "These are single observed extrema within comparable captured evidence. "
+                "They do not establish statistical wins or a cross-hardware leaderboard.",
+                "",
+            ]
+        )
     if funding := snapshot.get("funding"):
         lines.extend(
             [
@@ -342,8 +401,10 @@ def create_report(
             exposure_authorization_id=request.exposure_authorization_id,
         )
         try:
-            eligible_evaluation(transaction, row["id"], campaign_row["id"], campaign)
+            qualified = eligible_evaluation(transaction, row["id"], campaign_row["id"], campaign)
             evidence["eligible"] = True
+            evidence["comparison_digest"] = qualified.comparison_digest
+            evidence["primary_metric"] = qualified.metric.model_dump(mode="json")
         except ResearchError as error:
             evidence["eligible"] = False
             evidence["ineligibility"] = error.code.value
@@ -415,6 +476,9 @@ def create_report(
         snapshot["operational"] = operational
     if funding is not None:
         snapshot["funding"] = funding
+    snapshot["observed_cohorts"] = observed_cohorts(
+        evaluations, complete=snapshot["evaluation_window"]["complete"]
+    )
     content: JsonObject = {"snapshot": snapshot, "markdown": markdown(snapshot)}
     content["report_digest"] = record_digest("research.report", content)
     if len(canonical_bytes(content)) > MAX_REPORT_BYTES:

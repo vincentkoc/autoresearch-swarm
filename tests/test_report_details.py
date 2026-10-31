@@ -83,6 +83,11 @@ def test_report_keeps_baseline_and_source_lineage_outside_a_truncated_window(
     )
     detail_budget = (
         len(canonical_bytes(captured[baseline_id]))
+        + sum(
+            len(canonical_bytes(item))
+            for item in details["promotions"]["items"]
+            if item["id"] in details["promotions"]["pinned_ids"]
+        )
         + max(len(canonical_bytes(lineage)), len(canonical_bytes(pinned_trial)))
         + 1
     )

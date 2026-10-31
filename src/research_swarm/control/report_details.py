@@ -9,6 +9,7 @@ from research_swarm.control.models import (
     TrialData,
 )
 from research_swarm.control.queries import summarize
+from research_swarm.control.report_selection import SelectionProjection, confirmed_cohorts
 from research_swarm.control.worker_records import AttemptData
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -219,6 +220,17 @@ def research_details(
         )
     )
     projection = DetailProjection(transaction, campaign_id, limit)
+    selection = SelectionProjection(transaction, campaign_id, campaign)
+    pinned_promotions = tuple(
+        dict.fromkeys(
+            identifier
+            for identifier in (
+                baseline["id"] if baseline else None,
+                campaign.incumbent_promotion_id,
+            )
+            if identifier is not None
+        )
+    )
 
     def candidate(row: JsonObject) -> JsonObject:
         data = CandidateData.model_validate(row["data"])
@@ -313,10 +325,13 @@ def research_details(
         projection.pin("candidate", identifier, candidate)
     for identifier in dict.fromkeys(pinned_trials):
         projection.pin("trial", identifier, trial)
+    for identifier in pinned_promotions:
+        projection.pin("promotion", identifier, selection.project)
     candidates = projection.page("candidate", candidate, pinned=pinned)
     trials = projection.page("trial", trial, pinned=tuple(dict.fromkeys(pinned_trials)))
     attempts = projection.page("attempt", attempt)
     proposals = projection.page("proposal_request", summarize)
+    promotions = projection.page("promotion", selection.project, pinned=pinned_promotions)
     reservations = projection.reservations()
     resource_counts = transaction.connection.execute(
         "SELECT kind,state,COUNT(*) AS count FROM records WHERE workspace_id=? AND campaign_id=? "
@@ -403,6 +418,8 @@ def research_details(
         "trials": trials,
         "attempts": attempts,
         "proposals": proposals,
+        "promotions": promotions,
+        "confirmed_cohorts": confirmed_cohorts(promotions),
         "resource_disposition": {
             "basis": "Controller-recorded custody; an omitted row is not proof of closure",
             "counts": [dict(row) for row in resource_counts],
