@@ -140,7 +140,7 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         title="Autoresearch Swarm", version="1.0", docs_url=None, redoc_url=None, openapi_url=None
     )
     queries = ResearchQueries(service.database)
-    workers = WorkerQueries(service.database)
+    workers = WorkerQueries(service.database, service.worker_locality)
     worker_artifacts = WorkerArtifacts(service.database, service.artifacts, service.workers)
 
     @app.exception_handler(ResearchError)

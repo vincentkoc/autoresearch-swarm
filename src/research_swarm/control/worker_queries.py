@@ -11,7 +11,7 @@ from pydantic import Field, ValidationError
 from research_swarm.control.acceptance import lease_row
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.queries import RecordCursor, summarize
-from research_swarm.control.worker_locality import cache_state
+from research_swarm.control.worker_locality import WorkerLocality, cache_state
 from research_swarm.control.worker_sessions import historical_attempt_owner, historical_session
 from research_swarm.control.worker_state import admission_open, worker_state
 from research_swarm.control.workers import AttemptData, WorkerData, worker_authority
@@ -29,6 +29,7 @@ class WorkerQuery(VersionedRecord):
     kind: Literal["pending", "offers", "controls", "historical_pending"]
     limit: int = Field(default=25, strict=True, ge=1, le=100)
     cursor: str | None = Field(default=None, max_length=2048)
+    campaign_id: ID | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class WorkerRead(VersionedRecord):
@@ -92,8 +93,8 @@ def eligible_offer(transaction: Transaction, worker: WorkerData, row: JsonObject
 
 
 class WorkerQueries:
-    def __init__(self, database: Database) -> None:
-        self.database = database
+    def __init__(self, database: Database, locality: WorkerLocality | None = None) -> None:
+        self.database, self.locality = database, locality
 
     def get(self, context: CommandContext, request: WorkerRead) -> JsonObject:
         request = WorkerRead.model_validate(request)
@@ -205,14 +206,14 @@ class WorkerQueries:
                 if request.kind == "historical_pending"
                 else worker_authority(transaction, request.worker_id, request.session_id)
             )
-            scope = record_digest(
-                "research.worker-page",
-                {
-                    "binding": worker.binding.model_dump(mode="json"),
-                    "kind": request.kind,
-                    "actor_id": context.principal.id,
-                },
-            )
+            scope_fields: JsonObject = {
+                "binding": worker.binding.model_dump(mode="json"),
+                "kind": request.kind,
+                "actor_id": context.principal.id,
+            }
+            if request.campaign_id is not None:
+                scope_fields["campaign_id"] = request.campaign_id
+            scope = record_digest("research.worker-page", scope_fields)
             if request.cursor is None:
                 through = connection.execute(
                     "SELECT COALESCE(MAX(rowid),0) FROM records WHERE workspace_id=?",
@@ -269,6 +270,9 @@ class WorkerQueries:
                 if request.kind != "offers"
                 else []
             )
+            if request.campaign_id is not None:
+                predicate += " AND campaign_id=?"
+                parameters.append(request.campaign_id)
             rows = connection.execute(
                 "SELECT rowid,id FROM records WHERE workspace_id=? AND kind=? "
                 "AND rowid>? AND rowid<=? " + predicate + " ORDER BY rowid LIMIT ?",
@@ -291,7 +295,9 @@ class WorkerQueries:
                     attempt = AttemptData.model_validate(row["data"])
                     if attempt.dispatch.controller_id != worker.binding.controller_id:
                         continue
-                items.append(summarize(row))
+                items.append(row)
+            if request.kind == "offers" and self.locality is not None:
+                items = self.locality.rank(transaction, worker, items)
             next_cursor = (
                 base64.urlsafe_b64encode(
                     canonical_bytes(
@@ -303,6 +309,10 @@ class WorkerQueries:
                 if more
                 else None
             )
-            return {"items": items, "next_cursor": next_cursor, "scanned": len(scanned)}
+            return {
+                "items": [summarize(row) for row in items],
+                "next_cursor": next_cursor,
+                "scanned": len(scanned),
+            }
 
         return self.database.store.read(read)

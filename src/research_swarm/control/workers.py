@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 
 from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.confirmation_runtime import claim_confirmation
+from research_swarm.control.job_inputs import resolved_job_inputs
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
 from research_swarm.control.time_authority import (
     AuthorityTime,
@@ -342,21 +343,7 @@ class WorkerControl:
                     ErrorCode.CAPABILITY_UNAVAILABLE,
                     "Protected evaluator admission is not qualified",
                 )
-            for predecessor_id in job.predecessor_ids:
-                if transaction.get("job", predecessor_id)["state"] != "succeeded":
-                    raise ResearchError(
-                        ErrorCode.INVALID_TRANSITION, "Stage dependency is incomplete"
-                    )
-            inputs = dict(job.inputs)
-            for name, predecessor_id in job.input_sources.items():
-                parent = JobData.model_validate(transaction.get("job", predecessor_id)["data"])
-                if name not in parent.outputs:
-                    raise ResearchError(
-                        ErrorCode.ARTIFACT_UNVERIFIED, "Predecessor output is unavailable"
-                    )
-                inputs[name] = parent.outputs[name]
-            for reference in inputs.values():
-                ArtifactCatalog.available(transaction, reference)
+            inputs = resolved_job_inputs(transaction, job)
             active = transaction.connection.execute(
                 "SELECT payload FROM records WHERE workspace_id=? AND kind='attempt' "
                 "AND state NOT IN "

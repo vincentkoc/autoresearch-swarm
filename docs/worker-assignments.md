@@ -67,7 +67,8 @@ Pages scan at most `limit` records and return a continuation cursor when more
 remain. A filtered page can be empty and still have a cursor. Follow the cursor
 until it is absent. The insertion boundary is fixed, while eligibility and record
 state are current at each page read. Begin a fresh scan to discover later work.
-The cursor binds the actor, enrollment, and query kind.
+The cursor binds the actor, enrollment, query kind and optional `campaign_id`
+filter. A filtered cursor cannot be reused for a broader query.
 Worker/session and pending-state indexes keep empty polls and failed ownership
 lookups from scanning completed attempt history. A SQLite operation-count test
 covers 2,000 completed attempts.
@@ -76,6 +77,15 @@ Offers respect project scope, campaign admission, engine capabilities, and
 evaluation authorization. They do not reserve capacity or budget. Claim the job
 with the offered revision and preserve the command key through uncertain delivery.
 The atomic claim can reject an offer that became unavailable.
+
+Within each scanned offer page, fresh [cache observations](worker-control.md#cache-observations)
+prefer the greatest reusable byte count. Ties preserve insertion order. Matching
+uses complete current artifact references for the candidate source and resolved
+stage inputs, including successful predecessor outputs. Repeated references count
+once. The next cursor still follows the original scanned rows, so preference
+cannot skip or pull work across page boundaries. Expired or unavailable hints
+fall back to insertion order. This bounded local preference is not a global
+placement optimizer or a guarantee that cached bytes remain present.
 
 The same views are available through HTTP, Python/async SDKs, and MCP. The scoped
 driver consumes them for recovery and discovery. Physical clock qualification

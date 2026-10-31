@@ -67,8 +67,9 @@ observation without refreshing time; changing its contents is a conflict.
 
 These observations grant no artifact access, retention, execution lease, resource
 reservation or scientific eligibility. Cache eviction is allowed after publication.
-Input materialization still checks its ordinary live authority. The API records
-advisory metadata; scheduler consumption is a separate integration.
+Input materialization still checks its ordinary live authority. Eligible worker
+offer pages use these hints for stable locality preference; claims retain all
+existing admission checks.
 
 ## Drain linearization
 

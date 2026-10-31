@@ -136,11 +136,11 @@ class LocalTransport:
         if operation == "proposal.get":
             return self.runtime.service.proposals.get(context, ProposalRead.model_validate(payload))
         if operation == "worker.get":
-            return WorkerQueries(self.runtime.database).get(
+            return WorkerQueries(self.runtime.database, self.runtime.service.worker_locality).get(
                 context, WorkerRead.model_validate(payload)
             )
         if operation == "worker.list":
-            return WorkerQueries(self.runtime.database).list(
+            return WorkerQueries(self.runtime.database, self.runtime.service.worker_locality).list(
                 context, WorkerQuery.model_validate(payload)
             )
         context.principal.require("read")

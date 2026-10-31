@@ -6,6 +6,8 @@ from typing import Final, Literal
 
 from pydantic import Field, model_validator
 
+from research_swarm.control.job_inputs import resolved_job_inputs
+from research_swarm.control.models import JobData, TrialData
 from research_swarm.control.workers import WorkerControl, WorkerData, worker_authority
 from research_swarm.domain.clocks import ClockMilliseconds
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -143,6 +145,7 @@ class WorkerLocality:
         """Ignore stale/unavailable hints; callers still perform ordinary admission."""
         if self.workers is None:
             return ()
+
         try:
             state = WorkerCacheState.model_validate(
                 cache_state(transaction, worker.binding)["data"]
@@ -169,3 +172,38 @@ class WorkerLocality:
             if error.code not in {ErrorCode.CAPABILITY_UNAVAILABLE, ErrorCode.STALE_FENCE}:
                 raise
             return ()
+
+    def rank(
+        self, transaction: Transaction, worker: WorkerData, offers: list[JsonObject]
+    ) -> list[JsonObject]:
+        """Stable preference within one bounded page, after ordinary eligibility."""
+        cached = {
+            reference.id: reference for reference in self.fresh_references(transaction, worker)
+        }
+        if not cached:
+            return offers
+
+        def reusable_bytes(row: JsonObject) -> int:
+            try:
+                job = JobData.model_validate(row["data"])
+                inputs = resolved_job_inputs(transaction, job)
+                trial = TrialData.model_validate(transaction.get("trial", job.trial_id)["data"])
+                candidate = transaction.get("candidate", trial.candidate_id)["data"]
+                source = ArtifactRef.model_validate(candidate["source_artifact"])
+                ArtifactCatalog.available(transaction, source)
+            except ResearchError as error:
+                if error.code not in {
+                    ErrorCode.NOT_FOUND,
+                    ErrorCode.ARTIFACT_UNVERIFIED,
+                    ErrorCode.INVALID_TRANSITION,
+                }:
+                    raise
+                return 0
+            references = {reference.id: reference for reference in (*inputs.values(), source)}
+            return sum(
+                reference.size_bytes
+                for identifier, reference in references.items()
+                if cached.get(identifier) == reference
+            )
+
+        return sorted(offers, key=reusable_bytes, reverse=True)
