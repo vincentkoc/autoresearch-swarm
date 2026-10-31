@@ -11,17 +11,15 @@ from pydantic import Field
 
 from research_swarm.checkpoints.backup import VerifiedBackup, verify_backup
 from research_swarm.checkpoints.files import CHUNK_BYTES, copy_private, measure_file, private_reader
+from research_swarm.checkpoints.inactive import RestorationCut, restore_inactive_in
 from research_swarm.checkpoints.preservation import verify_preservation
-from research_swarm.control.worker_records import WorkerData
-from research_swarm.control.worker_sessions import archive_session
-from research_swarm.control.worker_turnover import WorkerFence
 from research_swarm.domain.artifacts import UploadSpec
-from research_swarm.domain.backup import BackupFile, RestoreReceipt, WorkspaceSeal
+from research_swarm.domain.backup import BackupFile, RestoreReceipt
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, Principal
-from research_swarm.domain.types import ID, Digest, VersionedRecord, utc_now
-from research_swarm.state.database import Database, Transaction
+from research_swarm.domain.types import ID, Digest, VersionedRecord
+from research_swarm.state.database import Database
 from research_swarm.state.private_files import (
     private_state_directory,
     read_private,
@@ -138,106 +136,19 @@ def _transform(
         ),
         idempotency_key="native-restore:" + intent.restore_id,
     )
-
-    def restore(connection: SqlSession) -> RestoreReceipt:
-        transaction = Transaction(connection, context, observe_waits=False)
-        existing = connection.execute(
-            "SELECT id FROM records WHERE kind='restoration' AND id=?", (intent.restore_id,)
-        ).fetchone()
-        if existing is not None:
-            receipt = RestoreReceipt.model_validate(
-                transaction.get("restoration", existing["id"])["data"]
-            )
-            if (
-                receipt.restore_id != intent.restore_id
-                or receipt.manifest_digest != manifest.digest
-                or receipt.target_public_key != custody.public_key
-            ):
-                raise ResearchError(ErrorCode.STALE_FENCE, "Restoration identity differs")
-            return receipt
-        authority = connection.execute("SELECT * FROM workspaces").fetchall()
-        if len(authority) != 1 or (
-            authority[0]["id"],
-            authority[0]["controller_id"],
-            authority[0]["control_epoch"],
-        ) != (manifest.seal.workspace_id, manifest.seal.controller_id, manifest.seal.control_epoch):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Restore source authority differs")
-        gate = transaction.get("workspace_gate", manifest.seal.workspace_id)
-        if (
-            gate["state"] != "sealed"
-            or gate["revision"] != manifest.seal_revision
-            or WorkspaceSeal.model_validate(gate["data"]) != manifest.seal
-            or authority[0]["next_sequence"] - 1 != manifest.snapshot_evidence_through
-        ):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Restore source cut differs")
-        epoch = next_counter(manifest.seal.control_epoch)
-        for worker_id in manifest.seal.worker_ids:
-            row = transaction.get("worker", worker_id)
-            worker = WorkerData.model_validate(row["data"])
-            archive_session(transaction, worker)
-            if row["state"] == "fenced":
-                fence = transaction.get("worker_fence", worker.binding.worker_session_id)
-                if WorkerFence.model_validate(fence["data"]).binding != worker.binding:
-                    raise ResearchError(ErrorCode.STALE_FENCE, "Original worker fence differs")
-                continue
-            if row["state"] != "active":
-                raise ResearchError(ErrorCode.STALE_FENCE, "Original worker state is unsupported")
-            fence = transaction.insert(
-                "worker_fence",
-                worker.binding.worker_session_id,
-                WorkerFence(
-                    binding=worker.binding,
-                    worker_revision=row["revision"],
-                    controller_id=manifest.seal.controller_id,
-                    control_epoch=epoch,
-                    operator_id=context.principal.id,
-                    fenced_at=utc_now(),
-                    reason="Inactive restore " + intent.restore_id,
-                ).model_dump(mode="json"),
-                state="immutable",
-                parent_id=worker_id,
-            )
-            updated = transaction.update(
-                "worker",
-                worker_id,
-                expected_revision=row["revision"],
-                data=row["data"],
-                state="fenced",
-            )
-            transaction.event("worker.fence_recorded", fence, {"worker_id": worker_id})
-            transaction.event("worker.fenced", updated, {"fence_id": fence["id"]})
-        connection.execute(
-            "UPDATE workspaces SET control_epoch=? WHERE id=?", (epoch, manifest.seal.workspace_id)
+    source = RestorationCut(
+        seal=manifest.seal,
+        seal_revision=manifest.seal_revision,
+        snapshot_evidence_through=manifest.snapshot_evidence_through,
+        manifest_digest=manifest.digest,
+        source_custody_id=manifest.source_custody_id,
+        source_public_key=manifest.source_public_key,
+    )
+    return database.store.write(
+        lambda sql: restore_inactive_in(
+            sql, context, source, restore_id=intent.restore_id, target_public_key=custody.public_key
         )
-        transaction.update(
-            "workspace_gate",
-            manifest.seal.workspace_id,
-            expected_revision=gate["revision"],
-            data=gate["data"],
-            state="restoring",
-        )
-        receipt = RestoreReceipt(
-            restore_id=intent.restore_id,
-            backup_id=manifest.seal.backup_id,
-            manifest_digest=manifest.digest,
-            workspace_id=manifest.seal.workspace_id,
-            controller_id=manifest.seal.controller_id,
-            source_custody_id=manifest.source_custody_id,
-            source_public_key=manifest.source_public_key,
-            target_public_key=custody.public_key,
-            source_control_epoch=manifest.seal.control_epoch,
-            target_control_epoch=epoch,
-            restored_at=utc_now(),
-            unresolved_attempt_ids=manifest.seal.unresolved_attempt_ids,
-            worker_ids=manifest.seal.worker_ids,
-        )
-        row = transaction.insert(
-            "restoration", receipt.restore_id, receipt.model_dump(mode="json"), state="inactive"
-        )
-        transaction.event("workspace.restored_inactive", row, {"backup_id": receipt.backup_id})
-        return receipt
-
-    return database.store.write(restore)
+    )
 
 
 def _verify_restored(database: Database, receipt: RestoreReceipt) -> None:

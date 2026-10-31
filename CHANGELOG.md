@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extract inactive restoration into a shared SQL transaction primitive with no
+  native runtime, filesystem custody or crypto imports. Preserve native backup
+  bytes, worker fencing, unresolved budgets, exact receipts and one epoch advance;
+  a caller can roll back imported rows and the inactive transition together.
+
 - Include measured and maximum sample spans in native clock interval refusals.
   Preserve the existing fault threshold and nonretryable fence. Worker restart
   qualification now reports its bounded, redacted blocked/disconnected result

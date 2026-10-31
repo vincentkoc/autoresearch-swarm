@@ -1280,8 +1280,13 @@ after both SDK acknowledgments. Its fixed local successor registration refuses
 partial startup, then duplicate starts deliver one saved turn and produce the
 accepted receipt before the SDK replays it. That replay must consume no witness.
 The fixture's authority selection is a launcher binding, never a caller header,
-and remains excluded from the production bundle. This extended probe still needs
-its own passing runtime receipt beyond the earlier startup result below.
+and remains excluded from the production bundle. This extension passed in
+19 actual workerd tests in 580.04 seconds at
+`2f3548fb37866539b73379eef96863b9a0ab414e` in
+[qualification 41210738134](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41210738134).
+That revision passed 660 native tests on Linux in 315.66 seconds and on macOS
+in 291.00 seconds; Windows was still running at this checkpoint. This receipt
+predates the production post-bootstrap registration extension.
 
 `test_cloudflare_startup.py` now exercises this SDK against the actual startup
 profile in workerd. It transfers queued work, restarts authority storage, loses a
@@ -1634,6 +1639,28 @@ attempt. Witness unavailability prevents new time-dependent authority; it does
 not release capacity, erase consumption or imply cancellation. A running
 supervisor follows its existing bounded offline policy and proves closure
 independently.
+
+## Shared inactive restore transaction
+
+`checkpoints.inactive.restore_inactive_in()` extracts the existing native restore
+transition behind `SqlSession`. It consumes a verified `RestorationCut` and a
+caller-owned transaction. It archives worker sessions, records missing worker
+fences, advances the control epoch once, changes the workspace gate to `restoring`,
+and appends an inactive receipt with its events and outbox entries. Unresolved
+attempts and budget reservations remain unchanged. It neither opens a database
+nor commits independently, so a future logical import can include row insertion
+and this transition in one atomic write.
+
+Native restoration retains its existing bundle verification, private files,
+source custody, target intent and preservation checks. The extracted module has
+no imports of the native runtime, SQLite driver, file locks or native crypto
+implementation. Its optional timestamp is metadata only; it grants no timing or
+execution authority. Tests retain the existing native restore scenarios and prove
+that an interrupted outer transaction rolls back both staged rows and restoration.
+
+This internal primitive does not authorize source bytes or a target. Hosted logical
+image verification, inactive import, original-source election, R2 recovery and
+fenced activation still need their own implementation and provider qualification.
 
 ## Required implementation slices
 
