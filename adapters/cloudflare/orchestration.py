@@ -21,6 +21,7 @@ else:
 COMMANDS = frozenset(
     {
         "orchestration.bind",
+        "orchestration.register_delivery",
         "orchestration.fence",
         "orchestration.prepare_turn",
         "orchestration.execute_turn",
@@ -45,6 +46,7 @@ TARGETS = frozenset(
 OrchestrationRecordKind = Literal[
     ScientificRecordKind,
     "orchestration_binding",
+    "delivery_registration",
     "drive_turn",
     "drive_receipt",
     "drive_closure",
@@ -74,6 +76,7 @@ class HostedOrchestration:
     def __init__(self, router):
         self.router = router
         self.database, self.service = router.database, router.service.orchestration
+        self.registration_policy = None
 
     def _identity(self, token, context):
         if not supports_orchestration(self.router.configuration):
@@ -103,6 +106,10 @@ class HostedOrchestration:
     def _preflight(self, context, operation, request):
         require_raw_operation(self.database, context, operation, request.model_dump(mode="json"))
         if operation == "orchestration.bind":
+            return
+        if operation == "orchestration.register_delivery":
+            if self.registration_policy is not None:
+                self.registration_policy(context, request)
             return
         if operation == "orchestration.prepare_turn" and request.action.operation not in TARGETS:
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Saved target is unavailable")

@@ -6,11 +6,13 @@ from urllib.parse import urlsplit
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
 if __package__:
+    from .delivery_registry import DeploymentDeliveryRegistry
     from .delivery_router import HostedDelivery, delivery_error
     from .hosted_http import failure, handle, route, uncertain
     from .provisioning import require_deployment
     from .research_router import ExistingResearchRouter
 else:
+    from delivery_registry import DeploymentDeliveryRegistry
     from delivery_router import HostedDelivery, delivery_error
     from hosted_http import failure, handle, route, uncertain
     from provisioning import require_deployment
@@ -69,7 +71,7 @@ async def open_router(state, open_existing, manifest, secrets, *, crypto, acquir
         require_deployment(store, manifest)
         return store
 
-    return await ExistingResearchRouter.open(
+    router = await ExistingResearchRouter.open(
         state,
         sealed_store,
         manifest.configuration,
@@ -79,12 +81,17 @@ async def open_router(state, open_existing, manifest, secrets, *, crypto, acquir
         acquire=acquire,
         objects=objects,
     )
+    router.delivery_registry = DeploymentDeliveryRegistry(router, manifest, secrets)
+    router.orchestration.registration_policy = router.delivery_registry.preflight
+    return router
 
 
 async def serve(router, manifest, secrets, method, target, headers, read_body):
     mode = public_route(method, target)
     if mode == "delivery":
-        return await HostedDelivery(router, secrets.registrations(manifest)).handle(
+        return await HostedDelivery(
+            router, {}, resolve_registration=router.delivery_registry.resolve
+        ).handle(
             method, target, headers, read_body
         )
     return await handle(router, method, target, headers, read_body)

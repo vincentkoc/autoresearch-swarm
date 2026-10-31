@@ -92,24 +92,29 @@ class _RouteClient:
 
 
 class HostedDelivery:
-    def __init__(self, router, registrations):
+    def __init__(self, router, registrations, *, resolve_registration=None):
         self.router = router
-        registered = {}
-        for actor, registration in registrations.items():
-            binding = GatewayBinding.model_validate(registration.binding.model_dump(mode="json"))
-            tokens = dict(registration.route_tokens)
-            if (
-                actor in binding.actors.values()
-                or binding.workspace_id != router.configuration.authority.workspace_id
-                or set(tokens) != set(binding.actors)
-                or any(
-                    not isinstance(token, str) or not 1 <= len(token) <= 256
-                    for token in tokens.values()
-                )
-            ):
-                raise ValueError("Invalid trusted delivery registration")
-            registered[actor] = DeliveryRegistration(binding, MappingProxyType(tokens))
-        self._registrations = MappingProxyType(registered)
+        if resolve_registration is not None and registrations:
+            raise ValueError("Delivery requires one registration authority")
+        self._resolve_registration = resolve_registration
+        self._registrations = MappingProxyType(
+            {actor: self._validated(actor, value) for actor, value in registrations.items()}
+        )
+
+    def _validated(self, actor, registration):
+        binding = GatewayBinding.model_validate(registration.binding.model_dump(mode="json"))
+        tokens = dict(registration.route_tokens)
+        if (
+            actor in binding.actors.values()
+            or binding.workspace_id != self.router.configuration.authority.workspace_id
+            or set(tokens) != set(binding.actors)
+            or any(
+                not isinstance(token, str) or not 1 <= len(token) <= 256
+                for token in tokens.values()
+            )
+        ):
+            raise ValueError("Invalid trusted delivery registration")
+        return DeliveryRegistration(binding, MappingProxyType(tokens))
 
     async def handle(self, method, target, headers, read_body):
         authenticated = False
@@ -136,9 +141,14 @@ class HostedDelivery:
             principal = self.router._context(token, idempotency_key=new_id()).principal
             authenticated = True
             principal.require(GATEWAY_SCOPE)
-            registration = self._registrations.get(principal.id)
+            registration = (
+                self._resolve_registration(principal, token)
+                if self._resolve_registration is not None
+                else self._registrations.get(principal.id)
+            )
             if registration is None:
                 raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Gateway is not registered")
+            registration = self._validated(principal.id, registration)
             body = await read_body(MAX_DELIVERY_BYTES)
             try:
                 if not isinstance(body, bytes) or len(body) > MAX_DELIVERY_BYTES:
@@ -178,6 +188,12 @@ class HostedDelivery:
                         ErrorCode.AUTHORIZATION_DENIED, "Gateway credential changed"
                     )
                 current.require(GATEWAY_SCOPE)
+                if self._resolve_registration is not None:
+                    resolved = self._resolve_registration(current, token)
+                    if resolved is None or self._validated(current.id, resolved) != registration:
+                        raise ResearchError(
+                            ErrorCode.AUTHORIZATION_DENIED, "Delivery registration changed"
+                        )
 
             try:
                 check_owner()

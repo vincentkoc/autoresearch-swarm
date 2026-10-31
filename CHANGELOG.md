@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Resolve production delivery registrations after campaigns are created. Keep the
+  deployment seal unchanged, admit only exact current credentials from its fixed
+  roster, reject overlapping static/durable registrations, and recheck delegation
+  across request waits and restarts. Tokens remain in protected deployment custody.
+
 - Add `orchestration.register_delivery` to the shared command API. Freeze one
   gateway's delegation to an existing campaign epoch using credential IDs only;
   check current scopes and route ownership, preserve historical receipts, and

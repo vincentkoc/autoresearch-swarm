@@ -1499,6 +1499,45 @@ The production build, formatter, TypeScript and supporting Node suites also pass
 That receipt covers the fixed production entrypoint and bootstrap; it predates
 the native launcher and acknowledgment-aware async startup changes.
 
+### Register delivery for new production campaigns
+
+New deployments can use `deliveries: []` and preprovision separate operator,
+gateway, control and evaluator credentials. Create and seal a campaign through
+the ordinary API, bind its dedicated driver actors, then call
+[`orchestration.register_delivery`](orchestration.md#register-gateway-delivery-after-campaign-creation).
+The campaign ID no longer needs to exist when the deployment manifest is sealed.
+
+The production router applies two boundaries. The shared command verifies the
+active epoch, exact configuration, live credential scopes, issuer scope ceiling
+and driver ownership. Its production preflight additionally requires the selected
+credential IDs, token digests and complete principals to match the unchanged
+deployment roster. This runs before witness acquisition and again before commit.
+It never installs credentials, changes the deployment seal or accepts tokens in
+the command payload.
+
+Delivery resolves one immutable record by the authenticated gateway actor under
+the existing authority gate. An alias token for that actor cannot use the registered
+credential's authority. The resolver checks live credentials against the roster
+before body consumption and at the request's ownership checks. The existing kernel
+then checks binding ownership and saved work. Fencing retires the old registration;
+it cannot silently select a successor, newer campaign or different credential.
+
+Existing static deployment registrations remain supported. A static gateway cannot
+be registered through the API, and any static/durable collision refuses instead
+of choosing precedence. An exact command replay returns historical evidence,
+including after target revocation, but grants no live delivery authority.
+
+SQLite/HTTP harness tests cover a real post-bootstrap source upload and campaign,
+registration races, one saved report across a lost reply and reopen, offline
+replay, credential aliases, revoked/expiring/changed credentials, revocation while
+awaiting a witness or reading a body, retirement and static collisions. Actual
+workerd qualification of this extension is still required.
+
+This release retains a fixed credential roster. A new campaign or transfer needs
+unused preprovisioned driver and gateway actors. Adding actors or rotating tokens
+requires a separate credential lifecycle implementation; changing or resealing
+the bootstrap manifest is not an admitted workaround.
+
 ### Native witness launcher
 
 The installed CLI can serve the native time source independently:

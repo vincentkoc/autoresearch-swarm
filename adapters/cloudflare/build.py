@@ -43,7 +43,7 @@ QUALIFICATION = (
     "native_router_qualification.py",
     "r2_qualification.py",
 )
-PRODUCTION = ("deployment.py", "provisioning.py", "runtime.py")
+PRODUCTION = ("deployment.py", "provisioning.py", "runtime.py", "delivery_registry.py")
 TARGETS = {
     "qualification": (".generated", "local-qualification-v1\n", "entry.py", QUALIFICATION),
     "production": (".generated-production", "production-v1\n", "production.py", PRODUCTION),
