@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a reproducible native learning-cycle example using the public agent API, complete frozen development and held-out panels, checked policy training, conditional adoption and a future binding probe. Preserve command envelopes and exact costs across replay without resampling failed cases.
+
 - Add explicit research-policy bindings and adoption with a dedicated scope, full current-evidence checks and atomic revision fencing. Pin binding snapshots in new learning plans, preserve prior plans across advancement, and recheck corrected adoption ancestry before new decisions, admissions or training data qualification.
 
 - Assess the complete frozen held-out policy panel with the original paired sign gate. Persist raw case trajectories and exact comparator/candidate costs atomically, reject incomplete or over-budget panels, and separate historical assessment replay from current-evidence qualification.

@@ -27,7 +27,10 @@ evaluation receipt validation, verified artifact lifecycle, and immutable source
 bundles. The authenticated HTTP API, Python SDK, JSON CLI, and stdio MCP tools
 share one command service. The local runner executes a frozen baseline and exposes
 the campaign to external agents. Greedy and asynchronous portfolio policies
-coordinate their responses; learned proposal policies remain in progress.
+coordinate their responses. One-step categorical policy training, held-out seed
+assessment and explicit policy adoption are implemented. The
+[native learning cycle](examples/learning_cycle) exercises that path; demonstrated
+improvement requires a passing measured panel.
 
 Start with `uv sync --group dev`, then `uv run research init` and
 `uv run research capabilities`. Run `uv run research mcp` to expose agent tools.
