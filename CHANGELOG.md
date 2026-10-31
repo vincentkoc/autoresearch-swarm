@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add explicit, persisted worker admission for the hosted witness clock profile
+  and exact policy. Preserve default native behavior and legacy serialization;
+  require the original enrollment permission for launch, publication and recovery.
+  Add `worker describe --clock-admission` for an operator-supplied admission file.
+
 - Add a local runtime qualification that admits a real native clock source through
   authenticated HTTP, produces shared-service signed worker clock replies and
   distinguishes controller restart from source restart. Publish qualification

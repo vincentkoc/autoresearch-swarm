@@ -79,7 +79,13 @@ def _authenticate(entry: JournalEntry, bundle: RemoteWorkerBundle) -> None:
     # Historical verification is deliberately discarded; no launch token is retained.
     ClockVerifier(authority).binding(entry.assignment_time, entry.signed_assignment)
     if entry.timing is not None:
-        verify_timing(entry.timing, authority, entry.assignment_time, entry.signed_assignment)
+        verify_timing(
+            entry.timing,
+            authority,
+            entry.assignment_time,
+            entry.signed_assignment,
+            clock_admission=bundle.worker.clock_admission,
+        )
 
 
 def _historical(

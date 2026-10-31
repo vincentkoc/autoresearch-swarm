@@ -325,6 +325,20 @@ this execution protocol without changing its authority or deadline semantics.
 
 ## Durable worker timing
 
+Hosted witness authority requires an enrollment-owned `AuthorityClockAdmission`.
+It pins `hosted-native-witness-v1` and the signed clock policy digest. The worker
+does not learn permission from a clock reply or from persisted timing evidence.
+`ClockSampler` validates it separately from the worker's native clock profile;
+the entire round trip, including the witness hop, still contributes to uncertainty.
+Controller claims and acceptance also validate the admission before issuing time
+authority. Diagnostic clock replies alone do not permit execution.
+
+Historical timing verification receives the original worker session's admission
+from enrollment or archived session state. The evidence cannot supply its own
+permission. Epoch/sidecar matching, policy matching and non-extending deadline
+caps remain mandatory. Explicit admission does not establish a physical clock-rate
+bound or qualify a complete hosted execution deployment.
+
 Timed journal admission retains the exact assignment-time signature separately
 from the original signed assignment. Its admission digest includes the clock mode
 and sidecar. Legacy local entries retain their original HMAC or signed-assignment

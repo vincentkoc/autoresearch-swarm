@@ -609,7 +609,9 @@ witness request. Both runtime tests passed in 41.82 seconds in
 This establishes the tested local runtime ordering and operation ownership. The
 timestamps and keys are public fixtures. The 30-second runtime reset boundary,
 production source authentication, service routing, artifact custody and hosted
-restore remain unqualified; the hosted authority profile remains disabled.
+restore remain unqualified; the complete hosted execution profile remains unavailable.
+The separately qualified native-source chain and explicit worker clock admission
+do not by themselves supply hosted job execution, input custody or publication.
 
 ## Native worker calibration
 

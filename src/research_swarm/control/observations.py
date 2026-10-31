@@ -118,6 +118,7 @@ def validate_native_grant(
             journal.assignment_time,
             journal.signed_assignment,
             crypto_provider=crypto_provider,
+            clock_admission=worker.clock_admission,
         )
     if journal.outcome is not None and journal.outcome.closure.identity != journal.native:
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Native closure identity differs")

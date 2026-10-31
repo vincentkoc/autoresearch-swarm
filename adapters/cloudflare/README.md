@@ -216,9 +216,15 @@ before constructing the source and preserves its actual native descriptor. It
 holds source responses beyond the deadline, checks acknowledgment replay during
 outage, and distinguishes workerd restart from a new native clock origin. Source
 restart must durably fence the provider before explicit requalification. Native
-workers still refuse the hosted clock profile. This test requires the same opt-in
+workers refuse the hosted clock profile without a persisted explicit admission
+for that profile and policy. This test requires the same opt-in
 and clean workerd environment as the other runtime probes; its presence alone is
 not a passing runtime receipt or production deployment evidence.
+
+The original source-lifecycle test passed at `07c4cc4` in
+[qualification 41196392366](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41196392366):
+seven runtime tests passed in 182.36 seconds. That receipt includes the real native
+source and durable fencing; it predates the explicit worker-admission extension.
 
 ## Agent API facade
 

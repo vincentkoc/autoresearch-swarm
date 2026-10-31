@@ -10,7 +10,12 @@ from pydantic import AfterValidator, Field, model_validator
 from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.assignments import AssignmentAuthority, SignedAssignment
 from research_swarm.domain.canonical import record_digest
-from research_swarm.domain.clocks import ClockChallenge, SignedAssignmentTime, SignedClockReply
+from research_swarm.domain.clocks import (
+    AuthorityClockAdmission,
+    ClockChallenge,
+    SignedAssignmentTime,
+    SignedClockReply,
+)
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, Name, VersionedRecord
 from research_swarm.workers.clock_estimates import ClockEstimate, ClockSampler, DeadlineCaps
@@ -170,6 +175,7 @@ def verify_timing(
     assignment: SignedAssignment,
     *,
     crypto_provider: Ed25519Provider | None = None,
+    clock_admission: AuthorityClockAdmission | None = None,
 ) -> VerifiedTiming:
     """Verify signature and conservative arithmetic, never current liveness or freshness."""
     evidence = TimingEvidence.model_validate(evidence)
@@ -186,6 +192,7 @@ def verify_timing(
         evidence.received.reading(),
         evidence.caps.origin_session_id,
         evidence.caps.origin_profile,
+        clock_admission,
     )
     verified = capture_timing(
         timed, estimate, evidence.qualified_at.reading(), prior=evidence.caps.caps()

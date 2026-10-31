@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 
+from research_swarm.domain.clocks import AuthorityClockAdmission, ClockPolicy
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
 MAX_SAMPLE_SPAN_NS = 50_000_000
@@ -15,6 +16,22 @@ MAX_SAMPLE_UNCERTAINTY_NS = 100_000_000
 NATIVE_CLOCK_PROFILES = frozenset(
     {"linux-boottime-v1", "darwin-mach-continuous-v1", "windows-qpc-unbiased-v1"}
 )
+
+
+def require_authority_clock(
+    profile: str, policy: ClockPolicy, admission: AuthorityClockAdmission | None
+) -> None:
+    """Check enrollment permission separately from the worker's native origin."""
+    if admission is None:
+        if profile in NATIVE_CLOCK_PROFILES:
+            return
+    else:
+        admission = AuthorityClockAdmission.model_validate(admission)
+        if profile == admission.profile and policy.digest == admission.policy_digest:
+            return
+    raise ResearchError(
+        ErrorCode.CAPABILITY_UNAVAILABLE, "Authority clock is outside worker admission"
+    )
 
 
 @dataclass(frozen=True)

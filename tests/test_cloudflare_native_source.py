@@ -1,4 +1,4 @@
-"""Real native clock source to local workerd; native worker admission stays refused."""
+"""Real native source to workerd; authority calibration requires explicit admission."""
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +11,7 @@ from research_swarm.api.time_witnesses import create_time_witness_app, witness_c
 from research_swarm.client import ResearchClient
 from research_swarm.control.native_time_witnesses import NativeWitnessSource
 from research_swarm.domain.assignments import AssignmentAuthority
+from research_swarm.domain.clocks import AuthorityClockAdmission
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
@@ -88,13 +89,17 @@ def test_native_source_admission_outage_restart_and_durable_fence_in_workerd(tmp
             assert "error" not in setup, setup
             assert len(endpoint.requests) == 1
             assert control(url, "inspect")["provider_state"] == "qualified"
+            admission = AuthorityClockAdmission(policy_digest=descriptor.policy.digest)
+            enrollment = {
+                **setup["enrollment"],
+                "clock_admission": admission.model_dump(mode="json"),
+            }
             with connect(url, setup["operator_token"]) as operator:
-                enrolled = operator.command(
-                    "worker.enroll", setup["enrollment"], idempotency_key="enroll"
-                )
+                enrolled = operator.command("worker.enroll", enrollment, idempotency_key="enroll")
                 worker = enrolled["result"]["data"]
                 authority = AssignmentAuthority.model_validate(worker["assignment_authority"])
                 sampler = ClockSampler(authority)
+                admitted = ClockSampler(authority, clock_admission=admission)
                 with connect(url, setup["worker_token"]) as client:
                     waiting = sampler.begin()
                     reply = client.worker_clock(waiting.challenge)
@@ -105,6 +110,9 @@ def test_native_source_admission_outage_restart_and_durable_fence_in_workerd(tmp
                     with pytest.raises(ResearchError) as not_admitted:
                         waiting.complete(reply)
                     assert not_admitted.value.code == ErrorCode.CAPABILITY_UNAVAILABLE
+                    allowed = admitted.begin()
+                    estimate = allowed.complete(client.worker_clock(allowed.challenge))
+                    assert estimate.clock_admission == admission
 
                     before_auth = len(endpoint.requests)
                     with connect(url, "invalid") as invalid:
@@ -127,9 +135,7 @@ def test_native_source_admission_outage_restart_and_durable_fence_in_workerd(tmp
                     assert control(url, "inspect") == before
                     calls = len(endpoint.requests)
                     assert (
-                        operator.command(
-                            "worker.enroll", setup["enrollment"], idempotency_key="enroll"
-                        )
+                        operator.command("worker.enroll", enrollment, idempotency_key="enroll")
                         == enrolled
                     )
                     assert len(endpoint.requests) == calls
@@ -223,3 +229,6 @@ def test_native_source_admission_outage_restart_and_durable_fence_in_workerd(tmp
                 with pytest.raises(ResearchError) as still_not_admitted:
                     waiting.complete(reply)
                 assert still_not_admitted.value.code == ErrorCode.CAPABILITY_UNAVAILABLE
+                allowed = admitted.begin()
+                estimate = allowed.complete(client.worker_clock(allowed.challenge))
+                assert estimate.verified.reply.payload.clock_epoch == reply.payload.clock_epoch

@@ -30,6 +30,7 @@ from research_swarm.domain.assignments import (
 )
 from research_swarm.domain.clocks import (
     AssignmentTimePayload,
+    AuthorityClockAdmission,
     ClockChallenge,
     ClockMode,
     ClockReplyPayload,
@@ -54,6 +55,7 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
 from research_swarm.workers.authority import WorkerBinding, authorize_dispatch
 from research_swarm.workers.clock_signatures import ClockSigner, ClockVerifier
+from research_swarm.workers.clocks import require_authority_clock
 from research_swarm.workers.signatures import AssignmentSigner
 
 NATIVE_CLEANUP_MS = 5000
@@ -68,12 +70,17 @@ class EnrollWorker(VersionedRecord):
     max_concurrency: int = Field(default=1, strict=True, ge=1, le=1024)
     project_ids: tuple[ID, ...] | None = Field(default=None, min_length=1, max_length=128)
     clock_mode: ClockMode = "local-utc-v1"
+    clock_admission: AuthorityClockAdmission | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     environment_contracts: tuple[Digest, ...] | None = Field(
         default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
     )
 
     @model_validator(mode="after")
     def distinct_profiles(self) -> EnrollWorker:
+        if self.clock_admission is not None and self.clock_mode != "bounded-continuous-v1":
+            raise ValueError("Authority clock admission requires calibrated time")
         if len({profile.name for profile in self.profiles}) != len(self.profiles):
             raise ValueError("Worker profiles must be unique")
         if self.project_ids is not None and len(set(self.project_ids)) != len(self.project_ids):
@@ -141,7 +148,7 @@ class WorkerControl:
         ):
             raise ValueError("Clock provider must share the controller state authority")
         self._authority_time_provider = authority_time_provider
-        self.acceptance = AcceptanceControl(database, self._time)
+        self.acceptance = AcceptanceControl(database, self._execution_time)
 
     def _clock_signer(self, worker: WorkerData) -> ClockSigner:
         if self._assignment_key is None or worker.assignment_authority is None:
@@ -162,7 +169,7 @@ class WorkerControl:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Authority time provider is absent"
             )
-        return self._authority_time_provider.observe(
+        observation = self._authority_time_provider.observe(
             ClockAuthorityScope(
                 binding.workspace_id,
                 binding.controller_id,
@@ -170,6 +177,14 @@ class WorkerControl:
                 signer.authority.key_id,
             )
         )
+        if worker.clock_admission is not None:
+            require_authority_clock(observation.profile, observation.policy, worker.clock_admission)
+        return observation
+
+    def _execution_time(self, worker: WorkerData) -> AuthorityTime:
+        observation = self._time(worker)
+        require_authority_clock(observation.profile, observation.policy, worker.clock_admission)
+        return observation
 
     def observation_time(self, worker: WorkerData) -> AuthorityTime:
         """Qualified time for operational observations, without extending a lease."""
@@ -267,26 +282,30 @@ class WorkerControl:
                 worker_id=request.worker_id,
                 worker_session_id=request.session_id,
             )
+            data = WorkerData(
+                binding=binding,
+                principal_id=request.principal_id,
+                name=request.name,
+                profiles=request.profiles,
+                max_concurrency=request.max_concurrency,
+                project_ids=request.project_ids,
+                clock_mode=request.clock_mode,
+                clock_admission=request.clock_admission,
+                environment_contracts=request.environment_contracts,
+                assignment_authority=(
+                    AssignmentSigner(
+                        binding, self._assignment_key, crypto_provider=self.crypto_provider
+                    ).authority
+                    if self._assignment_key is not None
+                    else None
+                ),
+            )
+            if data.clock_admission is not None:
+                self._execution_time(data)
             worker = transaction.insert(
                 "worker",
                 request.worker_id,
-                WorkerData(
-                    binding=binding,
-                    principal_id=request.principal_id,
-                    name=request.name,
-                    profiles=request.profiles,
-                    max_concurrency=request.max_concurrency,
-                    project_ids=request.project_ids,
-                    clock_mode=request.clock_mode,
-                    environment_contracts=request.environment_contracts,
-                    assignment_authority=(
-                        AssignmentSigner(
-                            binding, self._assignment_key, crypto_provider=self.crypto_provider
-                        ).authority
-                        if self._assignment_key is not None
-                        else None
-                    ),
-                ).model_dump(mode="json"),
+                data.model_dump(mode="json"),
                 state="active",
             )
             archive_session(transaction, WorkerData.model_validate(worker["data"]))
@@ -397,7 +416,9 @@ class WorkerControl:
                 },
             )
             clock_time = (
-                self._time(worker) if worker.clock_mode == "bounded-continuous-v1" else None
+                self._execution_time(worker)
+                if worker.clock_mode == "bounded-continuous-v1"
+                else None
             )
             now = clock_time.datetime if clock_time is not None else datetime.now(UTC)
             expiry = (

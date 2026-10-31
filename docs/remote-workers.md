@@ -11,6 +11,23 @@ and publication. `worker connect` verifies and persists the connection, then exi
 
 ## Describe the worker
 
+The default description admits native controller clocks. For a qualified hosted
+witness controller, explicitly supply an `AuthorityClockAdmission` JSON file
+with `schema_version: "1.0"`, `profile: "hosted-native-witness-v1"` and the exact
+`policy_digest` selected by the operator. Pass it with
+`research worker describe --worker-dir ./worker-state --clock-admission ./clock-admission.json`.
+The Python equivalent is `describe_worker(..., clock_admission=admission)`.
+The installation persists this choice before provisioning; reopening with a
+different choice fails. The controller echoes it into the worker and archived
+session, and bundle import requires exact equality. Existing replacement retains
+that choice; a different admission requires a new explicit enrollment.
+
+An admission is a permission and policy pin, not a clock-rate measurement or
+proof of a hosted execution deployment. It accepts only the named authority
+profile and policy, with no fallback to native authority profiles. The worker's
+own clock must still use a supported native implementation. Descriptions without
+this optional field retain their original serialization and behavior.
+
 Run on the worker machine:
 
 ~~~sh

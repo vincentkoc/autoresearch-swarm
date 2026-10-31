@@ -34,6 +34,13 @@ class ClockPolicy(VersionedRecord):
         return record_digest("research.clock-policy", self.model_dump(mode="json"))
 
 
+class AuthorityClockAdmission(VersionedRecord):
+    """Enrollment-owned authority profile; never inferred from a sampled reply."""
+
+    profile: Literal["hosted-native-witness-v1"] = "hosted-native-witness-v1"
+    policy_digest: Digest
+
+
 class ClockChallenge(VersionedRecord):
     worker_id: ID
     session_id: ID

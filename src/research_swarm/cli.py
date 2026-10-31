@@ -131,6 +131,9 @@ def parser() -> argparse.ArgumentParser:
     describe.add_argument("--cpu-slots", type=int, default=1)
     describe.add_argument("--machine-registry", type=Path)
     describe.add_argument("--registration", type=Path)
+    describe.add_argument(
+        "--clock-admission", type=Path, help="Explicit authority-clock admission JSON"
+    )
     provision = worker_actions.add_parser("provision", help="Write a private scoped worker bundle")
     provision.add_argument("--description", type=Path, required=True)
     provision.add_argument("--url", required=True)
@@ -735,6 +738,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 0
             if args.worker_action == "describe":
+                from research_swarm.domain.clocks import AuthorityClockAdmission
                 from research_swarm.engines.registration import read_registration
 
                 description = describe_worker(
@@ -743,6 +747,11 @@ def main(argv: list[str] | None = None) -> int:
                     machine_registry=args.machine_registry,
                     registration=read_registration(args.registration)
                     if args.registration
+                    else None,
+                    clock_admission=AuthorityClockAdmission.model_validate(
+                        _request(args.clock_admission, limit=4096)
+                    )
+                    if args.clock_admission
                     else None,
                 )
                 print(canonical_bytes(description.model_dump(mode="json")).decode("utf-8"))

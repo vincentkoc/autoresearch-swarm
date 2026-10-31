@@ -11,7 +11,7 @@ from pydantic import TypeAdapter
 
 from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.assignments import AssignmentAuthority
-from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
+from research_swarm.domain.clocks import AuthorityClockAdmission, ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, new_id
 from research_swarm.workers.clock_signatures import (
@@ -25,6 +25,7 @@ from research_swarm.workers.clocks import (
     ClockReading,
     NativeClock,
     native_clock,
+    require_authority_clock,
     require_continuity,
 )
 
@@ -83,13 +84,16 @@ class ClockEstimate:
     received: ClockReading
     origin_session_id: str
     origin_profile: str
+    clock_admission: AuthorityClockAdmission | None = None
 
     def __post_init__(self) -> None:
         TypeAdapter(ID).validate_python(self.origin_session_id)
-        if (
-            self.verified.reply.payload.clock_profile not in NATIVE_CLOCK_PROFILES
-            or self.origin_profile not in NATIVE_CLOCK_PROFILES
-        ):
+        require_authority_clock(
+            self.verified.reply.payload.clock_profile,
+            self.verified.reply.payload.policy,
+            self.clock_admission,
+        )
+        if self.origin_profile not in NATIVE_CLOCK_PROFILES:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Authority clock profile is unsupported"
             )
@@ -188,7 +192,13 @@ class ClockSampler:
         clock: NativeClock | None = None,
         *,
         crypto_provider: Ed25519Provider | None = None,
+        clock_admission: AuthorityClockAdmission | None = None,
     ) -> None:
+        self.clock_admission = (
+            AuthorityClockAdmission.model_validate(clock_admission)
+            if clock_admission is not None
+            else None
+        )
         self.verifier = ClockVerifier(authority, crypto_provider=crypto_provider)
         self._clock = clock or native_clock()
         self.origin_session_id = new_id()
@@ -254,5 +264,6 @@ class PendingClockChallenge:
             received,
             self._origin.origin_session_id,
             self._origin.origin_profile,
+            self._origin.clock_admission,
         )
         return self._estimate

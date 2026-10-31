@@ -70,6 +70,7 @@ def provision_replacement(
         or old.binding.worker_id != description.worker_id
         or old.profiles != (description.profile,)
         or old.environment_contracts != description.environment_contracts
+        or old.clock_admission != description.clock_admission
         or old.max_concurrency != description.max_concurrency
         or old.clock_mode != "bounded-continuous-v1"
         or not old.project_ids

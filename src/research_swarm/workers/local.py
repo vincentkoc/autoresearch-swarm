@@ -87,7 +87,9 @@ class LocalWorker:
         self.clock_sampler: ClockSampler | None = None
         if worker.clock_mode == "bounded-continuous-v1":
             assert worker.assignment_authority is not None
-            self.clock_sampler = ClockSampler(worker.assignment_authority)
+            self.clock_sampler = ClockSampler(
+                worker.assignment_authority, clock_admission=worker.clock_admission
+            )
         if self.assignment_verifier is None and self.verifier is None:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Worker verification key is absent")
         self.root = root.absolute()
@@ -398,6 +400,7 @@ class LocalWorker:
                 sampler.verifier.authority,
                 entry.assignment_time,
                 entry.signed_assignment,
+                clock_admission=self.worker.clock_admission,
             )
         return LiveTimingOrigin(sampler, verified)
 
