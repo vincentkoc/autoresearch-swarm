@@ -1,7 +1,11 @@
 """Native CPU execution against the adapter; SQLite/mock R2 is not workerd proof."""
 
 import asyncio
+import json
+import re
+import sys
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -230,12 +234,76 @@ async def publish(case):
     )
 
 
+def publication_diagnostic(case, attempt):
+    """Select bounded execution facts; never render the journal or authority payloads."""
+    try:
+        entry = case.entry
+        private = {
+            str(case.runner.root),
+            str(case.runner.root.parent),
+            entry.command.cwd,
+            entry.command.argv[0],
+            sys.executable,
+            str(Path(__file__).resolve().parents[1]),
+            str(Path.home()),
+        }
+
+        def bounded(value, limit=512):
+            value = str(value)
+            for item in sorted(private - {""}, key=len, reverse=True):
+                value = value.replace(item, "<redacted>")
+                value = value.replace(item.replace("\\", "\\\\"), "<redacted>")
+            value = re.sub(r"rsw_[A-Za-z0-9_-]+", "<redacted>", value)
+            return value[-limit:]
+
+        result = {
+            "attempt_state": attempt["state"],
+            "publication_status": attempt["data"]["publication_status"],
+            "journal_state": entry.state,
+            "journal_finding": bounded(entry.finding),
+            "command_timeout_ms": entry.command.timeout_ms,
+            "publication_finding": bounded(case.request["payload"].get("finding", "")),
+            "report_artifact_present": case.request["payload"].get("report_artifact") is not None,
+        }
+        outcome = entry.outcome
+        if outcome is not None:
+            result.update(
+                native_reason=outcome.reason,
+                exit_code=outcome.exit_code,
+                elapsed_ms=outcome.elapsed_ms,
+                scope_closed=outcome.closure.scope_closed,
+                closure_findings=[bounded(item) for item in outcome.closure.findings[:4]],
+                logs={
+                    stream.name: {
+                        "retained_bytes": stream.retained_bytes,
+                        "observed_bytes": stream.observed_bytes,
+                        "eof": stream.eof,
+                    }
+                    for stream in (outcome.stdout, outcome.stderr)
+                },
+            )
+        try:
+            path = case.runner.root / "executions" / case.claimed["result"]["id"] / "output"
+            with (path / "stderr").open("rb") as stream:
+                stream.seek(0, 2)
+                stream.seek(max(0, stream.tell() - 8192))
+                result["stderr_tail"] = bounded(stream.read(8192).decode(errors="replace"), 2048)
+        except OSError as error:
+            result["stderr_unavailable"] = type(error).__name__
+        return json.dumps(result, sort_keys=True)
+    except Exception as error:
+        # A diagnostic must not replace the original assertion failure.
+        return json.dumps({"diagnostic_unavailable": type(error).__name__})
+
+
 async def test_native_cpu_result_settles_once_without_scientific_receipt(publication):
     case, h = publication, publication.h
     before = current(h, "attempt", case.claimed["result"]["id"])
     assert before["data"]["publication_status"] == "pending"
     accepted = await publish(case)
-    assert accepted["result"]["state"] == "succeeded"
+    assert accepted["result"]["state"] == "succeeded", publication_diagnostic(
+        case, accepted["result"]
+    )
     assert accepted["result"]["data"]["publication_status"] == "accepted"
     result = current(h, "run_result", before["id"])
     assert result["data"]["status"] == "succeeded"

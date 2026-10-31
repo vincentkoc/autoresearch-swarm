@@ -20,7 +20,7 @@ from tests.test_hosted_http import send
 from tests.test_hosted_research import research as research
 from tests.test_hosted_research import sdk
 from tests.test_hosted_result_publication import publication as publication
-from tests.test_hosted_result_publication import publish
+from tests.test_hosted_result_publication import publication_diagnostic, publish
 from tests.test_hosted_router import counts
 from tests.test_hosted_router import hosted as hosted
 from tests.test_manifest import project as project
@@ -29,7 +29,8 @@ from tests.test_manifest import project as project
 @pytest.fixture
 async def evaluation(publication):
     case, h = publication, publication.h
-    assert (await publish(case))["result"]["state"] == "succeeded"
+    attempt = (await publish(case))["result"]
+    assert attempt["state"] == "succeeded", publication_diagnostic(case, attempt)
     h.config = HostedEvaluationConfiguration(**h.config.model_dump(exclude={"profile"}))
     h.store.write(
         lambda sql: sql.execute(

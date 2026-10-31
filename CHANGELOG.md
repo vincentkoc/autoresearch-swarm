@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Report bounded, redacted native execution and publication findings when hosted
+  training fixture setup fails. Keep experiment deadlines and clock thresholds
+  unchanged; an unsuccessful attempt now retains useful failure evidence in CI.
+
 - Add private atomic logical import into an inactive target. Bind protected
   bootstrap, physical deployment, source signature/custody and target key; preserve
   all portable rows, fence copied workers and commit the receipt with a complete
