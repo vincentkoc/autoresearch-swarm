@@ -12,7 +12,8 @@ export async function request(origin, path, body, timeoutMs) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(new URL(path, url), {
-      method: "POST", body, redirect: "error", signal: controller.signal,
+      // workerd supports manual/follow; every non-200 response below is refused.
+      method: "POST", body, redirect: "manual", signal: controller.signal,
       headers: { "content-type": "application/json", "authorization": "Bearer public_fixture_consumer_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
     });
     if (response.status !== 200 || !response.body) {
