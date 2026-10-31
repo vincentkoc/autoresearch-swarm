@@ -16,7 +16,7 @@ from research_swarm.api.http import create_app
 from research_swarm.client import ResearchClient
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.runtime import read_private, write_private
+from research_swarm.runtime import private_state_directory, read_private, write_private
 from research_swarm.workers import remote_enrollment
 from research_swarm.workers.journal import JournalState, WorkerJournal
 from research_swarm.workers.local import LocalWorker
@@ -233,7 +233,8 @@ def test_changed_original_authority_fails_before_release_or_upload(
 
 def test_original_driver_and_attempt_locks_are_respected(recoverable: Recoverable) -> None:
     driver = recoverable.root / "execution/driver"
-    driver.mkdir(mode=0o700)
+    with private_state_directory(driver):
+        pass
     for path in (
         driver / "driver.lock",
         recoverable.root / "execution/locks" / (recoverable.attempt_id + ".lock"),

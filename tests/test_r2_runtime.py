@@ -35,7 +35,7 @@ def provider(monkeypatch):
 
 def snapshot(root):
     return {
-        str(path.relative_to(root)): path.read_bytes()
+        path.relative_to(root).as_posix(): path.read_bytes()
         for path in root.rglob("*")
         if path.is_file() and path.name != "initialize.lock"
     }
