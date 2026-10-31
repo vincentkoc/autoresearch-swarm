@@ -25,6 +25,7 @@ COMMON = (
     "scientific.py",
     "orchestration.py",
     "delivery_router.py",
+    "wait_delivery.py",
     "transfers.py",
     "startup.py",
     "artifact_router.py",

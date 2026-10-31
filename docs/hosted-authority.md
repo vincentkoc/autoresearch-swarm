@@ -40,6 +40,15 @@ their event-only limits. Shared native and adapter tests cover the time boundary
 event priority, cancellation/revocation, fencing, restart and offline replay;
 actual Workflow/workerd qualification of this new profile remains pending.
 
+Hosted wait delivery derives its reconciliation key from the wait and the current
+authoritative provider generation. A verified retirement leaves delivery pending
+until an operator explicitly requalifies the source. That new generation permits a
+fresh command while retaining the original rejection. Workflow generation changes
+do not change this key. Current gateway, route, binding and startup checks precede
+pending responses; other ownership or configuration failures remain errors.
+Already committed readiness can be delivered without a new witness or a workspace
+mutation, including after sealing. Native/local delivery keeps its existing keys.
+
 The production reconciliation probe now selects the timer profile and also starts
 a real Workflow before registering a threshold from the actual TLS witness's UTC
 observation. It requires a later generation to retain the pending wait, closes

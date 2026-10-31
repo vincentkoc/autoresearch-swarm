@@ -18,11 +18,13 @@ from research_swarm.orchestration.gateway_models import GatewayBinding, GatewayS
 if __package__:
     from .exclusive import exclusive
     from .hosted_http import HTTPResponse, json_response
-    from .research_router import supports_orchestration
+    from .research_router import supports_orchestration, supports_timers
+    from .wait_delivery import reconcile_wait
 else:
     from exclusive import exclusive
     from hosted_http import HTTPResponse, json_response
-    from research_router import supports_orchestration
+    from research_router import supports_orchestration, supports_timers
+    from wait_delivery import reconcile_wait
 
 MAX_DELIVERY_BYTES = 16 * 1024
 GATEWAY_SCOPE = "orchestration.deliver"
@@ -58,9 +60,10 @@ class DeliveryRegistration:
 
 
 class _RouteClient:
-    def __init__(self, router, token, actor_id, check_owner):
+    def __init__(self, router, token, actor_id, check_owner, binding):
         self.router, self.token, self.actor_id = router, token, actor_id
         self.check_owner = check_owner
+        self.binding = binding
 
     def _context(self, key):
         self.check_owner()
@@ -86,7 +89,14 @@ class _RouteClient:
         if operation not in {"orchestration.execute_turn", "orchestration.reconcile_wait"}:
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Delivery command is unavailable")
         context = self._context(idempotency_key)
-        response = await self.router._command_in_context(self.token, context, operation, request)
+        if operation == "orchestration.reconcile_wait" and supports_timers(
+            self.router.configuration
+        ):
+            response = await reconcile_wait(self, self.binding, request)
+        else:
+            response = await self.router._command_in_context(
+                self.token, context, operation, request
+            )
         self.check_owner()
         return response
 
@@ -199,7 +209,7 @@ class HostedDelivery:
                 check_owner()
                 clients = {
                     route: _RouteClient(
-                        self.router, route_token, binding.actors[route], check_owner
+                        self.router, route_token, binding.actors[route], check_owner, binding
                     )
                     for route, route_token in registration.route_tokens.items()
                 }

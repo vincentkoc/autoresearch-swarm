@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Keep hosted wait delivery live across explicit clock requalification. Scope its
+  reconciliation key to the authoritative provider generation, preserve rejected
+  acknowledgments and the original UTC threshold, and return pending only for a
+  verified clock retirement. Current credentials and ownership still apply;
+  immutable readiness remains deliverable after sealing and during witness outage.
+
 - Extend the production reconciliation probe with a saved absolute-UTC timer.
   Carry the pending wait across Workflow rotation and authority/Workflow restart,
   then require timer readiness from the real native witness without an event hint.
