@@ -15,6 +15,7 @@ function request(action, { letter = "a", drop = false } = {}) {
       source_credential: "source-credential",
       request_json: '{"backup_id":"fixture"}',
       election_json: "synthetic-signed-election",
+      turn_json: "synthetic-saved-turn",
     }),
     headers: drop ? { "x-fixture-drop-bootstrap": "true" } : {},
   });
@@ -177,6 +178,42 @@ test("default target admission has no private fallback", async () => {
     TARGET_A_API: {},
   });
   assert.deepEqual(await reply.json(), { denied: true });
+});
+
+test("target turn closure preserves failure and fixed-target routing", async () => {
+  const accepted = {
+    disposition: "accepted",
+    result: { turn: { state: "closed_unacknowledged" } },
+  };
+  const env = {
+    TARGET_A_BOOTSTRAP: {
+      checkpoint_turn: async (credential, turn) => {
+        assert.equal(credential, "target-credential");
+        assert.equal(turn, "synthetic-saved-turn");
+        return JSON.stringify(accepted);
+      },
+    },
+  };
+  assert.deepEqual(
+    await (await operator.fetch(request("turn"), env)).json(),
+    accepted,
+  );
+  assert.equal(
+    await (await operator.fetch(request("turn", { drop: true }), env)).text(),
+    "{",
+  );
+  env.TARGET_A_BOOTSTRAP.checkpoint_turn = async () =>
+    '{"error":{"code":"STALE_FENCE"}}';
+  const refused = await operator.fetch(request("turn", { drop: true }), env);
+  assert.equal(refused.status, 409);
+  assert.deepEqual(await refused.json(), { error: { code: "STALE_FENCE" } });
+});
+
+test("default target turn cannot enter private recovery", async () => {
+  const result = await operator.fetch(request("default-turn"), {
+    TARGET_A_API: {},
+  });
+  assert.deepEqual(await result.json(), { denied: true });
 });
 
 test("target capabilities forward only the fixed public route", async () => {

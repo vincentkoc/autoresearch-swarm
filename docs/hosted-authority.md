@@ -2106,6 +2106,12 @@ Native adapter tests cover both branches, independent connection races, a lost
 first committed reply, restart replay and changed-owner refusal. Actual workerd
 turn-maintenance qualification remains pending.
 
+The six-startup probe additionally binds a real source driver and saves a report
+turn through the SDK before sealing. After admission, the winner closes that turn
+without an action acknowledgment, loses its accepted reply, and replays both
+admission and closure byte-for-byte after restart. The loser, public entrypoint and
+attempted execute-turn remain refused. The saved action remains unexecuted.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and
@@ -2126,7 +2132,7 @@ generates no new ID or timestamp. Unchanged imported state and retained key yiel
 identical retries. Native tests cover the full import/request/source-election path,
 concurrent read-only retries, empty and legacy targets, changed configuration,
 corrupt receipts/seals/anchors and signer failure. Workerd qualification of this
-request RPC remains pending; requesting election cannot activate the target.
+request RPC passed in the workerd receipt below; requesting election cannot activate the target.
 
 A fresh source seal also registers `LogicalElectionAnchor` in the portable record
 ledger and its matching row in the original-only `hosted_checkpoint_elections`
@@ -2160,7 +2166,7 @@ ID, timestamp, signature or capture. Neither transition appends a portable event
 or command acknowledgment, so the selected image stays unchanged. Native tests
 exercise independent-connection races, lost commit replies, current-credential
 revocation, missing anchors, signature corruption and source-cut drift. The private
-RPC still needs workerd qualification. Election alone cannot activate a target.
+RPC passed in the workerd receipt below. Election alone cannot activate a target.
 
 The extended three-Worker probe now generates a request at each completed target,
 checks denial at an empty target and at default/public entrypoints, and sends both
@@ -2168,7 +2174,12 @@ valid requests concurrently to the original source. Its fixture drops both repli
 including the committed winner's. Retries must reveal one signed winner and one
 conflict. A fifth workerd startup then verifies identical target requests and exact
 winner bytes, continued loser refusal, inactive targets and unchanged source capture
-during the same witness outage. This extension's runtime receipt is pending.
+during the same witness outage. At
+`aeed14e090d6c0f25475583ce6bdd84cea1a0816`, the
+[workerd qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41219997884)
+passed 20 tests in 758.34 seconds, including this five-startup extension. That
+revision predates hosted admission and saved-turn maintenance; it does not qualify
+their later six-startup probe.
 
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent

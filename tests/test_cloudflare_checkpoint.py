@@ -16,6 +16,7 @@ from research_swarm.client import ResearchClient
 from research_swarm.control.recovery_proofs import verify_admission
 from research_swarm.crypto import public_key
 from research_swarm.domain.backup import BackupCustodyPin, RecoveryAdmission, RestoreReceipt
+from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.checkpoint_elections import (
     SignedLogicalElection,
     SignedLogicalElectionRequest,
@@ -94,7 +95,16 @@ def target_binding(manifest, source_custody, digest, seed, crypto):
 
 
 def target_call(
-    http, letter, action, credential, source_credential, capture, *, drop=False, election=None
+    http,
+    letter,
+    action,
+    credential,
+    source_credential,
+    capture,
+    *,
+    drop=False,
+    election=None,
+    turn=None,
 ):
     response = http.post(
         f"/fixture/target-{letter}/{action}",
@@ -103,6 +113,7 @@ def target_call(
             "source_credential": source_credential,
             "request_json": json.dumps(capture),
             "election_json": json.dumps(election),
+            "turn_json": json.dumps(turn),
         },
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
@@ -206,6 +217,43 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             assert "receipt" in post(http, secrets["bootstrap"]).json()
             admitted = admit(operator, project)
             assert operator.get("job", admitted.job["id"])["state"] == "ready"
+            driver_credential, evaluator_credential = manifest["credentials"][2:]
+            configuration_digest = content_digest(b"checkpoint-saved-turn")
+            binding = operator.command(
+                "orchestration.bind",
+                {
+                    "campaign_id": admitted.campaign["id"],
+                    "configuration_digest": configuration_digest,
+                    "adapter": "cloudflare-workflows",
+                    "routes": {
+                        "control": driver_credential["principal"]["id"],
+                        "evaluator": evaluator_credential["principal"]["id"],
+                    },
+                },
+                idempotency_key="checkpoint-bind",
+                expected_revision=admitted.campaign["revision"],
+            )["result"]
+            with ResearchClient.connect(
+                url, secrets["credentials"][driver_credential["id"]]
+            ) as driver:
+                saved_turn = driver.command(
+                    "orchestration.prepare_turn",
+                    {
+                        "campaign_id": admitted.campaign["id"],
+                        "epoch": 1,
+                        "ordinal": 1,
+                        "configuration_digest": configuration_digest,
+                        "planning_watermark": 0,
+                        "action": {
+                            "operation": "report.create",
+                            "payload": {"campaign_id": admitted.campaign["id"]},
+                            "idempotency_key": "checkpoint-unexecuted-report",
+                        },
+                    },
+                    idempotency_key="checkpoint-prepare",
+                    expected_revision=binding["revision"],
+                )["result"]
+            assert saved_turn["state"] == "prepared"
             endpoint.mode = "unavailable"
             witness_calls = len(endpoint.requests)
             seal = {
@@ -464,6 +512,43 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 RestoreReceipt.model_validate(receipts[winner]),
                 crypto_provider=deployment[2],
             )
+            turn_request = {
+                "request_id": new_id(),
+                "operation": "orchestration.close_turn",
+                "expected_revision": saved_turn["revision"],
+                "payload": {
+                    "turn_id": saved_turn["id"],
+                    "epoch": 1,
+                    "finding": "Original source sealed before action execution",
+                },
+            }
+
+            def turn_call(letter, *, action="turn", payload=None, drop=False):
+                return target_call(
+                    http,
+                    letter,
+                    action,
+                    target_secrets[letter]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    drop=drop,
+                    turn=turn_request if payload is None else payload,
+                )
+
+            assert turn_call(winner, action="default-turn").json() == {"denied": True}
+            assert "error" in turn_call(loser).json()
+            assert (
+                turn_call(
+                    winner, payload={**turn_request, "operation": "orchestration.execute_turn"}
+                ).json()["error"]["code"]
+                == "PROJECT_CONTRACT_INVALID"
+            )
+            assert turn_call(winner, drop=True).text == "{"
+            accepted_turn = turn_call(winner).text
+            closed = json.loads(accepted_turn)["result"]
+            assert closed["turn"]["id"] == saved_turn["id"]
+            assert closed["turn"]["state"] == "closed_unacknowledged"
+            assert closed["response"] is closed["receipt"] is None
 
         with (
             server(tmp_path, sequence=6, **options) as url,
@@ -479,6 +564,18 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 election=outcomes[winner],
             )
             assert repeated.text == accepted_admission
+            assert (
+                target_call(
+                    http,
+                    winner,
+                    "turn",
+                    target_secrets[winner]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                    turn=turn_request,
+                ).text
+                == accepted_turn
+            )
             for action in ("request", "provision"):
                 assert (
                     "error"

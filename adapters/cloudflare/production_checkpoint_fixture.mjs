@@ -17,7 +17,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|admit|default-admit|turn|default-turn|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -66,16 +66,23 @@ export default {
         },
       );
     }
-    if (action === "admit") {
-      const result = await bootstrap.checkpoint_admit(
-        input.credential,
-        input.election_json,
-      );
+    if (action === "admit" || action === "turn") {
+      const result =
+        action === "admit"
+          ? await bootstrap.checkpoint_admit(
+              input.credential,
+              input.election_json,
+            )
+          : await bootstrap.checkpoint_turn(input.credential, input.turn_json);
       if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
         const value = JSON.parse(result);
         if (
           value.disposition !== "accepted" ||
-          typeof value.result?.data?.logical_election_digest !== "string"
+          (action === "admit"
+            ? typeof value.result?.data?.logical_election_digest !== "string"
+            : !["settled", "closed_unacknowledged"].includes(
+                value.result?.turn?.state,
+              ))
         ) {
           return new Response(result, { status: 409 });
         }
@@ -90,14 +97,17 @@ export default {
     if (
       action === "default-import" ||
       action === "default-request" ||
-      action === "default-admit"
+      action === "default-admit" ||
+      action === "default-turn"
     ) {
       try {
         if (action === "default-import")
           await api.checkpoint_import(input.credential, "{}");
         else if (action === "default-request")
           await api.checkpoint_request(input.credential);
-        else await api.checkpoint_admit(input.credential, input.election_json);
+        else if (action === "default-admit")
+          await api.checkpoint_admit(input.credential, input.election_json);
+        else await api.checkpoint_turn(input.credential, input.turn_json);
         return Response.json({ denied: false });
       } catch {
         return Response.json({ denied: true });

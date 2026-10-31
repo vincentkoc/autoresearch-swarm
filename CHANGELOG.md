@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extend the six-startup workerd probe with a real prepared agent turn before
+  source sealing. Close it only at the admitted target, lose the committed reply,
+  replay after restart, and prove public and execute-turn refusal without inventing
+  a target acknowledgment or running the saved report action.
+
 - Reconcile or close original saved agent turns through a private hosted recovery
   route. Reuse the shared acknowledgment and closure rules, recheck original
   ownership before cached replies, and preserve budgets without dispatching actions.
