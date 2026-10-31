@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an explicit hosted lifecycle profile for campaign drain-pause, scoped
+  heartbeat/control acknowledgments and attempt cancellation intent. Keep worker
+  draining independent, preserve bounded acceptance renewals without extending
+  execution deadlines, and replay acknowledgments after controller restart.
+
 - Preserve the SDK's `request` argument name when replaying captured publication
   commands in the actual workerd fixture.
 

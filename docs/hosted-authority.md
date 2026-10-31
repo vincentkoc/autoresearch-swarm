@@ -798,6 +798,44 @@ and no promotion or reader sessions. Older fixture profiles retain their origina
 two credentials and configuration digest inputs. This test requires its own
 passing runtime receipt; source and collection checks alone are not qualification.
 
+### Witnessed lifecycle intent
+
+`research-lifecycle-witness-v1` extends the evaluator profile with
+`campaign.pause`, `worker.heartbeat` and `attempt.request_cancel`. Each uses one
+fresh witness and its existing synchronous transaction. Resume uses the existing
+`campaign.start` command. Worker admission still uses `worker.set_admission` and
+the separate admission projection's revision. Older profile capabilities remain
+unchanged.
+
+Campaign pause blocks new trials while letting already-active trials finish their
+remaining stages. Worker draining blocks every fresh claim, including the next
+stage of an active trial. These controls are independent: coupling them can strand
+a campaign drain until a worker becomes available again. Only drain-pause is
+qualified. The shared kernel does not yet expose general campaign cancellation;
+the hosted command records one dispatch-bound attempt cancellation request.
+
+Heartbeat acknowledgments and presence do not establish process closure. Explicit
+acceptance renewals use the existing calibrated authority and finite policy;
+they cannot change signed execution deadlines. Failed acknowledgment validation
+rolls back presence and renewals together. Cancellation intent, acknowledgment,
+offline workers and elapsed leases do not refund execution obligations. Native
+evidence and the independent acceptance path remain responsible for settlement.
+Wall-clock presence/cancellation timestamps are metadata, not signed clock
+authority.
+
+Operator get/list queries now include `worker_admission`, `worker_presence` and
+`attempt_control`. They retain the native generic-record semantics: an absent
+record is absent. Scoped `worker.get` continues to expose the existing virtual
+admission/presence state at revision zero; `worker.list(kind="controls")` retains
+its bounded control stream. These record reads need no witness. Fresh offer and
+clock queries retain their existing witnessed boundary.
+
+Local adapter tests cover multistage campaign drain/resume, independent worker
+draining, no new trials while pausing, sticky control acknowledgment, bounded
+acceptance renewal, atomic invalid-ack refusal, post-witness revocation and
+cancellation, and exact offline replay after reopen. Actual workerd lifecycle
+qualification and provider deployment remain separate.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

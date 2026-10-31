@@ -24,12 +24,14 @@ if __package__:
     from .artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from .artifact_router import UploadTarget
     from .evaluations import EvaluationQuery, EvaluationRead
+    from .lifecycle import LifecycleQuery, LifecycleRead
     from .research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from .research_router import (
         allowed_commands,
         supports_artifacts,
         supports_evaluation,
         supports_inputs,
+        supports_lifecycle,
         supports_outputs,
         supports_publication,
         supports_research,
@@ -38,12 +40,14 @@ else:
     from artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from artifact_router import UploadTarget
     from evaluations import EvaluationQuery, EvaluationRead
+    from lifecycle import LifecycleQuery, LifecycleRead
     from research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from research_router import (
         allowed_commands,
         supports_artifacts,
         supports_evaluation,
         supports_inputs,
+        supports_lifecycle,
         supports_outputs,
         supports_publication,
         supports_research,
@@ -227,6 +231,19 @@ def capabilities(configuration):
             "promotion": "unavailable",
         }
         result["publication"]["evaluation_receipts"] = "separate-evaluator-command"
+    if supports_lifecycle(configuration):
+        result["record_queries"] = {
+            "scope": "read",
+            "get": LifecycleRead.model_json_schema(),
+            "list": LifecycleQuery.model_json_schema(),
+        }
+        result["lifecycle"] = {
+            "pause": "drain",
+            "resume": "campaign.start",
+            "cancellation": "attempt-intent-until-proven-closure",
+            "heartbeat": "presence-control-acks-and-explicit-acceptance-renewals",
+            "execution_deadline_extension": False,
+        }
     return result
 
 

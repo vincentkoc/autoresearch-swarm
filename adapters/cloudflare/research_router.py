@@ -93,6 +93,10 @@ class HostedEvaluationConfiguration(HostedPublicationConfiguration):
     profile: Literal["research-evaluation-witness-v1"] = "research-evaluation-witness-v1"
 
 
+class HostedLifecycleConfiguration(HostedEvaluationConfiguration):
+    profile: Literal["research-lifecycle-witness-v1"] = "research-lifecycle-witness-v1"
+
+
 def supports_artifacts(configuration):
     return isinstance(configuration, HostedArtifactConfiguration)
 
@@ -117,16 +121,22 @@ def supports_evaluation(configuration):
     return isinstance(configuration, HostedEvaluationConfiguration)
 
 
+def supports_lifecycle(configuration):
+    return isinstance(configuration, HostedLifecycleConfiguration)
+
+
 def allowed_commands(configuration):
     if __package__:
         from .artifact_router import COMMANDS as artifact_commands
         from .evaluations import COMMANDS as evaluation_commands
+        from .lifecycle import COMMANDS as lifecycle_commands
         from .research_admission import COMMANDS as research_commands
         from .result_publication import COMMANDS as publication_commands
         from .worker_outputs import COMMANDS as output_commands
     else:
         from artifact_router import COMMANDS as artifact_commands
         from evaluations import COMMANDS as evaluation_commands
+        from lifecycle import COMMANDS as lifecycle_commands
         from research_admission import COMMANDS as research_commands
         from result_publication import COMMANDS as publication_commands
         from worker_outputs import COMMANDS as output_commands
@@ -137,6 +147,7 @@ def allowed_commands(configuration):
         | (output_commands if supports_outputs(configuration) else frozenset())
         | (publication_commands if supports_publication(configuration) else frozenset())
         | (evaluation_commands if supports_evaluation(configuration) else frozenset())
+        | (lifecycle_commands if supports_lifecycle(configuration) else frozenset())
     )
 
 
@@ -192,6 +203,7 @@ class ExistingResearchRouter:
                 | HostedOutputConfiguration
                 | HostedPublicationConfiguration
                 | HostedEvaluationConfiguration
+                | HostedLifecycleConfiguration
             ).validate_python(configuration)
             store = open_store()
             if (
@@ -241,6 +253,7 @@ class ExistingResearchRouter:
             if __package__:
                 from .artifact_router import HostedArtifacts
                 from .evaluations import HostedEvaluations
+                from .lifecycle import HostedLifecycle
                 from .research_admission import HostedResearchAdmission
                 from .result_publication import HostedResultPublication
                 from .worker_inputs import HostedWorkerInputs
@@ -248,6 +261,7 @@ class ExistingResearchRouter:
             else:
                 from artifact_router import HostedArtifacts
                 from evaluations import HostedEvaluations
+                from lifecycle import HostedLifecycle
                 from research_admission import HostedResearchAdmission
                 from result_publication import HostedResultPublication
                 from worker_inputs import HostedWorkerInputs
@@ -258,6 +272,7 @@ class ExistingResearchRouter:
             instance.outputs = HostedWorkerOutputs(instance)
             instance.publication = HostedResultPublication(instance)
             instance.evaluations = HostedEvaluations(instance)
+            instance.lifecycle = HostedLifecycle(instance)
             return instance
 
         return await exclusive(state, construct)
@@ -386,6 +401,8 @@ class ExistingResearchRouter:
                 return await self.publication.command(token, context, operation, payload)
             if operation in self.evaluations.commands:
                 return await self.evaluations.command(token, context, operation, payload)
+            if operation in self.lifecycle.commands:
+                return await self.lifecycle.command(token, context, operation, payload)
             if operation not in COMMANDS:
                 raise unavailable()
             definition, request = validate_command_input(context, operation, payload)
@@ -439,6 +456,8 @@ class ExistingResearchRouter:
         async def read():
             context = self._context(token, idempotency_key=new_id())
             if operation in {"get", "list"}:
+                if supports_lifecycle(self.configuration):
+                    return self.lifecycle.query(token, context, operation, payload)
                 if supports_evaluation(self.configuration):
                     return self.evaluations.query(token, context, operation, payload)
                 return self.research.query(context, operation, payload)
