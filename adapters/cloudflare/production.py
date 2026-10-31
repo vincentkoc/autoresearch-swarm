@@ -11,11 +11,12 @@ from checkpoint_wire import require_rpc_string
 from deployment import load_deployment
 from durable_sql import DurableObjectStore
 from ed25519 import NobleEd25519
-from hosted_http import json_response
+from hosted_http import handle, json_response
 from http_binding import HTTPBodyReader
 from provisioning import provision
 from r2_binding import R2BindingTransport
-from runtime import fixed_target, open_router, public_route, runtime_failure, serve
+from recovery_router import ExistingRecoveryRouter
+from runtime import fixed_target, open_router, public_route, recovery_route, runtime_failure, serve
 from witness_binding import WitnessHTTPTransport
 from workers import DurableObject, Response, WorkerEntrypoint, import_from_javascript, python_to_rpc
 
@@ -114,6 +115,39 @@ async def target_checkpoint(state, env, credential, operation, *, artifact_io=Fa
 
 
 class ResearchAuthority(DurableObject):
+    async def recovery_request(self, request):
+        # A separate binding method is routing, not authentication. Original tokens
+        # are verified by the recovery router before its bounded reader consumes bytes.
+        mode = "query"
+        try:
+            mode = recovery_route(request.method, request.url)
+            manifest, secrets, crypto = deployment(self.env)
+            fixed_target(self.env.RESEARCH_AUTHORITY, manifest, actual_id=self.ctx.id)
+            router = await ExistingRecoveryRouter.open(
+                self.ctx,
+                lambda: DurableObjectStore.open_existing(
+                    self.ctx.storage, namespace=manifest.namespace, object_id=str(self.ctx.id)
+                ),
+                manifest,
+                secrets,
+                target_json=getattr(self.env, "RESEARCH_CHECKPOINT_TARGET", None),
+                crypto=crypto,
+                objects=artifact_objects(self.env, manifest),
+            )
+            result = await handle(
+                router,
+                request.method,
+                request.url,
+                dict(request.headers),
+                HTTPBodyReader(python_to_rpc(request), import_from_javascript("./http_io.mjs")),
+                policy=router.policy,
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode=mode)
+        except Exception:
+            result = runtime_failure(mode=mode)
+        return python_to_rpc(response(result))
+
     async def checkpoint_route(self, credential, request_json):
         return await target_checkpoint(
             self.ctx, self.env, credential, issue_target_route, request_json=request_json
@@ -410,6 +444,23 @@ class Bootstrap(WorkerEntrypoint):
         except Exception:
             result = runtime_failure(mode="command")
         return result.body.decode()
+
+
+class Recovery(WorkerEntrypoint):
+    """Explicit original-worker HTTP ingress, separate from ordinary controller traffic."""
+
+    async def fetch(self, request):
+        mode = "query"
+        try:
+            mode = recovery_route(request.method, request.url)
+            manifest, _, _ = deployment(self.env)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).recovery_request(request)
+        except ResearchError as error:
+            result = runtime_failure(error, mode=mode)
+        except Exception:
+            result = runtime_failure(mode=mode)
+        return response(result)
 
 
 class Default(WorkerEntrypoint):

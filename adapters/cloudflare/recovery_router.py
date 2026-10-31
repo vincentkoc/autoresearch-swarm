@@ -49,7 +49,8 @@ class RecoveryWorkerRead(WorkerRead):
 class RecoveryHTTPPolicy:
     max_part_bytes: int
 
-    def admit(self, kind, identifier):
+    @staticmethod
+    def admit(kind, identifier):
         if (
             kind in {"capabilities", "output", "worker-upload"}
             or (kind == "query" and identifier == "worker.get")

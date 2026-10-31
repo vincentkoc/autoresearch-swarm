@@ -365,3 +365,74 @@ test("the checkpoint operator refuses non-loopback authorities", async () => {
   );
   assert.equal(reply.status, 403);
 });
+
+test("recovery forwarding preserves streamed request and response on the fixed binding", async () => {
+  const bytes = new Uint8Array([0, 255, 1, 2]);
+  const input = new Request(
+    "http://127.0.0.1/fixture/recovery-b/v1/worker/output/parts?offset=0",
+    {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer original",
+        "idempotency-key": "original-key",
+      },
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    },
+  );
+  const reply = await operator.fetch(input, {
+    TARGET_A_RECOVERY: {
+      fetch() {
+        assert.fail("Wrong target");
+      },
+    },
+    TARGET_B_API: {
+      fetch() {
+        assert.fail("Ordinary API selected");
+      },
+    },
+    TARGET_B_RECOVERY: {
+      async fetch(request) {
+        assert.equal(new URL(request.url).pathname, "/v1/worker/output/parts");
+        assert.equal(new URL(request.url).search, "?offset=0");
+        assert.equal(request.method, "PUT");
+        assert.equal(request.headers.get("authorization"), "Bearer original");
+        assert.equal(request.headers.get("idempotency-key"), "original-key");
+        assert.equal(request.bodyUsed, false);
+        assert.deepEqual(new Uint8Array(await request.arrayBuffer()), bytes);
+        return new Response(bytes, {
+          status: 202,
+          headers: { "x-result": "original" },
+        });
+      },
+    },
+  });
+  assert.equal(reply.status, 202);
+  assert.equal(reply.headers.get("x-result"), "original");
+  assert.deepEqual(new Uint8Array(await reply.arrayBuffer()), bytes);
+});
+
+test("recovery gateway does not consume a request refused by the receiver", async () => {
+  let forwarded;
+  const reply = await operator.fetch(
+    new Request("http://localhost/fixture/recovery-a/v1/worker/get", {
+      method: "POST",
+      body: "oversized unauthorized fixture",
+    }),
+    {
+      TARGET_A_RECOVERY: {
+        async fetch(request) {
+          forwarded = request;
+          return new Response(null, { status: 401 });
+        },
+      },
+    },
+  );
+  assert.equal(reply.status, 401);
+  assert.equal(forwarded.bodyUsed, false);
+});

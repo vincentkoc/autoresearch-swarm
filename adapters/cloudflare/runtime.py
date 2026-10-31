@@ -10,12 +10,14 @@ if __package__:
     from .delivery_router import HostedDelivery, delivery_error
     from .hosted_http import failure, handle, route, uncertain
     from .provisioning import require_deployment
+    from .recovery_router import RecoveryHTTPPolicy
     from .research_router import ExistingResearchRouter
 else:
     from delivery_registry import DeploymentDeliveryRegistry
     from delivery_router import HostedDelivery, delivery_error
     from hosted_http import failure, handle, route, uncertain
     from provisioning import require_deployment
+    from recovery_router import RecoveryHTTPPolicy
     from research_router import ExistingResearchRouter
 
 
@@ -50,6 +52,24 @@ def fixed_target(namespace, manifest, *, actual_id=None):
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Deployment physical authority differs")
     return identifier
+
+
+def recovery_route(method, target):
+    """Only the named recovery entrypoint selects this policy; request data cannot."""
+    try:
+        kind, identifier, _ = route(method, target)
+        RecoveryHTTPPolicy.admit(kind, identifier)
+        return (
+            "upload_part"
+            if kind == "worker-upload"
+            else "command"
+            if kind == "command"
+            else "query"
+        )
+    except ResearchError:
+        raise
+    except (ValueError, TypeError):
+        raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid recovery target") from None
 
 
 def runtime_failure(error=None, *, mode="query"):
@@ -91,7 +111,5 @@ async def serve(router, manifest, secrets, method, target, headers, read_body):
     if mode == "delivery":
         return await HostedDelivery(
             router, {}, resolve_registration=router.delivery_registry.resolve
-        ).handle(
-            method, target, headers, read_body
-        )
+        ).handle(method, target, headers, read_body)
     return await handle(router, method, target, headers, read_body)

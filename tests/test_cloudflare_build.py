@@ -33,7 +33,7 @@ def test_production_and_qualification_bundles_share_implementation_without_fixtu
         for node in ast.parse((production / "entry.py").read_text()).body
         if isinstance(node, ast.ClassDef)
     }
-    assert classes == {"Default", "Bootstrap", "ResearchAuthority"}
+    assert classes == {"Default", "Bootstrap", "Recovery", "ResearchAuthority"}
     commands = json.loads((production / "commands.json").read_text())
     assert commands == sorted(set(commands))
     assert commands == json.loads((qualification / "commands.json").read_text())

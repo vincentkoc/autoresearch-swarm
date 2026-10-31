@@ -2152,7 +2152,26 @@ an explicitly selected recovery runtime. It opens existing state from protected
 target configuration, verifies the full elected admission and physical store, and
 uses only the target's bounded R2 binding. It does not install a witness provider,
 dispatch key or assignment signer. The ordinary router does not select this mode.
-Production HTTP routing and workerd qualification remain separate steps.
+The named `Recovery` entrypoint forwards to `ResearchAuthority.recovery_request`;
+the ordinary `Default.fetch` and DO `fetch` keep their original routes. An operator
+must explicitly bind a gateway to `Recovery` and route the signed destination URL
+to that gateway. Forward the original `/v1/...` method, path, headers and stream.
+Do not replace the original worker bearer token with a bootstrap credential.
+No caller header, query parameter or failed ordinary request selects recovery.
+
+The fixed target is checked at both ingress and the receiving physical DO. Custom
+RPC carries the original native request and response; the Python receiver explicitly
+converts its response through `python_to_rpc`. The SDK converts outgoing request
+arguments. This uses Cloudflare's documented [Request/Response RPC transport](https://developers.cloudflare.com/workers/runtime-apis/rpc/#readablestream-writablestream-request-and-response),
+without cloning or buffering the request at the gateway. A named binding separates
+routing roles; it does not authenticate a worker. Current credentials and elected
+admission are still checked at the receiver before bounded body consumption.
+
+Node bridge tests verify unchanged streams, credentials and responses and no gateway
+body read on receiver refusal. The six-startup workerd probe now checks the named
+entrypoint and custom DO RPC with a streamed historical read, unauthorized oversized
+input, authorized over-limit input, execution refusal and the same historical record
+after restart. These new workerd assertions remain pending qualification.
 
 The shared HTTP handler accepts a trusted immutable policy supplied by the runtime.
 The recovery policy advertises schemas for the five journal commands and only

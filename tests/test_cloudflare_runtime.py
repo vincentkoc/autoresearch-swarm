@@ -6,6 +6,7 @@ from adapters.cloudflare.runtime import (
     fixed_target,
     open_router,
     public_route,
+    recovery_route,
     runtime_failure,
     serve,
 )
@@ -18,6 +19,28 @@ from tests.test_async_r2 import Transport
 from tests.test_cloudflare_deployment import deployment as deployment
 from tests.test_cloudflare_provisioning import bootstrap as bootstrap
 from tests.test_cloudflare_provisioning import rows, run
+
+
+@pytest.mark.parametrize(
+    "method,target",
+    [
+        ("POST", "/v1/worker/list"),
+        ("POST", "/v1/worker/clock"),
+        ("POST", "/v1/commands/worker.claim_job"),
+        ("POST", "/v1/commands/attempt.reconcile_closure"),
+        ("POST", "/v1/delivery/execute"),
+        ("GET", "/v1/capabilities?recovery=true"),
+    ],
+)
+def test_recovery_ingress_refuses_control_before_opening_authority(method, target):
+    with pytest.raises(ResearchError):
+        recovery_route(method, target)
+
+
+def test_recovery_ingress_preserves_existing_sdk_routes():
+    assert recovery_route("GET", "/v1/capabilities") == "query"
+    assert recovery_route("POST", "/v1/worker/get") == "query"
+    assert recovery_route("POST", "/v1/commands/worker.submit_evidence") == "command"
 
 
 async def opened(e, **overrides):

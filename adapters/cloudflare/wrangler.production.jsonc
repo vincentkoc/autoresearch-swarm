@@ -21,4 +21,6 @@
   // RESEARCH_SECRETS through protected secret bindings. Neither has defaults.
   // No public route is enabled here. Bind the named Bootstrap entrypoint only
   // to an operator service; its credential is separate from research API tokens.
+  // A recovery gateway may bind the named Recovery entrypoint and forward the
+  // original worker request unchanged. Default remains the ordinary controller.
 }

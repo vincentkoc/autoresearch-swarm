@@ -10,6 +10,15 @@ export default {
     if (!["127.0.0.1", "localhost"].includes(url.hostname)) {
       return new Response("Local qualification only", { status: 403 });
     }
+    const recovery = url.pathname.match(
+      /^\/fixture\/recovery-(a|b)(\/v1\/.*)$/,
+    );
+    if (recovery) {
+      const api =
+        recovery[1] === "a" ? env.TARGET_A_RECOVERY : env.TARGET_B_RECOVERY;
+      url.pathname = recovery[2];
+      return api.fetch(new Request(url, request));
+    }
     if (request.method === "GET" && url.pathname === "/fixture/targets") {
       return Response.json({
         a: env.TARGET_A_AUTHORITY.idFromName("primary").toString(),

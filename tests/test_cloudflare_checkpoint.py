@@ -57,6 +57,7 @@ def operator_config(directory):
             [
                 {"binding": prefix + "_API", "service": name},
                 {"binding": prefix + "_BOOTSTRAP", "service": name, "entrypoint": "Bootstrap"},
+                {"binding": prefix + "_RECOVERY", "service": name, "entrypoint": "Recovery"},
             ]
         )
         config["durable_objects"]["bindings"].append(
@@ -562,6 +563,49 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             assert signed_route.logical_election == SignedLogicalElection.model_validate(
                 outcomes[winner]
             )
+            recovery_url = f"/fixture/recovery-{winner}/v1"
+            headers = {"authorization": "Bearer " + operator_token}
+            recovery_caps = http.get(recovery_url + "/capabilities", headers=headers)
+            assert recovery_caps.status_code == 200, recovery_caps.text
+            assert recovery_caps.json()["profile"] == "original-worker-recovery-v1"
+            assert recovery_caps.json()["execution"] == "unavailable"
+            assert (
+                http.get(f"/fixture/recovery-{loser}/v1/capabilities", headers=headers).status_code
+                != 200
+            )
+            historical_request = {
+                "worker_id": signed_route.route.binding.worker_id,
+                "session_id": signed_route.route.binding.worker_session_id,
+                "kind": "historical_attempt",
+                "id": signed_route.route.attempt_id,
+            }
+            raw_history = json.dumps(historical_request).encode()
+            history_response = http.post(
+                recovery_url + "/worker/get",
+                headers=headers,
+                content=iter((raw_history[:10], raw_history[10:])),
+            )
+            assert history_response.status_code == 200, history_response.text
+            historical_attempt = history_response.json()
+            assert historical_attempt["id"] == claimed["result"]["id"]
+            assert historical_attempt["data"]["dispatch"] == claimed["result"]["data"]["dispatch"]
+            # Stream past the JSON bound. Authentication must still determine the
+            # unauthorized response; authorized requests reach the bounded reader.
+            for token, expected in (("invalid", 401), (operator_token, 422)):
+                refused = http.post(
+                    recovery_url + "/worker/get",
+                    headers={"authorization": "Bearer " + token},
+                    content=(b" " * 65536 for _ in range(17)),
+                )
+                assert refused.status_code == expected, refused.text
+            assert (
+                http.post(
+                    recovery_url + "/commands/worker.claim_job",
+                    headers={**headers, "idempotency-key": "not-execution"},
+                    json={},
+                ).status_code
+                == 501
+            )
             turn_request = {
                 "request_id": new_id(),
                 "operation": "orchestration.close_turn",
@@ -671,6 +715,13 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 election=outcomes[winner],
             )
             assert repeated.text == accepted_admission
+            restored_history = http.post(
+                f"/fixture/recovery-{winner}/v1/worker/get",
+                headers={"authorization": "Bearer " + operator_token},
+                json=historical_request,
+            )
+            assert restored_history.status_code == 200, restored_history.text
+            assert restored_history.json() == historical_attempt
             assert (
                 target_call(
                     http,

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Expose original-worker recovery through a named Cloudflare `Recovery` entrypoint
+  and an explicit fixed-target Durable Object RPC receiver. Preserve streamed
+  requests and original credentials, bound body reads after authentication, and
+  leave the default controller route unchanged. Extend the workerd probe with
+  streamed history reads, refusal cases and restart replay; qualification is pending.
+
 - Add an elected-target recovery router for original workers. It exposes bounded
   historical reads, journal-only transfer and quarantined evidence submission through
   the existing SDK wire contract. Current custody and credentials are rechecked before
