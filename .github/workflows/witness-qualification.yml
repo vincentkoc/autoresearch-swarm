@@ -91,6 +91,7 @@ jobs:
           tests/test_checkpoint_admission_research.py
           tests/test_checkpoint_turns.py
           tests/test_checkpoint_artifacts.py
+          tests/test_checkpoint_artifact_export.py
           tests/test_recovery_verification.py
           tests/test_recovery_elections.py
           tests/test_inactive_transform.py

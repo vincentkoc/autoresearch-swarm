@@ -3,26 +3,33 @@
 from research_swarm.domain.artifacts import ArtifactRecord, StoredBlob, UploadSpec
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import ID, VersionedRecord
+from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import encode
 
 if __package__:
     from .checkpoint_admission import HostedRecoveryVerifier
+    from .checkpoint_capture import capture_checkpoint
     from .checkpoint_import import verify_target_configuration
-    from .checkpoint_source import parse_checkpoint_request
+    from .checkpoint_source import load_source, parse_checkpoint_request, source_operator
     from .checkpoint_target import load_target
     from .exclusive import exclusive
 else:
     from checkpoint_admission import HostedRecoveryVerifier
+    from checkpoint_capture import capture_checkpoint
     from checkpoint_import import verify_target_configuration
-    from checkpoint_source import parse_checkpoint_request
+    from checkpoint_source import load_source, parse_checkpoint_request, source_operator
     from checkpoint_target import load_target
     from exclusive import exclusive
 
 
-class RestoreArtifact(VersionedRecord):
+class ArtifactGenerationRequest(VersionedRecord):
     artifact_id: ID
     generation: ID
+
+
+class ExportArtifact(ArtifactGenerationRequest):
+    backup_id: ID
+    manifest_digest: Digest
 
 
 def imported_artifact(sql, workspace, request):
@@ -81,7 +88,7 @@ async def restore_target_artifact(
         expected_custody=binding.expected_custody,
         crypto=crypto,
     )
-    request = parse_checkpoint_request(request_json, RestoreArtifact)
+    request = parse_checkpoint_request(request_json, ArtifactGenerationRequest)
     storage = manifest.configuration.storage
     if objects.config != storage or objects.transport.configuration_digest != storage.digest:
         raise ResearchError(ErrorCode.STALE_FENCE, "Recovery artifact destination differs")
@@ -126,3 +133,70 @@ async def restore_target_artifact(
         )
 
     return await exclusive(state, restore)
+
+
+async def read_source_artifact(
+    state,
+    open_store,
+    manifest,
+    secrets,
+    *,
+    identity,
+    credential,
+    source_json,
+    request_json,
+    crypto,
+    objects,
+):
+    custody = load_source(source_json, manifest, secrets, credential=credential, crypto=crypto)
+    manifest.require_store(identity)
+    request = parse_checkpoint_request(request_json, ExportArtifact)
+    storage = manifest.configuration.storage
+    if objects.config != storage or objects.transport.configuration_digest != storage.digest:
+        raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint artifact source differs")
+
+    async def read():
+        store = open_store()
+        _, token = source_operator(manifest, secrets)
+
+        def selected():
+            image = capture_checkpoint(
+                store,
+                manifest,
+                token=token,
+                backup_id=request.backup_id,
+                expected_custody=custody.binding.pin,
+            ).manifest
+            if image.digest != request.manifest_digest:
+                raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint artifact image differs")
+            blob = next(
+                (
+                    item
+                    for item in image.artifacts
+                    if (item.reference.id, item.generation)
+                    == (request.artifact_id, request.generation)
+                ),
+                None,
+            )
+            if blob is None:
+                raise ResearchError(
+                    ErrorCode.ARTIFACT_UNVERIFIED, "Artifact is outside checkpoint inventory"
+                )
+            return blob
+
+        blob = selected()
+        content = await objects.read(manifest.configuration.authority.workspace_id, blob)
+        if selected() != blob:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint artifact source changed")
+        if objects.config != storage or objects.transport.configuration_digest != storage.digest:
+            raise ResearchError(ErrorCode.STALE_FENCE, "Checkpoint artifact source changed")
+        return encode(
+            {
+                "schema_version": "1.0",
+                "manifest_digest": request.manifest_digest,
+                "artifact": blob.model_dump(mode="json"),
+                "content_hex": content.hex(),
+            }
+        )
+
+    return await exclusive(state, read)

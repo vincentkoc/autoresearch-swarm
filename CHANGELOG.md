@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Export exact artifact generations from a sealed source through private RPC.
+  Revalidate the requested checkpoint and current custody before and after R2
+  reads, verify complete bytes, and preserve every SQL row. The bounded result
+  feeds the existing target restoration operation without a new generation.
+
 - Restore exact imported artifact generations through private fixed-target RPC.
   Bound input bytes, require the admitted recovery and current artifact identity,
   publish conditionally into the configured R2 destination, and verify full readback.

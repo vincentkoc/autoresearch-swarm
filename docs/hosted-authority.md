@@ -2130,6 +2130,18 @@ it receives no success receipt and does not delete or overwrite that generation.
 Native adapter fault tests pass; actual production R2 restoration qualification
 remains pending.
 
+`Bootstrap.checkpoint_read_artifact(bootstrap_credential, request_json)` reads
+one exact generation from the sealed source's fixed R2 binding. The request names
+`backup_id`, `manifest_digest`, `artifact_id` and `generation`. Both before and
+after the awaited object read, the source reconstructs its bounded checkpoint,
+verifies current operator and custody, and requires the requested image digest
+and inventory entry. R2 verifies the complete bytes and generation metadata.
+The reply contains the manifest digest, original `StoredBlob` and lowercase
+`content_hex`, ready for the target restoration call. No SQL rows, timestamps,
+signatures or generation identities change. Source export refuses when evidence,
+authority or storage configuration changes during the read. Native tests cover
+the full export-to-restore flow; actual workerd qualification remains pending.
+
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
 destination or source digest. They repeat bootstrap and physical-target checks and

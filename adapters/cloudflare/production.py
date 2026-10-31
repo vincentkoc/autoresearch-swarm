@@ -1,7 +1,7 @@
 """Production Worker: one fixed authority, with a separate private bootstrap entrypoint."""
 
 from checkpoint_admission import admit_target
-from checkpoint_artifacts import restore_target_artifact
+from checkpoint_artifacts import read_source_artifact, restore_target_artifact
 from checkpoint_election import elect_source
 from checkpoint_source import capture_source, seal_source
 from checkpoint_target import import_target, request_target
@@ -47,11 +47,12 @@ def witness(manifest, secrets):
     )
 
 
-async def source_checkpoint(state, env, credential, request_json, operation):
+async def source_checkpoint(state, env, credential, request_json, operation, *, artifact_io=False):
     try:
         manifest, secrets, crypto = deployment(env)
         secrets.require_bootstrap(credential)
         fixed_target(env.RESEARCH_AUTHORITY, manifest, actual_id=state.id)
+        arguments = {"objects": artifact_objects(env, manifest)} if artifact_io else {}
         result = await operation(
             state,
             lambda: DurableObjectStore.open_existing(
@@ -64,6 +65,7 @@ async def source_checkpoint(state, env, credential, request_json, operation):
             source_json=getattr(env, "RESEARCH_CHECKPOINT_SOURCE", None),
             request_json=request_json,
             crypto=crypto,
+            **arguments,
         )
         return result if isinstance(result, str) else json_response(result).body.decode()
     except ResearchError as error:
@@ -111,6 +113,11 @@ async def target_checkpoint(state, env, credential, operation, *, artifact_io=Fa
 
 
 class ResearchAuthority(DurableObject):
+    async def checkpoint_read_artifact(self, credential, request_json):
+        return await source_checkpoint(
+            self.ctx, self.env, credential, request_json, read_source_artifact, artifact_io=True
+        )
+
     async def checkpoint_artifact(self, credential, request_json, content_hex):
         return await target_checkpoint(
             self.ctx,
@@ -246,6 +253,20 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def checkpoint_read_artifact(self, credential, request_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_read_artifact(
+                credential, request_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def checkpoint_artifact(self, credential, request_json, content_hex):
         try:
