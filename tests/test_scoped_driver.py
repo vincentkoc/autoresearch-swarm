@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from filelock import FileLock, Timeout
 
 from research_swarm.api.http import create_app
 from research_swarm.control.commands import SubmitTrial
@@ -554,7 +555,9 @@ def controller_process(
             process.communicate(timeout=5)
 
 
-@pytest.mark.parametrize("pipeline", [{"source_finish_delay": 5}], indirect=True)
+@pytest.mark.parametrize(
+    "pipeline", [{"source_finish_gate": True, "source_train_timeout_ms": 30000}], indirect=True
+)
 @pytest.mark.parametrize("cancel_offline", [False, True])
 def test_independent_worker_process_restart_recovers_the_original_running_native_scope(
     pipeline: Pipeline, tmp_path: Path, cancel_offline: bool
@@ -576,6 +579,8 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
         first = subprocess.Popen(
             argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
+        resumed = None
+        release = None
         try:
             until = time.monotonic() + 10
             journal = WorkerJournal(root / "execution" / "journal.sqlite")
@@ -588,6 +593,12 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 assert first.poll() is None and time.monotonic() < until, entries
                 time.sleep(0.01)
             assert running.native is not None
+            assert running.prepared is not None
+            output_root = Path(running.prepared.context.output_root)
+            release = output_root / "payload-release"
+            while not (output_root / "payload-finished").exists():
+                assert first.poll() is None and time.monotonic() < until
+                time.sleep(0.01)
             first.kill()  # Only the driver process created by this test.
             first.communicate(timeout=5)
             if cancel_offline:
@@ -602,8 +613,38 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 )["result"]
                 assert requested["disposition"] == "requested"
                 assert requested["control"]["data"]["acknowledged_at"] is None
-            resumed = subprocess.run(argv, capture_output=True, text=True, timeout=20, check=True)
-            result = json.loads(resumed.stdout)
+            resumed = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if not cancel_offline:
+                lock = FileLock(
+                    root / "execution" / "locks" / f"{running.dispatch.attempt_id}.lock", timeout=0
+                )
+                until = time.monotonic() + 10
+                while True:
+                    assert resumed.poll() is None and time.monotonic() < until
+                    try:
+                        with lock:
+                            pass
+                    except Timeout:
+                        break
+                    time.sleep(0.01)
+                assert journal.get(running.dispatch.attempt_id).state == JournalState.RUNNING
+                release.touch()
+            try:
+                stdout, stderr = resumed.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                observed = journal.get(running.dispatch.attempt_id)
+                pytest.fail(
+                    f"Resumed driver did not finish: {observed.state}; "
+                    f"{observed.finding}; {observed.outcome}"
+                )
+            assert resumed.returncode == 0, stderr
+            result = json.loads(stdout)
             assert result["state"] == "idle" and result["observation_count"] == 1
             closed = journal.get(running.dispatch.attempt_id)
             assert closed.state == JournalState.CLOSED and closed.native == running.native
@@ -616,8 +657,15 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 )
             assert connected.worker.resources.availability() == {"cpu": 1}
             assert len(pipeline.client.list(RecordQuery(kind="attempt"))["items"]) == 1
-            assert connected.bundle.token not in resumed.stdout + resumed.stderr
+            assert connected.bundle.token not in stdout + stderr
+            assert (output_root / "payload-finished").read_text() == "1"
         finally:
+            if release is not None:
+                release.touch()
+            if resumed is not None:
+                if resumed.poll() is None:
+                    resumed.kill()
+                resumed.communicate(timeout=5)
             if first.poll() is None:
                 first.kill()
             first.communicate(timeout=5)

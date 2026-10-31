@@ -20,6 +20,7 @@ from research_swarm.control.queries import RecordQuery
 from research_swarm.control.search_models import RespondToProposal
 from research_swarm.control.worker_lifecycle import SetWorkerAdmission
 from research_swarm.domain.budgets import BudgetLimit
+from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.engines.registration import register_environment
 from research_swarm.orchestration.evaluation import EvaluationDriver
@@ -191,8 +192,41 @@ async def test_two_registered_workers_refill_a_slot_while_original_native_scope_
 
         async def progress() -> None:
             scored = await evaluation.advance_async()
-            assert scored.state in {"idle", "advanced"}, scored
-            assert scored.findings == () and scored.continuation is None
+            if scored.state not in {"idle", "advanced"} or scored.findings or scored.continuation:
+                native = []
+                for row in controller.list(RecordQuery(kind="job", campaign_id=campaign_id))[
+                    "items"
+                ]:
+                    job = controller.get("job", row["id"])
+                    attempt_id = job["data"]["current_attempt_id"]
+                    if attempt_id is None:
+                        continue
+                    attempt = controller.get("attempt", attempt_id)
+                    for connected in (worker_a, worker_b):
+                        try:
+                            entry = connected.worker.journal.get(attempt_id)
+                        except ResearchError as error:
+                            if error.code == ErrorCode.NOT_FOUND:
+                                continue
+                            raise
+                        native.append(
+                            {
+                                "job_id": row["id"],
+                                "job_state": job["state"],
+                                "attempt_id": attempt_id,
+                                "attempt_state": attempt["state"],
+                                "publication_status": attempt["data"]["publication_status"],
+                                "journal_state": entry.state,
+                                "reason": entry.outcome.reason if entry.outcome else None,
+                                "exit_code": entry.outcome.exit_code if entry.outcome else None,
+                                "closure": entry.outcome.closure.model_dump(mode="json")
+                                if entry.outcome
+                                else None,
+                            }
+                        )
+                pytest.fail(
+                    json.dumps({"evaluation": scored.model_dump(mode="json"), "native": native})
+                )
             result = await search.advance_async()
             assert result.state in {
                 "awaiting_proposal",

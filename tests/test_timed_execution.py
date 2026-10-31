@@ -20,6 +20,7 @@ from research_swarm.domain.types import new_id
 from research_swarm.workers import supervision
 from research_swarm.workers.clock_channel import OriginServer
 from research_swarm.workers.clock_estimates import DeadlineCaps
+from research_swarm.workers.clocks import native_clock
 from research_swarm.workers.contracts import NativeIdentity
 from research_swarm.workers.journal import JournalState, WorkerJournal
 from research_swarm.workers.local import LocalWorker
@@ -456,12 +457,19 @@ def test_actual_origin_process_death_preserves_native_phase_and_fixed_deadline(
         )
         process.kill()  # This test owns the origin; never signal a recovered native PID.
         process.communicate(timeout=5)
-        until = time.monotonic() + 12
+        assert before.timing is not None
+        clock = native_clock()
+        assert clock.profile == before.timing.caps.origin_profile
+        # Closure may consume the declared cleanup allowance after the hard cap.
+        # Two seconds allow the closed record to become observable to this process.
+        observation_ns = (
+            int(before.timing.caps.hard_ns) + before.command.cleanup_ms * 1_000_000 + 2_000_000_000
+        )
         while True:
             entry = journal.get(identifier(10))
             if entry.state in {JournalState.CLOSED, JournalState.NOT_STARTED}:
                 break
-            assert time.monotonic() < until, entry
+            assert clock.sample().continuous_ns < observation_ns, entry
             time.sleep(0.025)
         assert entry.timing == before.timing
         if phase == "claim":
@@ -474,7 +482,10 @@ def test_actual_origin_process_death_preserves_native_phase_and_fixed_deadline(
             else:
                 assert (tmp_path / "ran").exists() and entry.outcome.reason == "deadline"
                 assert entry.outcome.released_at is not None
-                assert entry.outcome.elapsed_ms < 11_000
+                elapsed_bound_ms = (
+                    observation_ns - int(before.timing.qualified_at.continuous_ns)
+                ) / 1_000_000
+                assert entry.outcome.elapsed_ms < elapsed_bound_ms
     finally:
         if process.poll() is None:
             process.kill()
