@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Admit an elected hosted target through private fixed-target RPC. Verify the
+  pristine import, full election and protected deployment, then atomically retain
+  proof, fence drivers, drain campaigns and acknowledge the transition. Replays
+  verify signed lifecycle state after the import fingerprint legitimately changes.
+  Preserve funding and pending work; recovery still grants no execution or activation.
+
 - Bind logical recovery admission to the complete signed election envelope.
   Recheck its immutable companion at every recovery transaction boundary, refuse
   changed or missing proof, and keep native-only routes from bypassing deployment

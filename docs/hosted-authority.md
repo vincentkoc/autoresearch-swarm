@@ -2038,7 +2038,7 @@ from the incoming request. It checks cross-layer
 restore, image, workspace, controller and next-epoch identity. A stripped native
 claim, changed physical destination, shared custody key or exhausted epoch refuses.
 These bounded records and pure verifiers supply no storage, election or activation
-authority. Hosted recovery admission remains separate implementation work.
+authority. The private admission path below owns the recovery transition.
 
 The shared database accepts an owner-supplied `RecoveryAdmissionVerifier` through
 `Database.from_store(..., recovery_verifier=...)`. It receives the current SQL
@@ -2061,6 +2061,27 @@ cannot replace the native claim inside the admission. Native admission omits the
 optional field entirely, retaining existing canonical bytes and signatures.
 Native-only verification, worker routes and activation refuse the logical profile
 until a deployment-aware route explicitly verifies its proof and destination.
+
+Private `Bootstrap.checkpoint_admit(bootstrap_credential, election_json)` opens
+only the already imported fixed target. Protected configuration supplies the
+operator and custody; copied source credentials cannot authorize this RPC. First
+admission checks the complete inactive fingerprint and source seal, verifies all
+four election signatures, and signs the admission with the protected target key.
+One outer SQL write retains the election companion, fences orchestration, drains
+running campaigns, changes the workspace gate to `recovering`, and stores the
+exact acknowledgment. Any failure rolls back the whole transition, including
+the companion and acknowledgment. The receipt does not close native processes,
+release reservations, settle budgets, accept scientific results or activate jobs.
+
+Exact retries validate current protected deployment, immutable import history,
+signed admission, retained election, research fences and original acknowledgment.
+They do not require the pre-admission fingerprint after legitimate recovery writes.
+Missing or reopened fences refuse both replay and recovery capability use; the
+transaction guard rechecks them after capability minting. Native tests cover
+independent SQLite connection races, lost replies, rollback after actual SDK
+campaign fencing, retained funding and pending turns. Production workerd admission
+qualification remains pending. Ordinary hosted routers still refuse this target;
+evidence delivery, artifact restoration and activation require separate support.
 
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied

@@ -25,6 +25,7 @@ from research_swarm.domain.types import utc_now
 from research_swarm.runtime import LocalRuntime
 from research_swarm.state.database import Database, JsonObject
 from research_swarm.state.private_files import read_private, restore_admission_path
+from research_swarm.state.recovery_verification import require_research_fences
 from research_swarm.state.sql import SqlSession
 
 
@@ -70,17 +71,7 @@ def verify_admitted(database: Database, receipt: RestoreReceipt) -> bool:
             or RestoreReceipt.model_validate_json(original["payload"]) != receipt
         ):
             raise ResearchError(ErrorCode.STALE_FENCE, "Original restoration receipt differs")
-        for kind, identifiers, states in (
-            ("orchestration_binding", admission.orchestration_campaign_ids, {"fenced"}),
-            ("campaign", admission.paused_campaign_ids, {"pausing", "paused"}),
-        ):
-            for identifier in identifiers:
-                current = connection.execute(
-                    "SELECT state FROM records WHERE workspace_id=? AND kind=? AND id=?",
-                    (receipt.workspace_id, kind, identifier),
-                ).fetchone()
-                if current is None or current["state"] not in states:
-                    raise ResearchError(ErrorCode.STALE_FENCE, "Recovery research fence differs")
+        require_research_fences(connection, receipt.workspace_id, admission)
         return True
 
     return database.store.read(verify)

@@ -79,7 +79,8 @@ def _target_schema(sql):
     return names
 
 
-def _saved(sql, intent):
+def saved_import(sql, intent):
+    """Read immutable import metadata; this alone does not verify current target state."""
     columns = sql.execute(
         f"SELECT * FROM pragma_table_xinfo('{IMPORT_TABLE}') ORDER BY cid LIMIT 5"
     ).fetchall()
@@ -114,7 +115,12 @@ def _saved(sql, intent):
     if row is None or strict_json_loads(row["intent"]) != intent.model_dump(mode="json"):
         raise ResearchError(ErrorCode.STALE_FENCE, "Inactive import intent differs")
     receipt = RestoreReceipt.model_validate_json(row["receipt"])
-    if fingerprint_state(sql) != row["state_digest"]:
+    return receipt, row["state_digest"]
+
+
+def _saved(sql, intent):
+    receipt, digest = saved_import(sql, intent)
+    if fingerprint_state(sql) != digest:
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Inactive imported state changed")
     return receipt
 
@@ -126,7 +132,7 @@ def _require_receipt(sql, intent, image, receipt):
     )
 
 
-def require_import_receipt(sql, intent, scope, custody, seal, receipt):
+def require_import_receipt(sql, intent, scope, custody, seal, receipt, *, phase="restoring"):
     expected = (
         intent.restore_id,
         intent.manifest_digest,
@@ -171,7 +177,7 @@ def require_import_receipt(sql, intent, scope, custody, seal, receipt):
         "SELECT state,payload FROM records WHERE kind='restoration' AND id=?", (receipt.restore_id,)
     ).one()
     if (
-        gate[0] != "restoring"
+        gate[0] != phase
         or stored[0] != "inactive"
         or RestoreReceipt.model_validate_json(stored[1]) != receipt
     ):
@@ -279,10 +285,22 @@ def verify_import_inputs(
 
 def inspect_imported_target(sql, intent, expected_source, expected_custody):
     """Verify an existing immutable import in one read; never initialize or repair it."""
+    receipt, marker, _ = inspect_target_history(
+        sql, intent, expected_source, expected_custody, phase="restoring"
+    )
+    return receipt, marker
+
+
+def inspect_target_history(sql, intent, expected_source, expected_custody, *, phase):
+    """Check phase bindings; restoring requires pristine bytes, recovering requires proof."""
+    if phase not in {"restoring", "recovering"}:
+        raise ValueError("Unsupported import lifecycle")
     if IMPORT_TABLE not in _target_schema(sql):
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Target has no completed import")
     require_portable_image_schema(sql)
-    receipt = _saved(sql, intent)
+    receipt, digest = saved_import(sql, intent)
+    if phase == "restoring" and fingerprint_state(sql) != digest:
+        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Inactive imported state changed")
     marker = read_anchor_marker(
         sql, workspace_id=expected_source.workspace_id, custody_id=expected_custody.custody_id
     )
@@ -312,8 +330,10 @@ def inspect_imported_target(sql, intent, expected_source, expected_custody):
         or WorkspaceSeal.model_validate_json(original[1]) != seal
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Imported source seal differs")
-    require_import_receipt(sql, intent, expected_source, expected_custody, seal, receipt)
-    return receipt, marker
+    require_import_receipt(
+        sql, intent, expected_source, expected_custody, seal, receipt, phase=phase
+    )
+    return receipt, marker, digest
 
 
 def import_checkpoint(

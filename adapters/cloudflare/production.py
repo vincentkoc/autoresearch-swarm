@@ -1,5 +1,6 @@
 """Production Worker: one fixed authority, with a separate private bootstrap entrypoint."""
 
+from checkpoint_admission import admit_target
 from checkpoint_election import elect_source
 from checkpoint_source import capture_source, seal_source
 from checkpoint_target import import_target, request_target
@@ -70,31 +71,39 @@ async def source_checkpoint(state, env, credential, request_json, operation):
     return result.body.decode()
 
 
+async def target_checkpoint(state, env, credential, operation, **arguments):
+    try:
+        manifest, secrets, crypto = deployment(env)
+        secrets.require_bootstrap(credential)
+        fixed_target(env.RESEARCH_AUTHORITY, manifest, actual_id=state.id)
+        return await operation(
+            state,
+            lambda: DurableObjectStore.open_existing(
+                state.storage, namespace=manifest.namespace, object_id=str(state.id)
+            ),
+            manifest,
+            secrets,
+            identity=StoreIdentity("cloudflare-do", manifest.namespace + "/" + str(state.id)),
+            credential=credential,
+            target_json=getattr(env, "RESEARCH_CHECKPOINT_TARGET", None),
+            crypto=crypto,
+            **arguments,
+        )
+    except ResearchError as error:
+        result = runtime_failure(error, mode="command")
+    except Exception:
+        result = runtime_failure(mode="command")
+    return result.body.decode()
+
+
 class ResearchAuthority(DurableObject):
     async def checkpoint_request(self, credential):
-        try:
-            manifest, secrets, crypto = deployment(self.env)
-            secrets.require_bootstrap(credential)
-            fixed_target(self.env.RESEARCH_AUTHORITY, manifest, actual_id=self.ctx.id)
-            return await request_target(
-                self.ctx,
-                lambda: DurableObjectStore.open_existing(
-                    self.ctx.storage, namespace=manifest.namespace, object_id=str(self.ctx.id)
-                ),
-                manifest,
-                secrets,
-                identity=StoreIdentity(
-                    "cloudflare-do", manifest.namespace + "/" + str(self.ctx.id)
-                ),
-                credential=credential,
-                target_json=getattr(self.env, "RESEARCH_CHECKPOINT_TARGET", None),
-                crypto=crypto,
-            )
-        except ResearchError as error:
-            result = runtime_failure(error, mode="command")
-        except Exception:
-            result = runtime_failure(mode="command")
-        return result.body.decode()
+        return await target_checkpoint(self.ctx, self.env, credential, request_target)
+
+    async def checkpoint_admit(self, credential, election_json):
+        return await target_checkpoint(
+            self.ctx, self.env, credential, admit_target, election_json=election_json
+        )
 
     async def checkpoint_import(self, credential, bundle_json):
         try:
@@ -215,6 +224,20 @@ class Bootstrap(WorkerEntrypoint):
 
     async def fetch(self, request):
         return response(runtime_failure(ResearchError(ErrorCode.NOT_FOUND, "RPC only")))
+
+    async def checkpoint_admit(self, credential, election_json):
+        try:
+            manifest, secrets, _ = deployment(self.env)
+            secrets.require_bootstrap(credential)
+            identifier = fixed_target(self.env.RESEARCH_AUTHORITY, manifest)
+            return await self.env.RESEARCH_AUTHORITY.get(identifier).checkpoint_admit(
+                credential, election_json
+            )
+        except ResearchError as error:
+            result = runtime_failure(error, mode="command")
+        except Exception:
+            result = runtime_failure(mode="command")
+        return result.body.decode()
 
     async def checkpoint_request(self, credential):
         try:

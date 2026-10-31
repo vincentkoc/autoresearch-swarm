@@ -42,3 +42,17 @@ class NativeRecoveryVerifier:
             )
         require_native_admission(admission)
         verify_admission(admission, receipt, crypto_provider=crypto)
+
+
+def require_research_fences(sql: SqlSession, workspace: str, admission: RecoveryAdmission) -> None:
+    for kind, identifiers, states in (
+        ("orchestration_binding", admission.orchestration_campaign_ids, {"fenced"}),
+        ("campaign", admission.paused_campaign_ids, {"pausing", "paused"}),
+    ):
+        for identifier in identifiers:
+            current = sql.execute(
+                "SELECT state FROM records WHERE workspace_id=? AND kind=? AND id=?",
+                (workspace, kind, identifier),
+            ).fetchone()
+            if current is None or current["state"] not in states:
+                raise ResearchError(ErrorCode.STALE_FENCE, "Recovery research fence differs")
