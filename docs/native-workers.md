@@ -184,7 +184,8 @@ errors. Invalid cache metadata, lock contention or cache storage failure bypass 
 without repairing unknown files or discarding a valid independent input. The internal
 materialization result records its origin, avoided transfer bytes and whether cache
 storage was unavailable. These are local observations, not measured research gains
-or controller placement authority. Cache-aware scheduling is a separate contract.
+or controller placement authority. Scheduling uses the separate
+[cache observation contract](worker-control.md#cache-observations).
 
 `InputCache.verified_snapshot()` provides a bounded inventory for scheduling hints.
 It rehashes recent bytes, filters by workspace, removes corrupt shared entries and
@@ -193,6 +194,25 @@ are 128 entries and 256 MiB; corrupt inspected entries consume those limits too.
 An absent cache stays absent. Snapshot hashing belongs outside worker heartbeat and
 control executors. A snapshot is an observation, not a residency reservation or an
 input-access grant.
+
+Local and scoped worker drivers inspect the cache before fresh offer discovery,
+at most once per 15 seconds. Hashing runs in a worker thread outside the scoped
+heartbeat/control pool; inspection holds no newly admitted attempt. Publication
+happens after the cache lock is released. Missing or rejected optional observations
+leave ordinary discovery and claim checks in force. Empty caches do not create
+observations; an empty snapshot clears a previous nonempty hint.
+
+An uncertain cache-publication reply is retried with the same request, revision
+and key before the live reporter inspects new bytes. After process restart the
+driver reads the current session observation and verifies a new snapshot. This
+does not settle any execution uncertainty. Driver shutdown retains ownership
+until an in-flight cache thread completes.
+
+Both drivers consume the controller's ranked offers. The local driver first
+authorizes ready evaluation jobs through its existing controller/evaluator
+roles, so those stages remain discoverable. The scoped worker leaves that
+authorization to an independent controller. Locality never bypasses campaign
+parallelism or resource admission.
 
 The launch sequence is:
 

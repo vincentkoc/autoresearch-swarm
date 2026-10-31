@@ -20,6 +20,7 @@ from research_swarm.control.workers import ClaimJob, WorkerData
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord
+from research_swarm.orchestration.cache_reporting import WorkerCacheReporter
 from research_swarm.orchestration.intents import CommandIntents
 from research_swarm.orchestration.worker_controls import WorkerControlSession
 from research_swarm.runtime import private_state_directory, read_private, write_private
@@ -90,6 +91,7 @@ class ScopedWorkerDriver:
         self._control_error: ResearchError | None = None
         self._pump_failure: ResearchError | None = None
         self._admission: Literal["active", "draining"] = "draining"
+        self._cache_reporter = WorkerCacheReporter(worker)
 
     async def _blocking(self, call: Callable[..., CallResult], *args: Any) -> CallResult:
         assert self._control_executor is not None
@@ -337,6 +339,7 @@ class ScopedWorkerDriver:
                 blocked = True
         if blocked or recovery_fences or self.stop.is_set() or not self._fresh_admission():
             return
+        await self._cache_reporter.refresh()
         assert self.worker.clock_sampler is not None
         self.worker.clock_sampler.read()
         async for offer in self._records("offers"):

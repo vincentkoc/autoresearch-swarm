@@ -13,10 +13,12 @@ from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.models import JobData
 from research_swarm.control.queries import RecordKind, RecordQuery
+from research_swarm.control.worker_queries import WorkerQuery
 from research_swarm.control.workers import AttemptData, ClaimJob
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord
+from research_swarm.orchestration.cache_reporting import WorkerCacheReporter
 from research_swarm.orchestration.intents import CommandIntent, CommandIntents
 from research_swarm.runtime import private_state_directory, read_private, write_private
 from research_swarm.state.database import JsonObject
@@ -59,6 +61,26 @@ class LocalDriver:
         with private_state_directory(self.root):
             pass
         self.stop = asyncio.Event()
+        self._cache_reporter = WorkerCacheReporter(self.worker)
+
+    def _offers(self, campaign_id: str) -> Iterator[JsonObject]:
+        cursor = None
+        binding = self.worker.worker.binding
+        while True:
+            page = self.worker.client.worker_list(
+                WorkerQuery(
+                    worker_id=binding.worker_id,
+                    session_id=binding.worker_session_id,
+                    kind="offers",
+                    campaign_id=campaign_id,
+                    limit=100,
+                    cursor=cursor,
+                )
+            )
+            yield from page["items"]
+            cursor = page["next_cursor"]
+            if cursor is None:
+                return
 
     def _records(self, kind: RecordKind, campaign_id: str | None = None) -> Iterator[JsonObject]:
         cursor = None
@@ -144,7 +166,9 @@ class LocalDriver:
                     raise
         return findings
 
-    def _claim(self, summary: JsonObject, intents: CommandIntents) -> JsonObject | None:
+    def _authorize_evaluation(
+        self, summary: JsonObject, intents: CommandIntents
+    ) -> JsonObject | None:
         row = self.controller.get("job", summary["id"])
         if row["state"] != "ready":
             return None
@@ -170,6 +194,12 @@ class LocalDriver:
             authorization = self.controller.get("evaluation_request", job.evaluation_request_id)
             if authorization["data"]["request"]["evaluator_id"] != self.enrollment.evaluator_id:
                 raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Job has another evaluator")
+        return row
+
+    def _claim(self, summary: JsonObject, intents: CommandIntents) -> JsonObject | None:
+        row = self._authorize_evaluation(summary, intents)
+        if row is None:
+            return None
         binding = self.worker.worker.binding
         return dict(
             intents.command(
@@ -270,8 +300,27 @@ class LocalDriver:
                     and not self.stop.is_set()
                     and campaign["state"] in {"running", "pausing"}
                 ):
+                    # Evaluation requests must exist before eligible offer discovery.
                     for summary in self._records("job", campaign_id):
-                        if len(active) >= self.concurrency:
+                        if self.stop.is_set():
+                            break
+                        if (
+                            summary["state"] == "ready"
+                            and summary["data"]["stage_kind"] == "evaluate"
+                        ):
+                            try:
+                                self._authorize_evaluation(summary, intents)
+                            except ResearchError as error:
+                                if error.code in {
+                                    ErrorCode.AUTHORIZATION_DENIED,
+                                    ErrorCode.STALE_FENCE,
+                                }:
+                                    raise
+                                findings.add(error.code.value + ":" + summary["id"])
+                    await self._cache_reporter.refresh()
+                    offers = () if self.stop.is_set() else self._offers(campaign_id)
+                    for summary in offers:
+                        if self.stop.is_set() or len(active) >= self.concurrency:
                             break
                         if summary["state"] != "ready":
                             continue
