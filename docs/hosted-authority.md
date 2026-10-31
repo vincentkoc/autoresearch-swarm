@@ -1640,6 +1640,61 @@ not release capacity, erase consumption or imply cancellation. A running
 supervisor follows its existing bounded offline policy and proves closure
 independently.
 
+## Logical checkpoint wire format
+
+`sealed-do-logical-v1` is separate from the existing `sealed-native-v1` bundle.
+The signed manifest binds the source physical/logical authority, full deployment
+digest, configuration and storage digests, custody pin, operator, seal ID/revision/
+digest, and snapshot watermark. The seal's evidence watermark can precede the
+snapshot watermark because sealing and custody registration append events.
+Signatures cover the manifest digest under `research.logical-checkpoint.v1`.
+Verification requires expected manifest, source authority and custody identities
+from outside the received envelope, using an explicitly supplied crypto provider.
+
+The semantic layout digest fixes column order, cell types, nullability, primary
+keys and UTF-8 binary text ordering for exactly these tables:
+
+| Tables | Preserved state |
+|---|---|
+| `workspaces`, `records` | Authority counters and every domain record, including fencing history |
+| `commands`, `events`, `outbox` | Exact acknowledgments, evidence and pending event delivery |
+| `budgets`, `budget_reservations`, `budget_settlements`, `budget_entries` | Original liabilities, consumption and settlement responses |
+| `recovery_snapshots`, `recovery_items` | Snapshot identities, retention state and exact binary contents |
+| `credentials` | Credential digests, principals, expiry and revocation |
+
+Every table appears in the manifest, including empty tables. Chunks have contiguous
+global ordinals and table row positions. Signed descriptors bind their encoded
+length, row count and digest. Primary keys must increase strictly within a table,
+including across chunk boundaries. Text ordering uses UTF-8 bytes; JavaScript's
+default UTF-16 ordering cannot substitute for it.
+
+Cells contain only raw TEXT, strict exact integers within the interoperable JSON
+range, SQL NULL, or `{ "blob_base64": "..." }` with canonical padded base64.
+Boolean/float coercion, invalid UTF-8, changed column counts, noncanonical encoding
+and duplicate row keys refuse. JSON stored inside SQL TEXT stays opaque: whitespace,
+Unicode composition and original response bytes remain unchanged. Empty binary,
+empty text and NULL remain distinct. Input contains no executable SQL or caller-
+selected columns. Layout identity does not depend on SQLite DDL text.
+
+Initial limits intersect: one MiB per encoded chunk, one MiB per manifest,
+64 MiB across chunks, 100,000 rows, 4,096 chunks and 10,000 artifact references.
+An inventory can hit its byte ceiling before its item count. A row that does not
+fit a chunk refuses; this profile has no implicit continuation or truncation.
+
+Wire verification checks provenance, canonical encoding and complete ordered
+coverage. It does not prove that the source SQL cut was sealed, that its relational
+contents are valid, that artifact bytes exist, that native execution ended, or that
+a target may activate. The forthcoming exporter must reject unsupported columns,
+foreign-workspace rows and unaccounted application state. `research_schema` is
+verified as version metadata; `hosted_authority_config` and `hosted_provisioning`
+are bound through source identity digests and must never be copied as active target
+configuration. Provider internals require explicit exclusion. Export, inactive
+import, original-source election and provider recovery remain separate work.
+
+Golden layout/manifest/chunk digests and tests cover raw value preservation,
+coverage/order mutations, forged signatures, wrong trusted identities and bounds.
+This format has no deployed-provider qualification yet.
+
 ## Shared inactive restore transaction
 
 `checkpoints.inactive.restore_inactive_in()` extracts the existing native restore

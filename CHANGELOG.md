@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Define a separately signed logical checkpoint format with a fixed 12-table
+  layout, exact chunk coverage and bounded canonical bytes. Preserve raw SQL
+  text and binary cells, reject ambiguous types and duplicate keys, and require
+  externally pinned source custody and manifest identity. Wire verification
+  grants no import, artifact-availability, election or activation authority.
+
 - Extract inactive restoration into a shared SQL transaction primitive with no
   native runtime, filesystem custody or crypto imports. Preserve native backup
   bytes, worker fencing, unresolved budgets, exact receipts and one epoch advance;
