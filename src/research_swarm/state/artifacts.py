@@ -389,23 +389,29 @@ class ArtifactService:
                 self._finish_upload(context, upload_id, "cleanup", "finalized")
         return response
 
+    @staticmethod
+    def finish_upload_in(
+        transaction: Transaction, upload_id: str, before: str, after: str
+    ) -> JsonObject:
+        """Finish byte retirement in an authorized transaction after positive storage proof."""
+        if (before, after) not in {("cleanup", "finalized"), ("aborting", "aborted")}:
+            raise ValueError("Invalid upload completion transition")
+        row = transaction.get("upload", upload_id)
+        if row["state"] != before:
+            raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload lifecycle changed")
+        updated = transaction.update(
+            "upload",
+            upload_id,
+            expected_revision=row["revision"],
+            data=row["data"],
+            state=after,
+        )
+        transaction.event("artifact.upload_" + after, updated, {})
+        return updated
+
     def _finish_upload(
         self, context: CommandContext, upload_id: str, before: str, after: str
     ) -> None:
-        def finish(transaction: Transaction) -> JsonObject:
-            row = transaction.get("upload", upload_id)
-            if row["state"] != before:
-                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload lifecycle changed")
-            updated = transaction.update(
-                "upload",
-                upload_id,
-                expected_revision=row["revision"],
-                data=row["data"],
-                state=after,
-            )
-            transaction.event("artifact.upload_" + after, updated, {})
-            return updated
-
         self.database.execute(
             self._internal(
                 context,
@@ -416,8 +422,25 @@ class ArtifactService:
             "artifact.finish_upload",
             {"upload_id": upload_id, "state": after},
             "artifact.upload",
-            finish,
+            lambda transaction: self.finish_upload_in(transaction, upload_id, before, after),
         )
+
+    @staticmethod
+    def abort_upload_in(transaction: Transaction, upload_id: str) -> JsonObject:
+        """Record an authorized abort intent; keep quota occupied until byte retirement."""
+        row = transaction.get("upload", upload_id)
+        if row["state"] not in {"pending", "cleanup", "aborting", "aborted"}:
+            raise ResearchError(ErrorCode.INVALID_TRANSITION, "Published upload cannot be aborted")
+        if row["state"] in {"pending", "cleanup"}:
+            row = transaction.update(
+                "upload",
+                upload_id,
+                expected_revision=row["revision"],
+                data=row["data"],
+                state="aborting",
+            )
+            transaction.event("artifact.upload_aborting", row, {})
+        return row
 
     def abort_upload(self, context: CommandContext, upload_id: str) -> JsonObject:
         context.principal.require("artifact.upload")
@@ -456,20 +479,7 @@ class ArtifactService:
         def abort(transaction: Transaction) -> JsonObject:
             row = transaction.get("upload", upload_id)
             authorize(transaction, row)
-            if row["state"] not in {"pending", "cleanup", "aborting", "aborted"}:
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Published upload cannot be aborted"
-                )
-            if row["state"] in {"pending", "cleanup"}:
-                row = transaction.update(
-                    "upload",
-                    upload_id,
-                    expected_revision=row["revision"],
-                    data=row["data"],
-                    state="aborting",
-                )
-                transaction.event("artifact.upload_aborting", row, {})
-            return row
+            return self.abort_upload_in(transaction, upload_id)
 
         response = self.database.execute(
             context,
@@ -496,14 +506,7 @@ class ArtifactService:
                 current = transaction.get("upload", upload_id)
                 authorize(transaction, current)
                 if current["state"] == "aborting":
-                    current = transaction.update(
-                        "upload",
-                        upload_id,
-                        expected_revision=current["revision"],
-                        data=current["data"],
-                        state="aborted",
-                    )
-                    transaction.event("artifact.upload_aborted", current, {})
+                    current = self.finish_upload_in(transaction, upload_id, "aborting", "aborted")
                 elif current["state"] != "aborted":
                     raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload lifecycle changed")
                 if on_finish is not None:
