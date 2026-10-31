@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import ValidationError
 
 from research_swarm.api.http import create_app
-from research_swarm.checkpoints import admission as admission_module
+from research_swarm.checkpoints import admission_state as admission_module
 from research_swarm.checkpoints.admission import admit_recovery, verify_admission
 from research_swarm.checkpoints.backup import export_backup
 from research_swarm.checkpoints.claims import claim_restore, request_restore_claim

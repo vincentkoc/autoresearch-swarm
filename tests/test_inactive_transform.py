@@ -12,12 +12,13 @@ from research_swarm.state.database import Transaction
 from tests.test_native_backup import sealed_runtime as sealed_runtime
 
 
-def test_shared_transform_does_not_import_native_backend_or_custody_implementation():
+@pytest.mark.parametrize("module", ["inactive", "admission_state"])
+def test_shared_recovery_state_does_not_import_native_backend_or_custody_implementation(module):
     subprocess.run(
         [
             sys.executable,
             "-c",
-            "import sys; import research_swarm.checkpoints.inactive; "
+            f"import sys; import research_swarm.checkpoints.{module}; "
             "assert not {'cryptography', 'sqlite3', 'filelock', 'research_swarm.runtime', "
             "'research_swarm.checkpoints.backup', 'research_swarm.checkpoints.restore'} "
             ".intersection(sys.modules)",
