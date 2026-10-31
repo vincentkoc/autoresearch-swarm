@@ -1,15 +1,15 @@
 """Bounded shared-service router for an already provisioned hosted authority.
 
-This adapter is not a deployed controller. Its initial profile excludes artifact
-I/O, worker execution and expiring credentials. The caller supplies the runtime
-gate, existing-store opener, synchronous crypto and bounded witness transport.
+This adapter is not a deployed controller. Its separate worker-only and bounded
+artifact profiles exclude worker execution and expiring credentials. The caller
+supplies the gate, existing-store opener, crypto and bounded I/O transports.
 """
 
 import asyncio
 import hashlib
 from typing import Literal
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError, model_validator
 
 from research_swarm.control.auth import CredentialStore
 from research_swarm.control.dispatch import dispatch_command, validate_command_input
@@ -26,12 +26,13 @@ from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope, WitnessSource
-from research_swarm.domain.types import Digest, Name, VersionedRecord, new_id
+from research_swarm.domain.types import ByteCount, Digest, Name, VersionedRecord, new_id
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, Transaction
 from research_swarm.state.reader_sessions import OpaqueReaderOwnership
 from research_swarm.state.schema_contracts import require_table
 from research_swarm.state.time_providers import TimeProviders
+from research_swarm.storage.async_r2 import BoundedR2Configuration
 
 if __package__:
     from .exclusive import exclusive
@@ -57,6 +58,18 @@ class HostedConfiguration(VersionedRecord):
     @property
     def digest(self):
         return record_digest("research.hosted-configuration", self.model_dump(mode="json"))
+
+
+class HostedArtifactConfiguration(HostedConfiguration):
+    profile: Literal["worker-artifacts-witness-v1"] = "worker-artifacts-witness-v1"
+    storage: BoundedR2Configuration
+    storage_limit_bytes: ByteCount
+
+    @model_validator(mode="after")
+    def storage_scope(self):
+        if self.storage.workspace_id != self.authority.workspace_id:
+            raise ValueError("Artifact storage belongs to another workspace")
+        return self
 
 
 def dispatch_key_digest(key):
@@ -89,12 +102,23 @@ class UnavailableBytes:
 class ExistingResearchRouter:
     @classmethod
     async def open(
-        cls, state, open_store, configuration, *, dispatch_key, assignment_key, crypto, acquire
+        cls,
+        state,
+        open_store,
+        configuration,
+        *,
+        dispatch_key,
+        assignment_key,
+        crypto,
+        acquire,
+        objects=None,
     ):
         """Open only: provisioning, credentials and source qualification must already exist."""
 
         async def construct():
-            config = HostedConfiguration.model_validate(configuration)
+            config = TypeAdapter(HostedConfiguration | HostedArtifactConfiguration).validate_python(
+                configuration
+            )
             store = open_store()
             if (
                 (store.identity.backend, store.identity.location)
@@ -107,6 +131,7 @@ class ExistingResearchRouter:
                 raise ResearchError(ErrorCode.STALE_FENCE, "Hosted authority configuration differs")
             instance = cls()
             instance.state, instance.configuration = state, config
+            instance.objects = objects
             instance.acquire = acquire
             instance.registry = TimeProviders(store.identity, crypto_provider=crypto)
             provider = WitnessAuthorityTimeProvider(store.identity)
@@ -115,7 +140,19 @@ class ExistingResearchRouter:
             instance._check_configuration()
             instance.credentials = CredentialStore.open_existing(instance.database)
             artifacts = ArtifactService(
-                instance.database, UnavailableBytes(), reader_ownership=OpaqueReaderOwnership()
+                instance.database,
+                UnavailableBytes(),
+                reader_ownership=OpaqueReaderOwnership(),
+                storage_limit_bytes=(
+                    config.storage_limit_bytes
+                    if isinstance(config, HostedArtifactConfiguration)
+                    else 0
+                ),
+                max_object_bytes=(
+                    config.storage.max_object_bytes
+                    if isinstance(config, HostedArtifactConfiguration)
+                    else 0
+                ),
             )
             instance.service = ResearchService(
                 instance.database,
@@ -126,11 +163,27 @@ class ExistingResearchRouter:
                 crypto_provider=crypto,
             )
             instance.queries = WorkerQueries(instance.database, instance.service.worker_locality)
+            if __package__:
+                from .artifact_router import HostedArtifacts
+            else:
+                from artifact_router import HostedArtifacts
+            instance.artifacts = HostedArtifacts(instance)
             return instance
 
         return await exclusive(state, construct)
 
     def _check_configuration(self):
+        config, objects = self.configuration, self.objects
+        if isinstance(config, HostedArtifactConfiguration):
+            if (
+                objects is None
+                or objects.config != config.storage
+                or objects.transport.configuration_digest != config.storage.digest
+            ):
+                raise ResearchError(ErrorCode.STALE_FENCE, "Hosted artifact destination differs")
+        elif objects is not None:
+            raise unavailable("Worker-only profile cannot acquire artifact bytes")
+
         def check(sql):
             require_table(
                 sql, "hosted_authority_config", "singleton digest payload", ("singleton",)
@@ -227,6 +280,8 @@ class ExistingResearchRouter:
             context = self._context(
                 token, idempotency_key=idempotency_key, expected_revision=expected_revision
             )
+            if operation.startswith("artifact."):
+                return await self.artifacts.command(token, context, operation, payload)
             if operation not in COMMANDS:
                 raise unavailable()
             definition, request = validate_command_input(context, operation, payload)
@@ -248,9 +303,18 @@ class ExistingResearchRouter:
 
         return await exclusive(self.state, execute)
 
+    async def upload_part(self, token, upload_id, offset, content):
+        async def write():
+            context = self._context(token, idempotency_key=new_id())
+            return await self.artifacts.upload_part(token, context, upload_id, offset, content)
+
+        return await exclusive(self.state, write)
+
     async def query(self, token, operation, payload):
         async def read():
             context = self._context(token, idempotency_key=new_id())
+            if operation == "artifact.upload_status":
+                return await self.artifacts.status(token, context, payload)
             if operation == "worker.get":
                 return self.queries.get(context, validated(WorkerRead, payload))
             if operation == "worker.list":

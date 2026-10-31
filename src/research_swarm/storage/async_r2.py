@@ -99,12 +99,19 @@ class BoundedR2Objects:
         return blob
 
     async def read(self, workspace_id: str, blob: StoredBlob) -> bytes:
+        result = await self.read_if_present(workspace_id, blob)
+        if result is None:
+            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "R2 object is absent")
+        return result
+
+    async def read_if_present(self, workspace_id: str, blob: StoredBlob) -> bytes | None:
+        """Observe transfer progress; absence never proves that a writer has closed."""
         blob = StoredBlob.model_validate(blob)
         key = self._key(workspace_id, blob)
         result = await self.transport.get(key, max_bytes=self.config.max_object_bytes)
         self._key(workspace_id, blob)  # Destination identity must survive suspension.
         if result is None:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "R2 object is absent")
+            return None
         if result.metadata == generation_metadata(blob, retired=True) and not result.content:
             raise ResearchError(
                 ErrorCode.INVALID_TRANSITION, "R2 generation is permanently retired"

@@ -24,7 +24,23 @@ from research_swarm.state.database import Database, encode
 from research_swarm.state.sql import StoreIdentity
 from research_swarm.workers.clock_signatures import ClockVerifier
 from tests.test_time_providers import Registry
-from tests.test_time_witnesses import SEED, encoded, identifier, payload, source
+from tests.test_time_witnesses import SEED, encoded, identifier, payload, scope, source
+
+
+def test_worker_only_configuration_digest_remains_stable():
+    configuration = HostedConfiguration(
+        store_location="synthetic/unit-fixture",
+        authority=scope().authority.model_copy(
+            update={"assignment_key_id": signing_key_id(source().public_key)}
+        ),
+        source=source(),
+        assignment_public_key=source().public_key,
+        dispatch_key_digest=dispatch_key_digest(bytes(32)),
+        credential_manifest_digest="sha256:" + "b" * 64,
+    )
+    assert configuration.digest == (
+        "sha256:79dd95106dc1b2ec6e7fea79bad5f433520dcb7db8fcaf687f521875edf2850e"
+    )
 
 
 class FixtureStore:

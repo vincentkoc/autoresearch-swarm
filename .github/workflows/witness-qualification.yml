@@ -47,7 +47,7 @@ jobs:
           tests/test_witness_time.py tests/test_command_boundaries.py tests/test_query_boundaries.py
           tests/test_worker_query_boundaries.py
           tests/test_cloudflare_exclusive.py tests/test_cli_fixture_io.py
-          tests/test_existing_state.py tests/test_hosted_router.py
+          tests/test_existing_state.py tests/test_hosted_router.py tests/test_hosted_artifacts.py
           tests/test_supervision.py
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
   workerd:

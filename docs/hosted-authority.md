@@ -414,10 +414,50 @@ object at the same generation key, fencing delayed conditional payload writes.
 Neither absence nor a failed response proves byte-operation closure. These byte
 operations grant no catalog, quota, reader or scientific authority: the controller
 must reserve occupancy before I/O and independently validate its commit afterward.
-Unit tests use an in-memory transport; actual R2 binding and authoritative upload
-routing require separate runtime qualification.
+Unit tests use an in-memory transport. The actual Python/JavaScript R2 binding
+passed local workerd qualification at `39c39c1` in
+[run 41193599166](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41193599166).
+That suite checks binary and 1 MiB bodies, corruption refusal, same-generation
+recovery after a discarded response and retirement persistence across process
+restart. Its late-write probe delays invocation until after retirement; it does
+not prove completion of a previously issued request after timeout. The runtime
+boundary converts the Python binding with the public `workers.python_to_rpc`
+helper before JavaScript calls. Authoritative upload routing needs its own
+runtime qualification.
 The binding adapter must preserve the documented
 [R2 conditional-write and read-after-write semantics](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/).
+
+`worker-artifacts-witness-v1` is a separate configuration profile. It preserves
+the worker-only configuration encoding and additionally pins R2 workspace,
+bucket identity, prefix, object bound and logical payload quota. A caller must
+supply the matching bounded object port; reopening cannot change those pins.
+The profile currently exposes:
+
+| Operation | Behavior |
+| --- | --- |
+| `artifact.begin_upload` | Reserve upload quota through the shared transaction. |
+| `upload_part` | Verify one complete body at offset zero, up to the configured 1 MiB ceiling. |
+| `artifact.upload_status` | Read transfer progress; absence differs from corruption, retirement or uncertainty. |
+| `artifact.finalize_upload` | Verify bytes, obtain a fresh witness and publish through the shared catalog transaction. Empty files need no part call. |
+| `artifact.abort_upload` | Record abort intent; keep occupancy until cleanup. |
+| `artifact.cleanup_upload` | Confirm a permanent retirement fence, then obtain a fresh witness and finish the lifecycle. |
+
+Commands require current `artifact.upload` and `read` scopes before replay.
+Ownership permits the existing `artifact.admin` override. Byte access also checks
+workspace admission and dedicated-driver authority. All operations share the DO
+gate; upload and canonical artifact snapshots are checked after awaited I/O and
+again in the commit transaction. No SQL transaction spans R2 or witness I/O.
+
+Exact command replay needs neither R2 nor a witness. Finalize and abort never
+perform implicit cleanup after replay; callers use the explicit cleanup command
+and inspect current upload status separately from historical acknowledgments.
+Duplicate cleanup verifies the actual selected canonical generation and retires
+only the duplicate. Both duplicate and abort cleanup refuse canonical retirement.
+If physical retirement succeeds but the final witness or transaction fails,
+`cleanup` or `aborting` remains quota-accounted and can be resumed after reopening.
+Logical payload quota excludes permanent empty retirement-marker overhead and
+provider billing. This bounded profile supplies no streaming readers, restore,
+artifact deletion or worker execution route and does not qualify those features.
 
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved

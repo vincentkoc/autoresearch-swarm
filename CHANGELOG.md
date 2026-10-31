@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an explicit hosted artifact profile over shared quota and upload lifecycle
+  transactions. Authenticate before replay and byte access, recheck state after
+  awaited I/O, and finish retirement through a separately replayable cleanup
+  command. Preserve the worker-only profile and native upload behavior.
+
 - Convert the Python Workers R2 wrapper through the public SDK conversion API
   before passing it into JavaScript. Preserve the actual bucket methods instead
   of invoking the Python proxy's mapping lookup during a read.

@@ -23,6 +23,7 @@ shutil.copyfile(ROOT / "storage_qualification.py", output / "storage_qualificati
 shutil.copyfile(ROOT / "signing_qualification.py", output / "signing_qualification.py")
 shutil.copyfile(ROOT / "witness_qualification.py", output / "witness_qualification.py")
 shutil.copyfile(ROOT / "research_router.py", output / "research_router.py")
+shutil.copyfile(ROOT / "artifact_router.py", output / "artifact_router.py")
 shutil.copyfile(ROOT / "router_qualification.py", output / "router_qualification.py")
 shutil.copyfile(ROOT / "r2_binding.py", output / "r2_binding.py")
 shutil.copyfile(ROOT / "r2_io.mjs", output / "r2_io.mjs")
