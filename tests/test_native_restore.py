@@ -27,8 +27,16 @@ from tests.test_worker_control import request as claim_request
 from tests.test_workspace_seal import seal_request
 
 
-def test_restore_reopens_inactive_with_original_bytes_and_exact_ack(sealed_runtime, tmp_path):
+@pytest.mark.parametrize("legacy_seal", [False, True])
+def test_restore_reopens_inactive_with_original_bytes_and_exact_ack(
+    sealed_runtime, tmp_path, legacy_seal
+):
     runtime, context, seal, artifact = sealed_runtime
+    if legacy_seal:
+        # Older signed native v1 bundles have a gate but no separate seal history.
+        runtime.database.store.write(
+            lambda sql: sql.execute("DELETE FROM records WHERE kind='workspace_seal'")
+        )
     bundle, target = tmp_path / "bundle", tmp_path / "target"
     manifest = export_backup(runtime, context, bundle, backup_id=seal.backup_id)
     identifier = new_id()

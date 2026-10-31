@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Share sealed checkpoint inspection through the SQL port. Refuse foreign
+  workspace rows, incomplete execution inventories and unresolved byte operations.
+  Logical exports can require immutable seal history and custody; existing native
+  v1 bundles retain verification and inactive restore without newer seal rows.
+
 - Define a separately signed logical checkpoint format with a fixed 12-table
   layout, exact chunk coverage and bounded canonical bytes. Preserve raw SQL
   text and binary cells, reject ambiguous types and duplicate keys, and require

@@ -1695,6 +1695,16 @@ Golden layout/manifest/chunk digests and tests cover raw value preservation,
 coverage/order mutations, forged signatures, wrong trusted identities and bounds.
 This format has no deployed-provider qualification yet.
 
+`checkpoints.cut.inspect_sealed_cut()` provides read-only relational inspection
+through the shared SQL port. It checks the sole workspace, authority and seal,
+the exact worker and unresolved-attempt inventories, closed uploads and readers,
+artifact generations, retained references, storage bounds and custody identity.
+Foreign-workspace rows refuse. The logical exporter must require both custody and
+immutable seal history. Native v1 verification permits absent history from older
+bundles, but rejects a conflicting history row when present. Native schema,
+integrity, private-file and operator-token checks remain in the native wrapper.
+The inspector does not read artifact bytes or authorize restoration.
+
 ## Shared inactive restore transaction
 
 `checkpoints.inactive.restore_inactive_in()` extracts the existing native restore

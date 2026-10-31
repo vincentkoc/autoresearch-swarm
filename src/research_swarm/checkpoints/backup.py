@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 from filelock import FileLock
 from pydantic import Field
 
+from research_swarm.checkpoints.cut import SnapshotInventory, inspect_sealed_cut
 from research_swarm.checkpoints.files import (
     DATABASE_LIMIT,
     copy_private,
@@ -21,7 +22,6 @@ from research_swarm.checkpoints.files import (
     private_reader,
 )
 from research_swarm.control.auth import CredentialStore
-from research_swarm.domain.artifacts import ArtifactRecord, StoredBlob, UploadSpec
 from research_swarm.domain.assignments import signing_key_id
 from research_swarm.domain.backup import (
     BackupCustodyPin,
@@ -33,7 +33,7 @@ from research_swarm.domain.backup import (
     SignedRestoreClaim,
     WorkspaceSeal,
 )
-from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
+from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import ID, Revision, VersionedRecord, new_id, utc_now
@@ -46,6 +46,7 @@ from research_swarm.state.private_files import (
     write_private,
 )
 from research_swarm.state.schema import SCHEMA_VERSION
+from research_swarm.state.sqlite import SQLiteSession
 from research_swarm.storage.config import FilesystemConfig
 
 PRIVATE_NAMES = ("assignment.key", "dispatch.key", "identity.json", "operator.token")
@@ -63,16 +64,6 @@ class SourceCustody(VersionedRecord):
     @property
     def key(self) -> Ed25519PrivateKey:
         return Ed25519PrivateKey.from_private_bytes(bytes.fromhex(self.private_key))
-
-
-@dataclass(frozen=True)
-class SnapshotInventory:
-    seal: WorkspaceSeal
-    seal_revision: int
-    seal_digest: str
-    evidence_through: int
-    artifacts: tuple[StoredBlob, ...]
-    custody_pin: BackupCustodyPin | None
 
 
 @dataclass(frozen=True)
@@ -197,85 +188,12 @@ def snapshot_inventory(root: Path, identity: RuntimeIdentity) -> SnapshotInvento
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup database is inconsistent")
         if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup foreign keys are invalid")
-        authorities = connection.execute("SELECT * FROM workspaces").fetchall()
-        if len(authorities) != 1 or (authorities[0]["id"], authorities[0]["controller_id"]) != (
-            identity.workspace_id,
-            identity.controller_id,
-        ):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Backup workspace differs")
-        authority = authorities[0]
-        gate = connection.execute(
-            "SELECT * FROM records WHERE kind='workspace_gate' AND id=?", (identity.workspace_id,)
-        ).fetchone()
-        if gate is None or gate["state"] != "sealed":
-            raise ResearchError(ErrorCode.STALE_FENCE, "Backup source is not sealed")
-        seal = WorkspaceSeal.model_validate_json(gate["payload"])
-        if (seal.workspace_id, seal.controller_id, seal.control_epoch) != (
-            identity.workspace_id,
-            identity.controller_id,
-            authority["control_epoch"],
-        ):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Backup seal identity differs")
-        workers = tuple(
-            row[0]
-            for row in connection.execute("SELECT id FROM records WHERE kind='worker' ORDER BY id")
+        inventory = inspect_sealed_cut(
+            SQLiteSession(connection),
+            workspace_id=identity.workspace_id,
+            controller_id=identity.controller_id,
+            storage_limit_bytes=identity.storage_limit_bytes,
         )
-        unresolved = tuple(
-            row[0]
-            for row in connection.execute(
-                "SELECT id FROM records WHERE kind='attempt' "
-                "AND COALESCE(json_extract(payload,'$.publication_status'),'pending') "
-                "NOT IN ('accepted','closed_unaccepted') ORDER BY id"
-            )
-        )
-        if workers != seal.worker_ids or unresolved != seal.unresolved_attempt_ids:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup execution inventory differs")
-        transient = connection.execute(
-            "SELECT 1 FROM records WHERE (kind='upload' AND state NOT IN ('finalized','aborted')) "
-            "OR (kind='artifact' AND state='deleting') OR (kind='artifact_reference' "
-            "AND state='retained' AND "
-            "(json_extract(payload,'$.retention.owner_kind')='artifact_read' "
-            "OR json_extract(payload,'$.reader_session_id') IS NOT NULL)) LIMIT 1"
-        ).fetchone()
-        if transient is not None:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup has open byte operations")
-        rows = connection.execute(
-            "SELECT id,payload FROM records WHERE kind='artifact' AND state='verified' "
-            "ORDER BY id LIMIT 10001"
-        ).fetchall()
-        if len(rows) > 10_000:
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Backup inventory exceeds bound")
-        inventory = []
-        for row in rows:
-            artifact = ArtifactRecord.model_validate_json(row["payload"])
-            upload = UploadSpec(
-                id=artifact.storage_generation,
-                workspace_id=identity.workspace_id,
-                actor_id=artifact.published_by,
-                digest=artifact.reference.digest,
-                size_bytes=artifact.reference.size_bytes,
-                media_type=artifact.reference.media_type,
-            )
-            if (
-                artifact.workspace_id != identity.workspace_id
-                or artifact.state != "verified"
-                or artifact.reference.id != row["id"]
-                or upload.reference() != artifact.reference
-            ):
-                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup generation differs")
-            inventory.append(StoredBlob(reference=artifact.reference, generation=upload.id))
-        if sum(item.reference.size_bytes for item in inventory) > identity.storage_limit_bytes:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup exceeds recorded storage")
-        missing = connection.execute(
-            "SELECT 1 FROM records r LEFT JOIN records a ON a.workspace_id=r.workspace_id "
-            "AND a.kind='artifact' AND a.id=r.parent_id AND a.state='verified' "
-            "WHERE r.kind='artifact_reference' AND r.state='retained' AND "
-            "(a.id IS NULL OR json_extract(r.payload,'$.retention.artifact_id') "
-            "IS NOT r.parent_id) "
-            "LIMIT 1"
-        ).fetchone()
-        if missing is not None:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup retained evidence is absent")
         token = read_private(root / "private", "operator.token", limit=256).decode("ascii").strip()
         credential = connection.execute(
             "SELECT * FROM credentials WHERE token_digest=?", (CredentialStore._digest(token),)
@@ -287,29 +205,7 @@ def snapshot_inventory(root: Path, identity: RuntimeIdentity) -> SnapshotInvento
             id=identity.operator_id, workspace_id=identity.workspace_id, scopes=frozenset({"*"})
         ):
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Backup operator identity differs")
-        pins = connection.execute(
-            "SELECT id,state,payload FROM records WHERE kind='backup_custody' "
-            "AND json_extract(payload,'$.control_epoch')=?",
-            (seal.control_epoch,),
-        ).fetchall()
-        if len(pins) > 1 or (pins and pins[0]["state"] != "immutable"):
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup custody pins differ")
-        pin = BackupCustodyPin.model_validate_json(pins[0]["payload"]) if pins else None
-        if pin is not None and (
-            pin.custody_id != pins[0]["id"]
-            or pin.workspace_id != seal.workspace_id
-            or pin.controller_id != seal.controller_id
-            or pin.control_epoch != seal.control_epoch
-        ):
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup custody identity differs")
-        return SnapshotInventory(
-            seal,
-            gate["revision"],
-            record_digest("research.workspace-seal.v1", seal.model_dump(mode="json")),
-            authority["next_sequence"] - 1,
-            tuple(inventory),
-            pin,
-        )
+        return inventory
     except sqlite3.DatabaseError as error:
         raise ResearchError(
             ErrorCode.ARTIFACT_UNVERIFIED, "Backup database cannot be read"
