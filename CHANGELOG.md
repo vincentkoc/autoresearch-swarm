@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an awaited R2 binding bridge with bounded reads, conditional writes and
+  explicit uncertain outcomes on timeout. Add local workerd probes for binary
+  content, the 1 MiB profile, persistent bytes and late-write retirement fences.
+
 - Add bounded asynchronous R2 generation operations with complete content
   verification and permanent retirement fences. Reuse the native generation
   layout; keep quota, publication authority and provider qualification separate.

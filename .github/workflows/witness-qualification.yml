@@ -80,4 +80,5 @@ jobs:
       - run: git diff --exit-code -- adapters/cloudflare/pylock.toml
       - run: >-
           uv run --no-sync pytest -q tests/test_cloudflare_native.py
-          tests/test_cloudflare_witness_ordering.py tests/test_cloudflare_router.py --tb=short
+          tests/test_cloudflare_witness_ordering.py tests/test_cloudflare_router.py
+          tests/test_cloudflare_async_r2.py --tb=short

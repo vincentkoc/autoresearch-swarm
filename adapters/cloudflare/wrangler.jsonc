@@ -3,6 +3,9 @@
   "main": ".generated/entry.py",
   "base_dir": ".generated",
   "workers_dev": false,
+  "r2_buckets": [
+    { "binding": "ARTIFACTS", "bucket_name": "research-swarm-local-qualification" }
+  ],
   "compatibility_date": "2026-10-30",
   "compatibility_flags": ["python_workers"],
   "find_additional_modules": true,

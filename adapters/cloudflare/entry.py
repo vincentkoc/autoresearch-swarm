@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 from durable_sql import DurableObjectStore
 from exclusive import exclusive
 from pydantic import Field
+from r2_qualification import exercise as exercise_r2
 from router_qualification import RouterProbe
 from router_qualification import exercise as exercise_router
 from signing_qualification import exercise as exercise_signing
@@ -46,6 +47,10 @@ class OrderingProbe(VersionedRecord):
 
 
 class Qualification(DurableObject):
+    async def r2_contract(self, case):
+        module = import_from_javascript("./r2_io.mjs")
+        return json.dumps(await exercise_r2(self.env.ARTIFACTS, module, case))
+
     async def research_contract(self, body):
         probe = RouterProbe.model_validate_json(body)
         crypto = import_from_javascript("./crypto.mjs")
@@ -232,6 +237,14 @@ class Default(WorkerEntrypoint):
             return Response("Local qualification only", status=403)
         if request.method != "POST":
             return Response("Not found", status=404)
+        if url.path.startswith("/r2-bytes/"):
+            case = url.path.removeprefix("/r2-bytes/")
+            if case not in {"roundtrip", "limit", "lost-response", "late", "retired", "corrupt"}:
+                return Response("Not found", status=404)
+            stub = self.env.QUALIFICATION.getByName("async-r2-binding-contract")
+            return Response(
+                await stub.r2_contract(case), headers={"content-type": "application/json"}
+            )
         if url.path == "/research":
             text = await request.text()
             if len(text.encode()) > 65536:

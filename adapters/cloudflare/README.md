@@ -44,6 +44,7 @@ From the repository root, using its core development environment:
 RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_native.py
 RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_witness_ordering.py
 RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_router.py
+RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_async_r2.py
 ```
 
 The native fixture currently requires POSIX process groups. It starts only owned
@@ -105,6 +106,16 @@ HTTP witness while another RPC is submitted, checks shared worker commands and
 signed queries, and restarts the owned workerd process before replay. Revocation
 and expiring credentials remain checked after replay records exist. This is a
 local provider test, not production provisioning or a native clock qualification.
+
+`r2_binding.py` calls the preloaded `r2_io.mjs` module through the async byte port.
+The binding is deployment-owned; callers cannot choose another bucket. Each
+operation has a five-second bound, complete-body writes are limited to 1 MiB and
+reads bound both reported size and consumed bytes. An elapsed timeout leaves
+write completion unknown. Retirement relies on a positively read-back permanent
+same-key marker, never on absence or an expired timer. The local R2 probe checks
+binary and limit-sized objects, replay after restart, corruption, and a conditional
+payload write delayed until after retirement. Authoritative upload/quota routing
+is a separate integration step; these byte probes do not publish catalog records.
 
 ## Sources
 

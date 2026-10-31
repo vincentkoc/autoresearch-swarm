@@ -24,6 +24,9 @@ shutil.copyfile(ROOT / "signing_qualification.py", output / "signing_qualificati
 shutil.copyfile(ROOT / "witness_qualification.py", output / "witness_qualification.py")
 shutil.copyfile(ROOT / "research_router.py", output / "research_router.py")
 shutil.copyfile(ROOT / "router_qualification.py", output / "router_qualification.py")
+shutil.copyfile(ROOT / "r2_binding.py", output / "r2_binding.py")
+shutil.copyfile(ROOT / "r2_io.mjs", output / "r2_io.mjs")
+shutil.copyfile(ROOT / "r2_qualification.py", output / "r2_qualification.py")
 shutil.copyfile(ROOT / "ed25519.py", output / "ed25519.py")
 package = output / "research_swarm"
 source = ROOT.parents[1] / "src/research_swarm"
