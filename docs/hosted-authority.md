@@ -1,10 +1,11 @@
 # Hosted authority with native clock witnesses
 
-Status: staged implementation and bounded local runtime qualification. No
-production hosted authority is enabled. The existing
-[hybrid profile](cloudflare.md) remains the supported Cloudflare path.
-The original M5 requirement for authoritative Durable Object state and hosted
-recovery remains open.
+Status: staged implementation with fixed-profile authoritative Durable Object
+execution qualified in local workerd under an explicitly admitted native witness.
+No production Cloudflare deployment has been performed. The existing
+[hybrid profile](cloudflare.md) remains available; it has separate qualification.
+The full M5 exit remains open. New recovery activation and clock-management probes
+must obtain their own runtime receipts, and deployed/fleet qualification is separate.
 
 The witness wire records, domain-separated signatures, pinned source checks,
 one-use response verification and epoch derivation are implemented. A frozen
@@ -14,10 +15,11 @@ and preserves its fault latch; independent child processes establish distinct
 source origins locally. Internal provider generations, explicit requalification
 and persisted retirement are locally verified. A one-use synchronous operation
 context is implemented. Wire validity does not qualify a deployment. Local
-workerd qualifies the awaited ordering bridge, bounded worker/artifact routing
-and the actual native source lifecycle. Ordinary research admission has separate
-tests and capability limits below. The complete hosted execution lifecycle and
-authenticated production deployment remain open. The private HTTP source
+workerd qualifies the awaited ordering bridge, bounded worker/artifact routing,
+native source lifecycle and the bounded research/recovery paths recorded below.
+Ordinary research admission has explicit capability limits. Later target activation
+and clock-management qualification and authenticated production deployment remain
+open. The private HTTP source
 transport does not establish Container routing.
 
 ## Decision and boundary
@@ -1390,12 +1392,12 @@ Accepted and rejected commands replay after process restart without another
 witness request. Both runtime tests passed in 41.82 seconds in
 [qualification 41190864271](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41190864271).
 
-This establishes the tested local runtime ordering and operation ownership. The
-timestamps and keys are public fixtures. The 30-second runtime reset boundary,
-production source authentication, service routing, artifact custody and hosted
-restore remain unqualified; the complete hosted execution profile remains unavailable.
-The separately qualified native-source chain and explicit worker clock admission
-do not by themselves supply hosted job execution, input custody or publication.
+That early receipt establishes local runtime ordering and operation ownership;
+its timestamps and keys are public fixtures. It does not itself qualify the
+30-second reset boundary, production source authentication, service routing,
+artifact custody or hosted restore. Later sections record additional bounded
+research, native CPU and recovery proof. Neither this primitive receipt nor the
+native-source chain alone establishes a complete execution or deployed profile.
 
 ## Production deployment inputs
 
