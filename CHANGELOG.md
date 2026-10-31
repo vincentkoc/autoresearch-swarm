@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add `research witness serve` for one configured native time source. Admit the
+  exact descriptor and protected signing seed before listening, force one process
+  without reload, preserve clock fault latching and keep controller state and
+  requalification outside the launcher. Support explicit loopback, TLS or private
+  HTTP listener modes.
+  TLS uses a fixed context from admitted bytes and rejects encrypted keys without
+  prompting; require Uvicorn 0.47+ for its context-factory API.
+
 - Add local workerd qualification for the production entrypoint using a separate
   operator service binding, task-owned secret inputs and a verified HTTPS native
   witness. Exercise interrupted/private bootstrap, lost receipts, R2-backed

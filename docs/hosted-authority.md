@@ -1268,8 +1268,11 @@ acknowledges control and evaluator starts independently. It then executes one
 successor report and checks old-driver fencing, preserved jobs/budgets/native
 authority, two released snapshot tombstones and zero retained items. After a
 second restart, acknowledged starts and the saved action replay with the witness
-source and R2 unavailable. This scenario has passed source/collection checks;
-actual workerd and deployed qualification need their own passing receipts.
+source and R2 unavailable. The complete local workerd suite passed 18 tests in
+574.70 seconds at `ea30d781c037daa1c407ba61b0812734ca17f363` in
+[qualification 41207429552](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41207429552).
+That same head passed 570 native tests on Linux and macOS, and 566 with four skips
+on Windows. These results qualify the tested local startup path, not deployment.
 
 ### Offer and input query boundaries
 
@@ -1466,6 +1469,67 @@ process restart and a coherently changed but physically wrong object identity.
 Secret bundles and individual tokens are removed from failure diagnostics.
 Adding the probe is implementation evidence; its actual CI result must be recorded
 before claiming runtime qualification. It does not deploy any resources.
+
+### Native witness launcher
+
+The installed CLI can serve the native time source independently:
+
+```sh
+research witness serve \
+  --config /run/research/witness.json \
+  --signing-key-file /run/secrets/witness.key
+```
+
+`WitnessServerConfiguration` contains the exact `WitnessAuthorityScope`, complete
+expected `WitnessSource`, and `consumer_digest` from `witness_consumer_digest()`.
+The source includes its public key, key ID, native clock profile and complete
+clock policy. These must match the controller's pinned descriptor. The launcher
+does not discover a controller, infer scope or replace a declared profile with the
+current machine's profile. Its only signing input is a separate 32-byte seed file;
+the server needs the consumer digest rather than its cleartext bearer credential.
+
+Configuration is strict JSON bounded to 16 KiB. Additional listener fields are
+`host` (numeric IP, default `127.0.0.1`), `port` (default `8788`), `transport`
+(default `loopback-http`) and `body_timeout_seconds` (positive, at most ten,
+default one). Loopback mode refuses a non-loopback address. `tls` requires both
+`--tls-certificate-file` and `--tls-key-file`. `private-http` is an explicit choice
+for a separately protected private network or TLS-terminating ingress; the CLI
+does not infer this from headers. Research API/controller/state options refuse
+for this command.
+
+Signing and TLS key files use the native bounded protected-file reader: restrictive
+POSIX permissions or admitted Windows ACLs, with no symlink secret files. Use
+direct protected mounts rather than weakening this requirement for symlink-based
+secret layouts. Signing-key/public-descriptor mismatch refuses before the
+listener opens. Invalid configuration errors omit Pydantic input representations.
+TLS snapshots the admitted key and bounded certificate bytes once, refuses
+encrypted keys noninteractively, and constructs a fixed `SSLContext` before
+listening. Python's certificate loader receives fresh protected temporary copies;
+they are removed before serving. Uvicorn receives the context factory rather than
+the original mutable file paths. This requires Uvicorn 0.47 or later; the frozen
+environment retains its existing 0.54 version.
+[Uvicorn context-factory introduction](https://uvicorn.dev/release-notes/#0470-may-14-2026).
+
+The launcher creates one `NativeWitnessSource`, then runs one Uvicorn process
+without reload, access logging or trusted proxy headers. It explicitly sets
+`workers=1`, overriding environment-driven worker counts.
+[Uvicorn server settings](https://uvicorn.dev/settings/).
+The same source handles every request. A continuity failure remains latched;
+changed provider generations cannot reset it. A fresh process has a new source
+epoch and requires the consumer's explicit requalification lifecycle. The launcher
+does not create a database, initialize research state, contact a DO, install
+credentials or requalify an authority. Process supervisors may invoke this same
+command with read-only mounted inputs; image/host clock qualification remains
+separate from the launcher implementation.
+
+Tests cover malformed/oversized configuration, key/profile/listener refusal,
+secret permissions, TLS option agreement, encrypted-key refusal, path replacement
+after admission, opaque CLI errors, controller-option
+refusal and an HTTP-observed sticky clock fault. Pairs of actual launcher subprocesses
+over HTTP and verified TLS sign authenticated nonce-bound requests with stable
+epochs within each process and distinct epochs after restart, even when
+`WEB_CONCURRENCY` requests seven workers. This is native launcher evidence, not a
+deployed Container receipt.
 
 ## Native worker calibration
 

@@ -19,7 +19,7 @@ dependencies = [
   "psutil>=6,<8",
   "pydantic>=2.12,<3",
   "rfc8785>=0.1.4,<1",
-  "uvicorn>=0.34,<1",
+  "uvicorn>=0.47,<1",
 ]
 
 [project.optional-dependencies]
