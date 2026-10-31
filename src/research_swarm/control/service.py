@@ -283,8 +283,11 @@ class ResearchService:
         self.search_admission = SearchAdmission(
             database,
             artifacts,
-            lambda transaction, request, proposal_id: self._submit_trial(
-                transaction, request, consuming_proposal_id=proposal_id
+            lambda transaction, request, proposal_id, benchmark: self._submit_trial(
+                transaction,
+                request,
+                consuming_proposal_id=proposal_id,
+                benchmark_authority=benchmark,
             ),
         )
         self.acceptance = (
@@ -982,7 +985,9 @@ class ResearchService:
             raise ResearchError(
                 ErrorCode.INVALID_TRANSITION, "Trial admission requires a running campaign"
             )
-        benchmark_trial_id = require_trial_slot(transaction, campaign, request, benchmark_authority)
+        benchmark_trial_id = require_trial_slot(
+            transaction, campaign, request, benchmark_authority, consuming_proposal_id
+        )
         require_prepared_training_authority(transaction, campaign.contract, qualified_training_id)
         candidate = CandidateData.model_validate(
             transaction.get("candidate", request.candidate_id)["data"]

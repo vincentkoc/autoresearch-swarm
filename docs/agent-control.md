@@ -1191,6 +1191,33 @@ Query `benchmark_proposal` for the immutable preparation receipt. MCP exposes
 return the same receipt without another charge. After cancellation, the receipt
 remains historical evidence; replay does not create a replacement episode.
 
-Candidate trial admission, full-panel assessment and policy adoption remain
-separate work. Preparing a proposal is not a measured policy improvement.
-Full-panel assessment and explicit policy adoption remain separate work.
+## Execute the reserved policy action
+
+After the assigned agent commits a decision and responds, use the ordinary
+`search.admit_response` command with the current search revision and controller
+fence. The controller revalidates the training publication, prepared proposal,
+held-out plan, exact starting comparator and committed response source.
+
+Successful admission creates the arm's preallocated `candidate_trial_id`, using
+the fixed seed and a new candidate whose parent is the starting comparator.
+The candidate, validation, trial graph, admission charge, consumed slot and
+search transition commit together. A correction during source verification
+leaves the slot reserved and creates no trial. Ordinary workers execute and
+evaluate these jobs through the same API as other research trials.
+
+Fixed benchmark actions receive a fresh trial even when their source already
+exists in the arm. This includes a precommitted no-op action: suppressing it as
+a duplicate would remove part of the policy distribution from the comparison.
+Ordinary search retains its duplicate filtering.
+
+Failed agent responses remain `agent_failed` transitions. They do not consume
+the candidate-trial allowance, produce a fabricated reward or permit another
+proposal. Invalid candidates and cancelled work also remain incomplete cases.
+Direct trial submission and confirmation cannot consume reserved benchmark
+slots. Replaying an admitted command returns its original result; a fresh
+admission cannot spend an already consumed slot.
+
+Completed cases can be qualified against their fixed policy, reward rule,
+same-seed comparator and exact settled costs. These trajectories retain the
+held-out split and remain excluded from training datasets. Full-panel assessment
+and explicit policy adoption remain separate work.

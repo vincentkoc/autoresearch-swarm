@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Admit committed benchmark actions through ordinary search and worker APIs into their exact reserved trial slots. Revalidate current policy provenance after source reads, preserve failed cases, and measure precommitted duplicate or no-op sources without resampling.
+
 - Issue each benchmark arm's reserved agent proposal and freeze its exact held-out policy plan in one transaction. Recheck current training and comparator evidence, preserve ordinary request accounting, and prevent cancellation or replay from creating replacement episodes.
 
 - Bind a current learned checkpoint and atomically create both fixed benchmark arms for every held-out seed. Reuse ordinary campaign, source validation, budget and worker semantics; preallocate the full proposal and trial inventory before execution.

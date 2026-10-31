@@ -12,6 +12,7 @@ from research_swarm.control.benchmark_guard import benchmark_seed_key
 from research_swarm.control.benchmark_models import BenchmarkSeed, PolicyBenchmark
 from research_swarm.control.commands import SubmitTrial
 from research_swarm.control.learning_guard import optional_record
+from research_swarm.control.learning_models import CommittedPolicyDecision
 from research_swarm.control.models import CampaignData, CandidateData
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -21,8 +22,9 @@ from research_swarm.state.database import Transaction
 @dataclass(frozen=True)
 class BenchmarkTrialAuthority:
     arm_id: str
-    role: Literal["comparator"]
+    role: Literal["comparator", "candidate"]
     execution_digest: str
+    proposal_id: str | None = None
 
 
 def execution_digest(execution: BenchmarkExecution) -> str:
@@ -34,6 +36,7 @@ def require_trial_slot(
     campaign: CampaignData,
     request: SubmitTrial,
     authority: BenchmarkTrialAuthority | None,
+    consuming_proposal_id: str | None = None,
 ) -> str | None:
     arm_row = optional_record(transaction, "benchmark_arm", request.campaign_id)
     case_row = optional_record(
@@ -54,7 +57,8 @@ def require_trial_slot(
     execution_row = transaction.get("benchmark_execution", arm.benchmark_id)
     execution = BenchmarkExecution.model_validate(execution_row["data"])
     case = BenchmarkSeed.model_validate(case_row["data"])
-    slot_row = transaction.get("benchmark_trial_slot", arm.comparator_trial_id)
+    trial_id = arm.comparator_trial_id if authority.role == "comparator" else arm.candidate_trial_id
+    slot_row = transaction.get("benchmark_trial_slot", trial_id)
     slot = BenchmarkTrialSlot.model_validate(slot_row["data"])
     candidate = CandidateData.model_validate(
         transaction.get("candidate", request.candidate_id)["data"]
@@ -78,16 +82,38 @@ def require_trial_slot(
         or case.seed != arm.seed
         or request.seed != arm.seed
         or campaign.contract_digest != arm.campaign_contract_digest
-        or request.candidate_id != arm.initial_candidate_id
-        or request.validation_id != arm.initial_validation_id
-        or candidate.source_artifact != benchmark.initial_source
         or slot.benchmark_id != arm.benchmark_id
         or slot.arm_id != authority.arm_id
-        or slot.trial_id != arm.comparator_trial_id
+        or slot.trial_id != trial_id
         or slot.role != authority.role
     ):
         raise ResearchError(
-            ErrorCode.COMPARISON_INELIGIBLE, "Benchmark comparator slot or authority differs"
+            ErrorCode.COMPARISON_INELIGIBLE, "Benchmark trial slot or authority differs"
+        )
+    if authority.role == "comparator":
+        valid = (
+            request.candidate_id == arm.initial_candidate_id
+            and request.validation_id == arm.initial_validation_id
+            and candidate.source_artifact == benchmark.initial_source
+            and authority.proposal_id is None
+            and consuming_proposal_id is None
+        )
+    else:
+        committed = CommittedPolicyDecision.model_validate(
+            transaction.get("learning_decision", arm.proposal_request_id)["data"]
+        )
+        valid = (
+            authority.role == "candidate"
+            and authority.proposal_id == arm.proposal_request_id
+            and consuming_proposal_id == arm.proposal_request_id
+            and candidate.parent_ids == (arm.initial_candidate_id,)
+            and candidate.proposer_id == arm.proposer_id
+            and candidate.source_artifact == committed.source_artifact
+            and committed.plan_id == arm.learning_plan_id
+        )
+    if not valid:
+        raise ResearchError(
+            ErrorCode.COMPARISON_INELIGIBLE, "Benchmark trial role or candidate differs"
         )
     return slot.trial_id
 
