@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Define destination-bound logical election proofs around unchanged native
+  recovery signatures. Require the exact target intent, original source scope,
+  deployment and custody pins; a native-only claim cannot pass hosted verification.
+  Proof verification alone does not elect, activate or mutate a destination.
+
 - Size checkpoint TEXT by its escaped JSON bytes after a raw-byte preflight.
   Ordinary research reports no longer fail a sixfold worst-case estimate; row,
   image and RPC caps remain unchanged, including control-character expansion.

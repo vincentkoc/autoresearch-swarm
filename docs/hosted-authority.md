@@ -2018,10 +2018,24 @@ unchanged source capture, and no witness calls. Its runtime receipt remains pend
 This transport-size probe does not establish maximum decoded-image memory usage,
 artifact transfer, source election or activation.
 
-A later hosted source-election proof must bind the exact
-`LogicalImportIntent.digest`, including physical target and deployment. Existing
-native `RestoreClaimRequest` signatures lack those hosted fields and cannot alone
-authorize a hosted target; their native signature bytes remain unchanged.
+The logical election wire contract binds the complete `LogicalImportIntent`,
+including physical target and deployment, to the full original source authority
+and source deployment digest. `LogicalElectionRequest` embeds the unchanged native
+`SignedRestoreRequest`; its outer signature comes from the target custody key.
+`LogicalElection` embeds that signed request and the unchanged `SignedRestoreClaim`;
+the source custody key signs its outer envelope. Separate
+`research.logical-election-request.v1` and `research.logical-election.v1` digest
+domains preserve existing native preimages.
+
+`checkpoints.elections` verifies all four signatures against caller-supplied target
+intent, backup ID, source scope, source deployment and custody pins. The backup ID
+must come from the independently verified image or restoration receipt, never
+from the incoming request. It checks cross-layer
+restore, image, workspace, controller and next-epoch identity. A stripped native
+claim, changed physical destination, shared custody key or exhausted epoch refuses.
+These bounded records and pure verifiers supply no storage, election or activation
+authority. Atomic source election, completed-target request generation and hosted
+recovery admission remain separate implementation work.
 
 ## Required implementation slices
 
