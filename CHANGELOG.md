@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add an explicit hosted evaluator profile with the existing authorization,
+  completion and record-query API. Keep evaluator identity separate from workers,
+  publish input manifests through witnessed quota-accounted transfers, and recover
+  duplicate cleanup before authorization. Record incomplete/invalid receipts
+  without promoting them; accepted acknowledgments replay offline.
+
 - Decode precision-preserving timing strings before numeric assertions in the
   actual workerd execution probe. Keep the signed wire representation unchanged.
 

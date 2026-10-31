@@ -23,10 +23,12 @@ from research_swarm.state.artifacts import BeginUpload
 if __package__:
     from .artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from .artifact_router import UploadTarget
+    from .evaluations import EvaluationQuery, EvaluationRead
     from .research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from .research_router import (
         allowed_commands,
         supports_artifacts,
+        supports_evaluation,
         supports_inputs,
         supports_outputs,
         supports_publication,
@@ -35,10 +37,12 @@ if __package__:
 else:
     from artifact_router import COMMANDS as ARTIFACT_COMMANDS
     from artifact_router import UploadTarget
+    from evaluations import EvaluationQuery, EvaluationRead
     from research_admission import SOURCE_COMMANDS, AdmissionQuery, AdmissionRead
     from research_router import (
         allowed_commands,
         supports_artifacts,
+        supports_evaluation,
         supports_inputs,
         supports_outputs,
         supports_publication,
@@ -210,6 +214,19 @@ def capabilities(configuration):
             "historical_acceptance": "unavailable",
             "evaluation_receipts": "unavailable",
         }
+    if supports_evaluation(configuration):
+        result["record_queries"] = {
+            "scope": "read",
+            "get": EvaluationRead.model_json_schema(),
+            "list": EvaluationQuery.model_json_schema(),
+        }
+        result["evaluation"] = {
+            "authorization": "before-execution",
+            "completion": "designated-evaluator",
+            "report": "verified-buffer",
+            "promotion": "unavailable",
+        }
+        result["publication"]["evaluation_receipts"] = "separate-evaluator-command"
     return result
 
 

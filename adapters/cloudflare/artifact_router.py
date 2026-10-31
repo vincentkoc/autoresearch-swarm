@@ -263,6 +263,30 @@ class HostedArtifacts:
         self._upload(context, upload.id, expected=row)
         return len(content)
 
+    async def publish_bytes(self, token, context, content, *, purpose):
+        """Each preparation command owns its witness; the parent has not acquired one."""
+        self._admit(token, context)
+        key, request = self.service.prepare_inline_upload(context, content, purpose=purpose)
+        payload = request.model_dump(mode="json")
+        begin = self.service._internal(
+            context, "inline-begin:" + key, "artifact.begin_upload", payload
+        )
+        upload = (await self.command(token, begin, "artifact.begin_upload", payload))["result"]
+        target = {"upload_id": upload["id"]}
+        status = await self.status(token, context, target)
+        if status["state"] == "pending" and not status["transfer"]["published"]:
+            await self.upload_part(token, context, upload["id"], 0, content)
+        finish = self.service._internal(
+            context, "inline-finish:" + key, "artifact.finalize_upload", target
+        )
+        row = (await self.command(token, finish, "artifact.finalize_upload", target))["result"]
+        if (await self.status(token, context, target))["state"] == "cleanup":
+            cleanup = self.service._internal(
+                context, "inline-cleanup:" + key, "artifact.cleanup_upload", target
+            )
+            await self.command(token, cleanup, "artifact.cleanup_upload", target)
+        return ArtifactRecord.model_validate(row["data"]).reference
+
     async def status(self, token, context, payload):
         self._admit(token, context)
         target = validated(UploadTarget, payload)

@@ -527,16 +527,16 @@ class ArtifactService:
         row = self.database.read_record(context, "artifact", artifact_id)
         return ArtifactRecord.model_validate(row["data"])
 
-    def publish_bytes(
-        self,
+    @staticmethod
+    def prepare_inline_upload(
         context: CommandContext,
         content: bytes,
         *,
         purpose: str,
         media_type: str = "application/json",
         max_bytes: int = 1024 * 1024,
-    ) -> ArtifactRef:
-        """Publish bounded controller-generated metadata through the ordinary upload lifecycle."""
+    ) -> tuple[str, BeginUpload]:
+        """Keep inline transfer identity and bounds identical across byte adapters."""
         if type(max_bytes) is not int or not 1 <= max_bytes <= 8 * 1024 * 1024:
             raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid inline artifact bound")
         if len(content) > max_bytes:
@@ -552,6 +552,21 @@ class ArtifactService:
         ).removeprefix("sha256:")
         request = BeginUpload(
             digest=content_digest(content), size_bytes=len(content), media_type=media_type
+        )
+        return key, request
+
+    def publish_bytes(
+        self,
+        context: CommandContext,
+        content: bytes,
+        *,
+        purpose: str,
+        media_type: str = "application/json",
+        max_bytes: int = 1024 * 1024,
+    ) -> ArtifactRef:
+        """Publish bounded controller-generated metadata through the ordinary upload lifecycle."""
+        key, request = self.prepare_inline_upload(
+            context, content, purpose=purpose, media_type=media_type, max_bytes=max_bytes
         )
         begin = self._internal(
             context, "inline-begin:" + key, "artifact.begin_upload", request.model_dump(mode="json")

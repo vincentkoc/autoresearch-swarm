@@ -743,6 +743,44 @@ completion holds its reader pin through commit. The common observation byte
 decoder is independent of control services. These seams do not yet expose a
 hosted evaluation command or qualify a cloud evaluator.
 
+### Independent buffered evaluator
+
+`research-evaluation-witness-v1` explicitly extends the publication profile with
+`evaluation.authorize`, `evaluation.complete`, and ordinary get/list queries for
+evaluation requests and receipts. The CLI/SDK request shapes remain unchanged.
+Older profiles still refuse these commands before consuming their bodies.
+Authorization requires `evaluation.request`, `read` and `artifact.upload`;
+completion requires `evaluation.publish`, `read` and the exact designated
+evaluator identity. Giving a worker publication permission does not make it an
+evaluator.
+
+Authorization derives the input manifest internally. Native and hosted byte paths
+share its transfer digest, bounds and stable begin/finalize identities. Each
+preparatory artifact command gets its own fresh witness. A duplicate generation
+is retired through a separate stable cleanup command before proceeding; uncertain
+retirement keeps quota occupied and the parent retryable. The final evaluation
+witness is acquired only after this work. Its transaction rechecks the selected
+job/trial/inputs and manifest catalog identity before retaining evidence and
+issuing authority. A rejected parent can leave a verified manifest without
+creating evaluator authority, as on the native path.
+
+Completion selects the designated evaluator's exact report before byte access,
+verifies and decodes the complete bounded generation, then obtains a fresh
+evaluation witness. The final shared transaction rechecks the selected evidence
+and requires the accepted successful evaluation-stage attempt, frozen request,
+input identity and verified run result. It preserves incomplete and invalid
+receipts as evidence. A valid receipt updates trial eligibility but creates no
+promotion. No native pin or storage await occurs after the final witness.
+
+Local adapter coverage executes both CPU stages and uses a separate evaluator
+credential. It covers valid/incomplete/invalid receipts, foreign evaluator denial,
+missing/corrupt reports, catalog changes, credential revocation, cancellation,
+lost manifest writes, interrupted duplicate retirement and offline reopen replay.
+The qualification uses an in-process HTTP/storage harness; actual workerd
+evaluation and cloud deployment require separate evidence. Hosted historical
+acceptance, restoration, confirmation-plan creation and promotion remain outside
+this profile.
+
 ### Signed clock query boundary
 
 The same generic execution boundary supports `Database.query()`. Every query

@@ -50,6 +50,20 @@ Path(context["report_path"]).write_text(json.dumps(report))
 print("synthetic training complete")
 """
 
+EVALUATE = """import json, os
+from pathlib import Path
+context = json.loads(Path(os.environ["RESEARCH_CONTEXT"]).read_text())
+report = {
+    "schema_version": "1.0",
+    "context_digest": context["context_digest"],
+    "observed_seed": context["seed"],
+    "observed_members": ["fixture-panel"],
+    "measurements": [{"name": "loss", "value": 0.25,
+                      "unit": "squared_error", "direction": "minimize"}],
+}
+Path(context["report_path"]).write_text(json.dumps(report))
+"""
+
 
 @pytest.fixture
 async def publication(research, project, tmp_path, request):
@@ -111,6 +125,18 @@ async def publication(research, project, tmp_path, request):
     (project / "train.py").write_text("raise SystemExit(1)\n" if mode == "failed" else TRAIN)
     manifest = project / "research.toml"
     manifest.write_text(manifest.read_text().replace("timeout_ms = 1000", "timeout_ms = 10000"))
+    if mode.startswith("evaluation"):
+        manifest.write_text(
+            manifest.read_text().replace(
+                "[evaluation]", '[evaluation]\nexpected_members = ["fixture-panel"]'
+            )
+        )
+        evaluation = EVALUATE
+        if mode == "evaluation-incomplete":
+            evaluation = evaluation.replace('["fixture-panel"]', "[]")
+        elif mode == "evaluation-invalid":
+            evaluation = evaluation.replace('"squared_error"', '"wrong_unit"')
+        (project / "evaluate.py").write_text(evaluation)
     captured = {}
 
     def execute():
