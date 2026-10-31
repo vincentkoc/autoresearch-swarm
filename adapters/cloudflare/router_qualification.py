@@ -14,6 +14,7 @@ from research_router import (
     HostedConfiguration,
     HostedInputConfiguration,
     HostedOutputConfiguration,
+    HostedPublicationConfiguration,
     HostedResearchConfiguration,
     dispatch_key_digest,
 )
@@ -77,8 +78,10 @@ def configuration(
     research_profile=False,
     input_profile=False,
     output_profile=False,
+    publication_profile=False,
     source=None,
 ):
+    output_profile = output_profile or publication_profile
     input_profile = input_profile or output_profile
     research_profile = research_profile or input_profile
     public = public_key(crypto, SEED).hex()
@@ -129,7 +132,9 @@ def configuration(
     )
     if artifact_profile or research_profile:
         profile_type = (
-            HostedOutputConfiguration
+            HostedPublicationConfiguration
+            if publication_profile
+            else HostedOutputConfiguration
             if output_profile
             else HostedInputConfiguration
             if input_profile

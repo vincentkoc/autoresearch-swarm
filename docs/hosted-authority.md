@@ -672,8 +672,8 @@ native source unavailable. The synthetic artifacts do not claim to be valid mode
 results. This extension passed at `10afb04` in
 [CI 41199740476](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41199740476):
 10 workerd tests passed in 167.21 seconds and 13 Node transport tests passed in
-10.094 seconds. Targeted Linux and macOS suites each passed 375 tests. Windows was
-still running when this receipt was recorded. This qualifies the local output
+10.094 seconds. Targeted Linux and macOS suites each passed 375 tests; Windows
+passed 371 tests with four skips in 664.87 seconds. This qualifies the local output
 runtime, not result acceptance, evaluator completion or cloud deployment.
 
 Result preparation now has shared current-owner and role-specific catalog selectors,
@@ -715,6 +715,15 @@ an in-process HTTP/storage harness; actual workerd result qualification is a
 separate step. The profile refuses historical acceptance and sealed/recovering
 workspace operations. It creates no evaluator receipt or scientific promotion;
 evaluator authorization and completion remain separate work.
+
+The workerd fixture now provisions a separate publication-profile object. A real
+native CPU worker downloads source, executes the ordinary project, uploads its
+signed journal/report and loses the reply after the result commits. It then
+replays with storage and witness unavailable, repeats that replay after restarting
+only workerd, and checks that its native journal, result and single budget
+settlement did not change. The source process stays alive across both controller
+incarnations. This probe requires its own passing runtime receipt; the output
+qualification above predates result acceptance.
 
 ### Signed clock query boundary
 

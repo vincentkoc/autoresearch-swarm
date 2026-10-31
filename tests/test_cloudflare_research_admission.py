@@ -25,23 +25,26 @@ from tests.test_manifest import project as project
 from tests.test_time_witnesses import source
 
 
-def client_at(url, token, input_profile=False, output_profile=False):
+def client_at(url, token, input_profile=False, output_profile=False, publication_profile=False):
     client = connect(url, token)
     client.transport.http.headers["x-fixture-research-profile"] = "true"
     if input_profile:
         client.transport.http.headers["x-fixture-input-profile"] = "true"
     if output_profile:
         client.transport.http.headers["x-fixture-output-profile"] = "true"
+    if publication_profile:
+        client.transport.http.headers["x-fixture-publication-profile"] = "true"
     return client
 
 
-def inspect(url, input_profile=False, output_profile=False):
+def inspect(url, input_profile=False, output_profile=False, publication_profile=False):
     return control(
         url,
         "inspect",
         research_profile=True,
         input_profile=input_profile,
         output_profile=output_profile,
+        publication_profile=publication_profile,
     )
 
 

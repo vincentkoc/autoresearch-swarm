@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an actual workerd/R2 result-publication probe using a fixture-owned native
+  CPU process. Check signed closure, one result and budget settlement, lost-reply
+  recovery and restart replay without storage or clock access; evaluator receipts
+  remain outside this qualification.
+
 - Add an explicit hosted result-publication profile. Verify all scoped execution
   evidence before the fresh witness, then reuse the native acceptance transaction
   and rejection fence. Preserve exact replay, finite evidence bounds and separate
