@@ -17,7 +17,7 @@ export default {
       });
     }
     const matched = url.pathname.match(
-      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|provision|capabilities)$/,
+      /^\/fixture\/target-(a|b)\/(import|import-limit|import-over-limit|default-import|request|default-request|provision|capabilities)$/,
     );
     if (!matched) return sourceOperator.fetch(request, env);
     const api = matched[1] === "a" ? env.TARGET_A_API : env.TARGET_B_API;
@@ -43,14 +43,34 @@ export default {
       Number.parseInt(pair, 16),
     );
     const input = JSON.parse(new TextDecoder().decode(bytes));
-    if (action === "provision") {
-      return new Response(await bootstrap.provision(input.credential), {
-        headers: { "content-type": "application/json" },
-      });
+    if (action === "provision" || action === "request") {
+      const result =
+        action === "provision"
+          ? await bootstrap.provision(input.credential)
+          : await bootstrap.checkpoint_request(input.credential);
+      if (
+        action === "request" &&
+        request.headers.get("x-fixture-drop-bootstrap") === "true"
+      ) {
+        const value = JSON.parse(result);
+        if (!value.request || typeof value.signature !== "string") {
+          return new Response(result, { status: 409 });
+        }
+      }
+      return new Response(
+        request.headers.get("x-fixture-drop-bootstrap") === "true"
+          ? "{"
+          : result,
+        {
+          headers: { "content-type": "application/json" },
+        },
+      );
     }
-    if (action === "default-import") {
+    if (action === "default-import" || action === "default-request") {
       try {
-        await api.checkpoint_import(input.credential, "{}");
+        if (action === "default-import")
+          await api.checkpoint_import(input.credential, "{}");
+        else await api.checkpoint_request(input.credential);
         return Response.json({ denied: false });
       } catch {
         return Response.json({ denied: true });
@@ -69,12 +89,19 @@ export default {
       bundle += " ".repeat(size - bundle.length);
     }
     const result = await bootstrap.checkpoint_import(input.credential, bundle);
+    const parsed = JSON.parse(result);
+    if (
+      request.headers.get("x-fixture-drop-bootstrap") === "true" &&
+      !parsed.receipt
+    ) {
+      return new Response(result, { status: 409 });
+    }
     return new Response(
       request.headers.get("x-fixture-drop-bootstrap") === "true"
         ? "{"
         : JSON.stringify({
             bundle_bytes: bundle.length,
-            result: JSON.parse(result),
+            result: parsed,
           }),
       { headers: { "content-type": "application/json" } },
     );

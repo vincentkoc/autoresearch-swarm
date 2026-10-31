@@ -2096,6 +2096,14 @@ exercise independent-connection races, lost commit replies, current-credential
 revocation, missing anchors, signature corruption and source-cut drift. The private
 RPC still needs workerd qualification. Election alone cannot activate a target.
 
+The extended three-Worker probe now generates a request at each completed target,
+checks denial at an empty target and at default/public entrypoints, and sends both
+valid requests concurrently to the original source. Its fixture drops both replies,
+including the committed winner's. Retries must reveal one signed winner and one
+conflict. A fifth workerd startup then verifies identical target requests and exact
+winner bytes, continued loser refusal, inactive targets and unchanged source capture
+during the same witness outage. This extension's runtime receipt is pending.
+
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent
 non-rollbackable authority before this protocol could safely elect again.

@@ -84,11 +84,60 @@ test("source refusal never reaches target import", async () => {
   assert.equal(reply.status, 409);
 });
 
+test("failed target import cannot become a lost committed reply", async () => {
+  const reply = await operator.fetch(request("import", { drop: true }), {
+    RESEARCH_BOOTSTRAP: { checkpoint_capture: async () => captured },
+    TARGET_A_BOOTSTRAP: {
+      checkpoint_import: async () => '{"error":{"code":"STALE_FENCE"}}',
+    },
+  });
+  assert.equal(reply.status, 409);
+  assert.deepEqual(await reply.json(), { error: { code: "STALE_FENCE" } });
+});
+
 test("default import is denied without touching source or private target", async () => {
   const reply = await operator.fetch(request("default-import"), {
     TARGET_A_API: {},
   });
   assert.deepEqual(await reply.json(), { denied: true });
+});
+
+test("target request uses only the fixed private target and preserves lost replies", async () => {
+  let calls = 0;
+  const env = {
+    TARGET_B_BOOTSTRAP: {
+      checkpoint_request: async (credential) => {
+        assert.equal(credential, "target-credential");
+        calls++;
+        return '{"request":{},"signature":"fixture"}';
+      },
+    },
+  };
+  const lost = await operator.fetch(
+    request("request", { letter: "b", drop: true }),
+    env,
+  );
+  assert.equal(await lost.text(), "{");
+  const result = await operator.fetch(request("request", { letter: "b" }), env);
+  assert.deepEqual(await result.json(), { request: {}, signature: "fixture" });
+  assert.equal(calls, 2);
+});
+
+test("a failed target request cannot masquerade as a lost successful reply", async () => {
+  const result = await operator.fetch(request("request", { drop: true }), {
+    TARGET_A_BOOTSTRAP: {
+      checkpoint_request: async () => '{"error":{"code":"STALE_FENCE"}}',
+    },
+  });
+  assert.equal(result.status, 409);
+  assert.deepEqual(await result.json(), { error: { code: "STALE_FENCE" } });
+});
+
+test("default target request has no private fallback", async () => {
+  const result = await operator.fetch(request("default-request"), {
+    TARGET_A_API: {},
+  });
+  assert.deepEqual(await result.json(), { denied: true });
 });
 
 test("target capabilities forward only the fixed public route", async () => {

@@ -3,16 +3,22 @@
 import copy
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
 from adapters.cloudflare.checkpoint_wire import MAX_RPC_BYTES, decode_checkpoint
 from adapters.cloudflare.deployment import DeploymentManifest, authority_id, secret_digest
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
+from research_swarm.checkpoints.elections import verify_election, verify_election_request
 from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.client import ResearchClient
 from research_swarm.crypto import public_key
 from research_swarm.domain.backup import BackupCustodyPin
+from research_swarm.domain.checkpoint_elections import (
+    SignedLogicalElection,
+    SignedLogicalElectionRequest,
+)
 from research_swarm.domain.checkpoint_images import LogicalImportIntent, SignedLogicalCheckpoint
 from research_swarm.domain.time_witnesses import WitnessAuthorityScope
 from research_swarm.domain.types import new_id
@@ -94,6 +100,16 @@ def target_call(http, letter, action, credential, source_credential, capture, *,
             "source_credential": source_credential,
             "request_json": json.dumps(capture),
         },
+        headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
+    )
+    assert response.status_code == 200, response.text[:1000]
+    return response
+
+
+def elect(http, credential, request, *, drop=False, default=False):
+    response = http.post(
+        "/fixture/" + ("default-" if default else "") + "checkpoint-elect",
+        json={"credential": credential, "request_json": json.dumps(request)},
         headers={"x-fixture-drop-bootstrap": "true"} if drop else {},
     )
     assert response.status_code == 200, response.text[:1000]
@@ -221,7 +237,7 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
         # Deliberate reuse: the same key/intent must not authorize a different physical target.
         bindings["b"] = copy.deepcopy(bindings["a"])
         configure()
-        receipts = {}
+        receipts, requests = {}, {}
         with (
             server(tmp_path, sequence=3, **options) as url,
             httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
@@ -239,6 +255,8 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 )
 
             assert call("a", "default-import").json() == {"denied": True}
+            assert call("a", "default-request").json() == {"denied": True}
+            assert "error" in call("a", "request").json()
             assert (
                 call("a", "import", credential="wrong").json()["result"]["error"]["code"]
                 == "AUTHORIZATION_DENIED"
@@ -253,6 +271,12 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
             assert "receipt" in accepted["result"], accepted["result"]
             receipts["a"] = accepted["result"]["receipt"]
             assert call("a", "import").json()["result"]["receipt"] == receipts["a"]
+            assert call("a", "request", credential="wrong").json()["error"]["code"] == (
+                "AUTHORIZATION_DENIED"
+            )
+            assert call("a", "request", drop=True).text == "{"
+            requests["a"] = call("a", "request").json()
+            assert "request" in requests["a"], requests["a"]
             assert "error" in call("a", "provision").json()
             assert (
                 http.get(
@@ -287,6 +311,27 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                 if letter == "a":
                     assert receipt == receipts[letter]
                 receipts[letter] = receipt
+                requested = target_call(
+                    http,
+                    letter,
+                    "request",
+                    target_secrets[letter]["bootstrap"],
+                    secrets["bootstrap"],
+                    capture,
+                ).json()
+                assert "request" in requested, requested
+                if letter == "a":
+                    assert requested == requests[letter]
+                requests[letter] = requested
+                verify_election_request(
+                    SignedLogicalElectionRequest.model_validate(requested),
+                    expected_intent=LogicalImportIntent.model_validate(bindings[letter]["intent"]),
+                    expected_backup_id=image.seal.backup_id,
+                    expected_source=image.source_authority,
+                    expected_deployment_digest=image.source_deployment_digest,
+                    expected_custody=image.source_custody,
+                    crypto=deployment[2],
+                )
                 assert receipt["restore_id"] == bindings[letter]["intent"]["restore_id"]
                 assert receipt["manifest_digest"] == image.digest
                 assert receipt["source_public_key"] == custody["pin"]["public_key"]
@@ -302,5 +347,82 @@ def test_three_production_authorities_import_pinned_image_and_replay_after_resta
                     != 200
                 )
             assert receipts["a"]["target_public_key"] != receipts["b"]["target_public_key"]
+            assert elect(http, secrets["bootstrap"], requests["a"], default=True).json() == {
+                "denied": True
+            }
+            assert (
+                elect(http, "wrong", requests["a"]).json()["error"]["code"]
+                == "AUTHORIZATION_DENIED"
+            )
+            # Both replies are lost, including the winner's committed reply.
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                replies = list(
+                    pool.map(
+                        lambda letter: elect(
+                            http, secrets["bootstrap"], requests[letter], drop=True
+                        ),
+                        ("a", "b"),
+                    )
+                )
+            assert [reply.text for reply in replies] == ["{", "{"]
+            assert sorted(reply.headers["x-fixture-election-outcome"] for reply in replies) == [
+                "conflict",
+                "elected",
+            ]
+            initial_winner = next(
+                letter
+                for letter, reply in zip(("a", "b"), replies, strict=True)
+                if reply.headers["x-fixture-election-outcome"] == "elected"
+            )
+            responses = {
+                letter: elect(http, secrets["bootstrap"], requests[letter]) for letter in ("a", "b")
+            }
+            outcomes = {letter: response.json() for letter, response in responses.items()}
+            winners = [letter for letter, result in outcomes.items() if "election" in result]
+            assert len(winners) == 1, outcomes
+            winner = winners[0]
+            assert winner == initial_winner
+            loser = "b" if winner == "a" else "a"
+            assert outcomes[loser]["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+            verify_election(
+                SignedLogicalElection.model_validate(outcomes[winner]),
+                expected_intent=LogicalImportIntent.model_validate(bindings[winner]["intent"]),
+                expected_backup_id=image.seal.backup_id,
+                expected_source=image.source_authority,
+                expected_deployment_digest=image.source_deployment_digest,
+                expected_custody=image.source_custody,
+                crypto=deployment[2],
+            )
+            assert checkpoint(http, secrets["bootstrap"], capture, capture=True).text == captured
+            assert len(endpoint.requests) == witness_calls
+
+        with (
+            server(tmp_path, sequence=5, **options) as url,
+            httpx.Client(base_url=url, trust_env=False, timeout=60) as http,
+        ):
+            for letter in ("a", "b"):
+                assert (
+                    target_call(
+                        http,
+                        letter,
+                        "request",
+                        target_secrets[letter]["bootstrap"],
+                        secrets["bootstrap"],
+                        capture,
+                    ).json()
+                    == requests[letter]
+                )
+                repeated = elect(http, secrets["bootstrap"], requests[letter])
+                if letter == winner:
+                    assert repeated.text == responses[letter].text
+                else:
+                    assert repeated.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+                assert (
+                    http.get(
+                        f"/fixture/target-{letter}/capabilities",
+                        headers={"authorization": "Bearer " + operator_token},
+                    ).status_code
+                    != 200
+                )
             assert checkpoint(http, secrets["bootstrap"], capture, capture=True).text == captured
             assert len(endpoint.requests) == witness_calls

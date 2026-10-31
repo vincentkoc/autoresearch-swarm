@@ -44,8 +44,10 @@ export default {
       const checkpoints = {
         "/fixture/checkpoint-seal": "checkpoint_seal",
         "/fixture/checkpoint-capture": "checkpoint_capture",
+        "/fixture/checkpoint-elect": "checkpoint_elect",
         "/fixture/default-checkpoint-seal": "checkpoint_seal",
         "/fixture/default-checkpoint-capture": "checkpoint_capture",
+        "/fixture/default-checkpoint-elect": "checkpoint_elect",
       };
       const method = checkpoints[url.pathname];
       if (method) {
@@ -61,11 +63,36 @@ export default {
           credential,
           request_json,
         );
+        let outcome;
+        if (request.headers.get("x-fixture-drop-bootstrap") === "true") {
+          const value = JSON.parse(result);
+          if (method === "checkpoint_elect") {
+            if (value.election && typeof value.signature === "string")
+              outcome = "elected";
+            else if (value.error?.code === "IDEMPOTENCY_CONFLICT")
+              outcome = "conflict";
+            else return new Response(result, { status: 409 });
+          } else if (
+            method === "checkpoint_seal"
+              ? !(value.seal && value.custody)
+              : !(
+                  typeof value.envelope_base64 === "string" &&
+                  Array.isArray(value.chunks_base64)
+                )
+          ) {
+            return new Response(result, { status: 409 });
+          }
+        }
         return new Response(
           request.headers.get("x-fixture-drop-bootstrap") === "true"
             ? "{"
             : result,
-          { headers: { "content-type": "application/json" } },
+          {
+            headers: {
+              "content-type": "application/json",
+              ...(outcome ? { "x-fixture-election-outcome": outcome } : {}),
+            },
+          },
         );
       }
     }

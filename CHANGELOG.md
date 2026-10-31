@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the three-Worker probe through completed-target requests and competing
+  source elections. Lose both election replies, verify one winner, restart every
+  Worker, and require exact retained proof bytes with both targets still inactive.
+
 - Generate target election requests only from verified completed inactive imports.
   Private fixed-target RPC opens existing state, checks its full fingerprint,
   original seal/history, receipt and source marker, then signs without writes or

@@ -11,14 +11,18 @@ function request(path, payload, drop = false) {
   });
 }
 
-for (const action of ["seal", "capture"]) {
+for (const action of ["seal", "capture", "elect"]) {
   test(`private ${action} forwards one unchanged JSON string and can lose its reply`, async () => {
     const calls = [];
     const payload = {
       credential: "synthetic",
       request_json: '{"backup_id":"fixture"}',
     };
-    const result = '{"schema_version":"1.0","fixture":"result"}';
+    const result = {
+      elect: '{"election":{},"signature":"fixture"}',
+      seal: '{"seal":{},"custody":{}}',
+      capture: '{"envelope_base64":"eA==","chunks_base64":["eQ=="]}',
+    }[action];
     const env = {
       RESEARCH_BOOTSTRAP: {
         [`checkpoint_${action}`]: async (...args) => {
@@ -30,6 +34,8 @@ for (const action of ["seal", "capture"]) {
     const path = `/fixture/checkpoint-${action}`;
     const lost = await operator.fetch(request(path, payload, true), env);
     assert.equal(await lost.text(), "{");
+    if (action === "elect")
+      assert.equal(lost.headers.get("x-fixture-election-outcome"), "elected");
     const reply = await operator.fetch(request(path, payload), env);
     assert.equal(await reply.text(), result);
     assert.deepEqual(calls, [
@@ -47,7 +53,44 @@ for (const action of ["seal", "capture"]) {
     );
     assert.deepEqual(await reply.json(), { denied: true });
   });
+
+  test(`failed ${action} remains visible when a lost reply is requested`, async () => {
+    const response = await operator.fetch(
+      request(`/fixture/checkpoint-${action}`, {}, true),
+      {
+        RESEARCH_BOOTSTRAP: {
+          [`checkpoint_${action}`]: async () =>
+            '{"error":{"code":"STALE_FENCE"}}',
+        },
+      },
+    );
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: { code: "STALE_FENCE" } });
+  });
 }
+
+test("dropped election distinguishes the expected loser from an unexpected failure", async () => {
+  for (const code of ["IDEMPOTENCY_CONFLICT", "CAPABILITY_UNAVAILABLE"]) {
+    const response = await operator.fetch(
+      request("/fixture/checkpoint-elect", {}, true),
+      {
+        RESEARCH_BOOTSTRAP: {
+          checkpoint_elect: async () => JSON.stringify({ error: { code } }),
+        },
+      },
+    );
+    if (code === "IDEMPOTENCY_CONFLICT") {
+      assert.equal(await response.text(), "{");
+      assert.equal(
+        response.headers.get("x-fixture-election-outcome"),
+        "conflict",
+      );
+    } else {
+      assert.equal(response.status, 409);
+      assert.deepEqual(await response.json(), { error: { code } });
+    }
+  }
+});
 
 test("oversized fixture body refuses before any private call", async () => {
   const reply = await operator.fetch(
