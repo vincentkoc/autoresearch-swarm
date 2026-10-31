@@ -479,6 +479,26 @@ keep an R2 reader, native session or catalog pin alive. Metadata queries and
 downloads create no command acknowledgment, event, pin or witness. Provider
 qualification of this download path is separate from the upload receipt above.
 
+`adapters/cloudflare/hosted_http.py` maps this profile onto the existing SDK wire
+contract. It accepts ordinary upload creation, status, parts and finalize routes,
+explicit abort/cleanup commands, artifact metadata and content, plus the admitted
+worker commands and queries. Capabilities list only implemented routes and limits;
+they do not advertise research execution, proposal management or restore.
+Authentication and known scopes precede body consumption. The runtime must supply
+a body reader that enforces the selected bound during consumption; the mapper
+checks the returned bytes again. Compressed request bodies and ranges are refused.
+Downloads carry exact length, media type, digest ETag, identity encoding and
+`no-store, no-transform` headers.
+
+Unexpected failures after a mutating dispatch produce `DELIVERY_UNCERTAIN` with
+the correct command-replay or upload-inspection recovery hint. They cannot become
+input errors merely because serialization raised `ValueError`. Domain rejection
+acknowledgments retain their original command identity and body. The HTTP module
+does not provision an authority, bind a public endpoint or deploy credentials.
+Unit tests drive the unchanged `ResearchClient` through its actual HTTP transport
+with a mock network boundary; a Workers ingress and real HTTP runtime probe are
+still required before claiming provider qualification for this API slice.
+
 `Database` accepts an optional internal `ExecutionBoundary`; native construction
 leaves it absent. Exact acknowledgment replay, workspace admission and reserved
 command-key checks run before the boundary. It is synchronous and runs inside the command

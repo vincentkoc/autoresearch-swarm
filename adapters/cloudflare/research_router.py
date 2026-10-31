@@ -225,6 +225,12 @@ class ExistingResearchRouter:
             },
         )
 
+    async def authenticate(self, token):
+        async def resolve():
+            return self._context(token, idempotency_key=new_id()).principal
+
+        return await exclusive(self.state, resolve)
+
     async def _witnessed(self, context, operation, payload, perform):
         snapshot = self.database.store.read(
             lambda sql: self.registry.load(Transaction(sql, context), self.configuration.authority)

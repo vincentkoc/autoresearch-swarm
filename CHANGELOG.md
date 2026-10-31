@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Map the bounded hosted router onto the existing SDK HTTP contract, including
+  profile-specific capabilities, authenticated body consumption, exact command
+  replay, complete uploads and verified downloads. Keep deployment separate.
+
 - Add read-only hosted artifact metadata and bounded verified downloads. Finish
   all R2 reads under the exclusive authority gate, recheck current identity and
   catalog selection, then return immutable bytes without native reader pins.
