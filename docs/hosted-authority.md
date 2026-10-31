@@ -1790,6 +1790,30 @@ This internal primitive does not authorize source bytes or a target. Hosted logi
 image verification, inactive import, original-source election, R2 recovery and
 fenced activation still need their own implementation and provider qualification.
 
+`checkpoints.fingerprint.fingerprint_state()` supplies a separate inactive replay
+primitive. It validates portable schemas, preflights counts/types/lengths, then
+streams the complete twelve-table state through the same bounded binary paginator.
+Its `research.logical-inactive-state.v1` hash binds schema and layout identities,
+all table counts (including empty tables), table names and canonical typed rows.
+Each byte string has an ASCII byte-length prefix, so concatenation cannot conflate
+rows, binary values, NULL or text. SQL page size does not affect the result.
+
+The initial inactive profile permits 32 MiB of conservative row-size estimates and
+32,768 rows, providing headroom beyond the source image for worker archives, fences,
+events and outbox entries. It retains pages and a running hash, not another encoded
+image. Overflow refuses instead of truncating evidence. A future import transaction
+must save this fingerprint with its trusted target intent atomically and compare it
+before returning an exact inactive retry. It must separately check physical target,
+deployment identity, complete owner-table roster, gate and restoration phase.
+The fingerprint alone is not an authority check, nor protection against someone
+rewriting both the trusted fingerprint and its database. Later legitimate recovery
+changes must not silently replace it to make old import verification succeed.
+
+Native tests pin a golden digest, modify evidence in every portable table, test
+addition/deletion and page independence, and cover bounded recovery headroom. The
+workerd capture probe also checks unchanged and changed fingerprints; its extended
+runtime receipt remains pending.
+
 ## Required implementation slices
 
 1. Freeze witness schemas, signatures, epoch derivation and one-use operation

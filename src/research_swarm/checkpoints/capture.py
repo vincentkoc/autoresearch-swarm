@@ -1,5 +1,6 @@
 """Bounded deterministic row capture inside an already admitted source snapshot."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from pydantic import Field
@@ -137,14 +138,7 @@ def _capture_table(
     bodies: list[bytes],
     total_bytes: int,
 ) -> int:
-    name = quoted(table.name)
-    fields = ",".join(quoted(column.name) for column in table.columns)
-    key_fields = _key_columns(table)
-    order = ",".join(key_fields)
-    positions = {column.name: ordinal for ordinal, column in enumerate(table.columns)}
-    previous: tuple[bytes | int, ...] | None = None
-    last_values: tuple[SqlValue, ...] | None = None
-    consumed, first_row, packed_size = 0, 0, 0
+    first_row, packed_size = 0, 0
     packed: list[tuple[Cell, ...]] = []
 
     def frame() -> dict[str, object]:
@@ -175,6 +169,37 @@ def _capture_table(
         packed.clear()
         packed_size = 0
 
+    for cells, body in iter_rows(sql, table, counted, limits):
+        size = len(body)
+        envelope_size = len(canonical_bytes(frame()))
+        if packed and envelope_size + packed_size + size + len(packed) > limits.chunk_bytes:
+            flush()
+            envelope_size = len(canonical_bytes(frame()))
+        if envelope_size + size > limits.chunk_bytes:
+            raise overflow()
+        packed.append(cells)
+        packed_size += size
+    flush()
+    return total_bytes
+
+
+def row_bytes(cells: tuple[Cell, ...]) -> bytes:
+    return canonical_bytes(
+        [cell.model_dump(mode="json") if isinstance(cell, BlobCell) else cell for cell in cells]
+    )
+
+
+def iter_rows(
+    sql: SqlSession, table: TableLayout, counted: TableInventory, limits: CaptureLimits
+) -> Iterator[tuple[tuple[Cell, ...], bytes]]:
+    """Consume fully inside the owning synchronous SQL callback after size preflight."""
+    name = quoted(table.name)
+    fields = ",".join(quoted(column.name) for column in table.columns)
+    order = ",".join(_key_columns(table))
+    positions = {column.name: ordinal for ordinal, column in enumerate(table.columns)}
+    previous: tuple[bytes | int, ...] | None = None
+    last_values: tuple[SqlValue, ...] | None = None
+    consumed = 0
     while True:
         where = ""
         parameters: tuple[SqlValue, ...] = ()
@@ -198,27 +223,11 @@ def _capture_table(
             consumed += 1
             if consumed > counted.row_count:
                 raise ResearchError(ErrorCode.STALE_FENCE, "Logical row inventory changed")
-            size = len(
-                canonical_bytes(
-                    [
-                        cell.model_dump(mode="json") if isinstance(cell, BlobCell) else cell
-                        for cell in cells
-                    ]
-                )
-            )
-            if size > limits.row_bytes:
+            body = row_bytes(cells)
+            if len(body) > limits.row_bytes:
                 raise overflow()
-            envelope_size = len(canonical_bytes(frame()))
-            if packed and envelope_size + packed_size + size + len(packed) > limits.chunk_bytes:
-                flush()
-                envelope_size = len(canonical_bytes(frame()))
-            if envelope_size + size > limits.chunk_bytes:
-                raise overflow()
-            packed.append(cells)
-            packed_size += size
             last_values = tuple(values[positions[field]] for field in table.primary_key)
+            yield cells, body
         del page
-    flush()
     if consumed != counted.row_count:
         raise ResearchError(ErrorCode.STALE_FENCE, "Logical row inventory changed")
-    return total_bytes

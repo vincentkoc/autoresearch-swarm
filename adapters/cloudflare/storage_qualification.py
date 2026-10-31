@@ -3,6 +3,7 @@
 from durable_sql import MAX_SAFE_INTEGER, DurableObjectStore
 
 from research_swarm.checkpoints.capture import CaptureLimits, capture_rows, preflight_rows
+from research_swarm.checkpoints.fingerprint import fingerprint_state
 from research_swarm.checkpoints.image_format import row_values
 from research_swarm.checkpoints.image_schema import require_portable_image_schema
 from research_swarm.control.auth import CredentialStore
@@ -116,6 +117,7 @@ def checkpoint_capture(store):
         )
 
     store.write(seed)
+    before = store.read(fingerprint_state)
 
     def read(sql, page_rows):
         limits = CaptureLimits(page_rows=page_rows)
@@ -135,6 +137,13 @@ def checkpoint_capture(store):
     assert [row[2] for row in rows["commands"]] == ["\0", "\ue000", "\U00010000"]
     assert all(row[5] == raw for row in rows["commands"])
     assert rows["recovery_items"][0][-1] == b"\0\xff"
+    assert store.read(fingerprint_state) == before
+    store.write(
+        lambda sql: sql.execute(
+            "UPDATE commands SET response=? WHERE workspace_id=?", (raw + " ", workspace)
+        )
+    )
+    assert store.read(fingerprint_state) != before
 
 
 class ReadOnlyStorage:

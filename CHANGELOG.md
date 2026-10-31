@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a bounded streaming fingerprint of every portable state table for inactive
+  restore verification. Bind schema/layout, table counts and length-framed typed
+  rows; preserve the capture paginator's binary order and allow bounded headroom
+  for recovery records. The fingerprint grants no restoration or activation authority.
+
 - Allow the expanded Windows qualification job 30 minutes after its 20-minute
   runner ceiling interrupted the suite. Keep all experiment, supervision, witness
   and per-test fault thresholds unchanged.
