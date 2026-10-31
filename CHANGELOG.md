@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Separate shared transfer selection from native artifact pinning. Preserve
+  operator/driver separation, exact transfer identity and final view revalidation
+  so other byte-verification adapters can use the same atomic transfer transaction.
+
 - Wire the local workerd delivery fixture to its fixed witnessed authority and
   reconstruct registration from persisted driver ownership. Add a two-process
   Workflow/DO restart probe covering missing receipts, carried waits, false wake

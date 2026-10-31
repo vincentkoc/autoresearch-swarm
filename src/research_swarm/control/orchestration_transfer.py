@@ -33,7 +33,6 @@ from research_swarm.state.drive_closures import (
     settle_acknowledged,
     target_acknowledgment,
 )
-from research_swarm.state.sql import SqlSession
 from research_swarm.state.waits import fence_wait, watermark
 
 
@@ -97,6 +96,13 @@ def previous_transfer(transaction: Transaction, transfer_id: str, digest: str) -
     return row
 
 
+def transfer_request_digest(context: CommandContext, intent: TransferOrchestration) -> str:
+    return record_digest(
+        "research.orchestration-transfer-request-v1",
+        {"payload": intent.model_dump(mode="json"), "expected_revision": context.expected_revision},
+    )
+
+
 class OrchestrationTransferControl:
     def __init__(self, database: Database, artifacts: ArtifactService) -> None:
         self.database, self.artifacts = database, artifacts
@@ -105,30 +111,14 @@ class OrchestrationTransferControl:
         for scope in ("read", "orchestration.manage", "orchestration.drive"):
             context.principal.require(scope)
         payload = intent.model_dump(mode="json")
-        digest = record_digest(
-            "research.orchestration-transfer-request-v1",
-            {
-                "payload": payload,
-                "expected_revision": context.expected_revision,
-            },
-        )
+        digest = transfer_request_digest(context, intent)
 
         def prepare() -> JsonObject:
-            def read(connection: SqlSession) -> TransferView | None:
-                transaction = Transaction(connection, context)
-                if connection.execute(
-                    "SELECT 1 FROM records WHERE workspace_id=? "
-                    "AND kind='orchestration_owner' AND id=?",
-                    (transaction.workspace_id, context.principal.id),
-                ).fetchone():
-                    raise ResearchError(
-                        ErrorCode.AUTHORIZATION_DENIED, "A driver cannot transfer its own authority"
-                    )
-                existing = previous_transfer(transaction, intent.transfer_id, digest)
-                view = None if existing else inspect_transfer(transaction, intent)
-                return view
-
-            view = self.database.store.read(read)
+            view = self.database.store.read(
+                lambda connection: self._prepare_in(
+                    Transaction(connection, context), intent, digest
+                )
+            )
             with ExitStack() as pins:
                 if view is not None:
                     for reference in view.artifacts:
@@ -148,6 +138,22 @@ class OrchestrationTransferControl:
             "orchestration.manage",
             prepare,
         )
+
+    def _prepare_in(
+        self, transaction: Transaction, intent: TransferOrchestration, digest: str
+    ) -> TransferView | None:
+        """Select one transfer view before adapter-specific artifact verification."""
+        for scope in ("read", "orchestration.manage", "orchestration.drive"):
+            transaction.context.principal.require(scope)
+        if transaction.connection.execute(
+            "SELECT 1 FROM records WHERE workspace_id=? AND kind='orchestration_owner' AND id=?",
+            (transaction.workspace_id, transaction.context.principal.id),
+        ).fetchone():
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "A driver cannot transfer its own authority"
+            )
+        existing = previous_transfer(transaction, intent.transfer_id, digest)
+        return None if existing else inspect_transfer(transaction, intent)
 
     def _commit(
         self,

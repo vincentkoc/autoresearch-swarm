@@ -1008,6 +1008,14 @@ and collection checks are not runtime qualification; this probe needs a passing
 CI receipt. Naming the binding adapter `cloudflare-workflows` does not claim that
 a Workflow has executed it.
 
+At `c97d86652083288787f1203fa367747e59246042`,
+[CI 41203847351](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41203847351)
+passed **15 actual workerd tests in 462.39 seconds**, including saved evaluator
+delivery and event-wait replay across authority restarts. Linux passed 463 tests
+in 242.52 seconds and macOS passed 463 in 183.49 seconds; Windows was still running
+at this checkpoint. The two-process Workflow/facade probe was added afterward and
+requires its own receipt.
+
 ### Async delivery contract
 
 `AsyncDeliveryKernel` exposes the same bootstrap, inspect, execute and wait
@@ -1074,6 +1082,21 @@ without a hint must become ready through polling. Duplicate wakeup acknowledgmen
 leaves readiness unconsumed, a domain fence retires delivery, and a changed origin
 cannot reuse the transport registration. Collection/source checks are not runtime
 qualification; this probe needs a passing CI receipt.
+
+### Transfer preparation boundary
+
+`OrchestrationTransferControl._prepare_in()` selects an immutable transfer view
+inside a read transaction. It retains the native requirement for a separate
+operator with read, management and drive scopes; a retiring driver cannot transfer
+its own authority. The shared request digest includes the exact header revision.
+An existing transfer selects its original immutable result without inspecting the
+now-stale campaign/binding input again.
+
+Native transfer still pins all required artifact bytes before `_commit()`. The
+commit recomputes the selected view and refuses changed evidence before creating
+any checkpoint or successor. This extraction lets a future hosted adapter verify
+R2 bytes asynchronously while retaining the same selection and transaction rules.
+It does not expose hosted transfer, snapshot recovery or successor startup yet.
 
 ### Signed clock query boundary
 
