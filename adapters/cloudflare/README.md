@@ -181,6 +181,35 @@ process restart and eight contending HTTP deliveries. CPU tests cover callback
 failure propagation and native counter exhaustion. These are infrastructure
 observations, not provider throughput or research-performance measurements.
 
+## Native witness transport
+
+`WitnessHTTPTransport` is a callable for the existing router's `acquire` port.
+Construct it from deployment-owned configuration and a separately injected
+consumer credential, after importing `witness_io.mjs` and before entering the
+operation gate. The origin has no path, query, fragment or user information;
+the client always posts to `/v1/time-witness`. HTTPS is required by default.
+`allow_loopback=True` permits only `http://127.0.0.1[:port]` for local qualification.
+Never fill these arguments from a caller's research request.
+
+The exchange has one deadline covering headers and body, between 100 ms and
+10 seconds, with a 1-second default. Both directions are limited to 16 KiB.
+The transport rejects redirects, non-200 replies, unexpected media/encoding,
+invalid UTF-8 and inconsistent lengths. It yields during ready chunk batches
+so empty streams cannot starve the timer. Timeout returns no witness bytes;
+late response bodies are canceled, without claiming cancellation has completed.
+Provider diagnostics and response bodies do not escape through errors.
+
+The callable returns the original response bytes. `PendingTimeWitness` and the
+shared operation context still verify the source, signature, nonce, generation
+and authority scope. A transport success grants no execution authority. The
+native endpoint is `create_time_witness_app`; production secret custody, source
+lifecycle qualification and hosted worker admission remain separate.
+
+Run the dependency-free transport tests with
+`node --test adapters/cloudflare/witness_io.test.mjs` from the repository root.
+They include real loopback HTTP and adversarial stream/timeout cases. This is
+not yet evidence for the full native-source-to-workerd chain or a deployment.
+
 ## Agent API facade
 
 `wrangler.facade.jsonc` selects the separate credential-free research API facade.

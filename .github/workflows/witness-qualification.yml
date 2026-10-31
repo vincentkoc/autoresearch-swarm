@@ -48,7 +48,7 @@ jobs:
           tests/test_worker_query_boundaries.py
           tests/test_cloudflare_exclusive.py tests/test_cli_fixture_io.py
           tests/test_existing_state.py tests/test_hosted_router.py tests/test_hosted_artifacts.py
-          tests/test_hosted_http.py tests/test_http_binding.py
+          tests/test_hosted_http.py tests/test_http_binding.py tests/test_witness_binding.py
           tests/test_supervision.py
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
   workerd:
@@ -71,7 +71,7 @@ jobs:
         with:
           node-version: "22"
       - run: uv sync --locked --group dev --python 3.12
-      - run: node --test adapters/cloudflare/http_io.test.mjs
+      - run: node --test adapters/cloudflare/http_io.test.mjs adapters/cloudflare/witness_io.test.mjs
       - run: uv sync --directory adapters/cloudflare --locked --python 3.12
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: adapters/cloudflare

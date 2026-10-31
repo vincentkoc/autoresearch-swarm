@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a deployment-configured witness HTTP transport with a fixed endpoint,
+  explicit consumer credential, HTTPS default, bounded exchange lifetime and
+  response bytes. Refuse redirects and late completion; preserve independent
+  source verification and hosted worker admission boundaries.
+
 - Exercise the unchanged Python SDK through local Workers HTTP with real DO/R2
   state, binary and empty downloads, uncertain finalize responses, cleanup replay
   after restart and credential revocation ordered behind an admitted read.
