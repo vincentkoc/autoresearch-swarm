@@ -324,17 +324,20 @@ def test_primary_exit_allows_bounded_native_accounting_settlement(
     from research_swarm.workers import supervision
 
     prepare = supervision._prepare
+    hidden_observations = 0
+    samples: list[tuple[float, bool]] = []
 
     def wrapped(command: NativeCommand, environment: dict[str, str]):
         child = prepare(command, environment)
         closure = child.closure
-        observations = 0
 
         def delayed_accounting():
-            nonlocal observations
+            nonlocal hidden_observations
+            started = time.monotonic()
             observed = closure()
-            if observed.scope_closed and observations < 2:
-                observations += 1
+            samples.append((round(time.monotonic() - started, 4), observed.scope_closed))
+            if observed.scope_closed and hidden_observations < 2:
+                hidden_observations += 1
                 return observed.model_copy(update={"scope_closed": False})
             return observed
 
@@ -342,6 +345,12 @@ def test_primary_exit_allows_bounded_native_accounting_settlement(
         return child
 
     monkeypatch.setattr(supervision, "_prepare", wrapped)
-    outcome = run_native(command(tmp_path, "print('complete')"), tmp_path / "out")
-    assert outcome.reason == "exited" and outcome.closure.scope_closed
+    # Each native observation scans the host's process table. Use the normal
+    # accounting grace for this injected delay, including on loaded CI runners.
+    invocation = command(tmp_path, "print('complete')").model_copy(update={"grace_ms": 1000})
+    outcome = run_native(invocation, tmp_path / "out")
+    evidence = {"hidden": hidden_observations, "samples": samples[-12:]}
+    assert hidden_observations == 2, evidence
+    assert outcome.reason == "exited" and outcome.closure.scope_closed, evidence
     assert outcome.exit_code == 0
+    assert outcome.stdout.eof and outcome.stderr.eof
