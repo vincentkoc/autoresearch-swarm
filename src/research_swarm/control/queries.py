@@ -20,6 +20,8 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
+    "population_member",
+    "population_change",
     "benchmark_execution",
     "benchmark_case",
     "benchmark_assessment",
@@ -164,6 +166,8 @@ def summarize(row: JsonObject) -> JsonObject:
                 "required_scope": "read",
             },
         }
+    elif row["kind"] in {"population_member", "population_change"}:
+        result["data"] = data
     elif row["kind"] == "learning_dataset":
         result["data"] = {
             "plan_id": data["plan_id"],
@@ -597,7 +601,7 @@ class ResearchQueries:
             recent = connection.execute(
                 "SELECT kind,id FROM records WHERE workspace_id=? AND campaign_id=? "
                 "AND kind IN ('candidate','trial','evaluation_receipt','promotion',"
-                "'search_observation','policy_transition') "
+                "'search_observation','policy_transition','population_member','population_change') "
                 "ORDER BY rowid DESC LIMIT ?",
                 (context.principal.workspace_id, campaign_id, limit),
             ).fetchall()

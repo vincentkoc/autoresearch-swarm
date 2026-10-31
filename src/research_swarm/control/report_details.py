@@ -332,6 +332,7 @@ def research_details(
     attempts = projection.page("attempt", attempt)
     proposals = projection.page("proposal_request", summarize)
     promotions = projection.page("promotion", selection.project, pinned=pinned_promotions)
+    population = projection.page("population_member", summarize)
     reservations = projection.reservations()
     resource_counts = transaction.connection.execute(
         "SELECT kind,state,COUNT(*) AS count FROM records WHERE workspace_id=? AND campaign_id=? "
@@ -419,6 +420,7 @@ def research_details(
         "attempts": attempts,
         "proposals": proposals,
         "promotions": promotions,
+        "population": population,
         "confirmed_cohorts": confirmed_cohorts(promotions),
         "resource_disposition": {
             "basis": "Controller-recorded custody; an omitted row is not proof of closure",

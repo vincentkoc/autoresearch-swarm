@@ -66,6 +66,7 @@ from research_swarm.control.orchestration_models import (
     TransferOrchestration,
 )
 from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
+from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
@@ -119,6 +120,22 @@ class CommandDefinition:
 
 
 COMMANDS = {
+    "population.retain": CommandDefinition(
+        RetainPopulationMember,
+        "retain_population_member",
+        "search.manage",
+        True,
+        "Retain an evaluated research alternative; revision zero creates membership.",
+        additional_scopes=("read",),
+    ),
+    "population.retire": CommandDefinition(
+        RetirePopulationMember,
+        "retire_population_member",
+        "search.manage",
+        True,
+        "Retire archive membership while preserving source, evidence and change history.",
+        additional_scopes=("read",),
+    ),
     "learning.create_policy_binding": CommandDefinition(
         CreatePolicyBinding,
         "create_policy_binding",

@@ -113,6 +113,8 @@ from research_swarm.control.orchestration_transfer import OrchestrationTransferC
 from research_swarm.control.orchestration_waits import OrchestrationWaitControl
 from research_swarm.control.policy_adoption import PolicyAdoptionControl
 from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
+from research_swarm.control.population import PopulationControl
+from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
     AssessPromotion,
@@ -257,6 +259,7 @@ class ResearchService:
             database, assignment_key, crypto_provider=self.crypto_provider
         )
         self.proposals = ProposalControl(database)
+        self.population = PopulationControl(database)
         self.learning = LearningControl(database)
         self.benchmarks = BenchmarkControl(database)
         self.policy_adoption = PolicyAdoptionControl(database)
@@ -479,6 +482,16 @@ class ResearchService:
 
     def request_proposal(self, context: CommandContext, request: RequestProposal) -> JsonObject:
         return self.proposals.request(context, request)
+
+    def retain_population_member(
+        self, context: CommandContext, request: RetainPopulationMember
+    ) -> JsonObject:
+        return self.population.retain(context, request)
+
+    def retire_population_member(
+        self, context: CommandContext, request: RetirePopulationMember
+    ) -> JsonObject:
+        return self.population.retire(context, request)
 
     def freeze_learning_plan(
         self, context: CommandContext, request: FreezeLearningPlan

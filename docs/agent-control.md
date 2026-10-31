@@ -178,6 +178,25 @@ immutable capture.
 
 ## Durable external proposals
 
+The campaign archive retains evaluated alternatives independently of incumbent
+selection. Call `population.retain` with a candidate, its matching mutation
+validation, a currently eligible evaluation, a reason and optional labels.
+Membership IDs equal candidate IDs; `expected_revision=0` creates membership.
+The default profile permits 64 active members per campaign. Retention neither
+promotes the candidate nor reserves a trial or proposal budget. A worse measured
+score is allowed: the archive is an explicit research choice, not a computed
+Pareto frontier.
+
+`population.retire` requires the current membership revision. It preserves source
+and evidence history. Reactivation uses `population.retain` with the retired
+revision and rechecks all supplied evidence. Concurrent changes use the same
+transaction and revision checks as other commands. Both operations require
+`search.manage` and `read`; they are available through the SDK, HTTP, CLI and MCP.
+Query `population_member` for current membership and `population_change` for
+immutable changes. Reports capture bounded membership alongside the incumbent;
+retention-time evidence is not a promise of current eligibility. Corrections
+preserve history and prevent reuse of invalid evidence.
+
 A proposal request assigns research work to one principal. It freezes an eligible
 incumbent, parent source, seed, instructions, bounded evidence context, event
 watermark, and controller epoch. It does not execute an LLM call. Any external

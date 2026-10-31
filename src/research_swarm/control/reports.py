@@ -142,6 +142,24 @@ def detail_markdown(details: JsonObject) -> list[str]:
             f"{result['exit_code'] if result else 'unknown'} | "
             f"{result['elapsed_ms'] if result else 'unknown'} |"
         )
+    if population := details.get("population"):
+        lines.extend(
+            [
+                "",
+                "## Retained research alternatives",
+                "",
+                f"Captured {population['included']} of {population['total']} archive members. "
+                f"Complete: {population['complete']}.",
+                "Archive membership preserves research options; it does not establish a winner. "
+                "Evidence must be requalified before a retained branch is selected for new work.",
+            ]
+        )
+        for item in population["items"]:
+            request = item["data"]["request"]
+            lines.append(
+                f"- {literal(item['id'])}, revision {item['revision']}, {literal(item['state'])}: "
+                f"{literal(request['reason'])}"
+            )
     if promotions := details.get("promotions"):
         lines.extend(
             [
