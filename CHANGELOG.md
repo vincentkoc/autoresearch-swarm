@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Separate hosted HTTP admission, scopes, body limits and capabilities from the
+  shared wire handler. Explicit runtime policies retain authentication before body
+  reads, capability reauthentication and the existing uncertain-delivery contract.
+  The default research profile remains unchanged.
+
 - Separate verified journal submission from native byte reads. The shared
   transaction requires journal-only recovery evidence, rechecks the prepared
   worker and validates its original native grant before retaining a submission.

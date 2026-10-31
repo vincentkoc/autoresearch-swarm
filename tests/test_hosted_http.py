@@ -1,6 +1,8 @@
 """Existing SDK wire contracts against the bounded adapter; no provider claim."""
 
 import asyncio
+from dataclasses import dataclass
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -8,11 +10,182 @@ import pytest
 from adapters.cloudflare.hosted_http import handle
 from research_swarm.client import ResearchClient
 from research_swarm.domain.canonical import canonical_bytes, content_digest, strict_json_loads
+from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
 from research_swarm.state.artifacts import BeginUpload
 from tests.test_hosted_artifacts import artifacts as artifacts
 from tests.test_hosted_router import counts
 from tests.test_hosted_router import hosted as hosted
+
+
+@dataclass(frozen=True)
+class ScopedHTTPPolicy:
+    allowed: frozenset = frozenset({"capabilities", "command", "query", "worker-upload"})
+    limit: int = 16
+
+    def admit(self, kind, identifier):
+        if kind not in self.allowed:
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Outside fixture policy")
+
+    def scopes(self, kind, identifier):
+        return ("worker.query",)
+
+    def body_limit(self, kind):
+        return self.limit
+
+    def describe(self):
+        return {"profile": "scoped-fixture", "execution": "unavailable"}
+
+
+@pytest.mark.parametrize("second_scopes,expected", [({"worker.query"}, 200), ({"read"}, 403)])
+async def test_alternative_capabilities_recheck_their_scopes_after_body_await(
+    second_scopes, expected
+):
+    actor = Principal(id=new_id(), workspace_id=new_id(), scopes={"worker.query"})
+    calls = []
+
+    async def authenticate(token):
+        calls.append("authenticate")
+        return actor
+
+    async def read(limit):
+        nonlocal actor
+        calls.append(limit)
+        actor = actor.model_copy(update={"scopes": second_scopes})
+        return b""
+
+    result = await handle(
+        SimpleNamespace(authenticate=authenticate),
+        "GET",
+        "/v1/capabilities",
+        {"authorization": "Bearer fixture"},
+        read,
+        policy=ScopedHTTPPolicy(),
+    )
+    assert calls == ["authenticate", 16, "authenticate"]
+    assert result.status == expected
+    if expected == 200:
+        assert strict_json_loads(result.body) == ScopedHTTPPolicy().describe()
+
+
+@pytest.mark.parametrize(
+    "refusal,expected", [("authentication", 401), ("scope", 403), ("policy", 501)]
+)
+async def test_alternative_policy_refusals_do_not_consume_body(refusal, expected):
+    consumed = []
+
+    async def authenticate(token):
+        if refusal == "authentication":
+            raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Invalid fixture token")
+        return Principal(
+            id=new_id(),
+            workspace_id=new_id(),
+            scopes={"read" if refusal == "scope" else "worker.query"},
+        )
+
+    async def read(limit):
+        consumed.append(limit)
+        return b"{}"
+
+    result = await handle(
+        SimpleNamespace(authenticate=authenticate),
+        "POST",
+        "/v1/commands/worker.submit_evidence",
+        {"authorization": "Bearer fixture", "idempotency-key": "fixture"},
+        read,
+        policy=ScopedHTTPPolicy(
+            allowed=frozenset() if refusal == "policy" else frozenset({"command"})
+        ),
+    )
+    assert result.status == expected and consumed == []
+
+
+@pytest.mark.parametrize(
+    "body,expected", [(b"{}", 200), (b'{"excess":123456789}', 422), (b"[]", 422)]
+)
+async def test_alternative_policy_bounds_and_dispatches_the_existing_command_wire(body, expected):
+    calls = []
+
+    async def authenticate(token):
+        return Principal(id=new_id(), workspace_id=new_id(), scopes={"worker.query"})
+
+    async def read(limit):
+        calls.append(limit)
+        return body
+
+    async def command(token, operation, payload, **kwargs):
+        calls.append((token, operation, payload, kwargs))
+        return {"accepted": True}
+
+    result = await handle(
+        SimpleNamespace(authenticate=authenticate, command=command),
+        "POST",
+        "/v1/commands/worker.submit_evidence",
+        {"authorization": "Bearer fixture", "idempotency-key": "once", "x-expected-revision": "3"},
+        read,
+        policy=ScopedHTTPPolicy(),
+    )
+    assert result.status == expected and calls[0] == 16
+    assert calls[1:] == (
+        [
+            (
+                "fixture",
+                "worker.submit_evidence",
+                {},
+                {"idempotency_key": "once", "expected_revision": 3},
+            )
+        ]
+        if expected == 200
+        else []
+    )
+
+
+@pytest.mark.parametrize(
+    "method,path,code,recovery",
+    [
+        (
+            "POST",
+            "/v1/commands/worker.submit_evidence",
+            "DELIVERY_UNCERTAIN",
+            "replay_exact_command",
+        ),
+        ("POST", "/v1/worker/get", "TRANSPORT_UNAVAILABLE", "retry_query"),
+        (
+            "PUT",
+            "/v1/worker/output/parts?"
+            + "&".join(
+                name + "=00000000-0000-4000-8000-000000000001"
+                for name in ("worker_id", "session_id", "attempt_id", "upload_id")
+            ),
+            "DELIVERY_UNCERTAIN",
+            "inspect_upload_then_replay_exact_range",
+        ),
+    ],
+)
+async def test_alternative_policy_keeps_shared_delivery_uncertainty(method, path, code, recovery):
+    async def authenticate(token):
+        return Principal(id=new_id(), workspace_id=new_id(), scopes={"worker.query"})
+
+    async def read(limit):
+        return b"{}"
+
+    async def lost(*args, **kwargs):
+        raise ValueError("Private failure after dispatch")
+
+    result = await handle(
+        SimpleNamespace(
+            authenticate=authenticate, command=lost, query=lost, worker_upload_part=lost
+        ),
+        method,
+        path,
+        {"authorization": "Bearer fixture", "idempotency-key": "once"},
+        read,
+        policy=ScopedHTTPPolicy(),
+    )
+    error = strict_json_loads(result.body)["error"]
+    assert result.status == 502 and error["code"] == code
+    assert error["details"]["recovery"] == recovery and b"Private" not in result.body
 
 
 async def send(h, method, path, *, payload=None, body=b"", token=None, headers=None, consume=None):

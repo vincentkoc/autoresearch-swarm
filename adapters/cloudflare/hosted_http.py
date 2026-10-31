@@ -387,8 +387,73 @@ def route(method, target):
     raise ResearchError(ErrorCode.NOT_FOUND, "Research route not found")
 
 
-async def handle(router, method, target, headers, read_body):
+@dataclass(frozen=True)
+class ResearchHTTPPolicy:
+    """Trusted runtime policy; never selected by request input."""
+
+    configuration: object
+
+    def admit(self, kind, identifier):
+        if kind in {
+            "upload",
+            "status",
+            "metadata",
+            "content",
+            "finalize",
+        } and not supports_artifacts(self.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Artifact profile is unavailable")
+        if kind == "command" and identifier not in allowed_commands(self.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Command is outside this profile")
+        if kind == "snapshot" and not supports_startup(self.configuration):
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Snapshots are outside this profile"
+            )
+        if kind == "context" and not supports_orchestration(self.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Context is outside this profile")
+        if kind in {"record", "records"} and not supports_research(self.configuration):
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Research queries are unavailable"
+            )
+        if kind in {"input", "worker-content"} and not supports_inputs(self.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Worker inputs are unavailable")
+        if kind in {"output", "worker-upload"} and not supports_outputs(self.configuration):
+            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Worker outputs are unavailable")
+
+    def scopes(self, kind, identifier):
+        if kind in {"upload", "status", "finalize"} or (
+            kind == "command" and identifier in ARTIFACT_COMMANDS
+        ):
+            scopes = ("artifact.upload", "read")
+        elif kind == "command":
+            definition = SHARED_COMMANDS[identifier]
+            scopes = (definition.scope, *definition.additional_scopes)
+            if identifier in SOURCE_COMMANDS:
+                scopes += ("read",)
+        elif kind in {"input", "worker-content"}:
+            scopes = ("worker.inputs",)
+        elif kind in {"output", "worker-upload"}:
+            scopes = ("worker.outputs",)
+        else:
+            scopes = ("worker.query",) if kind == "query" else ("read",)
+        return scopes
+
+    def body_limit(self, kind):
+        return (
+            self.configuration.storage.max_object_bytes
+            if kind in {"upload", "worker-upload"}
+            else MAX_JSON_BYTES
+            if kind
+            in {"query", "command", "records", "input", "worker-content", "output", "snapshot"}
+            else 0
+        )
+
+    def describe(self):
+        return capabilities(self.configuration)
+
+
+async def handle(router, method, target, headers, read_body, *, policy=None):
     """Return standard SDK wire responses; never log tokens, bodies or provider errors."""
+    policy = ResearchHTTPPolicy(router.configuration) if policy is None else policy
     authenticated, entered_operation = False, False
     mode = "query"
     try:
@@ -405,45 +470,8 @@ async def handle(router, method, target, headers, read_body):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Ranges and encoded bodies are unavailable"
             )
-        if kind in {
-            "upload",
-            "status",
-            "metadata",
-            "content",
-            "finalize",
-        } and not supports_artifacts(router.configuration):
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Artifact profile is unavailable")
-        if kind == "command" and identifier not in allowed_commands(router.configuration):
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Command is outside this profile")
-        if kind == "snapshot" and not supports_startup(router.configuration):
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "Snapshots are outside this profile"
-            )
-        if kind == "context" and not supports_orchestration(router.configuration):
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Context is outside this profile")
-        if kind in {"record", "records"} and not supports_research(router.configuration):
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "Research queries are unavailable"
-            )
-        if kind in {"input", "worker-content"} and not supports_inputs(router.configuration):
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Worker inputs are unavailable")
-        if kind in {"output", "worker-upload"} and not supports_outputs(router.configuration):
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Worker outputs are unavailable")
-        if kind in {"upload", "status", "finalize"} or (
-            kind == "command" and identifier in ARTIFACT_COMMANDS
-        ):
-            scopes = ("artifact.upload", "read")
-        elif kind == "command":
-            definition = SHARED_COMMANDS[identifier]
-            scopes = (definition.scope, *definition.additional_scopes)
-            if identifier in SOURCE_COMMANDS:
-                scopes += ("read",)
-        elif kind in {"input", "worker-content"}:
-            scopes = ("worker.inputs",)
-        elif kind in {"output", "worker-upload"}:
-            scopes = ("worker.outputs",)
-        else:
-            scopes = ("worker.query",) if kind == "query" else ("read",)
+        policy.admit(kind, identifier)
+        scopes = policy.scopes(kind, identifier)
         for scope in scopes:
             actor.require(scope)
         mode = (
@@ -461,14 +489,7 @@ async def handle(router, method, target, headers, read_body):
                 )
             if revision is not None and not re.fullmatch(r"0|[1-9][0-9]{0,15}", revision):
                 raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, "Invalid expected revision")
-        limit = (
-            router.configuration.storage.max_object_bytes
-            if kind in {"upload", "worker-upload"}
-            else MAX_JSON_BYTES
-            if kind
-            in {"query", "command", "records", "input", "worker-content", "output", "snapshot"}
-            else 0
-        )
+        limit = policy.body_limit(kind)
         body = await read_body(limit)
         if not isinstance(body, bytes) or len(body) > limit:
             raise ResearchError(
@@ -514,8 +535,10 @@ async def handle(router, method, target, headers, read_body):
             reference, content = await router.artifact_content(token, identifier)
             return content_response(reference, content)
         else:
-            (await router.authenticate(token)).require("read")
-            result = capabilities(router.configuration)
+            actor = await router.authenticate(token)
+            for scope in policy.scopes(kind, identifier):
+                actor.require(scope)
+            result = policy.describe()
         return json_response(result)
     except ResearchError as error:
         return failure(error, unauthenticated=not authenticated)
