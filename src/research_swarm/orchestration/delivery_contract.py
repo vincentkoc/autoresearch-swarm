@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import DriverRoute, OrchestrationBinding
+from research_swarm.domain.orchestration_transfer import DriverStart, DriverStartAcknowledgment
 from research_swarm.orchestration.delivery_models import (
     BindingReference,
     WorkOutcome,
@@ -38,6 +39,48 @@ def current_binding(
 ) -> tuple[OrchestrationBinding, bool]:
     binding = OrchestrationBinding.model_validate(row["data"])
     return binding, row["state"] == "active" and binding_reference(binding) == reference
+
+
+def acknowledged_start(
+    binding: OrchestrationBinding, route: DriverRoute, start_id: str, row: JsonObject
+) -> DriverStart:
+    start = DriverStart.model_validate(row["data"])
+    if (
+        row["id"] != start_id
+        or row["kind"] != "orchestration_start"
+        or row["campaign_id"] != binding.campaign_id
+        or start.campaign_id != binding.campaign_id
+        or start.epoch != binding.epoch
+        or start.adapter != binding.adapter
+        or start.configuration_digest != binding.configuration_digest
+        or start.route != route
+        or start.actor_id != binding.routes[route]
+    ):
+        raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Successor startup identity differs")
+    if row["state"] != "acknowledged":
+        raise ResearchError(
+            ErrorCode.CAPABILITY_UNAVAILABLE,
+            "Successor requires completed external SDK recovery",
+        )
+    return start
+
+
+def require_start_acknowledgment(
+    binding: OrchestrationBinding, start_id: str, start: DriverStart, row: JsonObject
+) -> None:
+    acknowledgment = DriverStartAcknowledgment.model_validate(row["data"])
+    if (
+        row["id"] != start_id
+        or row["kind"] != "orchestration_start_ack"
+        or row["campaign_id"] != binding.campaign_id
+        or row["state"] != "immutable"
+        or acknowledgment.start_id != start_id
+        or acknowledgment.campaign_id != binding.campaign_id
+        or acknowledgment.epoch != binding.epoch
+        or acknowledgment.acknowledged_by != start.actor_id
+        or acknowledgment.observed_watermark < start.watermark
+    ):
+        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Successor acknowledgment differs")
 
 
 def work_route(work: WorkReference, routes: Collection[DriverRoute]) -> DriverRoute:

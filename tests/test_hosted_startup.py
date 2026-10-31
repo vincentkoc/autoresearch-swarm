@@ -5,12 +5,15 @@ from dataclasses import replace
 
 import pytest
 
+from adapters.cloudflare.delivery_router import DeliveryRegistration, HostedDelivery
 from adapters.cloudflare.research_router import HostedStartupConfiguration
 from research_swarm.control.time_witnesses import WitnessSigner
-from research_swarm.domain.canonical import strict_json_loads
+from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.orchestration import DriveAction
+from research_swarm.domain.orchestration import DriveAction, OrchestrationBinding
 from research_swarm.domain.types import new_id
+from research_swarm.orchestration.delivery_contract import binding_reference
+from research_swarm.orchestration.gateway_models import GatewayBinding
 from research_swarm.orchestration.startup import recover_driver_start
 from research_swarm.orchestration.turns import DurableTurnDriver
 from research_swarm.state.database import encode
@@ -77,6 +80,56 @@ async def prepare(e, *, credential=None, epoch=2):
             )
 
     return await asyncio.to_thread(run)
+
+
+async def test_hosted_delivery_bootstrap_accepts_only_completed_external_successor_recovery(
+    startup,
+):
+    e, h = startup, startup.h
+    gateway = h.credentials.issue(
+        h.principal,
+        h.principal.model_copy(update={"id": new_id(), "scopes": {"orchestration.deliver"}}),
+    )
+    binding = OrchestrationBinding.model_validate(
+        current(h, "orchestration_binding", e.admitted.campaign["id"])["data"]
+    )
+    reference = GatewayBinding.from_reference(binding_reference(binding))
+    facade = HostedDelivery(
+        h.router,
+        {
+            gateway.principal.id: DeliveryRegistration(
+                reference,
+                {"control": e.successor.token, "evaluator": e.next_evaluator.token},
+            )
+        },
+    )
+
+    async def send(operation, payload):
+        async def read(limit):
+            body = canonical_bytes(payload)
+            assert len(body) <= limit
+            return body
+
+        response = await facade.handle(
+            "POST", "/v1/delivery/" + operation, {"authorization": "Bearer " + gateway.token}, read
+        )
+        return response.status, strict_json_loads(response.body)
+
+    request = {"binding": reference.model_dump(mode="json"), "recovery_id": new_id()}
+    assert (await send("bootstrap", request))[0] == 501
+    await recover(e)
+    assert (await send("bootstrap", request))[0] == 501
+    await recover(e, route="evaluator")
+    witness_calls = len(h.witness.requests)
+    assert await send("bootstrap", request) == (200, {"schema_version": "1.0", "state": "active"})
+    assert len(h.witness.requests) == witness_calls
+    turn = await prepare(e)
+    status, pending = await send("inspect", reference.model_dump(mode="json"))
+    assert status == 200 and pending["work"]["record_id"] == turn["id"]
+    first = await send("execute", pending["work"])
+    assert first[0] == 200 and first[1]["disposition"] == "accepted"
+    assert await send("execute", pending["work"]) == first
+    assert len(await rows(e, "report")) == 1
 
 
 async def test_sdk_recovery_is_actor_scoped_and_enables_one_successor_action_after_restart(startup):
@@ -251,6 +304,7 @@ async def test_capabilities_make_recovery_and_bootstrap_limits_explicit(startup)
     assert capabilities["recovery"]["clock"] == "authority-epoch"
     assert capabilities["recovery"]["max_items"] == 4096
     assert capabilities["recovery"]["automatic_delivery_bootstrap"] is False
+    assert capabilities["recovery"]["delivery_after_acknowledgment"] is True
     assert capabilities["commands"]["orchestration.acknowledge_start"]["required_scopes"] == [
         "orchestration.drive",
         "read",

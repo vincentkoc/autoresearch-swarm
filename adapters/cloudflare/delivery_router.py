@@ -70,12 +70,17 @@ class _RouteClient:
         return context
 
     async def get(self, kind, identifier):
-        if kind not in {"orchestration_binding", "drive_turn", "orchestration_wait", "campaign"}:
+        startup = kind in {"orchestration_start", "orchestration_start_ack"}
+        if not startup and kind not in {
+            "orchestration_binding",
+            "drive_turn",
+            "orchestration_wait",
+            "campaign",
+        }:
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Delivery query is unavailable")
         context = self._context(new_id())
-        return self.router.orchestration.query(
-            self.token, context, "get", {"kind": kind, "id": identifier}
-        )
+        reader = self.router.transfers if startup else self.router.orchestration
+        return reader.query(self.token, context, "get", {"kind": kind, "id": identifier})
 
     async def command(self, operation, request, *, idempotency_key):
         if operation not in {"orchestration.execute_turn", "orchestration.reconcile_wait"}:

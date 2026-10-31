@@ -12,9 +12,11 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import DriverRoute, DriveTurn, OrchestrationBinding
 from research_swarm.domain.orchestration_waits import OrchestrationWait
 from research_swarm.orchestration.delivery_contract import (
+    acknowledged_start,
     current_binding,
     delivery_key,
     require_routes,
+    require_start_acknowledgment,
     turn_outcome,
     verify_work,
     wait_outcome,
@@ -71,13 +73,29 @@ class AsyncDeliveryKernel:
         return connection, binding, active
 
     async def bootstrap(self, request: StartupRequest) -> str:
-        _, binding, active = await self._current(request.binding)
+        connection, binding, active = await self._current(request.binding)
         if not active:
             return "retired"
         if binding.start_ids is not None:
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "Async successor startup is unavailable"
-            )
+            starts = dict(binding.start_ids)
+            if set(starts) != set(binding.routes) or len(set(starts.values())) != len(starts):
+                raise ResearchError(
+                    ErrorCode.ARTIFACT_UNVERIFIED, "Successor startup routes differ"
+                )
+            for route, identifier in starts.items():
+                client = connection.clients[route]
+                start = acknowledged_start(
+                    binding, route, identifier, await client.get("orchestration_start", identifier)
+                )
+                require_start_acknowledgment(
+                    binding,
+                    identifier,
+                    start,
+                    await client.get("orchestration_start_ack", identifier),
+                )
+            _, current, active = await self._current(request.binding)
+            if not active or current.start_ids != starts:
+                return "retired"
         return "active"
 
     async def inspect(self, reference: BindingReference) -> PendingWork:

@@ -320,6 +320,7 @@ def capabilities(configuration):
             "page": RecoveryPage.model_json_schema(),
             "item": RecoveryItem.model_json_schema(),
             "automatic_delivery_bootstrap": False,
+            "delivery_after_acknowledgment": True,
             "expiry_collection": "bounded-operator-command",
             "event_floor_administration": False,
         }

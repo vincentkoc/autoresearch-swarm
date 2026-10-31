@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Let async delivery start after all successor drivers complete external SDK
+  recovery. Verify bounded startup records and immutable acknowledgments, then
+  recheck current ownership. Pending recovery still refuses; delivery creates no
+  snapshots or acknowledgments and preserves native execution fencing.
+
 - Add `research witness serve` for one configured native time source. Admit the
   exact descriptor and protected signing seed before listening, force one process
   without reload, preserve clock fault latching and keep controller state and

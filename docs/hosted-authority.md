@@ -1257,9 +1257,24 @@ acknowledge and release responses; corrupt checkpoint/content refusal; wrong
 actors and scopes; source replacement; cancellation and revocation after witness
 acquisition; and abandoned-reader quota recovery. Native worker authority and
 budgets stay unchanged. Older transfer/orchestration profiles retain their
-startup refusal. Automatic async delivery bootstrap remains unavailable: the
-external SDK performs separate bounded HTTP calls rather than holding one DO
-gate across the entire recovery.
+startup refusal. Automatic snapshot recovery by async delivery remains unavailable:
+the external SDK performs separate bounded HTTP calls rather than holding one DO
+gate across the entire recovery. After every registered route has acknowledged
+startup, async delivery bootstrap reads each start and its immutable acknowledgment
+through that route's credential. It verifies the exact record, campaign, epoch,
+adapter, configuration, route, actor and observed watermark, then rereads current
+binding ownership and the same start IDs. There are at most two routes. Ordinary
+binding revision advances do not invalidate unchanged ownership. Pending or
+inconsistent starts refuse; a concurrent ownership change retires startup.
+
+This path creates no snapshots, acknowledgments or commands. Capability discovery
+keeps `automatic_delivery_bootstrap=false` and adds
+`delivery_after_acknowledgment=true`. Native tests cover partial recovery,
+inconsistent references/receipts, ownership loss during a read and legitimate
+turn preparation advancing the binding revision during bootstrap. The hosted
+delivery facade reads the same transfer records and executes one saved successor
+report with exact retry. Actual Workflow qualification must start the Workflow
+after recovery; a previously failed bootstrap is not silently restarted.
 
 `test_cloudflare_startup.py` now exercises this SDK against the actual startup
 profile in workerd. It transfers queued work, restarts authority storage, loses a
