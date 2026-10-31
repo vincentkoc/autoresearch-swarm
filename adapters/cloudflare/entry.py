@@ -10,6 +10,8 @@ from uuid import NAMESPACE_URL, uuid5
 from durable_sql import DurableObjectStore
 from exclusive import exclusive
 from pydantic import Field
+from router_qualification import RouterProbe
+from router_qualification import exercise as exercise_router
 from signing_qualification import exercise as exercise_signing
 from storage_qualification import exercise as exercise_storage
 from witness_qualification import exercise as exercise_witness
@@ -44,6 +46,14 @@ class OrderingProbe(VersionedRecord):
 
 
 class Qualification(DurableObject):
+    async def research_contract(self, body):
+        probe = RouterProbe.model_validate_json(body)
+        crypto = import_from_javascript("./crypto.mjs")
+        transport = import_from_javascript("./fixture_transport.mjs")
+        return json.dumps(
+            await exercise_router(self.ctx, str(self.ctx.id), probe, crypto, transport)
+        )
+
     async def witness_contract(self, case, fail_bootstrap):
         module = import_from_javascript("./crypto.mjs")
 
@@ -190,6 +200,31 @@ class Qualification(DurableObject):
         return json.dumps(result)
 
 
+async def observed_rpc(invoke_rpc, transport, origin, key):
+    submitted = asyncio.Event()
+
+    async def invoke():
+        try:
+            delivery = invoke_rpc()
+        finally:
+            submitted.set()
+        return await delivery
+
+    delivery = asyncio.create_task(invoke())
+    try:
+        await submitted.wait()
+        if delivery.done():
+            delivery.result()
+        # Observe RPC submission outside the blocked DO. The bypass control
+        # must expose interleaving under this same delivery path.
+        await transport.request(origin, "/ingress/" + key, "{}", 10_000.0)
+        return Response(await delivery, headers={"content-type": "application/json"})
+    finally:
+        if not delivery.done():
+            delivery.cancel()
+            await asyncio.gather(delivery, return_exceptions=True)
+
+
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         url = urlparse(request.url)
@@ -197,6 +232,17 @@ class Default(WorkerEntrypoint):
             return Response("Local qualification only", status=403)
         if request.method != "POST":
             return Response("Not found", status=404)
+        if url.path == "/research":
+            text = await request.text()
+            if len(text.encode()) > 65536:
+                return Response("Request too large", status=413)
+            probe = RouterProbe.model_validate_json(text)
+            transport = import_from_javascript("./fixture_transport.mjs")
+            suffix = "-bypass" if probe.bypass_gate else ""
+            stub = self.env.QUALIFICATION.getByName("shared-router-contract" + suffix)
+            return await observed_rpc(
+                lambda: stub.research_contract(text), transport, probe.witness_origin, probe.key
+            )
         if url.path == "/witness-ordering":
             text = await request.text()
             if len(text.encode()) > 4096:
@@ -205,30 +251,9 @@ class Default(WorkerEntrypoint):
             transport = import_from_javascript("./fixture_transport.mjs")
             suffix = "-bypass" if probe.bypass_gate else ""
             stub = self.env.QUALIFICATION.getByName("witness-ordering-" + probe.case + suffix)
-            submitted = asyncio.Event()
-
-            async def invoke():
-                try:
-                    delivery = stub.witness_ordering(text)
-                finally:
-                    submitted.set()
-                return await delivery
-
-            delivery = asyncio.create_task(invoke())
-            try:
-                await submitted.wait()
-                if delivery.done():
-                    delivery.result()
-                # Observe RPC submission outside the blocked DO. The bypass
-                # control must expose interleaving under this same delivery path.
-                await transport.request(
-                    probe.witness_origin, "/ingress/" + probe.key, "{}", 10_000.0
-                )
-                return Response(await delivery, headers={"content-type": "application/json"})
-            finally:
-                if not delivery.done():
-                    delivery.cancel()
-                    await asyncio.gather(delivery, return_exceptions=True)
+            return await observed_rpc(
+                lambda: stub.witness_ordering(text), transport, probe.witness_origin, probe.key
+            )
         if url.path.startswith("/witness/"):
             case = url.path.removeprefix("/witness/")
             if case not in {"sample", "changed-source", "domain-reject"}:

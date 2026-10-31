@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Exercise the actual hosted worker-control router in local workerd with explicit
+  synthetic provisioning, independently held HTTP witnesses, signed clock replies,
+  timeout retry, source fencing, persistent replay and current credential checks.
+  Keep this fixture loopback-only and separate from production deployment.
+
 - Add a bounded hosted worker-control router over the shared research service.
   Bind provisioned configuration to physical state and signing identities, check
   current credentials inside the exclusive gate, and replay exact outcomes before

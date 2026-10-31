@@ -43,6 +43,7 @@ From the repository root, using its core development environment:
 ```sh
 RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_native.py
 RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_witness_ordering.py
+RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q tests/test_cloudflare_router.py
 ```
 
 The native fixture currently requires POSIX process groups. It starts only owned
@@ -96,6 +97,14 @@ not support the native `PRAGMA user_version` mechanism. Both adapters apply the
 same migration statements. Unknown versions and unversioned application tables
 are refused. Interrupted migration tests preserve existing acknowledgments and
 roll back both the schema changes and version update. Foreign keys remain enabled.
+
+The router fixture uses an explicit provisioning operation with public synthetic
+credentials and timestamps. Ordinary requests then call `open_existing()` and the
+real `ResearchService` through `ExistingResearchRouter`. Its test holds an external
+HTTP witness while another RPC is submitted, checks shared worker commands and
+signed queries, and restarts the owned workerd process before replay. Revocation
+and expiring credentials remain checked after replay records exist. This is a
+local provider test, not production provisioning or a native clock qualification.
 
 ## Sources
 
