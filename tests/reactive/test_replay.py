@@ -111,6 +111,33 @@ def test_transcript_requires_closed_settled_session(journal: DecisionJournal) ->
         ControlTranscript.capture(journal)
 
 
+def test_duplicate_request_identity_is_rejected(transcript: ControlTranscript) -> None:
+    data = transcript.model_dump(mode="json")
+    # The last cancelled request has no proposal or receipt digest to invalidate.
+    data["decisions"][-1]["request"]["id"] = data["decisions"][0]["request"]["id"]
+    with pytest.raises(ValueError, match="IDs must be unique"):
+        ControlTranscript.model_validate(data)
+
+
+def test_last_observation_must_match_terminal_state(transcript: ControlTranscript) -> None:
+    data = transcript.model_dump(mode="json")
+    data["session"]["last_observed_step"] += 1
+    with pytest.raises(ValueError, match="final observation"):
+        ControlTranscript.model_validate(data)
+
+
+def test_transcript_rejects_duplicate_receipt_json_keys(
+    tmp_path: Path, transcript: ControlTranscript
+) -> None:
+    payload = transcript.model_dump_json().replace(
+        '"applied_step":14', '"applied_step":99,"applied_step":14', 1
+    )
+    path = tmp_path / "ambiguous.json"
+    path.write_text(payload)
+    with pytest.raises(ValueError, match="Duplicate"):
+        ControlTranscript.read(path)
+
+
 def test_transcript_roundtrip_and_bounded_input(
     tmp_path: Path, transcript: ControlTranscript, monkeypatch: pytest.MonkeyPatch
 ) -> None:

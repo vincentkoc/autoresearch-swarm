@@ -7,7 +7,7 @@ from typing import Self
 
 from pydantic import Field, model_validator
 
-from research_swarm.domain.canonical import canonical_bytes, record_digest
+from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.types import VersionedRecord
 from research_swarm.reactive.contracts import (
     ApplicationReceipt,
@@ -31,6 +31,8 @@ class ControlTranscript(VersionedRecord):
             raise ValueError("Replay requires a closed session with settled calls")
         if len(self.decisions) != state.decision_count:
             raise ValueError("Transcript is missing decisions")
+        if len({record.request.id for record in self.decisions}) != len(self.decisions):
+            raise ValueError("Transcript request IDs must be unique")
         controls, revision, last_step, observed = state.contract.initial_controls(), 0, 0, None
         for sequence, record in enumerate(self.decisions, 1):
             request = record.request
@@ -91,6 +93,8 @@ class ControlTranscript(VersionedRecord):
             or last_step != state.last_step
         ):
             raise ValueError("Transcript final controls or step differ from the session")
+        if observed != state.last_observed_step:
+            raise ValueError("Transcript final observation differs from the session")
         if len(canonical_bytes(self.model_dump(mode="json"))) > MAX_TRANSCRIPT_BYTES:
             raise ValueError("Transcript exceeds the byte limit")
         return self
@@ -132,4 +136,4 @@ class ControlTranscript(VersionedRecord):
             payload = stream.read(MAX_TRANSCRIPT_BYTES + 1)
         if len(payload) > MAX_TRANSCRIPT_BYTES:
             raise ValueError("Transcript exceeds the byte limit")
-        return cls.model_validate_json(payload)
+        return cls.model_validate(strict_json_loads(payload))
