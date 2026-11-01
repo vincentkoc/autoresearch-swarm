@@ -53,7 +53,7 @@ identity.
 
 ## Verified behavior
 
-`tests/test_project_adoption.py` performs historical import before creating any
+`tests/projects/test_project_adoption.py` performs historical import before creating any
 campaign. It then executes real CPU training and independent evaluation through
 the local engine, compares both receipt formats against the original archive,
 recomputes macro and pooled error independently, and reopens the controller with

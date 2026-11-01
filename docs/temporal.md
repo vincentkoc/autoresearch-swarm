@@ -155,7 +155,7 @@ reconciliation APIs for those operations.
 ## Qualification
 
 ```sh
-RESEARCH_TEMPORAL_TESTS=1 uv run --no-sync pytest -q tests/test_temporal.py
+RESEARCH_TEMPORAL_TESTS=1 uv run --no-sync pytest -q tests/adapters/temporal/test_temporal.py
 ```
 
 The opt-in suite starts disposable real Temporal CLI dev servers and the real
@@ -174,7 +174,7 @@ The normal suite replays the immutable
 a Temporal server, Activities, research controller or worker credentials:
 
 ```sh
-uv run --no-sync pytest -q tests/test_temporal_history.py
+uv run --no-sync pytest -q tests/adapters/temporal/test_temporal_history.py
 ```
 
 The three recorded scenarios cover a retried accepted command, an unresolved

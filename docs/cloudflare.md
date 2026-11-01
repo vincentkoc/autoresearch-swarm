@@ -336,7 +336,7 @@ Run the local suites from the repository root:
 
 ```sh
 RESEARCH_CLOUDFLARE_TESTS=1 .venv/bin/pytest -q \
-  tests/test_cloudflare_hybrid.py tests/test_cloudflare_native.py
+  tests/adapters/cloudflare/test_cloudflare_hybrid.py tests/adapters/cloudflare/test_cloudflare_native.py
 ```
 
 Both fixtures use owned local process groups and temporary persisted state.

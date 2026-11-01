@@ -26,8 +26,8 @@ jobs:
         with:
           node-version: "22"
       - run: uv sync --locked --extra s3 --group dev --python 3.12
-      - run: uv run --no-sync pytest -q tests/test_r2_storage.py tests/test_r2_transport.py tests/test_r2_runtime.py
-      - run: RESEARCH_CLOUDFLARE_TESTS=1 uv run --no-sync pytest -q tests/test_cloudflare_r2.py
+      - run: uv run --no-sync pytest -q tests/storage/test_r2_storage.py tests/storage/test_r2_transport.py tests/storage/test_r2_runtime.py
+      - run: RESEARCH_CLOUDFLARE_TESTS=1 uv run --no-sync pytest -q tests/adapters/cloudflare/test_cloudflare_r2.py
 
   cloudflare-contracts:
     runs-on: ubuntu-latest
@@ -90,7 +90,7 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --locked --group dev --python 3.12
-      - run: uv run --no-sync pytest -q tests/test_packaged_release.py
+      - run: uv run --no-sync pytest -q tests/integration/test_packaged_release.py
 
   temporal:
     runs-on: ubuntu-latest
@@ -104,4 +104,4 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --locked --extra temporal --group dev --python 3.12
-      - run: uv run --no-sync pytest -q tests/test_temporal.py tests/test_temporal_contracts.py tests/test_temporal_history.py
+      - run: uv run --no-sync pytest -q tests/adapters/temporal/test_temporal.py tests/adapters/temporal/test_temporal_contracts.py tests/adapters/temporal/test_temporal_history.py

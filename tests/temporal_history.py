@@ -21,8 +21,9 @@ from temporalio.worker import Replayer
 
 from research_swarm.orchestration.temporal.runtime import DATA_CONVERTER
 from research_swarm.orchestration.temporal.workflow import CampaignWorkflow
+from tests.paths import REPO_ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = REPO_ROOT
 FIXTURE = ROOT / "tests" / "fixtures" / "temporal" / "delivery-v1.json"
 IDENTITY = "research-history-fixture"
 MAX_HISTORY_BYTES = 512 * 1024
@@ -136,7 +137,15 @@ def require_source(revision: str) -> None:
     if current != revision:
         raise ValueError("Source revision changed during capture")
     subprocess.run(
-        ["git", "diff", "--exit-code", revision, "--", "src", "tests/test_temporal.py"],
+        [
+            "git",
+            "diff",
+            "--exit-code",
+            revision,
+            "--",
+            "src",
+            "tests/adapters/temporal/test_temporal.py",
+        ],
         cwd=ROOT,
         check=True,
     )
@@ -238,7 +247,7 @@ def main() -> int:
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("RESEARCH_TEMPORAL_TESTS", "1")
-        from tests import test_temporal
+        from tests.adapters.temporal import test_temporal
 
         patch.setattr(WorkflowEnvironment, "start_local", start_local)
         patch.setattr(test_temporal, "replay_chain", capture.replay_chain)
@@ -246,7 +255,10 @@ def main() -> int:
             [
                 "-q",
                 "--tb=short",
-                *["tests/test_temporal.py::" + test for test in SCENARIOS.values()],
+                *[
+                    "tests/adapters/temporal/test_temporal.py::" + test
+                    for test in SCENARIOS.values()
+                ],
             ],
             plugins=[capture],
         )

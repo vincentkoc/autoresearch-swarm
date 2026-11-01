@@ -85,7 +85,7 @@ capture refusal, and credential revocation during a live MCP connection.
 
 ## Complete agent-controlled research cycle
 
-`tests/test_agent_research_cycle.py` qualifies the full local path through an
+`tests/integration/test_agent_research_cycle.py` qualifies the full local path through an
 external stdio MCP process. The research principal can capture source, propose,
 admit, observe, select, and complete research. It has neither `worker.publish`
 nor `evaluation.publish`; a separate enrolled worker and evaluator produce the

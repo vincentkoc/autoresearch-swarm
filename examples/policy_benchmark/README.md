@@ -120,7 +120,7 @@ results, a real failed baseline, fresh report snapshots, and concurrency caps.
 Enable the empirical run explicitly:
 
 ```sh
-RESEARCH_BENCHMARK_TESTS=1 uv run pytest -q -s tests/test_policy_benchmark.py
+RESEARCH_BENCHMARK_TESTS=1 uv run pytest -q -s tests/learning/test_policy_benchmark.py
 ```
 
 That integrated test runs a 27-trial reduced design and injects a lost child
@@ -128,7 +128,7 @@ creation reply. To exercise the complete checked-in design:
 
 ```sh
 RESEARCH_BENCHMARK_TESTS=1 RESEARCH_BENCHMARK_FULL=1 \
-  uv run pytest -q -s tests/test_policy_benchmark.py -k real
+  uv run pytest -q -s tests/learning/test_policy_benchmark.py -k real
 ```
 
 Both verify independent receipts, closed accounting, new audit realizations,

@@ -24,7 +24,7 @@ host service or remote worker is installed.
 Run this proof explicitly:
 
 ```sh
-RESEARCH_PACKAGE_TESTS=1 uv run pytest -q tests/test_packaged_release.py
+RESEARCH_PACKAGE_TESTS=1 uv run pytest -q tests/integration/test_packaged_release.py
 ```
 
 It requires uv and may download the build backend or missing locked runtime

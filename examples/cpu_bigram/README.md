@@ -15,7 +15,7 @@ do not compare with Karpathy's dataset or tokenizer.
 From the repository root, run the actual isolated training/evaluation proof:
 
 ~~~sh
-uv run pytest tests/test_workload.py -q
+uv run pytest tests/projects/test_workload.py -q
 ~~~
 
 The native command reads the file named by `RESEARCH_CONTEXT`. The context supplies

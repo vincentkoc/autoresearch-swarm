@@ -14,6 +14,9 @@ uv run mypy src
 Optional engine and provider dependencies belong in extras. A core installation
 must not install an accelerator framework.
 
+Tests are grouped by component in [tests/README.md](tests/README.md). Run the
+affected folders first, then the relevant integration or provider checks.
+
 ## Changes
 
 Describe the behavior and its observable contract. Include tests for state

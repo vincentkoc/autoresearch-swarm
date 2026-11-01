@@ -53,7 +53,7 @@ Install Node.js 22 or later for this development check. The research runtime has
 no Node dependency and the verifier uses no npm packages.
 
 ```sh
-RESEARCH_REQUIRE_NODE=1 uv run pytest -q tests/test_cross_language.py
+RESEARCH_REQUIRE_NODE=1 uv run pytest -q tests/domain/test_cross_language.py
 ```
 
 The ordinary Linux, macOS, and Windows CI matrix installs Node 22 and requires this

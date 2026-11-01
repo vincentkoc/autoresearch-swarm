@@ -15,7 +15,7 @@ session does not grant execution authority.
 Its input is RFC 8785 canonical JSON with the `research.worker-assignment` domain,
 algorithm `ed25519-jcs-v1`, pinned key ID, and payload. The key ID is a separate
 domain digest of the public key and algorithm. Public keys use 32-byte lowercase
-hex; signatures use 64-byte lowercase hex. `tests/test_assignment_signatures.py`
+hex; signatures use 64-byte lowercase hex. `tests/domain/test_assignment_signatures.py`
 provides deterministic synthetic known-answer fixtures.
 
 Verification checks the pinned key, signature, enrollment, sealed source/spec

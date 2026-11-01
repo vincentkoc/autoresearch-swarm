@@ -117,7 +117,7 @@ interpreter. Default CPU CI does not import or install MLX:
 
 ```sh
 RESEARCH_MLX_TESTS=1 RESEARCH_MLX_PYTHON="$PWD/.research/mlx/venv/bin/python" \
-  uv run pytest -q -s tests/test_mlx_workload.py
+  uv run pytest -q -s tests/projects/test_mlx_workload.py
 ```
 
 Local verification on 2026-10-30 used an Apple M5 Max, macOS 26.4, Python 3.12.13,

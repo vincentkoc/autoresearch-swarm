@@ -52,50 +52,50 @@ jobs:
         if: inputs.suite == 'engines'
         run: >-
           uv run --no-sync pytest -q --tb=short --durations=10
-          tests/test_engines.py
-          tests/test_registered_execution.py
-          tests/test_portfolio_native.py
-          tests/test_upstream_adoption.py::test_context_and_checkpoint_reject_false_comparability
-          tests/test_remote_replacement.py::test_registered_replacement_preserves_environment_without_launching_a_probe
-          tests/test_worker_recovery.py::test_recovery_does_not_require_registered_interpreter_or_source
+          tests/workers/test_engines.py
+          tests/workers/test_registered_execution.py
+          tests/search/test_portfolio_native.py
+          tests/projects/test_upstream_adoption.py::test_context_and_checkpoint_reject_false_comparability
+          tests/workers/test_remote_replacement.py::test_registered_replacement_preserves_environment_without_launching_a_probe
+          tests/workers/test_worker_recovery.py::test_recovery_does_not_require_registered_interpreter_or_source
       - name: Native ownership, recovery and cancellation
         if: inputs.suite == 'native'
         run: >-
           uv run --no-sync pytest -q --tb=short --durations=10
-          tests/test_windows_privacy.py
-          tests/test_windows_sqlite_owner.py
-          tests/test_input_cache.py
-          tests/test_worker_input_cache.py
-          tests/test_worker_locality.py
-          tests/test_offer_locality.py
-          tests/test_cache_reporting.py
-          tests/test_clock_channel.py
-          tests/test_time_witnesses.py
-          tests/test_native_time_witnesses.py
-          tests/test_time_witness_http.py
-          tests/test_temporal_history.py
-          tests/test_recovery_activation.py::test_real_process_exit_at_activation_has_one_recoverable_commit
-          tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
-          tests/test_scoped_driver.py::test_controller_readiness_rejects_an_existing_unrelated_listener
-          tests/test_worker_recovery.py::test_controller_process_restart_preserves_live_native_scope_and_original_settlement
-          tests/test_portfolio_native.py
-          tests/test_r2_runtime.py
-          tests/test_worker_recovery.py::test_original_driver_and_attempt_locks_are_respected
-          tests/test_recovery_routes.py::test_tampered_or_missing_original_custody_refuses_delivery
+          tests/workers/test_windows_privacy.py
+          tests/workers/test_windows_sqlite_owner.py
+          tests/workers/test_input_cache.py
+          tests/workers/test_worker_input_cache.py
+          tests/workers/test_worker_locality.py
+          tests/workers/test_offer_locality.py
+          tests/workers/test_cache_reporting.py
+          tests/workers/test_clock_channel.py
+          tests/workers/test_time_witnesses.py
+          tests/workers/test_native_time_witnesses.py
+          tests/workers/test_time_witness_http.py
+          tests/adapters/temporal/test_temporal_history.py
+          tests/state/test_recovery_activation.py::test_real_process_exit_at_activation_has_one_recoverable_commit
+          tests/workers/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
+          tests/workers/test_scoped_driver.py::test_controller_readiness_rejects_an_existing_unrelated_listener
+          tests/workers/test_worker_recovery.py::test_controller_process_restart_preserves_live_native_scope_and_original_settlement
+          tests/search/test_portfolio_native.py
+          tests/storage/test_r2_runtime.py
+          tests/workers/test_worker_recovery.py::test_original_driver_and_attempt_locks_are_respected
+          tests/adapters/cloudflare/recovery/test_recovery_routes.py::test_tampered_or_missing_original_custody_refuses_delivery
       - name: Native clock witnesses and independent wire verification
         if: inputs.suite == 'witness'
         run: >-
           uv run --no-sync pytest -q --tb=short
-          tests/test_native_clocks.py
-          tests/test_time_witnesses.py
-          tests/test_native_time_witnesses.py
-          tests/test_time_witness_http.py
+          tests/workers/test_native_clocks.py
+          tests/workers/test_time_witnesses.py
+          tests/workers/test_native_time_witnesses.py
+          tests/workers/test_time_witness_http.py
       - name: Independent worker restart
         if: inputs.suite == 'recovery'
         run: >-
           uv run --no-sync pytest -q --tb=short
-          tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
-          tests/test_scoped_driver.py::test_controller_readiness_rejects_an_existing_unrelated_listener
-          tests/test_worker_recovery.py::test_controller_process_restart_preserves_live_native_scope_and_original_settlement
-          tests/test_scoped_driver.py::test_publication_recovery_does_not_wait_for_another_active_attempt
-          tests/test_scoped_driver.py::test_disconnect_replays_pending_intent_and_does_not_claim_another_job
+          tests/workers/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
+          tests/workers/test_scoped_driver.py::test_controller_readiness_rejects_an_existing_unrelated_listener
+          tests/workers/test_worker_recovery.py::test_controller_process_restart_preserves_live_native_scope_and_original_settlement
+          tests/workers/test_scoped_driver.py::test_publication_recovery_does_not_wait_for_another_active_attempt
+          tests/workers/test_scoped_driver.py::test_disconnect_replays_pending_intent_and_does_not_claim_another_job

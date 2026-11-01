@@ -43,7 +43,7 @@ machine resource registry; tests may explicitly supply a disposable registry.
 Run the smaller native recovery check with:
 
 ~~~sh
-RESEARCH_BENCHMARK_TESTS=1 uv run pytest tests/test_learning_cycle_example.py
+RESEARCH_BENCHMARK_TESTS=1 uv run pytest tests/learning/test_learning_cycle_example.py
 ~~~
 
 ## Recorded native result

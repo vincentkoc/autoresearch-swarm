@@ -73,7 +73,7 @@ historical records remain ineligible. Reopening the controller reuses the origin
 run without another execution.
 
 ```sh
-uv run pytest tests/test_project_adoption.py
+uv run pytest tests/projects/test_project_adoption.py
 ```
 
 The data and archived receipts are fictional. This example qualifies integration

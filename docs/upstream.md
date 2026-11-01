@@ -121,7 +121,7 @@ An optional static test consumes an existing checkout without fetching it:
 
 ```sh
 RESEARCH_UPSTREAM_CHECKOUT=./upstream-checkout \
-  uv run pytest tests/test_upstream_adoption.py
+  uv run pytest tests/projects/test_upstream_adoption.py
 ```
 
 Native CUDA execution, kernel loading, memory fit, checkpoint roundtrip, evaluator

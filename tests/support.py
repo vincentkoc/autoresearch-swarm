@@ -34,6 +34,7 @@ from research_swarm.projects.source import bundle_directory
 from research_swarm.state.artifacts import ArtifactService, BeginUpload
 from research_swarm.state.database import Database
 from research_swarm.storage.filesystem import FilesystemBlobStore
+from tests.paths import REPO_ROOT
 
 LIMITS = (
     BudgetLimit(dimension="attempts", limit=20, unit="count"),
@@ -108,7 +109,7 @@ def research(
     tmp_path: Path, database: Database, context: Callable[..., CommandContext]
 ) -> ResearchFixture:
     source = tmp_path / "source"
-    shutil.copytree(Path(__file__).resolve().parents[1] / "examples" / "cpu_bigram", source)
+    shutil.copytree(REPO_ROOT / "examples" / "cpu_bigram", source)
     artifacts = ArtifactService(
         database, FilesystemBlobStore(tmp_path / "artifacts"), storage_limit_bytes=10_000_000
     )
