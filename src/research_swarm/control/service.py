@@ -1104,6 +1104,11 @@ class ResearchService:
                 "timing": resolved.manifest.timing.model_dump(mode="json"),
                 "campaign_contract_digest": campaign.contract_digest,
                 **(
+                    {"reactive": resolved.manifest.reactive.model_dump(mode="json")}
+                    if resolved.manifest.reactive is not None
+                    else {}
+                ),
+                **(
                     {
                         "confirmation_plan_id": confirmation_plan_id,
                         "confirmation_side": confirmation_side,

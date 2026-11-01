@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Bind optional reactive declarations to protected project protocols, sealed
+  training contexts and reused worker preparations without changing legacy digests.
+
 - Expose one explicitly selected local reactive session through a shared Python
   client, JSON CLI and dedicated bounded stdio MCP tools for agent responses.
 
