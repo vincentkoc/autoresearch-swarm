@@ -8,6 +8,8 @@
   tag-gated PyPI Trusted Publishing with attestations and release checksums.
 - Pin release tooling, limit source distributions to package inputs, and
   document publisher setup and partial-release recovery.
+- Compare release artifacts with raw Git blobs so Windows line-ending settings
+  cannot alter source identity checks.
 - Add dependency updates, inactive-discussion labels without automatic closure,
   release-note drafts, issue templates and shared editor settings.
 - Group tests by component while preserving frozen conformance fixtures.

@@ -219,6 +219,33 @@ def validate_distributions(directory: Path, project: dict) -> list[dict]:
     ]
 
 
+def committed_files(root: Path, paths: list[str]) -> dict[str, bytes]:
+    """Read raw blobs without checkout or archive line-ending conversions."""
+    listing = subprocess.check_output(["git", "ls-tree", "-rz", "HEAD", "--", *paths], cwd=root)
+    entries = []
+    for entry in listing.split(b"\0"):
+        if not entry:
+            continue
+        header, name = entry.split(b"\t", 1)
+        mode, kind, identifier = header.split()
+        require(kind == b"blob" and mode in {b"100644", b"100755"}, "Nonregular source file")
+        entries.append((identifier, name.decode("utf-8")))
+    result = subprocess.check_output(
+        ["git", "cat-file", "--batch"],
+        input=b"".join(identifier + b"\n" for identifier, _ in entries),
+        cwd=root,
+    )
+    stream = io.BytesIO(result)
+    files = {}
+    for identifier, name in entries:
+        observed, kind, size = stream.readline().split()
+        require(observed == identifier and kind == b"blob", "Unexpected Git object")
+        files[name] = stream.read(int(size))
+        require(len(files[name]) == int(size) and stream.read(1) == b"\n", "Truncated Git object")
+    require(not stream.read(), "Unexpected Git object data")
+    return files
+
+
 def check_release(root: Path, directory: Path, *, write: bool, tag: str | None = None) -> dict:
     status = subprocess.check_output(
         ["git", "status", "--porcelain", "--untracked-files=normal"], cwd=root, text=True
@@ -241,17 +268,16 @@ def check_release(root: Path, directory: Path, *, write: bool, tag: str | None =
         "LICENSE",
         ".gitignore",
     ]
-    committed = subprocess.check_output(["git", "archive", "HEAD", "--", *paths], cwd=root)
-    with tarfile.open(fileobj=io.BytesIO(committed)) as archive:
-        expected = {}
-        for member in archive.getmembers():
-            if member.isfile():
-                stream = archive.extractfile(member)
-                assert stream is not None
-                expected[member.name] = stream.read()
+    expected = committed_files(root, paths)
+    different = sorted(
+        name
+        for name in packaged.keys() | expected.keys()
+        if packaged.get(name) != expected.get(name)
+    )
     require(
-        packaged == expected,
-        "Distribution content differs from the committed source; rebuild it",
+        not different,
+        "Distribution content differs from the committed source; rebuild it: "
+        + ", ".join(different[:10]),
     )
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     require(bool(re.fullmatch(r"[0-9a-f]{40}", commit)), "Invalid source commit")

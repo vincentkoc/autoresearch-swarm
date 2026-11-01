@@ -194,6 +194,7 @@ def test_stale_artifacts_cannot_be_relabelled_with_a_new_commit(
     git("init", "-q")
     git("add", ".")
     git("commit", "-qm", "First same-version source")
+    git("config", "core.autocrlf", "true")
     check_release(root, directory, write=True)
     (root / "src/research_swarm/__init__.py").write_text(
         f'__version__ = "{project["version"]}"\nchanged = True\n'
