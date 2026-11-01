@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.platform.deployment import DeploymentManifest, authority_id
 from adapters.cloudflare.recovery import checkpoint_import
 from adapters.cloudflare.recovery.checkpoint_anchor import (
     KIND,
@@ -15,6 +14,7 @@ from adapters.cloudflare.recovery.checkpoint_anchor import (
     require_anchor_in,
 )
 from adapters.cloudflare.recovery.checkpoint_import import import_checkpoint
+from adapters.cloudflare.runtime.deployment import DeploymentManifest, authority_id
 from research_swarm.checkpoints.image_format import TABLES, describe_chunk, sign_manifest
 from research_swarm.crypto import public_key
 from research_swarm.domain.canonical import strict_json_loads

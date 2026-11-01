@@ -4,6 +4,8 @@ import ast
 import json
 import os
 import re
+import subprocess
+import sys
 
 import pytest
 
@@ -16,6 +18,18 @@ from adapters.cloudflare.build import (
     SOURCES,
     build,
 )
+
+
+def test_adapter_directory_does_not_shadow_python_standard_library():
+    result = subprocess.run(
+        [sys.executable, "-c", "import platform; print(platform.python_version())"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip()
 
 
 def test_production_and_qualification_bundles_share_implementation_without_fixture_exports(

@@ -9,8 +9,8 @@ from contextlib import ExitStack
 import httpx
 import pytest
 
-from adapters.cloudflare.platform.deployment import DeploymentManifest, authority_id
 from adapters.cloudflare.recovery.checkpoint_wire import decode_checkpoint
+from adapters.cloudflare.runtime.deployment import DeploymentManifest, authority_id
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.client import ResearchClient

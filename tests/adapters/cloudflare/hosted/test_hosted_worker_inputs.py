@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.platform.exclusive import exclusive
 from adapters.cloudflare.research.research_router import HostedInputConfiguration
+from adapters.cloudflare.runtime.exclusive import exclusive
 from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.domain.artifacts import ArtifactRecord

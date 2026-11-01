@@ -17,8 +17,8 @@ from research_swarm.state.database import Database, Transaction
 from research_swarm.state.time_providers import TimeProviders
 
 if __package__:
-    from ..platform.deployment import secret_digest
-    from ..platform.exclusive import exclusive
+    from ..runtime.deployment import secret_digest
+    from ..runtime.exclusive import exclusive
     from .checkpoint_anchor import register_anchor_in, require_anchor_in
     from .checkpoint_capture import capture_checkpoint, require_source_operator_in
     from .checkpoint_schema import require_checkpoint_schema

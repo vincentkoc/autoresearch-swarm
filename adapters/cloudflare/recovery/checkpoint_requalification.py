@@ -23,8 +23,8 @@ from research_swarm.state.time_providers import (
 )
 
 if __package__:
-    from ..platform.exclusive import exclusive
-    from ..platform.provisioning import exists, require_roster
+    from ..runtime.exclusive import exclusive
+    from ..runtime.provisioning import exists, require_roster
     from .activation_cut import require_activation_bounds
     from .checkpoint_admission import AdmissionStore, HostedRecoveryVerifier
     from .checkpoint_history import history_record

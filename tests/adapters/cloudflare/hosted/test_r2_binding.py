@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare.platform.r2_binding import R2BindingTransport
+from adapters.cloudflare.runtime.r2_binding import R2BindingTransport
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from research_swarm.storage.async_r2 import BoundedR2Configuration

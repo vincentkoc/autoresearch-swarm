@@ -5,16 +5,16 @@ import traceback
 
 import pytest
 
-from adapters.cloudflare.platform.deployment import (
+from adapters.cloudflare.research.research_router import (
+    HostedStartupConfiguration,
+    dispatch_key_digest,
+)
+from adapters.cloudflare.runtime.deployment import (
     DeploymentCredential,
     authority_id,
     credential_manifest_digest,
     load_deployment,
     secret_digest,
-)
-from adapters.cloudflare.research.research_router import (
-    HostedStartupConfiguration,
-    dispatch_key_digest,
 )
 from research_swarm.control.auth import CredentialStore
 from research_swarm.crypto import public_key, resolve_crypto

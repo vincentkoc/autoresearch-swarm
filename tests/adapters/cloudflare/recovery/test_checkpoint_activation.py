@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from adapters.cloudflare.platform.runtime import open_router
 from adapters.cloudflare.recovery import checkpoint_activation
 from adapters.cloudflare.recovery.checkpoint_activation import activate_target
+from adapters.cloudflare.runtime.runtime import open_router
 from research_swarm.control.auth import CredentialStore
 from research_swarm.domain.artifacts import ArtifactRecord, UploadSpec
 from research_swarm.domain.canonical import content_digest, strict_json_loads

@@ -16,9 +16,9 @@ from research_swarm.orchestration.delivery_models import delivery_id
 from research_swarm.orchestration.gateway_models import GatewayBinding, GatewayStartup, GatewayWork
 
 if __package__:
-    from ..platform.exclusive import exclusive
     from ..research.hosted_http import HTTPResponse, json_response
     from ..research.research_router import supports_orchestration, supports_timers
+    from ..runtime.exclusive import exclusive
     from .wait_delivery import reconcile_wait
 else:
     from exclusive import exclusive

@@ -19,7 +19,7 @@ from research_swarm.state.schema_contracts import quoted, unsupported
 from research_swarm.state.sql import IntegrityViolation, StoreIdentity, next_counter
 
 if __package__:
-    from ..platform.deployment import secret_digest
+    from ..runtime.deployment import secret_digest
     from .checkpoint_anchor import read_anchor_marker
     from .checkpoint_history import IMPORT_COLUMNS as IMPORT_COLUMNS
     from .checkpoint_history import IMPORT_TABLE, saved_import

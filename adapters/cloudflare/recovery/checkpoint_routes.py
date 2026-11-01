@@ -18,7 +18,7 @@ from research_swarm.state.recovery_elections import retained_election
 from research_swarm.state.recovery_routes import OPERATION, require_recovery_route
 
 if __package__:
-    from ..platform.exclusive import exclusive
+    from ..runtime.exclusive import exclusive
     from .checkpoint_admission import AdmissionStore, HostedRecoveryVerifier
     from .checkpoint_import import verify_target_configuration
     from .checkpoint_source import parse_checkpoint_request

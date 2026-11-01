@@ -8,7 +8,7 @@ stay outside the domain schemas. See the [adapter contracts](../README.md).
 
 | Path | Responsibility |
 |---|---|
-| platform/ | SQL, atomic callbacks, cryptography, I/O bindings and provisioning |
+| runtime/ | SQL, atomic callbacks, cryptography, I/O bindings and provisioning |
 | research/ | Research commands, artifacts, evaluation and worker evidence |
 | delivery/ | Workflow delivery, timers, orchestration and the agent facade |
 | recovery/ | Checkpoints, elections, activation and recovery history |

@@ -22,8 +22,8 @@ from research_swarm.state.recovery_verification import require_research_fences
 from research_swarm.state.sql import StoreIdentity
 
 if __package__:
-    from ..platform.deployment import DeploymentManifest
-    from ..platform.exclusive import exclusive
+    from ..runtime.deployment import DeploymentManifest
+    from ..runtime.exclusive import exclusive
     from .checkpoint_import import (
         inspect_imported_target,
         inspect_target_history,

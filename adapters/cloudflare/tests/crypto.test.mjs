@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { publicKey, sign, verify } from '../platform/crypto.js';
+import { publicKey, sign, verify } from '../runtime/crypto.js';
 
 // RFC 8032 section 7.1, TEST 1. Public fixture seed, never an operational key.
 const seed = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';

@@ -12,7 +12,7 @@ from research_swarm.domain.types import ID
 from research_swarm.state.database import Transaction
 
 if __package__:
-    from ..platform.provisioning import require_roster
+    from ..runtime.provisioning import require_roster
 else:
     from provisioning import require_roster
 

@@ -29,6 +29,8 @@
 
 ### Infrastructure adapters
 
+- Avoid shadowing Python's standard library when launching Cloudflare tooling.
+
 - Organize Cloudflare source by platform, research, delivery and recovery roles.
   Preserve generated module names and document the shared adapter ports.
 - Add Temporal delivery and replay against the shared research authority.

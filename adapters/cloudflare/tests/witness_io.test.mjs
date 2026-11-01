@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import { Worker } from "node:worker_threads";
-import { request } from "../platform/witness_io.mjs";
+import { request } from "../runtime/witness_io.mjs";
 
 const token = "public_fixture_consumer_" + "x".repeat(32);
 const origin = "https://witness.example.test";
@@ -121,7 +121,7 @@ test("ready empty chunks cannot starve the exchange deadline", async () => {
       try { await request(workerData.origin, workerData.token, "{}", 100); parentPort.postMessage(false); }
       catch (error) { parentPort.postMessage({ message: error.message, cancelled }); }
     });
-  `, { eval: true, workerData: { module: new URL("../platform/witness_io.mjs", import.meta.url).href, origin, token } });
+  `, { eval: true, workerData: { module: new URL("../runtime/witness_io.mjs", import.meta.url).href, origin, token } });
   let timer;
   try {
     const result = await new Promise((resolve, reject) => {

@@ -32,8 +32,8 @@ from research_swarm.state.time_providers import (
 )
 
 if __package__:
-    from ..platform.exclusive import exclusive
-    from ..platform.provisioning import (
+    from ..runtime.exclusive import exclusive
+    from ..runtime.provisioning import (
         ProvisioningReceipt,
         complete_deployment_in,
         exists,

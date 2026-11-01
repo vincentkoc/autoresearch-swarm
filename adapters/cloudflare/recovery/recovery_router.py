@@ -17,12 +17,12 @@ from research_swarm.state.database import Database, Transaction
 from research_swarm.state.reader_sessions import OpaqueReaderOwnership
 
 if __package__:
-    from ..platform.exclusive import exclusive
     from ..research.artifact_router import HostedArtifacts
     from ..research.hosted_http import MAX_JSON_BYTES, command_capabilities
     from ..research.research_router import UnavailableBytes, supports_outputs, validated
     from ..research.worker_outputs import COMMANDS as OUTPUT_COMMANDS
     from ..research.worker_outputs import HostedWorkerOutputs
+    from ..runtime.exclusive import exclusive
     from .checkpoint_admission import AdmissionStore, HostedRecoveryVerifier
     from .checkpoint_import import verify_target_configuration
     from .checkpoint_target import load_target

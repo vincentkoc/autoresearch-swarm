@@ -6,7 +6,7 @@ from research_swarm.state.schema import SCHEMA_VERSION
 from research_swarm.state.schema_contracts import unsupported
 
 if __package__:
-    from ..platform.provisioning import require_deployment_in
+    from ..runtime.provisioning import require_deployment_in
     from .checkpoint_anchor import TABLE as ELECTION_TABLE
     from .checkpoint_anchor import require_election_schema
     from .checkpoint_history import IMPORT_TABLE

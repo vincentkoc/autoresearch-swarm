@@ -18,8 +18,8 @@ from research_swarm.domain.types import VersionedRecord
 from research_swarm.state.database import encode
 
 if __package__:
-    from ..platform.deployment import secret_digest
-    from ..platform.exclusive import exclusive
+    from ..runtime.deployment import secret_digest
+    from ..runtime.exclusive import exclusive
     from .checkpoint_import import (
         import_checkpoint,
         inspect_imported_target,

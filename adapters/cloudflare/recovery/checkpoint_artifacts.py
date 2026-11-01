@@ -7,7 +7,7 @@ from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.state.database import encode
 
 if __package__:
-    from ..platform.exclusive import exclusive
+    from ..runtime.exclusive import exclusive
     from .checkpoint_admission import HostedRecoveryVerifier
     from .checkpoint_capture import capture_checkpoint
     from .checkpoint_import import verify_target_configuration

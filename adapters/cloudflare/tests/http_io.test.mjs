@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Worker } from "node:worker_threads";
-import { readBody } from "../platform/http_io.mjs";
+import { readBody } from "../runtime/http_io.mjs";
 
 test("binary and empty request bodies preserve exact bytes", async () => {
   const binary = new Request("http://localhost", { method: "POST", body: new Uint8Array([0, 255, 128]) });
@@ -81,8 +81,8 @@ test("always-ready empty request and R2 chunks cannot starve deadlines", async (
         cancelled: [request.cancelled, object.cancelled, late.cancelled] });
     }).catch(error => { throw error; });
   `, { eval: true, workerData: {
-    http: new URL("../platform/http_io.mjs", import.meta.url).href,
-    r2: new URL("../platform/r2_io.mjs", import.meta.url).href,
+    http: new URL("../runtime/http_io.mjs", import.meta.url).href,
+    r2: new URL("../runtime/r2_io.mjs", import.meta.url).href,
   } });
   let timer;
   try {

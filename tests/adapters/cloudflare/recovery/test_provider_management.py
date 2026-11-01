@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from adapters.cloudflare.platform import provider_management
-from adapters.cloudflare.platform.provider_management import manage_provider
-from adapters.cloudflare.platform.provisioning import require_deployment
+from adapters.cloudflare.runtime import provider_management
+from adapters.cloudflare.runtime.provider_management import manage_provider
+from adapters.cloudflare.runtime.provisioning import require_deployment
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ResearchError
 from research_swarm.domain.identity import CommandContext

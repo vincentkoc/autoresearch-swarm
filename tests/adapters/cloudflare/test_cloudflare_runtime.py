@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare.platform.runtime import (
+from adapters.cloudflare.runtime.runtime import (
     fixed_target,
     open_router,
     public_route,

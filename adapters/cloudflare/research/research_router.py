@@ -36,7 +36,7 @@ from research_swarm.state.time_providers import TimeProviders
 from research_swarm.storage.async_r2 import BoundedR2Configuration
 
 if __package__:
-    from ..platform.exclusive import exclusive
+    from ..runtime.exclusive import exclusive
 else:
     from exclusive import exclusive
 

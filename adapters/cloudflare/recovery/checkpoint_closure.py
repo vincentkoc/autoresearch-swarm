@@ -11,7 +11,7 @@ from research_swarm.domain.types import ID, Revision, VersionedRecord
 from research_swarm.state.database import Transaction, encode
 
 if __package__:
-    from ..platform.exclusive import exclusive
+    from ..runtime.exclusive import exclusive
     from .checkpoint_source import parse_checkpoint_request
     from .recovery_router import ExistingRecoveryRouter
 else:

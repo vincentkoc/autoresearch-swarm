@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.platform.deployment import DeploymentManifest
-from adapters.cloudflare.platform.provisioning import require_deployment
-from adapters.cloudflare.platform.runtime import serve
+from adapters.cloudflare.runtime.deployment import DeploymentManifest
+from adapters.cloudflare.runtime.provisioning import require_deployment
+from adapters.cloudflare.runtime.runtime import serve
 from research_swarm.control.auth import CredentialStore
 from research_swarm.domain.canonical import canonical_bytes, content_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError

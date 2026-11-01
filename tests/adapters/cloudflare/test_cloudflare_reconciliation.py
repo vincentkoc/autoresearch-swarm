@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from adapters.cloudflare.delivery.wait_delivery import wait_delivery_key
-from adapters.cloudflare.platform.deployment import (
+from adapters.cloudflare.runtime.deployment import (
     DeploymentCredential,
     authority_id,
     credential_manifest_digest,

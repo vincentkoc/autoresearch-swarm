@@ -23,10 +23,10 @@ from research_swarm.state.time_providers import (
 )
 
 if __package__:
-    from ..platform.deployment import secret_digest
-    from ..platform.exclusive import exclusive
-    from ..platform.provisioning import exists, require_roster
     from ..research.research_router import dispatch_key_digest
+    from ..runtime.deployment import secret_digest
+    from ..runtime.exclusive import exclusive
+    from ..runtime.provisioning import exists, require_roster
     from .checkpoint_admission import HostedRecoveryVerifier
     from .checkpoint_import import verify_target_configuration
     from .checkpoint_target import load_target

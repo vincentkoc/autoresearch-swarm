@@ -1,5 +1,5 @@
 // Local qualification operator only. Every destination is a fixed service binding.
-import { readBody } from "../platform/http_io.mjs";
+import { readBody } from "../runtime/http_io.mjs";
 import sourceOperator from "./production_operator_fixture.mjs";
 
 const RPC_LIMIT = 6 * 1024 * 1024;

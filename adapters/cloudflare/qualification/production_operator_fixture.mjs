@@ -1,5 +1,5 @@
 // Local test operator only. Excluded from the production build.
-import { readBody } from "../platform/http_io.mjs";
+import { readBody } from "../runtime/http_io.mjs";
 
 export default {
   async fetch(request, env) {

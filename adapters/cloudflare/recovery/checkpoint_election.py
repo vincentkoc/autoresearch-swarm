@@ -13,7 +13,7 @@ from research_swarm.domain.types import new_id, utc_now
 from research_swarm.state.database import encode
 
 if __package__:
-    from ..platform.exclusive import exclusive
+    from ..runtime.exclusive import exclusive
     from .checkpoint_anchor import TABLE, require_anchor_in
     from .checkpoint_capture import capture_checkpoint
     from .checkpoint_source import (
