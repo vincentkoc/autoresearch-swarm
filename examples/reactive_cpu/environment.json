@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "implementation": "cpython",
+  "python_requires": ">=3.11",
+  "dependencies": ["autoresearch-swarm with reactive support"],
+  "runtime_identity": "record the registered worker's exact interpreter and installed package fingerprint"
+}

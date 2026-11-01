@@ -41,6 +41,7 @@ or the [HTTP API](docs/api.md).
 | Example | Purpose |
 |---|---|
 | [CPU bigram](examples/cpu_bigram) | A small training and evaluation loop. |
+| [Reactive CPU](examples/reactive_cpu) | Training-time decisions, a fixed-control baseline and recorded-schedule replay. |
 | [Synthetic pose](examples/synthetic_pose/README.md) | Adopt an ordinary research repository and replay archived receipts. |
 | [MLX workload](docs/mlx-workload.md) | Native Apple Metal training with the reference scorer. |
 | [Pinned upstream workload](docs/upstream.md) | Preserve the original fixed-budget experiment contract. |
@@ -57,6 +58,7 @@ operation require separate qualification.
 |---|---|
 | Add a research repository | [Project adoption](docs/project-adoption.md), [manifest](docs/project-manifests.md), [workload protocol](docs/workload-protocol.md) |
 | Control a research loop | [Campaigns](docs/campaigns.md), [evaluation and promotion](docs/evaluation.md) |
+| Intervene during training | [Reactive controls and agent interfaces](docs/reactive.md) |
 | Register compute | [Remote workers](docs/remote-workers.md), [engine profiles](docs/engines.md), [worker control](docs/worker-control.md) |
 | Change infrastructure | [Orchestration](docs/orchestration.md), [Temporal](docs/temporal.md), [Cloudflare](docs/cloudflare.md), [R2](docs/r2.md) |
 | Preserve and recover evidence | [Artifacts and source](docs/artifacts-and-source.md), [historical import](docs/historical-evidence.md), [backup](docs/backup.md) |

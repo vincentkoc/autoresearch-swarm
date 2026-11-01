@@ -5,6 +5,29 @@ does not create research trials, choose an incumbent, or authorize evaluation.
 The immutable contract declares numeric controls, initial values, bounds,
 training/development diagnostics, a policy fingerprint and decision limits.
 
+The design adapts the observe → decide → apply-at-update-boundary loop in
+[OPAL](https://arxiv.org/html/2610.33826) and its
+[implementation guide](https://github.com/xingjian-bai/opal/blob/main/docs/GUIDE.md).
+OPAL generates executable analysis and optimizer programs. This implementation
+exposes only declared numeric controls; it is not an OPAL integration or
+reproduction. It neither trains a proposal policy nor establishes RL or recursive
+self-improvement. Arbitrary optimizer replacement, optimizer-state migration and
+an LLM code-patch bridge remain separate surfaces.
+
+| Loop | Mutation and evidence |
+|---|---|
+| Original autoresearch | An external coding agent changes training code between fixed-budget trials, evaluates and keeps or reverts the candidate. |
+| Swarm outer loop | Agents submit isolated candidates; workers execute admitted trials and independent evaluation supports promotion. |
+| Reactive inner loop | A policy observes declared diagnostics during one trial and proposes bounded controls; the workload applies them at update boundaries and records readback. |
+
+The inner loop does not replace the outer one. Closing the session stops future
+interventions, and restoring an old control value does not undo earlier model
+updates. The [short CPU project](../examples/reactive_cpu/README.md) demonstrates
+pending-decision progress, a fixed-control baseline, distinct-attempt replay and
+independent evaluation. Only that CPU target and fixture HTTP wire behavior are
+qualified here; MLX/PyTorch targets, live provider behavior, and hosted reactive
+session adapters require separate qualification.
+
 ## Local session API
 
 `DecisionJournal.create(path, binding, contract)` creates a new SQLite session.
