@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Persist local reactive decisions in an append-only SQLite journal with one
+  outstanding request, exclusive training ownership and uncertain-application recovery.
+
 - Add versioned training-time reactive contracts with declared numeric controls,
   diagnostic visibility, policy identity, bounded decisions and separate application receipts.
 
