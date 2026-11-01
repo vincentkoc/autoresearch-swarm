@@ -8,7 +8,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, BinaryIO
 
 import pytest
 
@@ -20,6 +20,7 @@ from research_swarm.workers.clocks import (
     native_clock,
     require_continuity,
 )
+from research_swarm.workers.contracts import ProcessClosure
 from research_swarm.workers.journal import JournalState, WorkerJournal
 from research_swarm.workers.supervision import run_native
 from research_swarm.workers.supervisor import run_attempt
@@ -253,7 +254,11 @@ def test_closed_scope_waits_for_leader_exit_within_original_cleanup_cap(
     from research_swarm.workers import supervision
 
     prepare = supervision._prepare
-    observations = []
+    anchor = supervision.continuous_time()
+    fixture_deadline = time.monotonic() + 5
+    current = anchor
+    phases: list[str] = []
+    collecting_exit = False
     exit_reads = []
     watchdogs = []
     original_thread = threading.Thread
@@ -267,32 +272,75 @@ def test_closed_scope_waits_for_leader_exit_within_original_cleanup_cap(
     def delayed_exit(*args: Any) -> Any:
         child = prepare(*args)
         active, original = child.active, child.exit_code
+        read, closure = child.read, child.closure
+        closed = False
+        eof: set[BinaryIO] = set()
+
+        def observed_read(stream: BinaryIO, maximum: int) -> bytes | None:
+            block = read(stream, maximum)
+            if block == b"":
+                eof.add(stream)
+            return block
+
+        def observed_closure() -> ProcessClosure:
+            nonlocal closed
+            result = closure()
+            closed = result.scope_closed
+            return result
 
         def delayed_active() -> bool:
+            nonlocal current
+            if time.monotonic() >= fixture_deadline:
+                child.stop(force=True)
+                raise OSError("Native fixture did not close within its outer guard")
             value = active()
-            if not value:
-                observations.append(value)
-                if not eventually_available or len(observations) <= 3:
-                    return True
-            return value
+            if value:
+                return True
+            if collecting_exit:
+                return not eventually_available
+            # Establish native closure before exercising the logical deadline.
+            if not closed or child.stdout not in eof or child.stderr not in eof:
+                return True
+            if not phases:
+                phases.append("before_deadline")
+                current = anchor + 0.199
+                return True
+            if len(phases) == 1:
+                if eventually_available:
+                    phases.append("ready_before_deadline")
+                    return False
+                phases.append("expired")
+                current = anchor + 0.200
+                return True
+            phases.append("extra_cleanup_poll")
+            current = anchor + 5
+            return not eventually_available
 
         def exit_code() -> int | None:
+            nonlocal collecting_exit
             joined = bool(watchdogs) and all(not thread.is_alive() for thread in watchdogs)
             exit_reads.append(joined)
             assert joined, "Exit collection reaped the leader before joining its watchdog"
+            collecting_exit = True
             return original()
 
         monkeypatch.setattr(child, "active", delayed_active)
         monkeypatch.setattr(child, "exit_code", exit_code)
+        monkeypatch.setattr(child, "read", observed_read)
+        monkeypatch.setattr(child, "closure", observed_closure)
         return child
 
     monkeypatch.setattr(supervision, "_prepare", delayed_exit)
     monkeypatch.setattr(supervision.threading, "Thread", TrackedThread)
+    monkeypatch.setattr(supervision, "continuous_time", lambda: current)
     invocation = command(tmp_path, "raise SystemExit('held child must not run')").model_copy(
         update={"grace_ms": 10, "cleanup_ms": 200}
     )
     result = run_native(invocation, tmp_path / "output", on_held=lambda _: False)
-    assert len(observations) > 3
+    assert phases == [
+        "before_deadline",
+        "ready_before_deadline" if eventually_available else "expired",
+    ]
     assert exit_reads == [True]
     assert result.reason == "not_started" and result.released_at is None
     assert result.closure.scope_closed == eventually_available
