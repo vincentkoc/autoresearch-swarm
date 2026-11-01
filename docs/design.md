@@ -33,12 +33,10 @@ This document defines the target behavior and acceptance criteria. See [implemen
 - [27. Performance and scale acceptance](#27-performance-and-scale-acceptance)
 - [28. Operational behavior and deployment](#28-operational-behavior-and-deployment)
 - [29. Delivery roadmap](#29-delivery-roadmap)
-- [30. Implementation work packages](#30-implementation-work-packages)
-- [31. Assessment of the supplied deep research](#31-assessment-of-the-supplied-deep-research)
+- [31. Design references](#31-design-references)
 - [32. Requirement traceability](#32-requirement-traceability)
 - [33. Open decisions and deferred work](#33-open-decisions-and-deferred-work)
 - [34. Source and evidence register](#34-source-and-evidence-register)
-- [35. Definition of specification completion](#35-definition-of-specification-completion)
 
 ## 1. Decisions to carry into implementation
 
@@ -55,14 +53,14 @@ This document defines the target behavior and acceptance criteria. See [implemen
 | D09 | Treat CUDA, ROCm, MPS, and MLX as parts of execution profiles, selected against actual worker capabilities. | Required |
 | D10 | Support multiple proposal agents and multiple independent experiment workers. | Required |
 | D11 | Preserve the original one-agent, one-worker, fixed-budget greedy mode. | Required |
-| D12 | Borrow useful optimizer vocabulary and SDK patterns from prior optimizer SDK work. Add no Opik integration or dependency. | Required |
+| D12 | Use explicit candidate, trial, evaluation and result records without requiring a tracking vendor. | Required |
 | D13 | Make decision models optional implementations of the decision/search interface. | Required |
 | D14 | Support bounded recursive optimization through nested campaigns and policy artifacts. | Required design contract |
 | D15 | Add actual RL through explicit rollout, training, checkpoint, and evaluation stages. Do not equate logs with RL. | Later implementation |
 | D16 | Prefer research parallelism before distributed training. | Default policy |
 | D17 | Preserve raw measurements, failures, lineage, and comparison boundaries. | Required |
 | D18 | Adopt Temporal before Cloudflare as the first additional durable orchestration implementation. | Recommended sequence |
-| D19 | Keep Ray optional. It is not the default runtime or a mandatory dependency. | Required correction to the original report |
+| D19 | Keep Ray optional. It is not the default runtime or a mandatory dependency. | Required |
 | D20 | Consider Rust for native workers or measured bottlenecks after the Python system establishes a baseline. | Deferred |
 | D21 | Keep a population/archive of useful candidates alongside a canonical incumbent. | Required for swarm search |
 | D22 | Separate scientific completion, resource reconciliation, and artifact retention. | Required |
@@ -97,7 +95,7 @@ The defining promise is:
 - A requirement to run Kubernetes, Ray, Temporal, or Cloudflare.
 - A replacement for every dataset preparation system.
 - A built-in application or plugin dedicated to one research project.
-- Opik support, exporters, tracing integration, or optimizer inheritance.
+- A mandatory tracking backend or optimizer framework.
 - An autonomous model-training service for every hosted LLM provider.
 - An assumption that an inference API exposes trainable model weights.
 - A large workflow language before the basic campaign works.
@@ -280,27 +278,18 @@ A patch that changes scientific payload creates a new Candidate. Operational ann
 
 A crash has a failure status and a missing primary metric. It never receives a synthetic zero that can win a lower-is-better ranking.
 
-### 6.3 Concepts borrowed from Opik Optimizer
+### 6.3 Optimization API conventions
 
-Borrow:
+Keep objective, budget, baseline and counters in an explicit optimization context.
+Separate search algorithms from lifecycle management. Expose typed candidates,
+trials, evaluations and results through the same API.
 
-- An optimization context that keeps objective, budget, baseline, and counters aligned.
-- Separation between algorithm logic and lifecycle management.
-- Candidate-first APIs.
-- Typed results and histories.
-- Optional rounds.
-- Explicit hooks for proposal, evaluation, and reporting.
-- A convenient result object that links back to underlying evidence.
+Proposal, evaluation and reporting hooks must retain links to their evidence.
+Persist campaign state independently of the caller's process. Workloads declare
+metric direction instead of inheriting a higher-is-better assumption.
 
-Do not borrow:
-
-- A mandatory Opik runtime or tracking backend.
-- Prompt-specific assumptions for every workload.
-- Threaded dataset evaluation as the worker scheduler.
-- Higher-is-better assumptions for raw metrics.
-- A process-local context as durable campaign state.
-
-The audited Opik vocabulary used `OptimizationTrial` for one scoring event. This specification uses `Evaluation` for that event and `Trial` for planned experimental execution. Document this distinction in developer guidance. There is no binary or API compatibility promise.
+An **Evaluation** records one scoring event. A **Trial** records a planned
+experimental execution. Neither requires a particular tracking backend.
 
 ### 6.4 State and claim dimensions
 
@@ -1798,15 +1787,12 @@ Three or five seeds are operational choices. They are not universal proof of sig
 
 The first implementation should offer a simple fixed replication policy before implementing sophisticated sequential tests.
 
-### 18.6 Correcting the MLX fork lesson
+### 18.6 Seed injection and replication
 
-The supplied research report described a multi-seed gate in the MLX fork. The source check performed for this specification found an important limitation.
+Repeated launches with a fixed seed do not establish independent seeded realizations.
+Confirmation must verify that the declared seed reaches the training implementation.
 
-The inspected `rigor.py` reruns the training command, while the inspected `train.py` fixes `mx.random.seed(42)`. Repeated launches therefore do not establish distinct seeded realizations by themselves. [Gate source](https://raw.githubusercontent.com/trevin-creator/autoresearch-mlx/main/rigor.py), [Training source](https://raw.githubusercontent.com/trevin-creator/autoresearch-mlx/main/train.py)
-
-Borrow the idea of confirmation and an append-only decision ledger. Do not copy the claimed statistical guarantee without checking implementation.
-
-The new system must:
+The system must:
 
 - Inject a seed explicitly.
 - Record the requested and observed seed.
@@ -1814,8 +1800,6 @@ The new system must:
 - Bind cached comparator evidence to its full benchmark identity.
 - Distinguish repeated execution under one seed from multi-seed replication.
 - Test that a seed change reaches the training implementation.
-
-The mutable upstream URLs identify the inspected source surface. Pin exact revisions before reusing code.
 
 ### 18.7 Protected and official evaluation
 
@@ -2293,7 +2277,7 @@ The controller is not the tensor execution engine. PyTorch and MLX already perfo
 
 FastAPI and a particular model library are implementation defaults to evaluate, not part of the public protocol.
 
-Choose the Python minimum after testing the required PyTorch and MLX releases. Do not copy an old version range from the supplied report without checking current packages.
+Qualify the supported Python versions against each declared engine profile and its locked dependencies.
 
 ### 24.3 Rust opportunities
 
@@ -2913,69 +2897,7 @@ The first public release should promise:
 
 Do not market every planned adapter, backend, or RL capability as shipped.
 
-## 30. Implementation work packages
-
-These packages are suitable for separate implementation tasks. They are not instructions to start implementation as part of this specification-writing task.
-
-| Package | Deliverable | Depends on | Completion evidence |
-|---|---|---|---|
-| WP01 | Domain schemas and canonical serialization. | M0 decisions. | Golden fixture validation. |
-| WP02 | SQLite transactions, events, and outbox. | WP01. | Concurrency and crash tests. |
-| WP03 | Local artifact lifecycle. | WP01. | Corruption, staging, and publication tests. |
-| WP04 | Local worker journal and supervision. | WP01, WP03. | Native start/cancel/reconcile proof. |
-| WP05 | Project contract and stage graph. | WP01, WP04. | CPU and original-workload examples. |
-| WP06 | Public API and authorization. | WP02, WP03. | Command equivalence and access tests. |
-| WP07 | SDK, CLI, and MCP. | WP06. | External-agent vertical slice. |
-| WP08 | Greedy search and report projection. | WP02, WP05. | Replayable campaign and report. |
-| WP09 | Remote worker transport and scheduling. | WP04, WP06. | Multi-worker out-of-order execution. |
-| WP10 | Portfolio, population, and promotion. | WP08, WP09. | Conflicting promotion and diversity tests. |
-| WP11 | Replication and exposure policy. | WP10. | Scientific contract suite. |
-| WP12 | Existing-project import and replay. | WP05 and WP07. WP11 precedes confirmed comparisons. | Receipt equivalence with scoped fixture. |
-| WP13 | Hierarchical campaigns and policy benchmark. | WP11. | Bounded meta-run and accounting proof. |
-| WP14 | Temporal adapter. | Stable WP02/WP09 contracts. | Shared conformance plus replay. |
-| WP15 | Cloudflare adapter and storage profile. | Stable domain transactions. | Shared conformance plus hosted recovery. |
-| WP16 | Learning adapter. | WP13 and qualified trajectories. | Declared training method, actual policy update, and held-out evaluation. RL claims also require reward-driven optimization. |
-| WP17 | Rust worker feasibility. | Stable WP09 protocol and measured need. | Cross-language fixtures and cost comparison. |
-| WP18 | Optional UI. | WP06 and reporting model. | API-only operational workflow. |
-
-Parallel implementation should have one owner per package. Shared schema changes require coordination before dependent work proceeds.
-
-Do not dispatch a large agent organization merely to implement this organization. Small bounded tasks with explicit outputs remain the default.
-
-## 31. Assessment of the supplied deep research
-
-### 31.1 Adopted ideas
-
-- Preserve the small mutable experiment contract.
-- Separate research payload from orchestration.
-- Prefer independent experiments over distributed training.
-- Use immutable evaluation and explicit provenance.
-- Distinguish raw metrics from promotion.
-- Preserve failures and retry lineage.
-- Make hardware and runtime part of comparison evidence.
-- Support MLX and PyTorch profiles.
-- Use a headless engine with optional UI.
-- Give agents bounded structured research context.
-- Add reflective search before expensive policy training.
-- Preserve population diversity and useful tradeoffs.
-- Measure validated progress per unit of compute and wall time.
-
-### 31.2 Revised recommendations
-
-| Earlier suggestion | Final direction |
-|---|---|
-| Ray as the default orchestrator. | Local asyncio first, Temporal and Cloudflare adapters later. Ray remains optional. |
-| A workload-plugin architecture for an existing research project. | Ordinary repository manifest and command interface. |
-| Opik as an optional integration or optimizer runtime. | No Opik support. Borrow ideas only. |
-| MLX treated as Apple-only. | Framework and device backend are separate. Apple is the first intended MLX target. |
-| Multi-seed fork behavior accepted from descriptions. | Verify seed injection and evaluator semantics directly. |
-| One benchmark hash containing every environmental detail. | Separate protocol, execution fingerprint, and declared comparison class. |
-| More agents as an inherent improvement. | Compare research outcome and total cost against simple baselines. |
-| Workflow history as durable research memory. | Domain ledger and artifacts remain authoritative. |
-| A single “best” score. | Scoped best-observed, best-confirmed, incumbent, and population. |
-| An eventual large framework tree. | Implement small complete vertical slices before optional abstractions. |
-
-### 31.3 Fork and ecosystem reference inventory
+## 31. Design references
 
 | Reference | Useful idea | Adoption rule |
 |---|---|---|
@@ -2994,32 +2916,7 @@ Do not dispatch a large agent organization merely to implement this organization
 
 Repository counts, stars, dependency versions, issue status, and provider quotas are volatile. They are not normative requirements here.
 
-### 31.4 Platform facts to refresh during implementation
-
-Refresh the exact supported versions of:
-
-- Python, PyTorch, MLX, CUDA, ROCm, and drivers.
-- Temporal SDKs.
-- Cloudflare runtime and service limits.
-- DirectML and ONNX Runtime execution providers.
-- JAX platform support.
-- PyTorch/XLA or successor lifecycle.
-- MLX distributed topology requirements.
-- CI runner capabilities.
-
-The supplied report contains date-specific claims. Do not use an unverified announcement date or version number as a permanent architectural premise.
-
-### 31.5 Naming
-
-Use “Autoresearch Swarm” as this specification's working title.
-
-Alternatives remain:
-
-- Autoresearch Next while the project closely follows upstream.
-- ResearchForge if it becomes a broader independent platform.
-- Autoresearch Swarm if parallel research remains the defining identity.
-
-Keep visible upstream attribution regardless of branding. Perform repository/package/name checks before publication.
+Qualify supported framework versions, device capabilities and provider limits for each release.
 
 ## 32. Requirement traceability
 
@@ -3033,7 +2930,7 @@ Keep visible upstream attribution regardless of branding. Perform repository/pac
 | Registered compute workers. | 13, 14 | Native multi-worker execution. |
 | Parallel research swarm. | 17, 27.5, 29.3 | Concurrent proposals and out-of-order results. |
 | Original autoresearch mode. | 3, 8, 29.1 | Upstream-compatible workload qualification. |
-| No Opik integration. | 1, 6.3, 31.2 | Dependency and public API inspection. |
+| Vendor-independent core. | 1, 6.3 | Dependency and public API inspection. |
 | Optional decision models. | 17.7 | Deterministic and external-agent paths work without them. |
 | MLX and CUDA profiles. | 14 | Qualified real workload per claimed profile. |
 | Durable resumption. | 10, 11.5, 13.4 | Crash/restart contract tests. |
@@ -3048,20 +2945,15 @@ Keep visible upstream attribution regardless of branding. Perform repository/pac
 
 ## 33. Open decisions and deferred work
 
-These items do not block writing the core schemas:
+Project and deployment choices remain configurable:
 
-1. Final name, package namespace, and repository location.
-2. The exact first accelerator hardware used for qualification.
-3. The first API framework and schema-model implementation.
-4. Default practical-effect and replication settings for each project.
-5. Whether the first Temporal adapter uses signals or asynchronous Activity completion.
-6. The exact hosted authority partition once one workspace no longer fits one authority.
-7. Which trainable policy and learning framework justify an RL adapter.
-8. Whether measured deployment friction justifies a Rust worker.
-9. Optional UI technology.
-10. The optional decision-model provider and its qualified interface.
+- Accelerator hardware and qualified engine environments.
+- Practical-effect thresholds and replication settings.
+- Authority partitioning beyond one workspace.
+- Trainable policy and learning framework.
+- Optional Rust workers, UI and decision-model providers.
 
-Do not turn these choices into prerequisites for the local CPU and agent-API vertical slice.
+These choices do not block local CPU operation or agent control.
 
 Before freezing a public v1 API, resolve:
 
@@ -3078,7 +2970,7 @@ Before freezing a public v1 API, resolve:
 
 The design requires local operation, uniform adapters, registered workers, complete agent APIs, optional UI, parallel research, durable evidence, and explicit promotion.
 
-Research projects remain ordinary repositories. Decision models are optional. There is no Opik integration.
+Research projects remain ordinary repositories. Decision models are optional. Core execution has no tracking-service dependency.
 
 Python is the first implementation language. Language-neutral contracts permit independently qualified implementations and adapters.
 
@@ -3146,21 +3038,4 @@ A public claim must link to evidence that proves its stated scope. Implementatio
 - [auto-log-research](https://github.com/ottogin/auto-log-research)
 - [Opik source snapshot used for vocabulary comparison](https://github.com/comet-ml/opik/tree/412414d7c313d3a1b5cfa461ae8b5ebb62ab7201/sdks/opik_optimizer)
 
-The final reference supplies design context only. It creates no Opik integration requirement.
-
-## 35. Definition of specification completion
-
-This document is complete when it:
-
-- Captures the product requirements.
-- Explains differences from original autoresearch.
-- Defines local, worker, adapter, API, and search contracts.
-- Covers scientific evidence and operational failure states.
-- Describes an existing research project adoption without special platform coupling.
-- Separates nested optimization from actual RL training.
-- Records the Python-first recommendation and a credible Rust path.
-- Supplies implementation stages and acceptance tests.
-- Labels proposed interfaces and unproven capabilities.
-- Preserves source and audit caveats.
-
-This design is not proof of implementation or qualification. See the implementation status and reproducible test evidence.
+References provide design context. They do not add runtime dependencies.

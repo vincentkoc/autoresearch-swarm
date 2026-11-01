@@ -2222,8 +2222,7 @@ They do not require the pre-admission fingerprint after legitimate recovery writ
 Missing or reopened fences refuse both replay and recovery capability use; the
 transaction guard rechecks them after capability minting. Native tests cover
 independent SQLite connection races, lost replies, rollback after actual SDK
-campaign fencing, retained funding and pending turns. Production workerd admission
-qualification passed at `b5521a4abec6b1f4891daf3512fccef79798af5c`, as recorded below.
+campaign fencing, retained funding and pending turns.
 Ordinary hosted routers still refuse this target;
 evidence delivery, artifact restoration and activation require separate support.
 
@@ -2232,9 +2231,7 @@ admission after a deliberately lost accepted reply. It verifies the target's
 signature and complete election digest, refuses the losing target and public
 entrypoint, and checks that provisioning, import, request generation and ordinary
 router access cannot reopen the recovering target. Its fixture drops only a
-recognized accepted admission; unexpected failures remain visible. This probe
-passed in the workerd admission receipt below; it does not establish a deployed
-Cloudflare service or qualify later turn and artifact extensions.
+recognized accepted admission; unexpected failures remain visible.
 
 `Bootstrap.checkpoint_turn(bootstrap_credential, request_json)` admits only
 `orchestration.reconcile_turn` and `orchestration.close_turn` on the recovering
@@ -2248,8 +2245,7 @@ its action dispatcher always refuses. A retained target acknowledgment produces
 the existing receipt semantics; absence permits explicit unacknowledged closure.
 Neither operation resumes a provider, launches an experiment or releases funding.
 Native adapter tests cover both branches, independent connection races, a lost
-first committed reply, restart replay and changed-owner refusal. Actual workerd
-turn-maintenance passed at `06310f93e4f93d16bcec84c93d17f6ca275de77e`, as recorded below.
+first committed reply, restart replay and changed-owner refusal.
 
 The six-startup probe additionally binds a real source driver and saves a report
 turn through the SDK before sealing. After admission, the winner closes that turn
@@ -2387,8 +2383,6 @@ the original outcome and consumption; public, losing-target and wrong-bootstrap
 calls refuse. The fixture drops only a matching accepted closure response. After
 restarting every Worker, the original upload, submission and closure acknowledgments
 must replay unchanged, while historical attempt reads show `closed_unaccepted`.
-This six-startup extension passed actual workerd qualification at the exact revision
-recorded below; target preparation and activation require newer receipts.
 
 The shared kernel now has a private `RecoveryRuntimeGuard` for preparing an elected
 target. Its immutable `RecoveryRuntimePlan` binds deployment/configuration digests,
@@ -2453,8 +2447,7 @@ requiring current recovery custody and an unchanged usable target roster.
 
 SQLite/signed-witness tests cover interruption in both phases, partial roster rollback,
 credential collisions, changed state during the await, lost committed replies and
-ordinary-route refusal. The seven-startup receipt below also qualifies the private
-preparation RPC in actual workerd; later clock-requalification changes need newer proof.
+ordinary-route refusal.
 Preparation creates neither the public deployment seal nor an active workspace gate.
 Subsequent activation uses the separate operation described below; preparation cannot
 authorize execution, scientific acceptance or activation. Existing native witness
@@ -2533,9 +2526,8 @@ SQLite/mock-R2 tests exercise transaction faults after retirement/deployment/eve
 generated-row bounds, lost responses, concurrent operation gates, cancellation,
 byte failures, quota, admission/credential/provider drift and durable clock retirement.
 They also exercise original journal quarantine/closure, ordinary SDK research with a
-fresh epoch-2 worker, and target reseal/export. The seven-startup receipt below
-qualifies actual workerd preparation/activation. Newer clock-management paths and
-separately authorized cloud deployment remain unqualified.
+fresh epoch-2 worker, and target reseal/export. Deployed cloud operation requires
+separate qualification.
 
 The production probe now extends to nine startups. It fixes distinct assignment,
 dispatch, bootstrap, API-credential and witness-consumer material for both targets
@@ -2596,7 +2588,7 @@ The reply contains the manifest digest, original `StoredBlob` and lowercase
 `content_hex`, ready for the target restoration call. No SQL rows, timestamps,
 signatures or generation identities change. Source export refuses when evidence,
 authority or storage configuration changes during the read. Native tests cover
-the full export-to-restore flow; actual workerd qualification remains pending.
+the full export-to-restore flow.
 
 The six-startup production probe now copies one actual source artifact through
 these private RPCs into the elected target's distinct R2 bucket. It checks source
@@ -2604,8 +2596,7 @@ bytes against the signed inventory, validates the target receipt, rejects public
 wrong-credential and losing-target calls, then drops a successful restoration
 reply. After all Workers restart, copying the same generation must return the
 same response. The source checkpoint and witness request count remain unchanged;
-ordinary research stays refused. This added probe still needs a passing workerd
-receipt before claiming runtime qualification.
+ordinary research stays refused.
 
 Private `Bootstrap.checkpoint_request(credential)` and its fixed target DO method
 generate a request from protected target configuration, with no caller-supplied
@@ -2626,8 +2617,8 @@ result, and returns canonical bytes. It writes no acknowledgment or record and
 generates no new ID or timestamp. Unchanged imported state and retained key yield
 identical retries. Native tests cover the full import/request/source-election path,
 concurrent read-only retries, empty and legacy targets, changed configuration,
-corrupt receipts/seals/anchors and signer failure. Workerd qualification of this
-request RPC passed in the workerd receipt below; requesting election cannot activate the target.
+corrupt receipts/seals/anchors and signer failure. Requesting election cannot
+activate the target.
 
 A fresh source seal also registers `LogicalElectionAnchor` in the portable record
 ledger and its matching row in the original-only `hosted_checkpoint_elections`
@@ -2661,109 +2652,17 @@ ID, timestamp, signature or capture. Neither transition appends a portable event
 or command acknowledgment, so the selected image stays unchanged. Native tests
 exercise independent-connection races, lost commit replies, current-credential
 revocation, missing anchors, signature corruption and source-cut drift. The private
-RPC passed in the workerd receipt below. Election alone cannot activate a target.
+RPC has local workerd qualification recorded in the implementation ledger. Election alone cannot activate a target.
 
-The extended three-Worker probe now generates a request at each completed target,
-checks denial at an empty target and at default/public entrypoints, and sends both
-valid requests concurrently to the original source. Its fixture drops both replies,
-including the committed winner's. Retries must reveal one signed winner and one
-conflict. A fifth workerd startup then verifies identical target requests and exact
-winner bytes, continued loser refusal, inactive targets and unchanged source capture
-during the same witness outage. At
-`aeed14e090d6c0f25475583ce6bdd84cea1a0816`, the
-[workerd qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41219997884)
-passed 20 tests in 758.34 seconds, including this five-startup extension. That
-revision predates hosted admission and saved-turn maintenance; it does not qualify
-their later six-startup probe.
-
-At `b5521a4abec6b1f4891daf3512fccef79798af5c`, the
-[workerd admission qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41221477783/job/124597104195)
-passed 20 tests in 785.14 seconds. This covers elected admission, a lost accepted
-reply and byte-identical replay after the sixth startup. It predates saved-turn
-closure, source artifact export and target R2 restoration; those extensions still
-need their own passing runtime receipt.
-
-At `06310f93e4f93d16bcec84c93d17f6ca275de77e`, the
-[full qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41222253845)
-passed on all four surfaces: workerd 20 tests in 455.84 seconds; Linux 1,107 in
-241.58 seconds; macOS 1,107 in 342.94 seconds; Windows 1,101 with six explicit skips
-in 1,386.70 seconds. This qualifies saved-turn closure and replay and confirms the
-Windows newline fix. It predates source/target artifact transfer, worker route
-issuance, the named recovery receiver and private journal closure.
-
-At `e3bdf987328ec410b58183445277e6832abd3744`, the
-[full qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41224128274)
-passed on all four surfaces: workerd 20 tests in 486.55 seconds; Linux 1,192 in
-521.89 seconds; macOS 1,192 in 305.63 seconds; Windows 1,186 with six explicit skips
-in 1,411.64 seconds. This adds source/target artifact transfer and original-worker
-route issuance across restart. It predates the named recovery receiver, journal
-quarantine/closure and target runtime preparation; those require newer receipts.
-
-At `d111b841d242771a3de6fece8180d94860c7270b`, the
-[full qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41227545377)
-passed on all four surfaces: workerd 20 tests in 824.40 seconds; Linux 1,317 in
-382.90 seconds; macOS 1,317 in 474.45 seconds; Windows 1,311 with six explicit skips
-in 1,684.56 seconds. This adds named recovery ingress, original native CPU journal
-transfer/quarantine and private closure across six startups. Native tests include
-target preparation, but that revision's workerd probe does not call its private
-preparation RPC. Actual target preparation, activation and requalification require
-newer qualification receipts.
-
-At `448765365258d108dacb07f42f5275e0113f59cc`, the
-[seven-startup qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41230138489)
-passed workerd with 20 tests in 798.09 seconds, Linux with 1,410 in 563.74 seconds,
-and macOS with 1,410 in 616.57 seconds. This is actual private target preparation
-and activation, offline acknowledgment replay, ordinary API access, old-token
-refusal and fresh worker enrollment/calibration across restart. It predates the
-immutable requalification lineage and both clock-management RPCs.
-
-Windows did not finish that run: the job reached its 30-minute limit after the
-last complete progress line showed 91%, with no ordinary test-failure summary.
-Cancellation interrupted pytest, so this is neither a Windows pass nor a diagnosed
-product regression. The Windows qualification allowance increases to 45 minutes;
-individual test/experiment limits are unchanged. The newer complete suite must
-produce its own matrix verdict.
+Local workerd qualification covers competing target elections, lost replies,
+restart replay, artifact transfer, original-worker recovery, target preparation
+and activation. The [qualification register](implementation.md#delivery-and-hosted-recovery)
+records the tested revision and scope. Local runtime evidence does not establish
+deployment or physical-accelerator qualification.
 
 Whole-store rollback/PITR of the original authority is not qualified:
 restoring both marker and election row to an earlier state requires an independent
 non-rollbackable authority before this protocol could safely elect again.
-
-## Required implementation slices
-
-The completed workerd job in
-[run 41233958516](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41233958516/job/124633747710)
-tested `daee81a5b1113be2cb813e83367ca3fd6da62d36`: **20 passes in 676.22 seconds**.
-Its nine-startup recovery probe verifies target-clock retirement/requalification,
-activation, a second clock restart under active authority, offline management
-replay and recalibration of the same fresh worker. Its separate production probe
-verifies active-clock management for a fresh deployment while preserving initial
-provisioning and rejected-command history. Both use actual local workerd and
-native witnesses. The Linux job passed **1,484 tests in 640.23 seconds**, macOS
-passed **1,484 in 543.59 seconds**, and Windows passed **1,478 with six explicit
-skips in 1,641.34 seconds**. The complete run is green.
-
-These results do not qualify the later active-reconciliation/timer profiles, an actual
-Cloudflare account deployment, physical GPU execution or scientific improvement.
-
-1. Freeze witness schemas, signatures, epoch derivation and one-use operation
-   context. Prove rejection and scope behavior with deterministic fixtures.
-2. Add the private native witness service with exact clock/profile admission,
-   bounded transport and independent-process restart tests.
-3. Add the serialized Durable Object authority wrapper. Use the shared command
-   kernel, explicit source requalification and persisted retirement fencing.
-   Keep unsupported operations disabled until they have provider-safe inputs
-   and artifact custody.
-4. Supply provider-safe artifact staging, R2 verification and key custody. Inputs
-   must be immutable and complete before the operation's witness point. Storage
-   pins and cleanup retain their existing authorization and uncertainty rules.
-5. Implement inactive export/import and fenced activation for Durable Object
-   state and R2 artifacts. Local filesystem backup does not qualify this slice.
-6. Run the shared transaction/race suite and native worker cycle against the
-   local provider runtime. Then perform separately authorized hosted deployment
-   and recovery qualification on the exact published revision.
-
-Each slice is a cohesive commit boundary. None changes the original spec's
-completion criteria or turns a local emulator result into hosted evidence.
 
 ## Counterexamples and acceptance tests
 

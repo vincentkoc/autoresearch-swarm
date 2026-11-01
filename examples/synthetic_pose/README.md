@@ -76,8 +76,6 @@ run without another execution.
 uv run pytest tests/test_project_adoption.py
 ```
 
-This example borrows receipt shapes from the Fingervision adoption analysis, using
-entirely fictional public data. It is not Fingervision training, real cohort
-qualification, historical native-closure proof, or evidence of scientific
-improvement. See [the adoption guide](../../docs/project-adoption.md) for the
-boundary between an existing repository and the research engine.
+The data and archived receipts are fictional. This example qualifies integration
+and recipe replay, not real-cohort accuracy or scientific improvement.
+See [the adoption guide](../../docs/project-adoption.md) for the project contract.

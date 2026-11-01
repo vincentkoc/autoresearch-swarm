@@ -31,27 +31,25 @@ Its training and evaluator require only Python's standard library.
    Imported metadata informs hypotheses but cannot settle new attempts or serve
    as authenticated confirmation evidence.
 
-## Fingervision mapping
+## Pose-estimation example
 
-Fingervision is a project that can follow this sequence. It is not an engine
-extension or required dependency. Its model and data logic remain in its own
-repository.
+The synthetic pose project demonstrates this sequence with a linear model and
+two archived receipt formats. Model code, data logic and receipt readers remain
+in the project.
 
 | Existing evidence | Project responsibility | Engine record |
 |---|---|---|
 | Candidate manifest and source/data pins | Preserve exact bytes and distinguish schema-specific identities | Frozen project revision and retained historical artifact |
 | Fit receipt and checkpoint | Bind seed, draw order, fitting coverage, checkpoint, and declared timing | Stage outputs and authenticated fresh run result |
-| Schema-2 person sums/counts | Preserve radians and valid-element denominators; derive macro and pooled values separately | Named metrics with explicit units and aggregation |
-| Candidates-v2 central/full scores | Keep both panels and per-person degree mappings; validate stored aggregates | Historical observations labeled by panel |
+| Per-person sums and counts | Preserve radians and valid-element denominators; derive macro and pooled values separately | Named metrics with explicit units and aggregation |
+| Central and full panel scores | Keep both panels and per-person degree mappings; validate stored aggregates | Historical observations labeled by panel |
 | Native archive and settlement history | Preserve original custody, clock domains, and contradictory observations | Historical evidence without new budget or execution authority |
 | Fresh authorized endpoint | Verify checkpoint, seed, data, split, evaluator, protocol, and coverage | Current evaluation receipt, eligible only under its campaign contract |
 
-The public example tests those structural boundaries with fictional data and a
-deterministic linear model. It does not import private archives, register an
-existing research worker, alter active reservations, or qualify a real cohort.
-Actual adoption requires the project's own frozen environment and authorized
-data and compute. A changed source/data/evaluator contract creates a new comparison
-identity rather than silently sharing the historical leaderboard.
+The example uses fictional data and qualifies recipe replay and metric handling.
+Real-project adoption requires a frozen environment and authorized data and
+compute. A changed source, data or evaluator contract creates a new comparison
+identity.
 
 ## Verified behavior
 

@@ -64,9 +64,9 @@ cannot settle a current attempt, release its reservation, or grant new exposure.
 
 Missing measurements remain null with a reason. Do not replace them with zero.
 Keep panel, units, coverage, and evaluator/checkpoint identifiers distinct. For
-Fingervision-shaped records, preserve sufficient statistics in raw evidence and
-keep macro person MAE separate from pooled MAE; the ordinary project's normalizer
-owns that interpretation. The core has no Fingervision plugin or metric formula.
+pose-estimation records, preserve sufficient statistics in raw evidence. Keep
+macro person MAE separate from pooled MAE. The project's normalizer owns that
+interpretation and its metric formulas.
 
 Import and fresh replay establish different claims. A disposable ordinary project
 may replay a compatible recipe and compare receipt identities and statistics.
