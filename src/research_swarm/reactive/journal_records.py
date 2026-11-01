@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from research_swarm.domain.types import ID, VersionedRecord
+from research_swarm.domain.types import ID, Digest, Timestamp, VersionedRecord
 from research_swarm.reactive.contracts import (
     ApplicationReceipt,
     DecisionProposal,
@@ -39,6 +39,9 @@ EventKind = Literal[
     "settled",
     "closed",
     "interrupted",
+    "call_started",
+    "call_fenced",
+    "call_finished",
 ]
 
 
@@ -57,6 +60,20 @@ class SessionState(VersionedRecord):
     last_observed_step: Step | None = None
     outstanding_id: ID | None = None
     trainer_id: ID | None = None
+    inflight_call_request_id: ID | None = None
+
+
+class DecisionCall(VersionedRecord):
+    id: ID
+    policy_digest: Digest
+    started_at: Timestamp
+    timeout_ms: int = Field(strict=True, ge=1, le=120_000)
+    outcome: Literal["started", "returned", "failed", "cancelled"] = "started"
+    completed_at: Timestamp | None = None
+    fence: Literal["timeout", "cancelled"] | None = None
+    proposal: DecisionProposal | None = None
+    disposition: Literal["accepted", "late", "conflict", "duplicate"] | None = None
+    failure_code: Literal["exception", "invalid_response", "cancelled"] | None = None
 
 
 class DecisionRecord(VersionedRecord):
@@ -67,6 +84,7 @@ class DecisionRecord(VersionedRecord):
     application_step: Step | None = None
     receipt: ApplicationReceipt | None = None
     detail: str = Field(default="", max_length=1024)
+    call: DecisionCall | None = None
 
 
 class JournalEvent(VersionedRecord):
