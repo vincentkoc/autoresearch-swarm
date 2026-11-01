@@ -99,10 +99,22 @@ def test_tampered_prebuilt_wheel_is_rejected(distributions: tuple[Path, dict]) -
         )
 
 
-@pytest.mark.parametrize("tag", ["v9.9.9", "v0.1.0.dev0"])
-def test_tag_cannot_publish_another_or_development_version(tag: str) -> None:
-    with pytest.raises(ValueError):
-        source_identity(REPO_ROOT, tag)
+def test_tag_cannot_publish_another_version() -> None:
+    with pytest.raises(ValueError, match="Tag must exactly match"):
+        source_identity(REPO_ROOT, "v9.9.9")
+
+
+def test_development_version_is_preview_only(tmp_path: Path) -> None:
+    version = "0.1.0.dev0"
+    identity = f'name = "autoresearch-swarm"\nversion = "{version}"\n'
+    (tmp_path / "pyproject.toml").write_text("[project]\n" + identity)
+    (tmp_path / "uv.lock").write_text("[[package]]\n" + identity)
+    package = tmp_path / "src/research_swarm"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(f'__version__ = "{version}"\n')
+    assert source_identity(tmp_path)["version"] == version
+    with pytest.raises(ValueError, match="Development versions are preview-only"):
+        source_identity(tmp_path, f"v{version}")
 
 
 @pytest.mark.parametrize("removed", ["METADATA", "licenses/LICENSE", "entry_points.txt"])

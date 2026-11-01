@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from research_swarm.client import AsyncResearchClient as AsyncResearchClient
     from research_swarm.client import ResearchClient as ResearchClient
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 __all__ = ["AsyncResearchClient", "ResearchClient"]
 
