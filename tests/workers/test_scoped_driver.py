@@ -185,7 +185,9 @@ async def test_free_slot_is_refilled_without_waiting_for_the_slowest_attempt(
         enrollment(pipeline, tmp_path / "remote", url, cpu_slots=2) as connected,
     ):
         original = connected.worker.execute
-        release, first, third = threading.Event(), threading.Event(), threading.Event()
+        loop = asyncio.get_running_loop()
+        release, first = threading.Event(), threading.Event()
+        second_completed, third = asyncio.Event(), asyncio.Event()
         lock = threading.Lock()
         calls = 0
 
@@ -196,11 +198,14 @@ async def test_free_slot_is_refilled_without_waiting_for_the_slowest_attempt(
                 turn = calls
             if turn == 1:
                 first.set()
-                assert release.wait(10)
+                assert release.wait(40), "Held attempt was not released during cleanup"
             elif turn == 3:
                 assert not release.is_set()
-                third.set()
-            return original(identifier)
+                loop.call_soon_threadsafe(third.set)
+            result = original(identifier)
+            if turn == 2:
+                loop.call_soon_threadsafe(second_completed.set)
+            return result
 
         monkeypatch.setattr(connected.worker, "execute", delayed)
         command = connected.worker.client.command
@@ -215,15 +220,25 @@ async def test_free_slot_is_refilled_without_waiting_for_the_slowest_attempt(
             return command(name, *args, **kwargs)
 
         monkeypatch.setattr(connected.worker.client, "command", slow_second_claim)
-        task = asyncio.create_task(ScopedWorkerDriver(connected, poll_ms=50).run(once=True))
+        driver = ScopedWorkerDriver(connected, poll_ms=50)
+        task = asyncio.create_task(driver.run(once=True))
         try:
             assert await asyncio.to_thread(first.wait, 5)
-            assert await asyncio.to_thread(third.wait, 5), (
-                "Free slot waited for a generation barrier"
+            await driver_gate(
+                second_completed,
+                task,
+                timeout=30,
+                message="Second attempt execution and publication did not complete",
             )
+            await driver_gate(
+                third, task, timeout=5, message="Free slot waited for a generation barrier"
+            )
+        except BaseException:
+            driver.stop.set()
+            raise
         finally:
             release.set()
-        result = await task
+            result = await asyncio.wait_for(task, timeout=30)
         assert result.state == "idle" and result.observation_count == 3
         assert connected.worker.resources.availability() == {"cpu": 2}
 
