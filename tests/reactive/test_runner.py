@@ -239,6 +239,47 @@ async def test_close_before_callback_starts_has_a_durable_outcome(journal: Decis
         assert runner.poll() == "closed"
 
 
+async def test_run_returns_when_training_closes_despite_resistant_callback(
+    journal: DecisionJournal,
+) -> None:
+    started, cancelled, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def stubborn(request: DecisionRequest, contract: ReactiveContract) -> DecisionProposal:
+        started.set()
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            await release.wait()
+        return response_for(request)
+
+    trainer = journal.trainer()
+    request = request_for(journal)
+    trainer.request(request)
+    runner = DecisionRunner(
+        journal, CallbackPolicy(journal.inspect().contract.policy_digest, stubborn)
+    )
+    serving = asyncio.create_task(runner.run(poll_interval_ms=1))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        trainer.close()
+        await asyncio.wait_for(serving, timeout=1)
+        await asyncio.wait_for(cancelled.wait(), timeout=1)
+        assert journal.inspect().inflight_call_request_id == request.id
+    finally:
+        trainer.close()
+        runner.close()
+        release.set()
+        await asyncio.wait_for(serving, timeout=1)
+        record = await until(
+            journal,
+            request.id,
+            lambda item: item.call is not None and item.call.outcome == "returned",
+        )
+    assert record.status == "cancelled" and record.call is not None
+    assert record.call.disposition == "late"
+
+
 async def test_rule_policy_is_configuration_bound(journal: DecisionJournal, tmp_path: Path) -> None:
     policy = ThresholdPolicy(diagnostic="loss", above=1.0, control="lr", value=0.2)
     state = journal.inspect()

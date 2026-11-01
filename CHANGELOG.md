@@ -3,7 +3,8 @@
 ## Unreleased
 
 - Add a provider-neutral asynchronous decision runner with durable call claims,
-  deadlines, late-result evidence and callback or threshold policies.
+  deadlines, late-result evidence and callback or threshold policies. The runner
+  stops serving closed training sessions without waiting for resistant callbacks.
 
 - Add a cooperative training hook that applies bounded control changes at update
   boundaries, records readback and stops intervention after uncertain mutation.

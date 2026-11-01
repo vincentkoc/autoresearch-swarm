@@ -32,15 +32,15 @@ class DecisionRunner:
             raise RuntimeError("Decision-call persistence failed") from self._error
         if self._closed:
             return "closed"
+        state = self.journal.inspect()
+        if state.status != "active":
+            self.close()
+            return "closed"
         if self._task is not None:
             if not self._task.done():
                 return "busy"
             self._task.result()
             self._task = None
-        state = self.journal.inspect()
-        if state.status != "active":
-            self.close()
-            return "closed"
         if state.inflight_call_request_id is not None:
             return "busy"
         pending = self.journal.pending()
