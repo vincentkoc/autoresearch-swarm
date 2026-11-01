@@ -97,3 +97,5 @@ jobs:
           tests/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
           tests/test_scoped_driver.py::test_controller_readiness_rejects_an_existing_unrelated_listener
           tests/test_worker_recovery.py::test_controller_process_restart_preserves_live_native_scope_and_original_settlement
+          tests/test_scoped_driver.py::test_publication_recovery_does_not_wait_for_another_active_attempt
+          tests/test_scoped_driver.py::test_disconnect_replays_pending_intent_and_does_not_claim_another_job

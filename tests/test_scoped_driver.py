@@ -65,6 +65,23 @@ def enrollment(
         yield connected
 
 
+async def driver_gate(
+    event: asyncio.Event, task: asyncio.Task[Any], *, timeout: float, message: str
+) -> None:
+    waiter = asyncio.create_task(event.wait())
+    try:
+        done, _ = await asyncio.wait(
+            (waiter, task), timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+        )
+        if task in done:
+            task.result()
+        assert event.is_set(), message
+    finally:
+        waiter.cancel()
+        with suppress(asyncio.CancelledError):
+            await waiter
+
+
 async def test_scoped_driver_drains_training_and_only_authorized_evaluation(
     pipeline: Pipeline, tmp_path: Path
 ) -> None:
@@ -298,30 +315,46 @@ async def test_publication_recovery_does_not_wait_for_another_active_attempt(
         enrollment(pipeline, tmp_path / "remote", url, cpu_slots=2) as connected,
     ):
         command, execute = connected.worker.client.command, connected.worker.execute
-        lost, held, recovered, release = (threading.Event() for _ in range(4))
-        calls, lock = 0, threading.Lock()
+        loop = asyncio.get_running_loop()
+        lost, recovered = asyncio.Event(), asyncio.Event()
+        held, release = threading.Event(), threading.Event()
+        calls: dict[str, int] = {}
+        publications: dict[str, Any] = {}
+        journals: dict[str, Any] = {}
+        lock = threading.Lock()
 
         def lose_first_publication(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name != "worker.publish_attempt":
+                return command(name, *args, **kwargs)
+            with lock:
+                first = next(iter(calls))
+            if args[0].attempt_id == first:
+                assert held.wait(30), "Distinct sibling did not enter active execution"
             reply = command(name, *args, **kwargs)
-            if name == "worker.publish_attempt" and not lost.is_set():
-                lost.set()
+            if reply["result"]["id"] == first:
+                assert first not in publications, "Recovery published the same native result twice"
+                publications[first] = reply["result"]
+                journals[first] = connected.worker.journal.get(first)
+                loop.call_soon_threadsafe(lost.set)
                 raise ResearchError(
                     ErrorCode.DELIVERY_UNCERTAIN, "Synthetic lost publication reply"
                 )
             return reply
 
         def delay_sibling(identifier: str) -> Any:
-            nonlocal calls
             with lock:
-                calls += 1
-                turn = calls
-            if turn == 2:
+                calls[identifier] = calls.get(identifier, 0) + 1
+                first, turn = next(iter(calls)), calls[identifier]
+            if identifier != first:
+                assert turn == 1
                 held.set()
-                assert release.wait(10)
+                assert release.wait(40), "Owned sibling was not released during cleanup"
             result = execute(identifier)
-            if turn == 3:
+            if identifier == first and turn >= 2:
                 assert not release.is_set()
-                recovered.set()
+                assert result == publications[identifier]
+                assert connected.worker.journal.get(identifier) == journals[identifier]
+                loop.call_soon_threadsafe(recovered.set)
             return result
 
         monkeypatch.setattr(connected.worker.client, "command", lose_first_publication)
@@ -329,14 +362,21 @@ async def test_publication_recovery_does_not_wait_for_another_active_attempt(
         driver = ScopedWorkerDriver(connected, poll_ms=50, maximum_backoff_ms=100)
         task = asyncio.create_task(driver.run())
         try:
-            assert await asyncio.to_thread(held.wait, 5)
-            assert await asyncio.to_thread(lost.wait, 5)
-            assert await asyncio.to_thread(recovered.wait, 5), "Recovery waited for all active work"
+            await driver_gate(
+                lost, task, timeout=30, message="Native publication did not reach the lost reply"
+            )
+            assert held.is_set()
+            await driver_gate(
+                recovered, task, timeout=5, message="Recovery waited for all active work"
+            )
         finally:
             release.set()
             driver.stop.set()
-        result = await task
+            result = await asyncio.wait_for(task, timeout=30)
         assert result.state == "stopped" and result.observation_count == 2
+        first, sibling = calls
+        assert calls[first] >= 2 and calls[sibling] == 1
+        assert len(publications) == 1
         assert connected.worker.resources.availability() == {"cpu": 2}
 
 
@@ -348,42 +388,55 @@ async def test_disconnect_replays_pending_intent_and_does_not_claim_another_job(
         enrollment(pipeline, tmp_path / "remote", url) as connected,
     ):
         original = connected.worker.client.command
+        loop = asyncio.get_running_loop()
         released = threading.Event()
-        admitted = threading.Event()
+        admitted, replayed, published = (asyncio.Event() for _ in range(3))
         keys: list[str] = []
 
         def unavailable(name: str, *args: Any, **kwargs: Any) -> Any:
             if name == "worker.claim_job":
                 keys.append(kwargs["idempotency_key"])
-                if not admitted.is_set():
+                if len(keys) == 1:
                     original(name, *args, **kwargs)
-                    admitted.set()
+                    loop.call_soon_threadsafe(admitted.set)
                 if not released.is_set():
+                    if len(keys) >= 2:
+                        loop.call_soon_threadsafe(replayed.set)
                     raise ResearchError(
                         ErrorCode.DELIVERY_UNCERTAIN, "Synthetic disconnected worker"
                     )
-            return original(name, *args, **kwargs)
+            reply = original(name, *args, **kwargs)
+            if name == "worker.publish_attempt":
+                loop.call_soon_threadsafe(published.set)
+            return reply
 
         monkeypatch.setattr(connected.worker.client, "command", unavailable)
         driver = ScopedWorkerDriver(connected, poll_ms=50, maximum_backoff_ms=100)
         task = asyncio.create_task(driver.run())
         try:
-            assert await asyncio.to_thread(admitted.wait, 5)
-            await asyncio.sleep(0.2)
+            await driver_gate(admitted, task, timeout=5, message="Claim was not admitted")
+            await driver_gate(replayed, task, timeout=5, message="Pending claim was not replayed")
             assert len(keys) >= 2 and len(set(keys)) == 1
             assert len(pipeline.client.list(RecordQuery(kind="attempt"))["items"]) == 1
+            pending = [
+                json.loads(path.read_text())
+                for path in (driver.root / "commands").glob("*.json")
+                if path.name != "identity.json"
+            ]
+            assert len(pending) == 1 and pending[0]["state"] == "pending"
+            assert pending[0]["key"] == keys[0]
             released.set()
-            until = asyncio.get_running_loop().time() + 5
-            while (
+            await driver_gate(
+                published, task, timeout=30, message="Admitted native execution did not publish"
+            )
+            assert (
                 pipeline.client.list(RecordQuery(kind="attempt"))["items"][0]["state"]
-                != "succeeded"
-            ):
-                assert asyncio.get_running_loop().time() < until
-                await asyncio.sleep(0.05)
+                == "succeeded"
+            )
         finally:
             released.set()
             driver.stop.set()
-        result = await task
+            result = await asyncio.wait_for(task, timeout=30)
         assert result.state == "stopped" and result.observation_count == 1
         commands = list((driver.root / "commands").glob("*.json"))
         intents = [
