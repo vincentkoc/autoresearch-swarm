@@ -3,7 +3,18 @@
 This is the completion ledger for the design contract. Pending means unproven,
 not implicitly supported.
 
-The latest all-platform pass is the
+The [native clock and cleanup qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41284221451)
+passed all nine Linux/macOS/Windows and Python 3.11–3.13 cells at
+`a5d2fb2f6e945741124044f8341acaa94b4fc8d2`. Each Linux/macOS cell passed
+35 tests; each Windows cell passed 31 with four explicit skips. The cleanup fixture
+waits for real native closure and both pipe EOFs before advancing a controlled
+clock through the original 200 ms cleanup deadline. Separate mutation checks
+reject premature exit collection and an extended cleanup allowance. This focused
+result is separate from full test suite, accelerator and deployment qualification.
+
+## Delivery and hosted recovery
+
+The separate delivery-recovery qualification is the
 [delivery-recovery run](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41238120989)
 at `1eab4e7d6ea784dfc6b5bed1080673e0bec45ffb`:
 
@@ -23,6 +34,8 @@ commands, timer thresholds and research effects survive these delivery transitio
 The qualification job allows 45 minutes on Windows and
 30 minutes for the expanded workerd suite; experiment budgets and individual test
 supervision remain unchanged.
+
+## Implementation coverage
 
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|

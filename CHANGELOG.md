@@ -14,12 +14,14 @@
   one successor and recovery receipt, rediscover saved research work, and replay
   identical recovery after lost replies or later progress. Uncertain, active,
   paused, terminated and completed histories cannot authorize replacement.
-  Registry/SDK tests pass; the new actual workerd probe remains unqualified.
+  Registry/SDK tests pass; the actual local workerd probe is qualified at `1eab4e7`.
+  Deployed qualification remains separate; [receipt](docs/implementation.md#delivery-and-hosted-recovery).
 
 - Extend actual-runtime timer qualification with a native clock restart while the
   Workflow is waiting. Require rotation under the durable fence, restart both
   runtimes, requalify explicitly, and retain the rejected delivery acknowledgment
-  before settling the unchanged timer once. Actual workerd execution is pending.
+  before settling the unchanged timer once. Local workerd execution is qualified
+  at `1eab4e7`; deployed qualification remains separate.
 
 - Keep hosted wait delivery live across explicit clock requalification. Scope its
   reconciliation key to the authoritative provider generation, preserve rejected
@@ -31,27 +33,31 @@
   Carry the pending wait across Workflow rotation and authority/Workflow restart,
   then require timer readiness from the real native witness without an event hint.
   Verify one readiness/delivery, stable replay and unchanged original execution
-  accounting. Collection passes; actual workerd execution remains pending.
+  accounting. Local workerd execution is qualified at `1eab4e7`; deployed
+  qualification remains separate.
 
 - Add an explicit hosted timer profile and allow asynchronous delivery of saved
   timer waits. Compare the unchanged absolute UTC threshold against one fresh
   transaction witness and record that same instant as readiness. Preserve event
   precedence, pending retries, offline acknowledgment replay and explicit recovery
   after clock discontinuity. Earlier hosted profiles remain event-only. Native
-  tests pass; actual Workflow/workerd timer qualification remains separate.
+  tests pass; local Workflow/workerd timers are qualified at `1eab4e7`.
+  Deployed qualification remains separate.
 
 - Add a production workerd reconciliation probe with a real CPU worker and TLS
   clock source. Restart/requalify the clock without replacing the original attempt,
   retain the first rejected command, quarantine original evidence, lose accepted
   submission/reconciliation replies, and replay after reopening with the witness
-  offline. Fixture checks pass; actual runtime qualification remains pending.
+  offline. Local workerd runtime execution is qualified at `1eab4e7`; deployed
+  qualification remains separate.
 
 - Add an explicit hosted active-reconciliation profile. Original workers can
   quarantine bounded evidence, and scoped operators can reconcile proven closure
   under current authority. Preserve original grants and expired-lease evidence,
   settle costs once, and replay accepted commands without storage or clock access.
   Earlier profiles and the recovery-only receiver retain their limits. Native CPU
-  adapter tests pass; actual workerd qualification of this new profile is separate.
+  adapter tests pass; the local workerd profile is qualified at `1eab4e7`.
+  Deployed qualification remains separate.
 
 - Add fresh-deployment active-clock recovery to the existing production probe,
   preserving its startup count. Discover the restart through an ordinary command,
