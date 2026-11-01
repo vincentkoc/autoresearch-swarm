@@ -103,7 +103,8 @@ retry failed requests.
 ```python
 import os
 from research_swarm.reactive.chat_completions import (
-    ChatCompletionsConfig, ChatCompletionsPolicy,
+    ChatCompletionsConfig,
+    ChatCompletionsPolicy,
 )
 
 config = ChatCompletionsConfig(
