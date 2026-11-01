@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expose one explicitly selected local reactive session through a shared Python
+  client, JSON CLI and dedicated bounded stdio MCP tools for agent responses.
+
 - Add an opt-in Chat Completions HTTP decision policy with explicit model/config
   fingerprints, bounded strict JSON, external credentials and no automatic retries.
 

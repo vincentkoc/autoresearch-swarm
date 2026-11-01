@@ -53,6 +53,9 @@ history. Delayed decisions expire at the declared step limit. An explicit
 
 Only the boundary can apply a response. The hook checks current controls,
 applies a changed target and reads back actual values before recording success.
+Readback is exact in this numeric protocol: there is no implicit rounding,
+tolerance or framework dtype conversion. Framework-specific control targets
+require their own tests; this hook does not qualify MLX or PyTorch targets.
 A keep response or a set response with identical values performs no mutation.
 Exceptions, unexpected control drift and readback mismatches record uncertainty
 and stop later interventions. They do not restore model or optimizer state.
@@ -140,3 +143,31 @@ claims are rejected. Request identity and revision come from the caller, never
 from model output. Usage is labelled provider-reported. HTTP fixture tests prove
 this wire contract; they do not qualify a live provider or demonstrate better
 training results.
+
+## Agent interfaces
+
+`DecisionClient(session_path)` grants access to one existing local session. It
+offers `inspect()`, `pending()`, `respond(proposal)` and `export(...)`. The Python
+client, JSON CLI and dedicated stdio MCP server all use its restricted dispatch
+and validation path. They cannot acquire training ownership, cancel the training
+process, claim application or submit an application receipt.
+
+```sh
+research reactive --session session.sqlite inspect
+research reactive --session session.sqlite pending
+research reactive --session session.sqlite respond --file proposal.json
+research reactive --session session.sqlite export --after -1 --limit 20 --max-bytes 65536
+research reactive --session session.sqlite mcp
+```
+
+The MCP server exposes only `reactive_inspect`, `reactive_pending`,
+`reactive_respond` and `reactive_export`. The selected path is fixed when the
+operator starts it; tools cannot select another file. Proposals include the
+original request ID, digest and control revision. Preserve those fields on
+retries. A successful response acknowledges a proposal, not a control change.
+
+Exports are bounded by both event count and serialized bytes. Continue from
+`next_after` while `has_more` is true. If one event exceeds the requested byte
+budget, increase `max_bytes` within its documented schema bound. These are local
+tools for trusted workloads and agents; controller credentials, hosted adapter
+parity and filesystem sandboxing are separate capabilities.
