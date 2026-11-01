@@ -27,7 +27,7 @@ Local equivalents:
 ~~~sh
 uv sync --locked --group dev --group release
 uv run --no-sync python -m build --no-isolation
-uv run --no-sync python -m twine check --strict dist/*
+uv run --no-sync python -m twine check --strict dist/*.whl dist/*.tar.gz
 uv run --no-sync python scripts/release.py dist --write
 ~~~
 
