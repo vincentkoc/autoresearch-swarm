@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedOrchestrationConfiguration
+from adapters.cloudflare.research.research_router import HostedOrchestrationConfiguration
 from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import DriveAction

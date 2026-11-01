@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from adapters.cloudflare import checkpoint_requalification
-from adapters.cloudflare.checkpoint_requalification import requalify_target_runtime
-from adapters.cloudflare.runtime_history import REQUALIFICATION_KIND
+from adapters.cloudflare.recovery import checkpoint_requalification
+from adapters.cloudflare.recovery.checkpoint_requalification import requalify_target_runtime
+from adapters.cloudflare.recovery.runtime_history import REQUALIFICATION_KIND
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ResearchError
 from research_swarm.domain.recovery_runtime import (

@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedLifecycleConfiguration
+from adapters.cloudflare.research.research_router import HostedLifecycleConfiguration
 from research_swarm.control.acceptance_models import LeaseRenewal
 from research_swarm.control.worker_lifecycle import WorkerHeartbeat
 from research_swarm.domain.controls import ControlAcknowledgment

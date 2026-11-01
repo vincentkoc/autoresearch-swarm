@@ -1,6 +1,6 @@
 {
   "name": "research-swarm-api",
-  "main": "agent_facade.ts",
+  "main": "delivery/agent_facade.ts",
   "workers_dev": false,
   "compatibility_date": "2026-10-30",
   "vars": {

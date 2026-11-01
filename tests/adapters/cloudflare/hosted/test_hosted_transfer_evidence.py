@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedTransferConfiguration
+from adapters.cloudflare.research.research_router import HostedTransferConfiguration
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.state.database import encode
 from tests.adapters.cloudflare.hosted.test_hosted_artifacts import current

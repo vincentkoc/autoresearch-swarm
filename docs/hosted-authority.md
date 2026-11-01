@@ -517,7 +517,7 @@ database tampering, credential activity, row integrity, or the separate immutabl
 authority configuration; the router must still check its configuration and
 resolve current credentials for every request.
 
-`adapters/cloudflare/research_router.py` supplies the initial shared-service
+`adapters/cloudflare/research/research_router.py` supplies the initial shared-service
 integration, `ExistingResearchRouter`. Opening and every operation use the same
 exclusive gate. An explicit provisioner must already have persisted the immutable
 configuration row, credentials, workspace and provider lifecycle. The configuration
@@ -624,7 +624,7 @@ keep an R2 reader, native session or catalog pin alive. Metadata queries and
 downloads create no command acknowledgment, event, pin or witness. Provider
 qualification of this download path is separate from the upload receipt above.
 
-`adapters/cloudflare/hosted_http.py` maps this profile onto the existing SDK wire
+`adapters/cloudflare/research/hosted_http.py` maps this profile onto the existing SDK wire
 contract. It accepts ordinary upload creation, status, parts and finalize routes,
 explicit abort/cleanup commands, artifact metadata and content, plus the admitted
 worker commands and queries. Capabilities list only implemented routes and limits;

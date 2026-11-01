@@ -7,7 +7,15 @@ import re
 
 import pytest
 
-from adapters.cloudflare.build import COMMON, PRODUCTION, QUALIFICATION, ROOT, SOURCE, build
+from adapters.cloudflare.build import (
+    COMMON,
+    PRODUCTION,
+    QUALIFICATION,
+    ROOT,
+    SOURCE,
+    SOURCES,
+    build,
+)
 
 
 def test_production_and_qualification_bundles_share_implementation_without_fixture_exports(
@@ -79,6 +87,16 @@ def test_unknown_target_never_creates_output(tmp_path):
     with pytest.raises(ValueError, match="Unknown"):
         build("typo", output=output)
     assert not output.exists()
+
+
+def test_duplicate_module_destination_preserves_existing_output(tmp_path, monkeypatch):
+    output = build("production", output=tmp_path / "production")
+    retained = output / "retained.txt"
+    retained.write_text("Keep the previous build on invalid configuration")
+    monkeypatch.setitem(SOURCES, "research/duplicate.py", "atomic.py")
+    with pytest.raises(RuntimeError, match="Duplicate generated"):
+        build("production", output=output)
+    assert retained.read_text() == "Keep the previous build on invalid configuration"
 
 
 def test_production_template_has_no_public_ingress_or_embedded_secrets():

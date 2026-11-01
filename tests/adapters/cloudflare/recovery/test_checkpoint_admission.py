@@ -7,10 +7,10 @@ from threading import Barrier
 
 import pytest
 
-from adapters.cloudflare import checkpoint_admission
-from adapters.cloudflare.checkpoint_admission import HostedRecoveryVerifier, admit_target
-from adapters.cloudflare.checkpoint_election import elect_source
-from adapters.cloudflare.checkpoint_target import TargetBinding
+from adapters.cloudflare.recovery import checkpoint_admission
+from adapters.cloudflare.recovery.checkpoint_admission import HostedRecoveryVerifier, admit_target
+from adapters.cloudflare.recovery.checkpoint_election import elect_source
+from adapters.cloudflare.recovery.checkpoint_target import TargetBinding
 from research_swarm.control.recovery_authority import recovery_authority
 from research_swarm.domain.backup import RecoveryAdmission
 from research_swarm.domain.canonical import strict_json_loads

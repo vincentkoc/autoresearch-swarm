@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare import atomic
+from adapters.cloudflare.platform import atomic
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.state.database import SCHEMA
 from research_swarm.state.schema import SCHEMA_VERSION
@@ -30,7 +30,7 @@ def store_class(monkeypatch):
         ),
     )
     spec = importlib.util.spec_from_file_location(
-        "durable_sql_test", REPO_ROOT / "adapters/cloudflare/durable_sql.py"
+        "durable_sql_test", REPO_ROOT / "adapters/cloudflare/platform/durable_sql.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

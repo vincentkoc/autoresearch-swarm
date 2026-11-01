@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from adapters.cloudflare.delivery_router import DeliveryRegistration, HostedDelivery
+from adapters.cloudflare.delivery.delivery_router import DeliveryRegistration, HostedDelivery
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.orchestration import OrchestrationBinding

@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
-from adapters.cloudflare.checkpoint_source import capture_source, load_source, seal_source
-from adapters.cloudflare.checkpoint_wire import decode_checkpoint
+from adapters.cloudflare.recovery.checkpoint_source import capture_source, load_source, seal_source
+from adapters.cloudflare.recovery.checkpoint_wire import decode_checkpoint
 from research_swarm.checkpoints.capture import CaptureLimits, preflight_rows
 from research_swarm.checkpoints.image_format import verify_image
 from research_swarm.control.backup import BackupControl

@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from adapters.cloudflare import checkpoint_wire as wire
+from adapters.cloudflare.recovery import checkpoint_wire as wire
 from research_swarm.checkpoints.image_format import sign_manifest, verify_image
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from tests.adapters.cloudflare.recovery.test_checkpoint_capture import capture

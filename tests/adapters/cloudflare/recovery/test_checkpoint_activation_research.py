@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.checkpoint_source import capture_source, seal_source
-from adapters.cloudflare.checkpoint_wire import decode_checkpoint
+from adapters.cloudflare.recovery.checkpoint_source import capture_source, seal_source
+from adapters.cloudflare.recovery.checkpoint_wire import decode_checkpoint
 from research_swarm.crypto import public_key
 from research_swarm.domain.backup import BackupCustodyPin
 from research_swarm.domain.canonical import strict_json_loads

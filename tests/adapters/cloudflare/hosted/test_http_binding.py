@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare.http_binding import HTTPBodyReader
+from adapters.cloudflare.platform.http_binding import HTTPBodyReader
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
 

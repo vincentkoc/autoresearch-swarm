@@ -5,10 +5,10 @@ from datetime import datetime
 
 import pytest
 
-from adapters.cloudflare.delivery_router import DeliveryRegistration, HostedDelivery
-from adapters.cloudflare.hosted_http import capabilities
-from adapters.cloudflare.research_router import HostedTimerConfiguration
-from adapters.cloudflare.wait_delivery import wait_delivery_key
+from adapters.cloudflare.delivery.delivery_router import DeliveryRegistration, HostedDelivery
+from adapters.cloudflare.delivery.wait_delivery import wait_delivery_key
+from adapters.cloudflare.research.hosted_http import capabilities
+from adapters.cloudflare.research.research_router import HostedTimerConfiguration
 from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.domain.backup import WorkspaceSeal
 from research_swarm.domain.canonical import canonical_bytes

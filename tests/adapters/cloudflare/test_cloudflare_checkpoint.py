@@ -9,8 +9,8 @@ from contextlib import ExitStack
 import httpx
 import pytest
 
-from adapters.cloudflare.checkpoint_wire import MAX_RPC_BYTES, decode_checkpoint
-from adapters.cloudflare.deployment import DeploymentManifest, authority_id
+from adapters.cloudflare.platform.deployment import DeploymentManifest, authority_id
+from adapters.cloudflare.recovery.checkpoint_wire import MAX_RPC_BYTES, decode_checkpoint
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.checkpoints.elections import verify_election, verify_election_request
 from research_swarm.checkpoints.image_format import verify_image
@@ -72,7 +72,7 @@ def operator_config(directory):
     raw = (ROOT / "wrangler.operator-test.jsonc").read_text()
     config = json.loads(re.sub(r",(\s*[}\]])", r"\1", raw))
     config["name"] = "research-swarm-checkpoint-operator-fixture"
-    config["main"] = str(ROOT / "production_checkpoint_fixture.mjs")
+    config["main"] = str(ROOT / "qualification/production_checkpoint_fixture.mjs")
     for letter in ("a", "b"):
         name, prefix = "research-swarm-target-" + letter, "TARGET_" + letter.upper()
         config["services"].extend(

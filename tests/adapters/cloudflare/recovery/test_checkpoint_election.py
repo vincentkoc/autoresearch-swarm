@@ -7,10 +7,10 @@ from threading import Barrier
 
 import pytest
 
-from adapters.cloudflare import checkpoint_election
-from adapters.cloudflare.checkpoint_anchor import TABLE
-from adapters.cloudflare.checkpoint_election import elect_source
-from adapters.cloudflare.checkpoint_wire import decode_checkpoint
+from adapters.cloudflare.recovery import checkpoint_election
+from adapters.cloudflare.recovery.checkpoint_anchor import TABLE
+from adapters.cloudflare.recovery.checkpoint_election import elect_source
+from adapters.cloudflare.recovery.checkpoint_wire import decode_checkpoint
 from research_swarm.checkpoints.elections import verify_election
 from research_swarm.crypto import public_key
 from research_swarm.domain.backup import RestoreClaimRequest, SignedRestoreRequest

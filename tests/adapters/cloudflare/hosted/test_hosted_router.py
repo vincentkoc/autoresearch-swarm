@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.research_router import (
+from adapters.cloudflare.research.research_router import (
     ExistingResearchRouter,
     HostedConfiguration,
     dispatch_key_digest,
@@ -505,7 +505,9 @@ async def test_transport_cannot_commit_late_bytes_by_suppressing_cancellation(
     hosted, monkeypatch, mode
 ):
     if mode == "timeout":
-        monkeypatch.setattr("adapters.cloudflare.research_router.ACQUISITION_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr(
+            "adapters.cloudflare.research.research_router.ACQUISITION_TIMEOUT_SECONDS", 0.01
+        )
     hosted.witness.release = asyncio.Event()
     hosted.witness.suppress_cancel = True
     before = counts(hosted)

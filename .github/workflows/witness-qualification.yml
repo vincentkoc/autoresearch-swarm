@@ -152,9 +152,9 @@ jobs:
           node-version: "22"
       - run: uv sync --locked --group dev --python 3.12
       - run: >-
-          node --test adapters/cloudflare/http_io.test.mjs adapters/cloudflare/witness_io.test.mjs
-          adapters/cloudflare/production_operator_fixture.test.mjs
-          adapters/cloudflare/production_checkpoint_fixture.test.mjs
+          node --test adapters/cloudflare/tests/http_io.test.mjs adapters/cloudflare/tests/witness_io.test.mjs
+          adapters/cloudflare/tests/production_operator_fixture.test.mjs
+          adapters/cloudflare/tests/production_checkpoint_fixture.test.mjs
       - run: uv sync --directory adapters/cloudflare --locked --python 3.12
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: adapters/cloudflare

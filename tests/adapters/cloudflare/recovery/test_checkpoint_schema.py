@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare.checkpoint_schema import require_checkpoint_schema
+from adapters.cloudflare.recovery.checkpoint_schema import require_checkpoint_schema
 from research_swarm.checkpoints.image_schema import require_portable_image_schema
 from research_swarm.control.auth import CredentialStore
 from research_swarm.domain.errors import ErrorCode, ResearchError

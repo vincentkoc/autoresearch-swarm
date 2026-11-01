@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from adapters.cloudflare.checkpoint_artifacts import restore_target_artifact
-from adapters.cloudflare.checkpoint_closure import reconcile_target_attempt
-from adapters.cloudflare.recovery_router import ExistingRecoveryRouter
+from adapters.cloudflare.recovery.checkpoint_artifacts import restore_target_artifact
+from adapters.cloudflare.recovery.checkpoint_closure import reconcile_target_attempt
+from adapters.cloudflare.recovery.recovery_router import ExistingRecoveryRouter
 from research_swarm.control.worker_artifacts import WorkerAttemptTarget
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ResearchError

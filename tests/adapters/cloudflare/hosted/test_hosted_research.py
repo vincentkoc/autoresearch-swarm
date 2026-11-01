@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from adapters.cloudflare.hosted_http import handle
-from adapters.cloudflare.research_router import HostedResearchConfiguration
+from adapters.cloudflare.research.hosted_http import handle
+from adapters.cloudflare.research.research_router import HostedResearchConfiguration
 from research_swarm.client import ResearchClient
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.workers import AttemptData, WorkerData

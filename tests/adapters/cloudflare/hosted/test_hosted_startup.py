@@ -5,8 +5,8 @@ from dataclasses import replace
 
 import pytest
 
-from adapters.cloudflare.delivery_router import DeliveryRegistration, HostedDelivery
-from adapters.cloudflare.research_router import HostedStartupConfiguration
+from adapters.cloudflare.delivery.delivery_router import DeliveryRegistration, HostedDelivery
+from adapters.cloudflare.research.research_router import HostedStartupConfiguration
 from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError

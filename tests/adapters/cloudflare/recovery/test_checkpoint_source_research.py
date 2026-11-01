@@ -3,8 +3,8 @@
 import json
 from types import SimpleNamespace
 
-from adapters.cloudflare.checkpoint_source import capture_source, seal_source
-from adapters.cloudflare.checkpoint_wire import decode_checkpoint
+from adapters.cloudflare.recovery.checkpoint_source import capture_source, seal_source
+from adapters.cloudflare.recovery.checkpoint_wire import decode_checkpoint
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from tests.adapters.cloudflare.hosted.test_production_delivery import delivery, prepare, register

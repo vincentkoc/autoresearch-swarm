@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare import checkpoint_admission
+from adapters.cloudflare.recovery import checkpoint_admission
 from research_swarm.control.recovery_authority import recovery_authority
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.state.database import Database

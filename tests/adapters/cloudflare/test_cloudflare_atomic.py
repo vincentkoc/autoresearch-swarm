@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare.atomic import atomic
+from adapters.cloudflare.platform.atomic import atomic
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
 

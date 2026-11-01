@@ -5,14 +5,17 @@ import traceback
 
 import pytest
 
-from adapters.cloudflare.deployment import (
+from adapters.cloudflare.platform.deployment import (
     DeploymentCredential,
     authority_id,
     credential_manifest_digest,
     load_deployment,
     secret_digest,
 )
-from adapters.cloudflare.research_router import HostedStartupConfiguration, dispatch_key_digest
+from adapters.cloudflare.research.research_router import (
+    HostedStartupConfiguration,
+    dispatch_key_digest,
+)
 from research_swarm.control.auth import CredentialStore
 from research_swarm.crypto import public_key, resolve_crypto
 from research_swarm.domain.assignments import signing_key_id
@@ -118,8 +121,8 @@ def load(values, **options):
     "profile", ["research-reconciliation-witness-v1", "research-timers-witness-v1"]
 )
 def test_extended_profiles_preserve_explicit_manifest_identity(deployment, profile):
-    from adapters.cloudflare.hosted_http import capabilities
-    from adapters.cloudflare.research_router import HostedReconciliationConfiguration
+    from adapters.cloudflare.research.hosted_http import capabilities
+    from adapters.cloudflare.research.research_router import HostedReconciliationConfiguration
 
     previous, _ = load(deployment)
     original = previous.digest

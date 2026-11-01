@@ -5,12 +5,12 @@ import json
 
 import pytest
 
-from adapters.cloudflare import checkpoint_target
-from adapters.cloudflare.checkpoint_anchor import KIND, register_anchor_in
-from adapters.cloudflare.checkpoint_election import elect_source
-from adapters.cloudflare.checkpoint_import import IMPORT_TABLE
-from adapters.cloudflare.checkpoint_target import request_target
-from adapters.cloudflare.checkpoint_wire import encode_checkpoint
+from adapters.cloudflare.recovery import checkpoint_target
+from adapters.cloudflare.recovery.checkpoint_anchor import KIND, register_anchor_in
+from adapters.cloudflare.recovery.checkpoint_election import elect_source
+from adapters.cloudflare.recovery.checkpoint_import import IMPORT_TABLE
+from adapters.cloudflare.recovery.checkpoint_target import request_target
+from adapters.cloudflare.recovery.checkpoint_wire import encode_checkpoint
 from research_swarm.checkpoints.elections import verify_election, verify_election_request
 from research_swarm.checkpoints.fingerprint import fingerprint_state
 from research_swarm.checkpoints.image_format import sign_manifest

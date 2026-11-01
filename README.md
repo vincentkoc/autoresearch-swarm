@@ -60,7 +60,7 @@ operation require separate qualification.
 | Register compute | [Remote workers](docs/remote-workers.md), [engine profiles](docs/engines.md), [worker control](docs/worker-control.md) |
 | Change infrastructure | [Orchestration](docs/orchestration.md), [Temporal](docs/temporal.md), [Cloudflare](docs/cloudflare.md), [R2](docs/r2.md) |
 | Preserve and recover evidence | [Artifacts and source](docs/artifacts-and-source.md), [historical import](docs/historical-evidence.md), [backup](docs/backup.md) |
-| Extend the platform | [Design contract](docs/design.md), [protocol conformance](docs/protocol-conformance.md) |
+| Extend the platform | [Adapter contracts](adapters/README.md), [design contract](docs/design.md), [protocol conformance](docs/protocol-conformance.md) |
 
 ## Development
 

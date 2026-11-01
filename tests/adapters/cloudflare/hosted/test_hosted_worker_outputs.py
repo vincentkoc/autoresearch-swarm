@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedOutputConfiguration
+from adapters.cloudflare.research.research_router import HostedOutputConfiguration
 from research_swarm.control.worker_outputs import WorkerOutputIntent, WorkerUploadTarget
 from research_swarm.control.worker_records import WorkerData
 from research_swarm.domain.artifacts import StoredBlob, UploadSpec

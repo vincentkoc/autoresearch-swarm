@@ -46,7 +46,7 @@ jobs:
       - run: npm run build
       - run: npm run check:hybrid
       - run: npm run test:crypto
-      - run: node --test http_io.test.mjs witness_io.test.mjs
+      - run: node --test tests/http_io.test.mjs tests/witness_io.test.mjs
       - run: npm run test:hybrid
 
   contracts:

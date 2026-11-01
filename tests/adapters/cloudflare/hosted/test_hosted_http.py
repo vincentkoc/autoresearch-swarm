@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from adapters.cloudflare.hosted_http import handle
+from adapters.cloudflare.research.hosted_http import handle
 from research_swarm.client import ResearchClient
 from research_swarm.domain.canonical import canonical_bytes, content_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError

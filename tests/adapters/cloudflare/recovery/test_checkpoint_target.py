@@ -7,11 +7,11 @@ from dataclasses import replace
 
 import pytest
 
-from adapters.cloudflare import checkpoint_import
-from adapters.cloudflare.checkpoint_target import import_target, load_target
-from adapters.cloudflare.checkpoint_wire import MAX_RPC_BYTES, encode_checkpoint
-from adapters.cloudflare.provisioning import provision
-from adapters.cloudflare.runtime import open_router
+from adapters.cloudflare.platform.provisioning import provision
+from adapters.cloudflare.platform.runtime import open_router
+from adapters.cloudflare.recovery import checkpoint_import
+from adapters.cloudflare.recovery.checkpoint_target import import_target, load_target
+from adapters.cloudflare.recovery.checkpoint_wire import MAX_RPC_BYTES, encode_checkpoint
 from research_swarm.checkpoints.image_format import sign_manifest
 from research_swarm.crypto import public_key
 from research_swarm.domain.errors import ErrorCode, ResearchError

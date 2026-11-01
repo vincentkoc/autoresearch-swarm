@@ -7,15 +7,15 @@ from dataclasses import replace
 
 import pytest
 
-from adapters.cloudflare.checkpoint_runtime import RECEIPT_KIND, prepare_target_runtime
-from adapters.cloudflare.deployment import (
+from adapters.cloudflare.platform.deployment import (
     DeploymentCredential,
     credential_manifest_digest,
     load_deployment,
     secret_digest,
 )
-from adapters.cloudflare.research_router import dispatch_key_digest
-from adapters.cloudflare.runtime import open_router
+from adapters.cloudflare.platform.runtime import open_router
+from adapters.cloudflare.recovery.checkpoint_runtime import RECEIPT_KIND, prepare_target_runtime
+from adapters.cloudflare.research.research_router import dispatch_key_digest
 from research_swarm.control.auth import CredentialStore
 from research_swarm.crypto import public_key
 from research_swarm.domain.assignments import signing_key_id

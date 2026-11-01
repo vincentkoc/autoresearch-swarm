@@ -1,6 +1,6 @@
 {
   "name": "research-swarm-production-operator-fixture",
-  "main": "production_operator_fixture.mjs",
+  "main": "qualification/production_operator_fixture.mjs",
   "workers_dev": false,
   "preview_urls": false,
   "compatibility_date": "2026-10-30",

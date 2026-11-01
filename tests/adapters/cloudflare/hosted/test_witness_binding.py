@@ -2,7 +2,7 @@
 
 import pytest
 
-from adapters.cloudflare.witness_binding import WitnessHTTPTransport
+from adapters.cloudflare.platform.witness_binding import WitnessHTTPTransport
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from tests.workers.test_time_witnesses import encoded, payload, pending, signed
 

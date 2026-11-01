@@ -5,8 +5,8 @@ from datetime import datetime
 
 import pytest
 
-from adapters.cloudflare.hosted_http import capabilities
-from adapters.cloudflare.research_router import HostedReconciliationConfiguration
+from adapters.cloudflare.research.hosted_http import capabilities
+from adapters.cloudflare.research.research_router import HostedReconciliationConfiguration
 from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.control.worker_outputs import WorkerOutputIntent
 from research_swarm.domain.canonical import canonical_bytes

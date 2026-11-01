@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from adapters.cloudflare.exclusive import exclusive
+from adapters.cloudflare.platform.exclusive import exclusive
 from research_swarm.domain.errors import ErrorCode, ResearchError
 
 

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedEvaluationConfiguration
+from adapters.cloudflare.research.research_router import HostedEvaluationConfiguration
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.artifacts import ArtifactRecord, StoredBlob

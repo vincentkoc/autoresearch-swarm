@@ -4,8 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from adapters.cloudflare import checkpoint_capture
-from adapters.cloudflare.checkpoint_capture import capture_checkpoint
+from adapters.cloudflare.recovery import checkpoint_capture
+from adapters.cloudflare.recovery.checkpoint_capture import capture_checkpoint
 from research_swarm.checkpoints.capture import CaptureLimits, capture_rows, preflight_rows
 from research_swarm.checkpoints.image_format import LAYOUT, row_values, sign_manifest, verify_image
 from research_swarm.control.backup import BackupControl
@@ -354,7 +354,7 @@ async def test_concurrent_connection_cannot_split_the_captured_snapshot(sealed):
 async def test_oversized_metadata_refuses_before_deployment_payload_read(
     sealed, monkeypatch, table, column
 ):
-    from adapters.cloudflare import checkpoint_schema
+    from adapters.cloudflare.recovery import checkpoint_schema
 
     sealed.store.write(
         lambda sql: sql.execute(f"UPDATE {table} SET {column}=?", ("x" * (256 * 1024 + 1),))

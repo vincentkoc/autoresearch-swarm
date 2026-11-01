@@ -2,9 +2,9 @@
 
 import pytest
 
-from adapters.cloudflare import activation_cut
-from adapters.cloudflare.activation_cut import inspect_activation_cut
-from adapters.cloudflare.checkpoint_runtime import RuntimePreparationReceipt
+from adapters.cloudflare.recovery import activation_cut
+from adapters.cloudflare.recovery.activation_cut import inspect_activation_cut
+from adapters.cloudflare.recovery.checkpoint_runtime import RuntimePreparationReceipt
 from research_swarm.domain.artifacts import ArtifactRecord, UploadSpec
 from research_swarm.domain.backup import RestoreReceipt
 from research_swarm.domain.canonical import content_digest, strict_json_loads

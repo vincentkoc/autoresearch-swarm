@@ -8,9 +8,9 @@ from threading import Barrier
 import httpx
 import pytest
 
-from adapters.cloudflare.checkpoint_closure import reconcile_target_attempt
-from adapters.cloudflare.hosted_http import handle
-from adapters.cloudflare.recovery_router import ExistingRecoveryRouter
+from adapters.cloudflare.recovery.checkpoint_closure import reconcile_target_attempt
+from adapters.cloudflare.recovery.recovery_router import ExistingRecoveryRouter
+from adapters.cloudflare.research.hosted_http import handle
 from research_swarm.client import ResearchClient
 from research_swarm.control.auth import CredentialStore
 from research_swarm.control.observations import PublishAttempt

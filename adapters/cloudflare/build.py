@@ -8,6 +8,67 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT.parents[1] / "src/research_swarm"
+SOURCES = {
+    "delivery/delivery_registry.py": "delivery_registry.py",
+    "delivery/delivery_router.py": "delivery_router.py",
+    "delivery/orchestration.py": "orchestration.py",
+    "delivery/startup.py": "startup.py",
+    "delivery/transfers.py": "transfers.py",
+    "delivery/wait_delivery.py": "wait_delivery.py",
+    "platform/atomic.py": "atomic.py",
+    "platform/deployment.py": "deployment.py",
+    "platform/durable_sql.py": "durable_sql.py",
+    "platform/ed25519.py": "ed25519.py",
+    "platform/exclusive.py": "exclusive.py",
+    "platform/http_binding.py": "http_binding.py",
+    "platform/http_io.mjs": "http_io.mjs",
+    "platform/provider_management.py": "provider_management.py",
+    "platform/provisioning.py": "provisioning.py",
+    "platform/r2_binding.py": "r2_binding.py",
+    "platform/r2_io.mjs": "r2_io.mjs",
+    "platform/runtime.py": "runtime.py",
+    "platform/witness_binding.py": "witness_binding.py",
+    "platform/witness_io.mjs": "witness_io.mjs",
+    "qualification/fixture_transport.mjs": "fixture_transport.mjs",
+    "qualification/native_router_qualification.py": "native_router_qualification.py",
+    "qualification/r2_qualification.py": "r2_qualification.py",
+    "qualification/router_qualification.py": "router_qualification.py",
+    "qualification/signing_qualification.py": "signing_qualification.py",
+    "qualification/storage_qualification.py": "storage_qualification.py",
+    "qualification/witness_qualification.py": "witness_qualification.py",
+    "recovery/activation_cut.py": "activation_cut.py",
+    "recovery/activation_history.py": "activation_history.py",
+    "recovery/checkpoint_activation.py": "checkpoint_activation.py",
+    "recovery/checkpoint_admission.py": "checkpoint_admission.py",
+    "recovery/checkpoint_anchor.py": "checkpoint_anchor.py",
+    "recovery/checkpoint_artifacts.py": "checkpoint_artifacts.py",
+    "recovery/checkpoint_capture.py": "checkpoint_capture.py",
+    "recovery/checkpoint_closure.py": "checkpoint_closure.py",
+    "recovery/checkpoint_election.py": "checkpoint_election.py",
+    "recovery/checkpoint_history.py": "checkpoint_history.py",
+    "recovery/checkpoint_import.py": "checkpoint_import.py",
+    "recovery/checkpoint_requalification.py": "checkpoint_requalification.py",
+    "recovery/checkpoint_routes.py": "checkpoint_routes.py",
+    "recovery/checkpoint_runtime.py": "checkpoint_runtime.py",
+    "recovery/checkpoint_schema.py": "checkpoint_schema.py",
+    "recovery/checkpoint_source.py": "checkpoint_source.py",
+    "recovery/checkpoint_target.py": "checkpoint_target.py",
+    "recovery/checkpoint_turns.py": "checkpoint_turns.py",
+    "recovery/checkpoint_wire.py": "checkpoint_wire.py",
+    "recovery/recovery_router.py": "recovery_router.py",
+    "recovery/runtime_history.py": "runtime_history.py",
+    "research/artifact_router.py": "artifact_router.py",
+    "research/evaluations.py": "evaluations.py",
+    "research/hosted_http.py": "hosted_http.py",
+    "research/lifecycle.py": "lifecycle.py",
+    "research/reconciliation.py": "reconciliation.py",
+    "research/research_admission.py": "research_admission.py",
+    "research/research_router.py": "research_router.py",
+    "research/result_publication.py": "result_publication.py",
+    "research/scientific.py": "scientific.py",
+    "research/worker_inputs.py": "worker_inputs.py",
+    "research/worker_outputs.py": "worker_outputs.py",
+}
 COMMON = (
     "atomic.py",
     "exclusive.py",
@@ -99,6 +160,9 @@ def build(target="qualification", *, output=None):
     if target not in TARGETS:
         raise ValueError("Unknown Cloudflare build target")
     directory, ownership, entry, additions = TARGETS[target]
+    sources = {name: ROOT / path for path, name in SOURCES.items()}
+    if len(sources) != len(SOURCES):
+        raise RuntimeError("Duplicate generated Cloudflare module name")
     output = ROOT / directory if output is None else Path(output)
     marker = output / ".research-cloudflare-build"
     names = command_names()
@@ -112,7 +176,7 @@ def build(target="qualification", *, output=None):
     marker.write_text(ownership)
     shutil.copyfile(ROOT / entry, output / "entry.py")
     for name in (*COMMON, *additions):
-        shutil.copyfile(ROOT / name, output / name)
+        shutil.copyfile(sources[name], output / name)
     shutil.copytree(SOURCE, output / "research_swarm", ignore=shutil.ignore_patterns("__pycache__"))
     (output / "commands.json").write_text(json.dumps(names) + "\n")
     return output

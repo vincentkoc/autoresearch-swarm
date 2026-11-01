@@ -7,8 +7,8 @@ from threading import Barrier
 
 import pytest
 
-from adapters.cloudflare import checkpoint_routes
-from adapters.cloudflare.checkpoint_routes import issue_target_route
+from adapters.cloudflare.recovery import checkpoint_routes
+from adapters.cloudflare.recovery.checkpoint_routes import issue_target_route
 from research_swarm.control.recovery_routes import verify_logical_recovery_route
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError

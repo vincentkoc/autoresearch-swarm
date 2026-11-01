@@ -7,7 +7,7 @@ from threading import Barrier
 
 import pytest
 
-from adapters.cloudflare.checkpoint_turns import reconcile_target_turn
+from adapters.cloudflare.recovery.checkpoint_turns import reconcile_target_turn
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id

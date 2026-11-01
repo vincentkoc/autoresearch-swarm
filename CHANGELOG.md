@@ -29,6 +29,8 @@
 
 ### Infrastructure adapters
 
+- Organize Cloudflare source by platform, research, delivery and recovery roles.
+  Preserve generated module names and document the shared adapter ports.
 - Add Temporal delivery and replay against the shared research authority.
 - Add Cloudflare Workflow delivery, Durable Object authority and R2 storage.
 - Support fenced checkpoint recovery, target activation, clock requalification

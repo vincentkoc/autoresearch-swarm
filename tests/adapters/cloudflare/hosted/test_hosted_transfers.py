@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare import transfers as adapter
-from adapters.cloudflare.research_router import HostedTransferConfiguration
+from adapters.cloudflare.delivery import transfers as adapter
+from adapters.cloudflare.research.research_router import HostedTransferConfiguration
 from research_swarm.domain.canonical import content_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id

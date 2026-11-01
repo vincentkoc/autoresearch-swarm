@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedPublicationConfiguration
+from adapters.cloudflare.research.research_router import HostedPublicationConfiguration
 from research_swarm.control.native_time_witnesses import NativeWitnessSource
 from research_swarm.control.time_witnesses import WitnessSigner
 from research_swarm.control.worker_outputs import WorkerOutputIntent

@@ -4,14 +4,14 @@ import json
 
 import pytest
 
-from adapters.cloudflare.activation_history import require_completed_activation
-from adapters.cloudflare.checkpoint_target import retained_target_binding
-from adapters.cloudflare.provisioning import (
+from adapters.cloudflare.platform.provisioning import (
     ProvisioningReceipt,
     complete_deployment_in,
     require_deployment,
     write_deployment_intent,
 )
+from adapters.cloudflare.recovery.activation_history import require_completed_activation
+from adapters.cloudflare.recovery.checkpoint_target import retained_target_binding
 from research_swarm.control.hosted_activation_proofs import (
     ACTIVATION_OPERATION,
     activation_key,

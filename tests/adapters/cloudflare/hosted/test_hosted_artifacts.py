@@ -6,7 +6,7 @@ import zipfile
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedArtifactConfiguration
+from adapters.cloudflare.research.research_router import HostedArtifactConfiguration
 from research_swarm.domain.artifacts import ArtifactRecord, StoredBlob, UploadSpec
 from research_swarm.domain.backup import WorkspaceSeal
 from research_swarm.domain.canonical import content_digest

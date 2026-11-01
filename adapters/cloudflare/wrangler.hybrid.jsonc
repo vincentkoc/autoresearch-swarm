@@ -1,6 +1,6 @@
 {
   "name": "research-swarm-hybrid",
-  "main": "hybrid.ts",
+  "main": "delivery/hybrid.ts",
   "workers_dev": false,
   "compatibility_date": "2026-10-30",
   "vars": {

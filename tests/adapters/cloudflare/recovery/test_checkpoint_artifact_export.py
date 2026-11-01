@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from adapters.cloudflare.checkpoint_artifacts import read_source_artifact
+from adapters.cloudflare.recovery.checkpoint_artifacts import read_source_artifact
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ResearchError
 from research_swarm.domain.types import new_id

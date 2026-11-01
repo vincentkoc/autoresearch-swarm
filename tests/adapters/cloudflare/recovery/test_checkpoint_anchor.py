@@ -5,9 +5,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from adapters.cloudflare import checkpoint_source
-from adapters.cloudflare.checkpoint_anchor import KIND, TABLE, require_anchor_in
-from adapters.cloudflare.checkpoint_wire import decode_checkpoint
+from adapters.cloudflare.recovery import checkpoint_source
+from adapters.cloudflare.recovery.checkpoint_anchor import KIND, TABLE, require_anchor_in
+from adapters.cloudflare.recovery.checkpoint_wire import decode_checkpoint
 from research_swarm.domain.checkpoint_elections import LogicalElectionAnchor
 from research_swarm.domain.checkpoint_images import LogicalChunk
 from research_swarm.domain.errors import ErrorCode, ResearchError

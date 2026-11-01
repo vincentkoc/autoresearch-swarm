@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from adapters.cloudflare.research_router import HostedScientificConfiguration
+from adapters.cloudflare.research.research_router import HostedScientificConfiguration
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.canonical import canonical_bytes, record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError

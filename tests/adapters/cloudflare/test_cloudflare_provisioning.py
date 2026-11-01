@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from adapters.cloudflare.provisioning import provision, require_deployment
+from adapters.cloudflare.platform.provisioning import provision, require_deployment
 from research_swarm.control.auth import CredentialStore
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.state.database import Database, Transaction

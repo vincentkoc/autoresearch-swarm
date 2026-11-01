@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from adapters.cloudflare import runtime_history
-from adapters.cloudflare.checkpoint_runtime import guarded
-from adapters.cloudflare.runtime_history import (
+from adapters.cloudflare.recovery import runtime_history
+from adapters.cloudflare.recovery.checkpoint_runtime import guarded
+from adapters.cloudflare.recovery.runtime_history import (
     REQUALIFICATION_KIND,
     fence_digest,
     read_qualification,

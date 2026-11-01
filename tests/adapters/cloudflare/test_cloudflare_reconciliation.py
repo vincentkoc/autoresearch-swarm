@@ -8,12 +8,12 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from adapters.cloudflare.deployment import (
+from adapters.cloudflare.delivery.wait_delivery import wait_delivery_key
+from adapters.cloudflare.platform.deployment import (
     DeploymentCredential,
     authority_id,
     credential_manifest_digest,
 )
-from adapters.cloudflare.wait_delivery import wait_delivery_key
 from research_swarm.api.time_witnesses import create_time_witness_app, witness_consumer_digest
 from research_swarm.client import ResearchClient
 from research_swarm.control.queries import RecordQuery

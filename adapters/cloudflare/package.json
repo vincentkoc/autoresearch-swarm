@@ -4,11 +4,11 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "build": "python3 build.py && esbuild crypto.js --bundle --format=esm --platform=browser --outfile=.generated/crypto.mjs && esbuild hybrid_contracts.ts hybrid_creation.ts agent_facade.ts --bundle --format=esm --platform=browser --outdir=.generated --out-extension:.js=.mjs",
-    "build:production": "python3 build.py --target production && esbuild crypto.js --bundle --format=esm --platform=browser --outfile=.generated-production/crypto.mjs",
-    "test:crypto": "node --test crypto.test.mjs",
-    "check:hybrid": "tsc --noEmit && prettier --check \"hybrid*.ts\" \"hybrid*.mjs\" \"agent_facade.*\" r2_fixture.ts tsconfig.json \"wrangler.*.jsonc\"",
-    "test:hybrid": "node --test hybrid_contracts.test.mjs agent_facade.test.mjs && node --experimental-strip-types --test hybrid_transport.test.mjs hybrid_recovery.test.mjs"
+    "build": "python3 build.py && esbuild platform/crypto.js --bundle --format=esm --platform=browser --outfile=.generated/crypto.mjs && esbuild delivery/hybrid_contracts.ts delivery/hybrid_creation.ts delivery/agent_facade.ts --bundle --format=esm --platform=browser --outbase=delivery --outdir=.generated --out-extension:.js=.mjs",
+    "build:production": "python3 build.py --target production && esbuild platform/crypto.js --bundle --format=esm --platform=browser --outfile=.generated-production/crypto.mjs",
+    "test:crypto": "node --test tests/crypto.test.mjs",
+    "check:hybrid": "tsc --noEmit && prettier --check \"delivery/*.ts\" \"tests/hybrid*.mjs\" \"tests/agent_facade.*\" qualification/r2_fixture.ts tsconfig.json \"wrangler.*.jsonc\"",
+    "test:hybrid": "node --test tests/hybrid_contracts.test.mjs tests/agent_facade.test.mjs && node --experimental-strip-types --test tests/hybrid_transport.test.mjs tests/hybrid_recovery.test.mjs"
   },
   "dependencies": {
     "@noble/curves": "2.4.0"
