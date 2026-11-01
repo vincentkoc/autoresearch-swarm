@@ -193,3 +193,32 @@ There is no hook argument that replaces the admitted controls or policy.
 The workload still owns its Python code and numeric target. The declaration is
 a data and mutation contract for trusted local execution; it does not prove that
 arbitrary workload code labelled its diagnostics correctly.
+
+## Recorded control-schedule replay
+
+`ControlTranscript.capture(journal)` snapshots a closed session with settled
+calls. Its bounded JSON record preserves ordered requests, proposals, terminal
+outcomes and actual application receipts. Capture and load reject missing,
+incomplete or uncertain applications and inconsistent identities or control
+revisions. Failed and cancelled decisions remain evidence but add no application
+to the replay schedule.
+
+`ReplayHook.from_context(context, target, transcript)` requires the same admitted
+contract and initial controls, a distinct run binding and a new trace path. Call
+`boundary(completed_step)` at every training update boundary. It applies controls
+at the recorded **application** steps, including keep decisions; it never calls
+a model or reproduces the original inference timing. Skipping a scheduled
+boundary stops replay. Check that `close().status` is `complete` before treating
+the schedule as reproduced.
+
+The append-only JSONL trace records explicit `control_schedule_replay` mode,
+source transcript digest, new run binding, intents before mutation and actual
+readback receipts. A partial mutation is uncertain, without rollback. Existing
+trace paths are rejected. Partial or interrupted traces are not resumable and
+never establish completion; start a separate attempt from its initial controls.
+
+This replays numeric controls only. It does not restore model weights, optimizer
+state, RNG state or data position, reproduce model reasoning, or establish the
+same training trajectory. Keep the transcript and replay trace as trial
+artifacts, and preserve replay mode in reports rather than claiming a live
+invocation of the source policy.

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replay settled reactive control schedules at their recorded application steps,
+  with bounded transcripts, separate provenance and non-resumable mutation traces.
+
 - Bind optional reactive declarations to protected project protocols, sealed
   training contexts and reused worker preparations without changing legacy digests
   or loading native journal infrastructure into portable controllers.
