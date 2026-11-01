@@ -6,7 +6,6 @@ import argparse
 import ast
 import configparser
 import hashlib
-import io
 import json
 import os
 import re
@@ -18,6 +17,7 @@ import zipfile
 from collections.abc import Mapping
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
+from tempfile import TemporaryFile
 
 from packaging.utils import canonicalize_name, parse_sdist_filename, parse_wheel_filename
 from packaging.version import Version
@@ -230,19 +230,27 @@ def committed_files(root: Path, paths: list[str]) -> dict[str, bytes]:
         mode, kind, identifier = header.split()
         require(kind == b"blob" and mode in {b"100644", b"100755"}, "Nonregular source file")
         entries.append((identifier, name.decode("utf-8")))
-    result = subprocess.check_output(
-        ["git", "cat-file", "--batch"],
-        input=b"".join(identifier + b"\n" for identifier, _ in entries),
-        cwd=root,
-    )
-    stream = io.BytesIO(result)
     files = {}
-    for identifier, name in entries:
-        observed, kind, size = stream.readline().split()
-        require(observed == identifier and kind == b"blob", "Unexpected Git object")
-        files[name] = stream.read(int(size))
-        require(len(files[name]) == int(size) and stream.read(1) == b"\n", "Truncated Git object")
-    require(not stream.read(), "Unexpected Git object data")
+    # A regular output descriptor avoids pipe backpressure while Git consumes
+    # a large batch. The anonymous temporary file closes with this operation.
+    with TemporaryFile() as stream:
+        subprocess.run(
+            ["git", "cat-file", "--batch"],
+            input=b"".join(identifier + b"\n" for identifier, _ in entries),
+            stdout=stream,
+            cwd=root,
+            check=True,
+            timeout=60,
+        )
+        stream.seek(0)
+        for identifier, name in entries:
+            observed, kind, size = stream.readline().split()
+            require(observed == identifier and kind == b"blob", "Unexpected Git object")
+            files[name] = stream.read(int(size))
+            require(
+                len(files[name]) == int(size) and stream.read(1) == b"\n", "Truncated Git object"
+            )
+        require(not stream.read(), "Unexpected Git object data")
     return files
 
 

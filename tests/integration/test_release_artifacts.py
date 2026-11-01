@@ -10,7 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from scripts.release import archive_files, check_release, digest, prebuilt_wheel, source_identity
+from scripts.release import (
+    archive_files,
+    check_release,
+    committed_files,
+    digest,
+    prebuilt_wheel,
+    source_identity,
+)
 from scripts.release import validate_distributions as validate
 from tests.paths import REPO_ROOT
 
@@ -203,3 +210,11 @@ def test_stale_artifacts_cannot_be_relabelled_with_a_new_commit(
     git("commit", "-qm", "Second same-version source")
     with pytest.raises(ValueError, match="differs from the committed source"):
         check_release(root, directory, write=True)
+
+
+def test_committed_source_batch_exceeds_pipe_capacity() -> None:
+    files = committed_files(REPO_ROOT, ["src/research_swarm"])
+    assert len(files) > 200 and sum(map(len, files.values())) > 1024 * 1024
+    assert files["src/research_swarm/__init__.py"] == subprocess.check_output(
+        ["git", "show", "HEAD:src/research_swarm/__init__.py"], cwd=REPO_ROOT, timeout=10
+    )
