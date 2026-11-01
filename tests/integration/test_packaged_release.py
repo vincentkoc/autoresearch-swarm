@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,6 +16,7 @@ from tempfile import TemporaryDirectory
 import pytest
 from mcp import Client, StdioServerParameters
 
+from scripts.release import digest, prebuilt_wheel, source_identity
 from tests.api.test_cli_mcp import process_environment
 from tests.integration.test_agent_research_cycle import command, context, record, tool
 from tests.paths import REPO_ROOT
@@ -69,13 +72,18 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
         ],
         cwd=repository,
     )
-    distributions = package_root / "dist"
-    run(
-        [uv, "build", "--wheel", "--python", sys.executable, "--out-dir", str(distributions)],
-        cwd=repository,
-    )
-    wheels = list(distributions.glob("*.whl"))
-    assert len(wheels) == 1
+    wheel = prebuilt_wheel(os.environ)
+    if wheel is None:
+        distributions = package_root / "dist"
+        run(
+            [uv, "build", "--wheel", "--python", sys.executable, "--out-dir", str(distributions)],
+            cwd=repository,
+        )
+        wheels = list(distributions.glob("*.whl"))
+        assert len(wheels) == 1
+        wheel = wheels[0]
+    expected_digest = digest(wheel)
+    expected_version = source_identity(repository)["version"]
     installed = package_root / "installed"
     run([uv, "venv", "--python", sys.executable, str(installed)])
     scripts = installed / ("Scripts" if sys.platform == "win32" else "bin")
@@ -90,7 +98,7 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
             str(python),
             "--constraints",
             str(constraints),
-            str(wheels[0]),
+            str(wheel),
         ]
     )
     origin = json.loads(
@@ -100,10 +108,14 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
                 "-I",
                 "-c",
                 (
-                    "import json,importlib.util,research_swarm; "
+                    "import hashlib,json,importlib.util,research_swarm; "
                     "from importlib.metadata import distribution; "
                     "d=distribution('autoresearch-swarm'); "
                     "print(json.dumps({'module':research_swarm.__file__,'version':d.version,"
+                    "'module_version':research_swarm.__version__,"
+                    "'files':{str(p):hashlib.sha256(d.locate_file(p).read_bytes()).hexdigest() "
+                    "for p in d.files if str(p).startswith('research_swarm/') "
+                    "and '__pycache__' not in p.parts},"
                     "'direct_url':json.loads(d.read_text('direct_url.json')),"
                     "'temporal':importlib.util.find_spec('temporalio') is not None,"
                     "'torch':importlib.util.find_spec('torch') is not None,"
@@ -113,7 +125,16 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
         )
     )
     assert Path(origin["module"]).resolve().is_relative_to(installed.resolve())
-    assert origin["direct_url"]["url"].endswith(wheels[0].name)
+    assert origin["version"] == origin["module_version"] == expected_version
+    assert origin["direct_url"]["url"].endswith(wheel.name)
+    assert digest(wheel) == expected_digest
+    with zipfile.ZipFile(wheel) as archive:
+        expected_files = {
+            name: hashlib.sha256(archive.read(name)).hexdigest()
+            for name in archive.namelist()
+            if name.startswith("research_swarm/") and not name.endswith("/")
+        }
+    assert origin["files"] == expected_files
     assert "dir_info" not in origin["direct_url"]
     assert not any(origin[name] for name in ("temporal", "torch", "mlx"))
 

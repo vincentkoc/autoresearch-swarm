@@ -1,0 +1,9 @@
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.ts text eol=lf
+*.mjs text eol=lf
+tests/conformance/** -text
+tests/fixtures/** -text

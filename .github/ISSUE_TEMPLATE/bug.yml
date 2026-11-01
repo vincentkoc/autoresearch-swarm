@@ -1,0 +1,21 @@
+name: Bug report
+description: Report a reproducible failure
+labels: [bug]
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+    validations: {required: true}
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include commands and a synthetic example where possible. Remove secrets, private paths and data.
+    validations: {required: true}
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Package version, Python, OS, engine and adapter versions. Include relevant error output.
+    validations: {required: true}

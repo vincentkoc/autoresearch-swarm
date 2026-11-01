@@ -1,0 +1,29 @@
+name: Inactive discussions
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  mark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-stale: 90
+          days-before-close: -1
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: security,bug,accepted,in-progress
+          exempt-pr-labels: security,bug,accepted,in-progress
+          exempt-all-assignees: true
+          exempt-all-milestones: true
+          stale-issue-message: "This discussion has been quiet for 90 days. Please add any new evidence or indicate whether the problem still applies. It will not be closed automatically."
+          stale-pr-message: "This pull request has been quiet for 90 days. Please note its current status or any help needed. It will not be closed automatically."
+          operations-per-run: 50

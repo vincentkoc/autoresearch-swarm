@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Packaging and maintenance
+
+- Add build-once release previews, exact-artifact installation checks and
+  tag-gated PyPI Trusted Publishing with attestations and release checksums.
+- Pin release tooling, limit source distributions to package inputs, and
+  document publisher setup and partial-release recovery.
+- Add dependency updates, inactive-discussion labels without automatic closure,
+  release-note drafts, issue templates and shared editor settings.
+- Group tests by component while preserving frozen conformance fixtures.
+
 ### Research and agent control
 
 - Add local research campaigns with immutable source bundles, explicit budgets,

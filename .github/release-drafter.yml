@@ -1,0 +1,19 @@
+name-template: "Next release"
+tag-template: "next"
+categories:
+  - title: Features
+    labels: [enhancement, feature]
+  - title: Fixes
+    labels: [bug, fix]
+  - title: Maintenance
+    labels: [dependencies, documentation, maintenance]
+change-template: "- $TITLE (#$NUMBER)"
+version-resolver:
+  major: {labels: [breaking]}
+  minor: {labels: [enhancement, feature]}
+  patch: {labels: [bug, fix, dependencies, documentation, maintenance]}
+  default: patch
+template: |
+  $CHANGES
+
+  The package version and CHANGELOG.md remain the release authority.

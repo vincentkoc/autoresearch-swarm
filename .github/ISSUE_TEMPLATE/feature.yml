@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose a research or workflow improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the research workflow and what prevents it from working.
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+      description: Include how an agent would use it and how success could be checked.
+    validations: {required: true}
