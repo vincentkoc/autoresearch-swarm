@@ -115,6 +115,7 @@ def render_experiment_graph_html(
         '<option value="">All categories</option></select>'
         '<label for="layout">Layout</label><select id="layout">'
         '<option value="topology">Connected clusters</option>'
+        '<option value="spread">Spread-out force</option>'
         '<option value="category">Category groups</option>'
         '<option value="ring">Symmetric ring</option></select>'
         '<p class="muted">Category proximity is layout only, '

@@ -53,6 +53,7 @@ onmessage=({data:m})=>{
     nodes=m.nodes;byId=new Map(nodes.map(n=>[n.id,n]));
     simulation?.stop();simulation=null;offsets=new Map();
     grouped=m.mode==='category';packing=m.mode==='topology';
+    const spread=m.mode==='spread';
     if(m.mode==='ring') {
       // Equal spacing is presentation only: no invented edges or score ordering.
       const ordered=[...nodes].sort((a,b)=>a.cluster<b.cluster?-1:a.cluster>b.cluster?1:
@@ -100,7 +101,7 @@ onmessage=({data:m})=>{
       const y=i===0?0:(Math.floor((i-1)/columns)-(components.length-1)/columns/2)*spacing;
       for(const n of members) {
         componentCenters.set(n.id,{x,y,strength:i===0?.003:.06});
-        if(n.fx==null && n.fy==null) {n.x=x+(n.x%50);n.y=y+(n.y%50);}
+        if(!spread && n.fx==null && n.fy==null) {n.x=x+(n.x%50);n.y=y+(n.y%50);}
       }
     });
     // Disconnected components must not repel each other into an artificial ring.
@@ -113,11 +114,13 @@ onmessage=({data:m})=>{
 
     simulation?.stop();
     simulation=Force.forceSimulation(nodes).stop().alphaDecay(.024)
-      .force('charge',grouped?Force.forceManyBody().strength(-45).theta(.9):componentCharge)
+      .force('charge',spread?Force.forceManyBody().strength(-30).distanceMax(90).theta(.9):
+        grouped?Force.forceManyBody().strength(-45).theta(.9):componentCharge)
       .force('link',Force.forceLink(m.edges).id(n=>n.id).distance(e=>e.kind==='causal'?45:65)
-        .strength(e=>e.kind==='causal'?.5:.45/Math.max(1,Math.min(degree.get(e.source.id),degree.get(e.target.id)))))
-      .force('x',Force.forceX(n=>grouped?centers.get(n.cluster).x:componentCenters.get(n.id).x).strength(n=>grouped?.018:componentCenters.get(n.id).strength))
-      .force('y',Force.forceY(n=>grouped?centers.get(n.cluster).y:componentCenters.get(n.id).y).strength(n=>grouped?.018:componentCenters.get(n.id).strength))
+        .strength(e=>spread?(e.kind==='causal'?.012:.003/Math.sqrt(Math.max(1,degree.get(e.source.id),degree.get(e.target.id)))):
+          e.kind==='causal'?.5:.45/Math.max(1,Math.min(degree.get(e.source.id),degree.get(e.target.id)))))
+      .force('x',Force.forceX(n=>spread?0:grouped?centers.get(n.cluster).x:componentCenters.get(n.id).x).strength(n=>spread?.0018:grouped?.018:componentCenters.get(n.id).strength))
+      .force('y',Force.forceY(n=>spread?0:grouped?centers.get(n.cluster).y:componentCenters.get(n.id).y).strength(n=>spread?.0018:grouped?.018:componentCenters.get(n.id).strength))
       .force('collision',Force.forceCollide(5).iterations(1));
     if(!nodes.length) simulation.alpha(0);
     publish();if(nodes.length)wake(1);

@@ -55,7 +55,8 @@ buttons, pan with arrows, zoom with +/− and clear selection with Escape on can
 Reduced-motion users start paused, and may explicitly resume.
 
 Choose **Connected clusters** (the default) to pack disconnected components
-separately, **Category groups** for category-based gravity, or **Symmetric ring**
+separately, **Spread-out force** for the broader square-seeded view with local
+repulsion and weak links, **Category groups** for category-based gravity, or **Symmetric ring**
 for an evenly spaced circle sorted by category and ID. Switching layout clears
 pins and fits the matching records, while keeping filters and selection. Ring
 positions imply no ancestry, similarity, score ranking or execution order.

@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Add a layout selector for connected clusters, category groups and a symmetric
-  ring, retaining filters, selection and recorded ancestry across layout changes.
+  ring plus a broad spread-out force view, retaining filters, selection and recorded ancestry across layout changes.
 
 - Move graph layout to an offline D3 Barnes–Hut worker, batch edge drawing and
   render only on changes. Default to topology-led layout without circular category

@@ -189,6 +189,13 @@ try {
   await evaluate('new Promise(r=>requestAnimationFrame(r))');
   assert.ok(await evaluate('Math.min(...__dots.slice(2).map(p=>p.x))>Math.max(...__dots.slice(0,2).map(p=>p.x))'),
     'Returning from ring restores component packing');
+  await evaluate('document.getElementById("layout").value="spread";document.getElementById("layout").dispatchEvent(new Event("change"))');
+  await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'spread-out force settles');
+  await evaluate('new Promise(r=>requestAnimationFrame(r))');
+  assert.equal(await evaluate('__dots.length'),12,'Spread view keeps every record');
+  assert.ok(await evaluate('__dots.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))'));
+  assert.equal(await evaluate('document.querySelector("#detail h3").textContent'),'Experiment 1','Layout keeps selection');
+  await screenshot('graph-spread.png');
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
   await load('synthetic-240.html');
   assert.equal(await evaluate('document.getElementById("pause").textContent'),'Resume');
