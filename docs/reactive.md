@@ -74,7 +74,7 @@ the caller to declare the version fingerprint of its own callback.
 
 The runner persists a call claim before invoking a policy, outside the database
 transaction. Another runner cannot repeat a recorded call. There is at most one
-in-flight call per session. A monotonic deadline fences a late result and requests
+in-flight local invocation per session. A monotonic deadline fences a late result and requests
 task cancellation. If a callback resists cancellation, its claim stays in flight
 and prevents replacement calls. Closing requests cancellation without waiting.
 Call outcomes include generic failure codes rather than exception messages that
@@ -92,3 +92,51 @@ responses are retained as late or conflicting evidence, not applied changes.
 The contract caps decision count and serialized context/output size. Token caps
 are for providers that support them; reported usage is telemetry, not billing
 authority or proof of actual provider consumption.
+
+## Optional HTTP LLM policy
+
+`ChatCompletionsPolicy` implements the same policy protocol using the existing
+HTTP client dependency. Configure the full endpoint and model explicitly. It
+does not select a provider, discover credentials, fall back to another model or
+retry failed requests.
+
+```python
+import os
+from research_swarm.reactive.chat_completions import (
+    ChatCompletionsConfig,
+    ChatCompletionsPolicy,
+)
+
+config = ChatCompletionsConfig(
+    endpoint="https://api.openai.com/v1/chat/completions",
+    model="MODEL_ID",
+)
+policy = ChatCompletionsPolicy(config, api_key=os.environ["OPENAI_API_KEY"])
+# Declare config.digest as the reactive contract's policy_digest before admission.
+```
+
+The fingerprint covers endpoint, model, instructions, response format, token
+parameter and limits. The API key stays in memory and authorization headers;
+never put credentials in the endpoint or prompt. Plain HTTP requires the
+explicit `allow_insecure_http` option, for example for an operator-selected local
+server. Redirects are rejected and environment proxy discovery is disabled.
+
+The default uses strict `json_schema` output. An explicitly configured
+`json_object` mode supports compatible servers; both receive the same strict
+client validation. The prompt includes admitted control bounds and diagnostic
+definitions. The entire serialized request body, including schema and framing,
+must fit `max_prompt_bytes`; oversized input fails before network access.
+
+The request sets one non-streamed completion, `store=false` and a finite token
+cap. The default `max_completion_tokens` includes reasoning tokens. A server
+that requires `max_tokens` must opt into that fingerprinted parameter; there is
+no automatic fallback. See the [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+and [JSON mode guidance](https://developers.openai.com/api/docs/guides/structured-outputs#json-mode).
+
+Only one complete, non-refused text response without tool calls is accepted.
+Wire bytes, content bytes and the resulting proposal are bounded. Duplicate JSON
+keys, nonfinite values, undeclared controls, out-of-range values and application
+claims are rejected. Request identity and revision come from the caller, never
+from model output. Usage is labelled provider-reported. HTTP fixture tests prove
+this wire contract; they do not qualify a live provider or demonstrate better
+training results.

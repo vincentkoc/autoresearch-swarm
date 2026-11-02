@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an opt-in Chat Completions HTTP decision policy with explicit model/config
+  fingerprints, bounded strict JSON, external credentials and no automatic retries.
+
 - Add a provider-neutral asynchronous decision runner with durable call claims,
   deadlines, late-result evidence and callback or threshold policies. The runner
   stops serving closed training sessions without waiting for resistant callbacks.
