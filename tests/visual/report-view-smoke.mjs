@@ -229,7 +229,7 @@ async function main() {
   await mkdir(output, { recursive: true });
   // Never let a previous invocation's screenshots masquerade as this run's evidence.
   for (const name of ['lineage-desktop.png', 'score-desktop.png', 'lineage-mobile.png',
-    'score-mobile.png', 'score-short-desktop.png']) {
+    'score-mobile.png', 'score-short-desktop.png', 'campaign-served-desktop.png']) {
     await rm(new URL(name, output), { force: true });
   }
   const profile = await mkdtemp(join(tmpdir(), 'swarm-report-view-'));

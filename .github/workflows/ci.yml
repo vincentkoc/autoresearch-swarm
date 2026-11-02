@@ -37,10 +37,8 @@ jobs:
           name: synthetic-report-view-${{ github.sha }}
           path: |
             artifacts/report-view/lineage-desktop.png
-            artifacts/report-view/score-desktop.png
             artifacts/report-view/lineage-mobile.png
-            artifacts/report-view/score-mobile.png
-            artifacts/report-view/score-short-desktop.png
+            artifacts/report-view/campaign-served-desktop.png
           if-no-files-found: error
           retention-days: 14
 
