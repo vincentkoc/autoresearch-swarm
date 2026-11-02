@@ -100,6 +100,22 @@ try {
   await click('[data-id="experiment-8"]');
   assert.match(await evaluate('document.getElementById("detail").textContent'),/0 causal ancestors/);
   assert.match(await evaluate('document.getElementById("detail").textContent'),/Source reference: Experiment 7/);
+  // Keep the inspected node selected while search/category visibility changes.
+  const connections=()=>evaluate('Array.from(document.querySelectorAll("#detail .connection"), b=>b.textContent)');
+  const initialConnections=await connections();
+  assert.deepEqual(initialConnections,['Source reference: Experiment 7','Child: Experiment 9']);
+  for(const [id,value,event] of [
+    ['search','experiment-8','input'],['cluster',JSON.stringify('Category 2'),'change']
+  ]) {
+    await evaluate('document.getElementById('+JSON.stringify(id)+').value='+JSON.stringify(value)+
+      ';document.getElementById('+JSON.stringify(id)+').dispatchEvent(new Event('+JSON.stringify(event)+'))');
+    assert.deepEqual(await connections(),initialConnections.map(text=>text+' (filtered)'),
+      id+' immediately marks hidden connections');
+    assert.equal(await evaluate('document.querySelector("#detail h3").textContent'),'Experiment 8');
+    await evaluate('document.getElementById('+JSON.stringify(id)+').value="";'+
+      'document.getElementById('+JSON.stringify(id)+').dispatchEvent(new Event('+JSON.stringify(event)+'))');
+    assert.deepEqual(await connections(),initialConnections,id+' clearing removes filtered annotations');
+  }
   await click('#more');
   assert.equal(await evaluate('document.querySelectorAll(".node-item").length'),200);
   await evaluate('document.getElementById("search").value="experiment-239";document.getElementById("search").dispatchEvent(new Event("input"))');

@@ -250,7 +250,8 @@ function filter() {
       .toLocaleLowerCase().includes(term)));
   shown=new Set(visible.map(n=>n.id));
   visibleEdges=edges.filter(e=>shown.has(e.source)&&shown.has(e.target));
-  listLimit=100;renderList();$('empty').hidden=visible.length>0;alpha=1;autoFit=true;fit();
+  listLimit=100;renderList();if(selected) select(selected);
+  $('empty').hidden=visible.length>0;alpha=1;autoFit=true;fit();
 }
 function syncPause() {
   $('pause').textContent=paused?'Resume':'Pause';
