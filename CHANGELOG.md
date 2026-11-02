@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Report interrupted artifact and worker downloads as retryable transport failures, with partial-file cleanup.
+
+- Return structured capability errors for unknown HTTP commands instead of uncertain-delivery advice.
+
+- Check upload and read permissions before creating artifact uploads or reserving storage.
+
 - Add an ordinary CPU project that demonstrates pending-decision training,
   bounded intervention, a fixed-control baseline and independently evaluated replay.
 

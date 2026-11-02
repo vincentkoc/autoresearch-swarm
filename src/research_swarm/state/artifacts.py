@@ -242,6 +242,8 @@ class ArtifactService:
         return row
 
     def begin_upload(self, context: CommandContext, request: BeginUpload) -> JsonObject:
+        context.principal.require("artifact.upload")
+        context.principal.require("read")
         request = BeginUpload.model_validate(request)
 
         response = self.database.execute(
