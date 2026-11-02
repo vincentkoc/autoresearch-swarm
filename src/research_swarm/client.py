@@ -591,10 +591,17 @@ class ResearchClient:
         idempotency_key: str,
         manifest_path: str = "research.toml",
         revision: str | None = None,
+        capture_timeout_seconds: float = 30,
     ) -> ArtifactRef:
         with TemporaryDirectory(prefix="research-capture-") as temporary:
             bundle = Path(temporary) / "source.zip"
-            capture_project(root, bundle, manifest_path=manifest_path, revision=revision)
+            capture_project(
+                root,
+                bundle,
+                manifest_path=manifest_path,
+                revision=revision,
+                capture_timeout_seconds=capture_timeout_seconds,
+            )
             return self.upload_file(
                 bundle, idempotency_key=idempotency_key, media_type="application/zip"
             )
@@ -606,9 +613,14 @@ class ResearchClient:
         idempotency_key: str,
         manifest_path: str = "research.toml",
         revision: str | None = None,
+        capture_timeout_seconds: float = 30,
     ) -> JsonObject:
         reference = self.capture_project(
-            root, idempotency_key=idempotency_key, manifest_path=manifest_path, revision=revision
+            root,
+            idempotency_key=idempotency_key,
+            manifest_path=manifest_path,
+            revision=revision,
+            capture_timeout_seconds=capture_timeout_seconds,
         )
         return self.command(
             "project.register",
@@ -743,6 +755,7 @@ class AsyncResearchClient:
         idempotency_key: str,
         manifest_path: str = "research.toml",
         revision: str | None = None,
+        capture_timeout_seconds: float = 30,
     ) -> ArtifactRef:
         return await asyncio.to_thread(
             self.client.capture_project,
@@ -750,6 +763,7 @@ class AsyncResearchClient:
             idempotency_key=idempotency_key,
             manifest_path=manifest_path,
             revision=revision,
+            capture_timeout_seconds=capture_timeout_seconds,
         )
 
     async def register_project(
@@ -759,6 +773,7 @@ class AsyncResearchClient:
         idempotency_key: str,
         manifest_path: str = "research.toml",
         revision: str | None = None,
+        capture_timeout_seconds: float = 30,
     ) -> JsonObject:
         return await asyncio.to_thread(
             self.client.register_project,
@@ -766,6 +781,7 @@ class AsyncResearchClient:
             idempotency_key=idempotency_key,
             manifest_path=manifest_path,
             revision=revision,
+            capture_timeout_seconds=capture_timeout_seconds,
         )
 
     async def artifact(self, identifier: str) -> ArtifactRecord:

@@ -234,6 +234,7 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("path", type=Path)
         item.add_argument("--manifest", default="research.toml")
         item.add_argument("--source-revision")
+        item.add_argument("--capture-timeout-seconds", type=float, default=30)
         item.add_argument("--key", required=True)
     search = commands.add_parser("search", help="Plan or advance a bounded research loop")
     search_actions = search.add_subparsers(dest="search_action", required=True)
@@ -475,12 +476,14 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 idempotency_key=args.key,
                 manifest_path=args.manifest,
                 revision=args.source_revision,
+                capture_timeout_seconds=args.capture_timeout_seconds,
             ).model_dump(mode="json")
         return client.register_project(
             args.path,
             idempotency_key=args.key,
             manifest_path=args.manifest,
             revision=args.source_revision,
+            capture_timeout_seconds=args.capture_timeout_seconds,
         )
     if args.action == "get":
         return client.get(RecordQuery(kind=args.kind).kind, args.identifier)

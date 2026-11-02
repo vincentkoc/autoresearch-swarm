@@ -27,6 +27,7 @@ MAX_TOOL_BYTES = 128 * 1024
 ContextLimit = Annotated[int, Field(strict=True, ge=1, le=50)]
 EventLimit = Annotated[int, Field(strict=True, ge=1, le=100)]
 LocalPath = Annotated[str, Field(min_length=1, max_length=4096)]
+CaptureTimeout = Annotated[float, Field(strict=True, gt=0, le=3600, allow_inf_nan=False)]
 
 
 class ToolReply(VersionedRecord):
@@ -230,6 +231,7 @@ def make_mcp(
             idempotency_key: Name,
             manifest_path: str = "research.toml",
             revision: str | None = None,
+            capture_timeout_seconds: CaptureTimeout = 30,
         ) -> ToolCall:
             """Capture declared project files. Requires source.capture scope."""
 
@@ -241,6 +243,7 @@ def make_mcp(
                     idempotency_key=idempotency_key,
                     manifest_path=manifest_path,
                     revision=revision,
+                    capture_timeout_seconds=capture_timeout_seconds,
                 ).model_dump(mode="json")
 
             return tool_result(capture)

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expose a bounded Git source-capture timeout through the sync/async SDK,
+  project CLI and local MCP tool, shared across manifest reads and bundling.
+
 - Add an ordinary CPU project that demonstrates pending-decision training,
   bounded intervention, a fixed-control baseline and independently evaluated replay.
 

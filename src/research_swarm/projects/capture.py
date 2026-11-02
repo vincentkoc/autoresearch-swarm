@@ -1,5 +1,7 @@
 """Resolve source selection once and capture a repository into a caller-owned bundle."""
 
+import math
+import time
 from pathlib import Path
 
 from research_swarm.projects.manifest import MAX_PROJECT_MANIFEST_BYTES, parse_manifest
@@ -19,12 +21,32 @@ def capture_project(
     *,
     manifest_path: str = "research.toml",
     revision: str | None = None,
+    capture_timeout_seconds: float = 30,
 ) -> SourceManifest:
+    """Share a bounded Git-read budget across manifest resolution and bundling."""
+    if (
+        isinstance(capture_timeout_seconds, bool)
+        or not math.isfinite(capture_timeout_seconds)
+        or not 0 < capture_timeout_seconds <= 3600
+    ):
+        raise ValueError("Source capture timeout must be within (0, 3600] seconds")
+    deadline = time.monotonic() + capture_timeout_seconds
+
+    def remaining() -> float:
+        seconds = deadline - time.monotonic()
+        if seconds <= 0:
+            raise TimeoutError("Source capture deadline expired")
+        return seconds
+
     root = root.resolve()
     portable_path(manifest_path)
     if revision is not None:
         revision, content = read_git_file(
-            root, revision, manifest_path, limit=MAX_PROJECT_MANIFEST_BYTES
+            root,
+            revision,
+            manifest_path,
+            limit=MAX_PROJECT_MANIFEST_BYTES,
+            timeout_seconds=remaining(),
         )
         manifest = parse_manifest(content)
     else:
@@ -36,8 +58,15 @@ def capture_project(
                 manifest.source.base_revision,
                 manifest_path,
                 limit=MAX_PROJECT_MANIFEST_BYTES,
+                timeout_seconds=remaining(),
             )
             manifest = parse_manifest(content)
     if revision is not None:
-        return bundle_git(root, revision, destination, paths=manifest.source.paths)
+        return bundle_git(
+            root,
+            revision,
+            destination,
+            paths=manifest.source.paths,
+            timeout_seconds=remaining(),
+        )
     return bundle_directory(root, destination, paths=manifest.source.paths)
