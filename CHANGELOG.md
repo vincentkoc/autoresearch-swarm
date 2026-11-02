@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep Tree coordinates finite for extreme scores and render the Time pane as an
+  embedded chart with readable run legends, capture completeness and exclusion
+  summaries at desktop and mobile sizes, without cropped standalone-export text.
+
 - Rework the campaign view into a compact three-column workspace: narrow context
   rail, score-positioned candidate ancestry with muted branches, and a stacked
   leaderboard/activity rail. Preserve unscored candidates on a separate rail and

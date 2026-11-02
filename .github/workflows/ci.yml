@@ -39,6 +39,8 @@ jobs:
             artifacts/report-view/lineage-desktop.png
             artifacts/report-view/score-desktop.png
             artifacts/report-view/lineage-mobile.png
+            artifacts/report-view/score-mobile.png
+            artifacts/report-view/score-short-desktop.png
           if-no-files-found: error
           retention-days: 14
 

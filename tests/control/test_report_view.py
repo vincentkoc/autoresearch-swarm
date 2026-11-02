@@ -2,6 +2,8 @@
 
 import base64
 import hashlib
+import math
+import re
 from copy import deepcopy
 from html.parser import HTMLParser
 from pathlib import Path
@@ -101,7 +103,7 @@ def test_all_captured_branches_failure_and_workers_are_honest() -> None:
     assert "missing-parent" in html and "rejected" in html and "failed-trial" in html
     assert "Best observed path (ties retained); no confirmed winner" in html
     assert "1 distinct historical IDs; not live concurrency" in html
-    assert "#f7f6f2" in html
+    assert "--paper:#fafaf8" in html
     assert "data-tab=score" in html and "data-tab=lineage" in html
     assert "Cyclic captured lineage" not in html
     lineage = Tags()
@@ -136,6 +138,75 @@ def test_tree_uses_real_scores_and_keeps_unscored_off_the_score_axis(direction: 
     assert float(circles[-1]["cy"]) > max(ys)  # Separate unscored rail, not zero.
     assert "Experiment · captured candidate order" in html
     assert "Unscored / failed · no score inferred" in html
+
+
+@pytest.mark.parametrize("direction", ["minimize", "maximize"])
+@pytest.mark.parametrize("magnitude", [1e308, float.fromhex("0x1.fffffffffffffp+1023")])
+def test_tree_extreme_finite_scores_have_finite_ordered_geometry(
+    direction: str, magnitude: float
+) -> None:
+    value = evidence()
+    metric = METRIC.model_copy(update={"direction": direction})
+    scores = {"candidate-0": magnitude, "candidate-1": -magnitude, "candidate-2": 0.0}
+    for observation in value["recent_evaluations"]:
+        observation["primary_metric"].update(
+            direction=direction, value=scores[observation["data"]["candidate_id"]]
+        )
+    html = render_report_html([value], comparison_digest="synthetic-cohort", metric=metric)
+    tags = Tags()
+    tags.feed(html.split("<div data-panel=lineage>", 1)[1])
+    circles = [attrs for tag, attrs in tags.tags if tag == "circle"]
+    ys = [float(attrs["cy"] or "") for attrs in circles]
+    assert all(math.isfinite(y) and 42 <= y <= 520 for y in ys)
+    assert (ys[1] < ys[2] < ys[0]) if direction == "minimize" else (ys[0] < ys[2] < ys[1])
+    for _, attrs in tags.tags:
+        for coordinate in ("cx", "cy", "x", "y", "x1", "x2", "y1", "y2"):
+            if coordinate in attrs:
+                assert math.isfinite(float(attrs[coordinate] or ""))
+        if "d" in attrs:
+            assert not re.search(r"nan|inf", attrs["d"] or "", re.IGNORECASE)
+    assert ">inf<" not in html and ">nan<" not in html
+
+
+def test_embedded_time_chart_keeps_overlay_legend_and_bounded_evidence_outside_svg() -> None:
+    first, second = evidence(), evidence()
+    second["campaign_id"] = "other-synthetic-run"
+    second["evaluation_count"] = 10
+    second["evaluation_window"]["complete"] = False
+    second["recent_evaluations"][0]["eligible"] = False
+    second["recent_evaluations"][1]["primary_metric"]["unit"] = "other"
+    second["recent_evaluations"][2]["commit_event"] = None
+    html = render_report_html(
+        [first, second],
+        comparison_digest="synthetic-cohort",
+        metric=METRIC,
+        labels=["Synthetic A", "Synthetic B <unavailable>"],
+    )
+    time = html.split("<div data-panel=score class=score hidden>", 1)[1].split(
+        "<div data-panel=lineage>", 1
+    )[0]
+    svg = time.split("<svg", 1)[1].split("</svg>", 1)[0]
+    assert 'viewBox="0 0 740 440"' in svg
+    assert "RESEARCH SWARM / EVIDENCE VIEW" not in svg
+    assert "Synthetic A" not in svg and "capture" not in svg
+    notes = time.split("</svg>", 1)[1]
+    assert "Synthetic A" in notes and "Synthetic B &lt;unavailable&gt;" in notes
+    assert "Complete capture: 3/3 receipts; 3 plotted." in notes
+    assert "INCOMPLETE capture: 3/10 receipts; 0 plotted." in notes
+    assert "Excluded: 1 ineligible, 1 other cohort/metric, 1 missing/invalid timing." in notes
+    assert "original baseline: 4 ratio" in notes
+    assert "original baseline: unavailable for this cohort/time window" in notes
+    assert "not new evaluations or confirmed winners" in notes
+    assert "Best observed" in notes and "Original baseline" in notes
+    assert "loss [ratio] · minimize" in time
+
+
+@pytest.mark.parametrize("labels", [[], ["a", "b"], [" "]])
+def test_time_embedding_retains_label_validation(labels: list[str]) -> None:
+    with pytest.raises(ValueError, match="one nonempty label"):
+        render_report_html(
+            [evidence()], comparison_digest="synthetic-cohort", metric=METRIC, labels=labels
+        )
 
 
 def test_confirmed_branch_requires_current_qualified_matching_cohort() -> None:

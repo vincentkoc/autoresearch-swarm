@@ -154,6 +154,42 @@ async function assertPanel(cdp, panel, width) {
   assert.equal(state.greyEdges + state.tealEdges, 49, 'All captured parent paths remain');
   assert.ok(state.greyEdges > 0 && state.tealEdges > 0, 'Muted branches and highlighted ancestry');
   assert.ok(state.failed && state.unscored, 'Failed and unscored trials remain visible in evidence');
+  if (panel === 'score') {
+    const time = await cdp.evaluate(`(() => {
+      const plot = document.querySelector('.time-plot');
+      const evidence = document.querySelector('.time-evidence');
+      const svg = plot.querySelector('svg');
+      const box = svg.viewBox.baseVal;
+      return {
+        plotBottom: plot.getBoundingClientRect().bottom,
+        evidenceTop: evidence.getBoundingClientRect().top,
+        evidenceBottom: evidence.getBoundingClientRect().bottom,
+        panelBottom: document.querySelector('[data-panel=score]').getBoundingClientRect().bottom,
+        evidenceFont: parseFloat(getComputedStyle(evidence).fontSize),
+        evidenceWidth: evidence.clientWidth,
+        evidenceScrollWidth: evidence.scrollWidth,
+        summary: evidence.textContent,
+        chartText: svg.textContent,
+        labelsInViewport: [...svg.querySelectorAll('text')].every(text => {
+          const rect = text.getBBox();
+          return rect.x >= box.x && rect.y >= box.y
+            && rect.x + rect.width <= box.x + box.width
+            && rect.y + rect.height <= box.y + box.height;
+        }),
+      };
+    })()`);
+    assert.ok(time.plotBottom <= time.evidenceTop + 1, 'Chart does not overlap legend/evidence');
+    assert.ok(time.evidenceBottom <= time.panelBottom + 1, 'Evidence stays inside Time pane');
+    assert.ok(time.evidenceFont >= 11, 'Evidence remains readable HTML, not scaled SVG text');
+    assert.ok(time.evidenceScrollWidth <= time.evidenceWidth, 'Evidence wraps without clipping');
+    assert.ok(time.labelsInViewport, 'All embedded axis labels fit deliberate chart viewport');
+    assert.match(time.summary, /Synthetic loss optimization/);
+    assert.match(time.summary, /Complete capture: 48\/48 receipts; 48 plotted/);
+    assert.match(time.summary, /Excluded: 0 ineligible, 0 other cohort\/metric, 0 missing\/invalid timing/);
+    assert.match(time.summary, /original baseline: 3.4 nats/);
+    assert.match(time.summary, /not new evaluations or confirmed winners/);
+    assert.ok(!time.chartText.includes('RESEARCH SWARM / EVIDENCE VIEW'), 'No export masthead leak');
+  }
   assert.deepEqual(cdp.errors, [], 'No page exceptions, CSP violations or browser log errors');
 }
 
@@ -187,7 +223,8 @@ async function main() {
   assert.ok((await readFile(demo, 'utf8')).includes(title), 'Generate the synthetic demo first');
   await mkdir(output, { recursive: true });
   // Never let a previous invocation's screenshots masquerade as this run's evidence.
-  for (const name of ['lineage-desktop.png', 'score-desktop.png', 'lineage-mobile.png']) {
+  for (const name of ['lineage-desktop.png', 'score-desktop.png', 'lineage-mobile.png',
+    'score-mobile.png', 'score-short-desktop.png']) {
     await rm(new URL(name, output), { force: true });
   }
   const profile = await mkdtemp(join(tmpdir(), 'swarm-report-view-'));
@@ -241,9 +278,9 @@ async function main() {
       addEventListener('unhandledrejection', event => window.__smokeErrors.push(String(event.reason)));
       addEventListener('securitypolicyviolation', event => window.__smokeErrors.push(event.violatedDirective));
     ` });
-    for (const width of [1440, 390]) {
+    for (const [width, height] of [[1440, 1000], [1440, 700], [390, 844]]) {
       await cdp.send('Emulation.setDeviceMetricsOverride', {
-        width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390,
+        width, height, deviceScaleFactor: 1, mobile: width === 390,
       });
       const navigation = await cdp.send('Page.navigate', { url: demo.href });
       assert.equal(navigation.errorText, undefined, 'Synthetic demo navigation');
@@ -257,10 +294,13 @@ async function main() {
       assert.match(await cdp.evaluate("document.querySelector('.graph-selection').textContent"),
         /synthetic-run-A-candidate-0/, 'Keyboard point inspection shows exact candidate');
       await cdp.evaluate("document.activeElement.blur()");
-      await screenshot(cdp, width === 1440 ? 'lineage-desktop.png' : 'lineage-mobile.png');
+      if (height !== 700) {
+        await screenshot(cdp, width === 1440 ? 'lineage-desktop.png' : 'lineage-mobile.png');
+      }
       await clickTab(cdp, 'score');
       await assertPanel(cdp, 'score', width);
-      if (width === 1440) await screenshot(cdp, 'score-desktop.png');
+      await screenshot(cdp, width === 390 ? 'score-mobile.png'
+        : height === 700 ? 'score-short-desktop.png' : 'score-desktop.png');
       await clickTab(cdp, 'lineage');
       await assertPanel(cdp, 'lineage', width);
       assert.deepEqual(await cdp.evaluate('window.__smokeErrors'), [], 'No page/CSP errors');

@@ -137,7 +137,14 @@ higher for minimize metrics, and higher values appear higher for maximize metric
 Candidates without an eligible score remain on a separate unscored rail; their
 parent edges are dashed. Click a point, or focus it and press Enter/Space, to inspect
 its exact ID and score. A campaign selector switches captured trees when comparing
-several reports. Time shows the elapsed-wall-time score overlay. All captured
+several reports. Time shows the elapsed-wall-time score overlay using a dedicated
+chart viewport, not a cropped standalone export. A wrapping, scrollable evidence
+section identifies each run by its line color and label, with capture completeness,
+plotted/excluded counts, baseline availability and time provenance. This section
+uses normal HTML text so resizing the chart cannot crop or scale away disclosures.
+Tree normalizes finite scores before positioning points, including opposite extreme
+values; overflow in a baseline difference is disclosed rather than shown as a win.
+All captured
 branches remain muted and visible, including rejected candidates. Teal ancestry
 marks the current qualified confirmed selection only when the report's exact
 comparison cohort, complete confirmation history and incumbent eligibility agree.
@@ -175,8 +182,10 @@ node tests/visual/report-view-smoke.mjs
 The test verifies the title, computed off-white background, initial Tree
 visibility, Time/Tree switching, keyboard point inspection, all captured branches,
 and page errors (including CSP violations). At 1440px the compact header, rail
-proportions and graph must fit one viewport. Both desktop and 390px mobile layouts
-must have no document horizontal overflow. Real PNG captures
+proportions and graph must fit one viewport, at both 1000px and 700px heights.
+The Time pane checks axis-label bounds, readable evidence text and nonoverlapping
+chart/legend geometry. Both desktop and 390px mobile layouts must have no document
+horizontal overflow. Real PNG captures
 are written to `artifacts/report-view/` and uploaded as a synthetic-only CI
 artifact, retained for 14 days. Partial captures on failure are diagnostic, not
 passing proof.

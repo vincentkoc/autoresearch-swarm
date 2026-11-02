@@ -212,56 +212,27 @@ def _text(parent: Element, x: float, y: float, text: str, **attributes: object) 
     return item
 
 
-def render_hill_climb_svg(
-    snapshots: Sequence[JsonObject],
-    *,
-    comparison_digest: str,
+RUN_COLORS = (
+    "#168273",
+    "#507aac",
+    "#b76a3b",
+    "#8661ad",
+    "#9a801a",
+    "#aa5282",
+    "#427a94",
+    "#677b3b",
+)
+
+
+def _draw_time_chart(
+    group: Element,
+    runs: Sequence[PlotRun],
     metric: MetricDefinition,
-    title: str = "Swarm · hill-climb observations",
-    labels: Sequence[str] | None = None,
-) -> str:
-    """Return standalone UTF-8 SVG, without scripts, external assets or plotting dependencies."""
-    runs = project_hill_climb(snapshots, comparison_digest=comparison_digest, metric=metric)
-    if labels is not None and (
-        len(labels) != len(runs) or any(not label.strip() for label in labels)
-    ):
-        raise ValueError("Supply one nonempty label per report, or omit labels")
-    height = 660 + 138 * len(runs)
-    svg = Element(
-        "svg",
-        {
-            "xmlns": "http://www.w3.org/2000/svg",
-            "viewBox": f"0 0 1120 {height}",
-            "width": "1120",
-            "height": str(height),
-            "role": "img",
-            "aria-labelledby": "plot-title plot-description",
-        },
-    )
-    _element(svg, "title", id="plot-title").text = _clean(title)
-    _element(svg, "desc", id="plot-description").text = (
-        "Eligible trial receipt scores versus elapsed wall-clock hours since campaign creation. "
-        "Steps show best observed among captured points, not confirmed winners. "
-        "Dashed lines show each run's eligible original baseline when available. "
-        "Best observed is carried to report capture time, not extrapolated improvement. "
-        "No worker count, training-time or speedup inference is made."
-    )
-    _element(svg, "rect", width=1120, height=height, fill="#f7f6f2")
-    group = _element(svg, "g", font_family="system-ui, DejaVu Sans, sans-serif", fill="#192632")
-    _text(group, 48, 42, "RESEARCH SWARM / EVIDENCE VIEW", font_size=12, letter_spacing=2)
-    _text(
-        group, 48, 80, title[:65] + ("…" if len(title) > 65 else ""), font_size=28, font_weight=700
-    )
-    _text(
-        group,
-        48,
-        110,
-        f"{metric.name} [{metric.unit}] · {metric.direction} · exact comparison cohort",
-        font_size=15,
-    )
-    _text(group, 48, 135, comparison_digest, font_size=12, fill="#627280")
-    _element(group, "rect", x=48, y=156, width=1024, height=405, rx=12, fill="#fffefa")
-    left, right, top, bottom = 110.0, 1040.0, 190.0, 495.0
+    *,
+    bounds: tuple[float, float, float, float],
+) -> None:
+    """Draw only axes and captured series; the caller owns legend and evidence text."""
+    left, right, top, bottom = bounds
     points = [point for run in runs for point in run.points]
     xmax = (
         max([point.hours for point in points] + [run.capture_hours or 0.0 for run in runs]) or 1.0
@@ -307,23 +278,13 @@ def render_hill_climb_svg(
     _text(
         group,
         (left + right) / 2,
-        545,
+        bottom + 50,
         "Elapsed wall hours since each campaign's creation (evaluation commit time)",
         font_size=13,
         text_anchor="middle",
     )
-    colors = (
-        "#168273",
-        "#507aac",
-        "#b76a3b",
-        "#8661ad",
-        "#9a801a",
-        "#aa5282",
-        "#427a94",
-        "#677b3b",
-    )
     for index, run in enumerate(runs):
-        color = colors[index]
+        color = RUN_COLORS[index]
         line = _element(group, "g", data_campaign=run.campaign_id)
         if run.baseline:
             _element(
@@ -375,6 +336,85 @@ def render_hill_climb_svg(
                 f"Evaluation {point.evaluation_id}; committed {point.recorded_at}\n"
                 f"{point.hours:.6g} h; {metric.name}={point.value:.8g} {metric.unit}"
             )
+    if not points:
+        _text(
+            group,
+            (left + right) / 2,
+            (top + bottom) / 2,
+            "No eligible timed observations in the selected cohort",
+            font_size=16,
+            text_anchor="middle",
+        )
+
+
+def _embedded_time_chart(runs: Sequence[PlotRun], metric: MetricDefinition) -> str:
+    """Chart-only viewport; HTML supplies readable, wrapping evidence outside the SVG."""
+    svg = Element(
+        "svg",
+        {
+            "xmlns": "http://www.w3.org/2000/svg",
+            "viewBox": "0 0 740 440",
+            "role": "img",
+            "aria-label": "Trial scores and best observed over elapsed wall hours",
+        },
+    )
+    group = _element(svg, "g", fill="#627280")
+    _draw_time_chart(group, runs, metric, bounds=(90.0, 715.0, 20.0, 370.0))
+    return tostring(svg, encoding="unicode")
+
+
+def render_hill_climb_svg(
+    snapshots: Sequence[JsonObject],
+    *,
+    comparison_digest: str,
+    metric: MetricDefinition,
+    title: str = "Swarm · hill-climb observations",
+    labels: Sequence[str] | None = None,
+) -> str:
+    """Return standalone UTF-8 SVG, without scripts, external assets or plotting dependencies."""
+    runs = project_hill_climb(snapshots, comparison_digest=comparison_digest, metric=metric)
+    if labels is not None and (
+        len(labels) != len(runs) or any(not label.strip() for label in labels)
+    ):
+        raise ValueError("Supply one nonempty label per report, or omit labels")
+    height = 660 + 138 * len(runs)
+    svg = Element(
+        "svg",
+        {
+            "xmlns": "http://www.w3.org/2000/svg",
+            "viewBox": f"0 0 1120 {height}",
+            "width": "1120",
+            "height": str(height),
+            "role": "img",
+            "aria-labelledby": "plot-title plot-description",
+        },
+    )
+    _element(svg, "title", id="plot-title").text = _clean(title)
+    _element(svg, "desc", id="plot-description").text = (
+        "Eligible trial receipt scores versus elapsed wall-clock hours since campaign creation. "
+        "Steps show best observed among captured points, not confirmed winners. "
+        "Dashed lines show each run's eligible original baseline when available. "
+        "Best observed is carried to report capture time, not extrapolated improvement. "
+        "No worker count, training-time or speedup inference is made."
+    )
+    _element(svg, "rect", width=1120, height=height, fill="#f7f6f2")
+    group = _element(svg, "g", font_family="system-ui, DejaVu Sans, sans-serif", fill="#192632")
+    _text(group, 48, 42, "RESEARCH SWARM / EVIDENCE VIEW", font_size=12, letter_spacing=2)
+    _text(
+        group, 48, 80, title[:65] + ("…" if len(title) > 65 else ""), font_size=28, font_weight=700
+    )
+    _text(
+        group,
+        48,
+        110,
+        f"{metric.name} [{metric.unit}] · {metric.direction} · exact comparison cohort",
+        font_size=15,
+    )
+    _text(group, 48, 135, comparison_digest, font_size=12, fill="#627280")
+    _element(group, "rect", x=48, y=156, width=1024, height=405, rx=12, fill="#fffefa")
+    _draw_time_chart(group, runs, metric, bounds=(110.0, 1040.0, 190.0, 495.0))
+    for index, run in enumerate(runs):
+        color = RUN_COLORS[index]
         note_y = 660 + index * 138
         _element(group, "rect", x=48, y=note_y - 20, width=4, height=112, fill=color)
         label = labels[index] if labels is not None else f"Run {index + 1}"
@@ -414,15 +454,6 @@ def render_hill_climb_svg(
             f"Time origin: {run.origin or 'unavailable (legacy report; no timestamps invented)'}.",
             font_size=12,
             fill="#627280",
-        )
-    if not points:
-        _text(
-            group,
-            575,
-            335,
-            "No eligible timed observations in the selected cohort",
-            font_size=19,
-            text_anchor="middle",
         )
     _text(
         group,

@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import re
+import math
 from collections.abc import Sequence
 from html import escape
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from research_swarm.control.report_plot import (
     MAX_OBSERVATIONS,
+    RUN_COLORS,
     PlotRun,
+    _embedded_time_chart,
     project_hill_climb,
-    render_hill_climb_svg,
 )
 from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.state.database import JsonObject
@@ -67,6 +68,10 @@ color:var(--muted);margin-top:3px}.scope{padding:0 16px 10px;font-size:10px;colo
 .graph-selection{min-height:32px;padding:7px 20px;border-top:1px solid var(--line);
 font:10px ui-monospace,monospace;color:var(--muted)}.chart-node{cursor:pointer}
 .chart-node:hover circle{stroke:#243c44;stroke-width:2}.score svg{width:100%;height:100%}
+.time-plot{flex:1;min-height:120px}.time-evidence{flex:none;max-height:45%;overflow:auto;
+border-top:1px solid var(--line);padding:10px 16px;font-size:11px;overflow-wrap:anywhere}
+.time-evidence p{margin:3px 0}.time-run{border-left:3px solid;padding-left:9px;margin-top:10px}
+.time-metric{padding:8px 16px;font-size:11px;overflow-wrap:anywhere}
 .header-meta{font-size:11px;color:var(--muted);text-align:right}
 @media(min-width:1800px){main{grid-template-columns:300px minmax(0,1fr) 480px}}
 @media(max-width:1000px){main{grid-template-columns:185px minmax(0,1fr) 270px}
@@ -215,8 +220,11 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
         values[point.candidate_id] = extremum(
             values.get(point.candidate_id, point.value), point.value
         )
-    low, high = min(values.values(), default=0), max(values.values(), default=1)
-    span = high - low or max(abs(high) * 0.1, 1)
+    # Normalize before subtraction: opposite finite extremes must not yield NaN positions.
+    scale = max((abs(value) for value in values.values()), default=1.0) or 1.0
+    normalized = [value / scale for value in values.values()]
+    low, high = min(normalized, default=0.0), max(normalized, default=1.0)
+    span = high - low or 0.1
     low, high = low - span * 0.12, high + span * 0.12
     positions: dict[str, tuple[float, float]] = {}
     for index, row in enumerate(rows):
@@ -226,7 +234,7 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
         if value is None:
             y = 586.0
         else:
-            fraction = (value - low) / (high - low)
+            fraction = (value / scale - low) / (high - low)
             y = 42 + (fraction if metric.direction == "minimize" else 1 - fraction) * 478
         positions[identifier] = (x, y)
     svg = Element(
@@ -264,7 +272,7 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
                 "font-size": "10",
                 "fill": "#909799",
             },
-        ).text = f"{value:.4g}"
+        ).text = f"{value * scale:.4g}" if math.isfinite(value * scale) else ""
     for tick in range(min(len(rows), 8)):
         index = round(tick * max(0, len(rows) - 1) / max(1, min(len(rows), 8) - 1))
         x = 64 + index * 626 / max(1, len(rows) - 1)
@@ -370,6 +378,44 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
     )
 
 
+def _time_panel(
+    runs: Sequence[PlotRun], metric: MetricDefinition, labels: Sequence[str] | None
+) -> str:
+    evidence = []
+    for index, run in enumerate(runs):
+        label = labels[index] if labels is not None else f"Run {index + 1}"
+        scope = "Complete capture" if run.history_complete else "INCOMPLETE capture"
+        baseline = (
+            f"{run.baseline.value:.6g} {metric.unit}"
+            if run.baseline
+            else "unavailable for this cohort/time window"
+        )
+        evidence.append(
+            f"<div class=time-run style='border-color:{RUN_COLORS[index]}'>"
+            f"<strong>{_e(label)}</strong> · <code>{_e(run.campaign_id)}</code>"
+            f"<p>{scope}: {run.included}/{run.total} receipts; {len(run.points)} plotted.</p>"
+            f"<p>Excluded: {run.ineligible} ineligible, {run.nonmatching} other cohort/metric, "
+            f"{run.untimed} missing/invalid timing.</p>"
+            f"<p>Dashed reference · original baseline: {_e(baseline)}.</p>"
+            "<details><summary>Time provenance</summary>"
+            f"<p>Origin: {_e(run.origin or 'unavailable; no timestamps invented')}; "
+            f"captured: {_e(run.captured_at)}; revision {run.revision}; "
+            f"evidence through event {run.evidence_through}.</p></details></div>"
+        )
+    return (
+        f"<div class=time-metric>{_e(metric.name)} [{_e(metric.unit)}] · "
+        f"{_e(metric.direction)} · exact comparison cohort</div>"
+        "<div class=time-plot>"
+        + _embedded_time_chart(runs, metric)
+        + "</div><section class=time-evidence aria-label='Time chart legend and evidence'>"
+        "<p>● Trial receipts · ━ Best observed · ╌ Original baseline</p>"
+        "<p class=muted>Best observed is held to capture time, including idle periods; "
+        "not new evaluations or confirmed winners. Evaluation commit time, not training time.</p>"
+        + "".join(evidence)
+        + "</section>"
+    )
+
+
 def render_report_html(
     snapshots: Sequence[JsonObject],
     *,
@@ -380,10 +426,11 @@ def render_report_html(
 ) -> str:
     """Render a self-contained read-only cockpit; scripts only switch local panels."""
     runs = project_hill_climb(snapshots, comparison_digest=comparison_digest, metric=metric)
-    chart = render_hill_climb_svg(
-        snapshots, comparison_digest=comparison_digest, metric=metric, title=title, labels=labels
-    )
-    chart = chart.split("\n", 1)[1]  # Inline SVG has no XML document declaration.
+    if labels is not None and (
+        len(labels) != len(runs) or any(not label.strip() for label in labels)
+    ):
+        raise ValueError("Supply one nonempty label per report, or omit labels")
+    chart = _time_panel(runs, metric, labels)
     about, lineage, leaderboard, activity = [], [], [], []
     for index, (snapshot, run) in enumerate(zip(snapshots, runs, strict=True)):
         label = labels[index] if labels is not None else f"Run {index + 1}"
@@ -454,9 +501,10 @@ def render_report_html(
                 if metric.direction == "minimize"
                 else ordered[0][1] - baseline
             )
+            difference = f"{delta:.6g}" if math.isfinite(delta) else "outside finite numeric range"
             change = (
                 "<p>Observed improvement vs original baseline: "
-                f"<span class=number>{delta:.6g} {_e(metric.unit)}</span> "
+                f"<span class=number>{difference} {_e(metric.unit)}</span> "
                 "(absolute, not a statistical win).</p>"
             )
         leaderboard.append(
@@ -515,9 +563,6 @@ def render_report_html(
         if row.get("worker_id")
     }
     trial_count = sum(len(_page(snapshot["research"], "trials")[0]) for snapshot in snapshots)
-    # Frame the existing time plot, without its standalone export title/legend.
-    chart = chart.replace('viewBox="0 0 1120 ', 'viewBox="65 170 1000 ', 1)
-    chart = re.sub(r'viewBox="65 170 1000 [0-9]+"', 'viewBox="65 170 1000 390"', chart, count=1)
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
