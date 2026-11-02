@@ -38,6 +38,19 @@ The engine owns execution state, budgets and evaluator authority.
 Start with [agent control](docs/agent-control.md), the [Python SDK](docs/sdk.md)
 or the [HTTP API](docs/api.md).
 
+## Interactive views
+
+The [campaign workspace](docs/campaign-view.md) combines hill-climb history,
+lineage, leaderboards and activity. The [experiment inventory](docs/experiment-graph.md)
+adds four graph layouts: **Connected clusters** (default), **Spread-out force**,
+**Category groups**, and **Symmetric ring**. Both views share resizable sidebars
+and section dividers, keyboard controls, and locally saved panel sizes.
+
+![Symmetric ring layout with synthetic experiment data](docs/images/symmetric-ring.png)
+
+*Example: the optional symmetric ring layout, generated from 240 synthetic records.
+Position shows layout only—not experiment quality, similarity or execution order.*
+
 ## Examples
 
 | Example | Purpose |

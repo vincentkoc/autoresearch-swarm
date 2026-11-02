@@ -147,6 +147,12 @@ try {
   assert.notDeepEqual(await evaluate('window.__dots[0]'),after,'Zoom changes screen position');
   await click('#fit');
   await screenshot('graph-desktop.png');
+  // Public README example uses only this synthetic fixture, never a private capture.
+  await evaluate('document.getElementById("layout").value="ring";document.getElementById("layout").dispatchEvent(new Event("change"))');
+  await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'README ring settles');
+  await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  await screenshot('graph-ring-example.png');
+  await evaluate('document.getElementById("layout").value="topology";document.getElementById("layout").dispatchEvent(new Event("change"))');
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
   assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'No mobile overflow');
