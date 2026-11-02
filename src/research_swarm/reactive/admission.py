@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
@@ -10,7 +11,9 @@ from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.experiments import ExperimentSpec, StageSpec
 from research_swarm.projects.workload import WorkloadContext
 from research_swarm.reactive.contracts import ReactiveContract, RunBinding
-from research_swarm.reactive.journal import DecisionJournal
+
+if TYPE_CHECKING:
+    from research_swarm.reactive.journal import DecisionJournal
 
 
 def training_parameters(spec: ExperimentSpec, stage: StageSpec) -> dict[str, JsonValue]:
@@ -30,6 +33,8 @@ def verify_parameters(context: WorkloadContext, spec: ExperimentSpec, stage: Sta
 
 
 def create_session(context: WorkloadContext, *, path: Path | None = None) -> DecisionJournal:
+    from research_swarm.reactive.journal import DecisionJournal
+
     context = WorkloadContext.model_validate(context)
     context.verify()
     contract = ReactiveContract.model_validate(context.parameters.get("reactive"))
