@@ -1,5 +1,6 @@
 // Real-browser qualification of the synthetic report only. Node 22+, no npm packages.
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -72,12 +73,12 @@ class CDP {
     });
   }
 
-  async send(method, params = {}) {
+  async send(method, params = {}, sessionId) {
     const id = ++this.nextId;
     try {
       return await bounded(new Promise((resolve, reject) => {
         this.pending.set(id, { resolve, reject });
-        this.socket.send(JSON.stringify({ id, method, params }));
+        this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? {sessionId} : {}) }));
       }), method);
     } finally {
       this.pending.delete(id);
@@ -148,62 +149,13 @@ async function assertPanel(cdp, panel, width) {
   }
   assert.ok(state.documentWidth <= width, `Document overflow: ${JSON.stringify(state)}`);
   assert.ok(state.bodyWidth <= width, `Body overflow: ${JSON.stringify(state)}`);
-  assert.deepEqual(state.panels, { score: panel === 'score', lineage: panel === 'lineage' });
-  assert.deepEqual(state.selected, [panel]);
+  assert.deepEqual(state.panels, { lineage: true });
+  assert.deepEqual(state.selected, []);
   assert.equal(state.nodes, 50, 'All scored and unscored candidates remain in the campaign');
   assert.equal(state.greyEdges + state.tealEdges, 49, 'All captured parent paths remain');
   assert.ok(state.greyEdges > 0 && state.tealEdges > 0, 'Muted branches and highlighted ancestry');
   assert.ok(state.failed && state.unscored, 'Failed and unscored trials remain visible in evidence');
-  if (panel === 'score') {
-    const time = await cdp.evaluate(`(() => {
-      const plot = document.querySelector('.time-plot');
-      const evidence = document.querySelector('.time-evidence');
-      const svg = plot.querySelector('svg');
-      const box = svg.viewBox.baseVal;
-      return {
-        plotBottom: plot.getBoundingClientRect().bottom,
-        evidenceTop: evidence.getBoundingClientRect().top,
-        evidenceBottom: evidence.getBoundingClientRect().bottom,
-        panelBottom: document.querySelector('[data-panel=score]').getBoundingClientRect().bottom,
-        evidenceFont: parseFloat(getComputedStyle(evidence).fontSize),
-        evidenceWidth: evidence.clientWidth,
-        evidenceScrollWidth: evidence.scrollWidth,
-        summary: evidence.textContent,
-        chartText: svg.textContent,
-        labelsInViewport: [...svg.querySelectorAll('text')].every(text => {
-          const rect = text.getBBox();
-          return rect.x >= box.x && rect.y >= box.y
-            && rect.x + rect.width <= box.x + box.width
-            && rect.y + rect.height <= box.y + box.height;
-        }),
-      };
-    })()`);
-    assert.ok(time.plotBottom <= time.evidenceTop + 1, 'Chart does not overlap legend/evidence');
-    assert.ok(time.evidenceBottom <= time.panelBottom + 1, 'Evidence stays inside Time pane');
-    assert.ok(time.evidenceFont >= 11, 'Evidence remains readable HTML, not scaled SVG text');
-    assert.ok(time.evidenceScrollWidth <= time.evidenceWidth, 'Evidence wraps without clipping');
-    assert.ok(time.labelsInViewport, 'All embedded axis labels fit deliberate chart viewport');
-    assert.match(time.summary, /Synthetic loss optimization/);
-    assert.match(time.summary, /Complete capture: 48\/48 receipts; 48 plotted/);
-    assert.match(time.summary, /Excluded: 0 ineligible, 0 other cohort\/metric, 0 missing\/invalid timing/);
-    assert.match(time.summary, /original baseline: 3.4 nats/);
-    assert.match(time.summary, /not new evaluations or confirmed winners/);
-    assert.ok(!time.chartText.includes('RESEARCH SWARM / EVIDENCE VIEW'), 'No export masthead leak');
-  }
   assert.deepEqual(cdp.errors, [], 'No page exceptions, CSP violations or browser log errors');
-}
-
-async function clickTab(cdp, tab) {
-  const point = await cdp.evaluate(`(() => {
-    const button = document.querySelector('[data-tab="${tab}"]');
-    button.scrollIntoView({block: 'center'});
-    const rect = button.getBoundingClientRect();
-    return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2};
-  })()`);
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
-  await cdp.evaluate('window.scrollTo(0, 0)');
-  await settle(cdp);
 }
 
 async function testRails(cdp, width) {
@@ -282,6 +234,7 @@ async function main() {
   }
   const profile = await mkdtemp(join(tmpdir(), 'swarm-report-view-'));
   let chrome;
+  let server;
   let exited;
   let cdp;
   let startupError;
@@ -352,18 +305,86 @@ async function main() {
       if (height !== 700) {
         await screenshot(cdp, width === 1440 ? 'lineage-desktop.png' : 'lineage-mobile.png');
       }
-      await clickTab(cdp, 'score');
-      await assertPanel(cdp, 'score', width);
-      await screenshot(cdp, width === 390 ? 'score-mobile.png'
-        : height === 700 ? 'score-short-desktop.png' : 'score-desktop.png');
-      await clickTab(cdp, 'lineage');
-      await assertPanel(cdp, 'lineage', width);
       assert.deepEqual(await cdp.evaluate('window.__smokeErrors'), [], 'No page/CSP errors');
     }
+    // Serve the actual shell against synthetic paginated API responses.
+    const shell = await readFile(new URL('synthetic-server-shell.html', demo), 'utf8');
+    const report = await readFile(demo, 'utf8');
+    const requests = [];
+    server = createServer((request, response) => {
+      const url = new URL(request.url, 'http://localhost');
+      if (url.pathname === '/') return response.end(shell);
+      if (request.headers.authorization !== 'Bearer synthetic-read-token') {
+        response.writeHead(401); return response.end();
+      }
+      requests.push(url.pathname + url.search);
+      response.setHeader('Content-Type', 'application/json');
+      if (url.pathname === '/v1/campaigns') {
+        const second = url.searchParams.has('cursor');
+        return response.end(JSON.stringify({
+          items: Array.from({length: second ? 1 : 100}, (_, i) => ({
+            id: 'campaign-' + (second ? 100 : i), data: {name: 'Synthetic ' + i},
+          })), next_cursor: second ? null : 'second-page',
+        }));
+      }
+      if (url.pathname.endsWith('/snapshot')) {
+        return response.end(JSON.stringify({observed_cohorts: []}));
+      }
+      response.setHeader('Content-Type', 'text/html');
+      response.end(report);
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const url = 'http://127.0.0.1:' + server.address().port + '/';
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1440, height: 1080, deviceScaleFactor: 1, mobile: false,
+    });
+    const served = await cdp.send('Page.navigate', {url});
+    await waitUntil(() => cdp.loaded.has(served.loaderId), 'Campaign shell load');
+    await cdp.evaluate(`document.querySelector('#token').value = 'synthetic-read-token';
+      document.querySelector('form').requestSubmit()`);
+    await waitUntil(() => cdp.evaluate("document.querySelector('#status').textContent.includes('Read-only capture')"),
+      'Authenticated campaign render');
+    assert.equal(await cdp.evaluate("document.querySelector('#campaign').options.length"), 101);
+    assert.equal(await cdp.evaluate("document.querySelector('#token').value"), '');
+    assert.ok(requests.some(path => path.includes('cursor=second-page')));
+    const embedded = await waitUntil(async () => {
+      const {targetInfos} = await cdp.send('Target.getTargets');
+      return targetInfos.find(info => info.type === 'iframe');
+    }, 'Isolated campaign frame');
+    const {sessionId} = await cdp.send('Target.attachToTarget', {
+      targetId: embedded.targetId, flatten: true,
+    });
+    await cdp.send('Runtime.enable', {}, sessionId);
+    await waitUntil(async () => {
+      const result = await cdp.send('Runtime.evaluate', {
+        expression: "Boolean(document.querySelector('[data-toggle=left]'))",
+        returnByValue: true,
+      }, sessionId);
+      return result.result.value;
+    }, 'Embedded campaign controls');
+    const checked = await cdp.send('Runtime.evaluate', {
+      expression: `document.querySelector('[data-toggle=left]').click();
+        document.querySelector('.sidebar').hidden`, returnByValue: true,
+    }, sessionId);
+    assert.equal(checked.result.value, true, 'Embedded report script executes under shell CSP');
+    await cdp.evaluate(`document.querySelector('#campaign').value = 'campaign-100';
+      document.querySelector('#campaign').dispatchEvent(new Event('change'))`);
+    await waitUntil(() => requests.includes('/v1/campaigns/campaign-100/view'), 'Select paginated campaign');
+    await waitUntil(() => cdp.evaluate("document.querySelector('#status').textContent.includes('Read-only capture')"),
+      'Selected campaign rendered');
+    await settle(cdp);
+    await screenshot(cdp, 'campaign-served-desktop.png');
+    await cdp.evaluate("document.querySelector('#disconnect').click()");
+    assert.equal(await cdp.evaluate("document.querySelector('iframe').hasAttribute('srcdoc')"), false);
+    assert.deepEqual(await cdp.evaluate('window.__smokeErrors'), [], 'Shell CSP and page errors');
     assert.deepEqual(cdp.errors, [], 'No browser exceptions');
-    console.log(`PASS: synthetic report, desktop/mobile layout, both tabs, no exceptions; PNGs: ${fileURLToPath(output)}`);
+    console.log(`PASS: synthetic report, desktop/mobile layout, campaign-only view, no exceptions; PNGs: ${fileURLToPath(output)}`);
   } finally {
     cdp?.socket.close();
+    if (server) {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
     if (chrome && exited) {
       chrome.kill('SIGTERM');
       const closed = await Promise.race([exited.then(() => true), delay(3_000).then(() => false)]);

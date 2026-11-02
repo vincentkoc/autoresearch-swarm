@@ -1,0 +1,142 @@
+"""Same-origin campaign browser; credentials stay in memory, never URLs or storage."""
+
+import base64
+import hashlib
+
+from research_swarm.control.report_view import _SCRIPT as REPORT_SCRIPT
+
+_SCRIPT = """
+const login = document.querySelector('form');
+const picker = document.querySelector('#campaign');
+const cohorts = document.querySelector('#cohort');
+const frame = document.querySelector('iframe');
+const status = document.querySelector('#status');
+let token = '';
+let generation = 0;
+const base = new URL('./', location.href);
+async function read(path, asText = false) {
+  const response = await fetch(new URL(path, base), {
+    headers: {Authorization: 'Bearer ' + token}, cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Request failed (' + response.status + ')');
+  return asText ? response.text() : response.json();
+}
+function clearView() { frame.removeAttribute('srcdoc'); frame.hidden = true; }
+async function showCampaign() {
+  const current = ++generation;
+  clearView();
+  cohorts.replaceChildren();
+  cohorts.hidden = true;
+  if (!picker.value) return;
+  status.textContent = 'Loading campaign…';
+  try {
+    const snapshot = await read('v1/campaigns/' + encodeURIComponent(picker.value) + '/snapshot');
+    if (current !== generation) return;
+    for (const cohort of snapshot.observed_cohorts) {
+      cohorts.add(new Option(cohort.comparison_digest, cohort.comparison_digest));
+    }
+    cohorts.hidden = cohorts.options.length < 2;
+    await showView(current);
+  } catch (error) {
+    if (current === generation) status.textContent = error.message;
+  }
+}
+async function showView(current = ++generation) {
+  clearView();
+  status.textContent = 'Loading campaign…';
+  try {
+    const query = cohorts.value ? '?comparison_digest=' + encodeURIComponent(cohorts.value) : '';
+    const path = 'v1/campaigns/' + encodeURIComponent(picker.value) + '/view' + query;
+    const html = await read(path, true);
+    if (current !== generation) return;
+    const loaded = new Promise(resolve => frame.addEventListener('load', resolve, {once: true}));
+    frame.srcdoc = html;
+    frame.hidden = false;
+    await loaded;
+    if (current !== generation) return;
+    status.textContent = 'Read-only capture · refresh for current evidence';
+  } catch (error) {
+    if (current === generation) status.textContent = error.message;
+  }
+}
+login.addEventListener('submit', async event => {
+  event.preventDefault();
+  const current = ++generation;
+  token = document.querySelector('#token').value;
+  document.querySelector('#token').value = '';
+  clearView();
+  picker.replaceChildren();
+  picker.hidden = true;
+  cohorts.hidden = true;
+  status.textContent = 'Loading campaigns…';
+  try {
+    let cursor = null;
+    do {
+      const query = new URLSearchParams({limit: '100'});
+      if (cursor) query.set('cursor', cursor);
+      const page = await read('v1/campaigns?' + query);
+      if (current !== generation) return;
+      for (const item of page.items) {
+        picker.add(new Option(item.data.name + ' · ' + item.id, item.id));
+      }
+      cursor = page.next_cursor;
+    } while (cursor);
+    if (!picker.options.length) {
+      status.textContent = 'No campaigns in this workspace.';
+      return;
+    }
+    picker.hidden = picker.options.length < 2;
+    login.hidden = true;
+    document.querySelector('#disconnect').hidden = false;
+    await showCampaign();
+  } catch (error) {
+    if (current === generation) {
+      token = '';
+      picker.replaceChildren();
+      status.textContent = error.message;
+    }
+  }
+});
+picker.addEventListener('change', showCampaign);
+cohorts.addEventListener('change', () => showView());
+document.querySelector('#refresh').addEventListener('click', showCampaign);
+document.querySelector('#disconnect').addEventListener('click', () => {
+  ++generation;
+  token = '';
+  clearView();
+  picker.replaceChildren();
+  cohorts.replaceChildren();
+  picker.hidden = cohorts.hidden = true;
+  login.hidden = false;
+  document.querySelector('#disconnect').hidden = true;
+  status.textContent = 'Disconnected';
+});
+"""
+
+
+def campaign_shell() -> str:
+    digest = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
+    report_digest = base64.b64encode(hashlib.sha256(REPORT_SCRIPT.encode()).digest()).decode()
+    return (
+        "<!doctype html><html lang=en><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<meta http-equiv=Content-Security-Policy content=\"default-src 'none'; "
+        f"script-src 'sha256-{digest}' 'sha256-{report_digest}'; "
+        "style-src 'unsafe-inline'; connect-src 'self'; "
+        "frame-src 'self' about:; base-uri 'self'; form-action 'none'\">"
+        "<title>Swarm · campaigns</title><style>"
+        "body{margin:0;background:#fafaf8;color:#21272a;font:12px system-ui}"
+        "nav{display:flex;align-items:center;gap:10px;padding:8px 16px;flex-wrap:wrap}"
+        "input,select,button{font:inherit;padding:5px;border:1px solid #ddd;border-radius:4px}"
+        "select{max-width:40vw}#status{color:#7e8588}iframe{width:100%;height:calc(100dvh - 55px);"
+        "border:0;display:block}[hidden]{display:none!important}</style>"
+        "<nav><strong>Campaigns</strong><form><label>Read credential "
+        "<input id=token type=password autocomplete=off required></label>"
+        "<button>Connect</button></form><select id=campaign aria-label=Campaign hidden></select>"
+        "<select id=cohort aria-label='Comparison cohort' hidden></select>"
+        "<button id=refresh>Refresh</button><button id=disconnect hidden>Disconnect</button>"
+        "<span id=status>Connect to your workspace.</span></nav>"
+        "<iframe title='Campaign view' "
+        "sandbox='allow-scripts allow-popups allow-popups-to-escape-sandbox' hidden></iframe>"
+        f"<script>{_SCRIPT}</script></html>"
+    )

@@ -85,7 +85,7 @@ def parser() -> argparse.ArgumentParser:
         plot.add_argument(
             "--output", type=Path, required=True, help="New SVG/HTML path; never overwrite"
         )
-        plot.add_argument("--title", default="Swarm · hill-climb observations")
+        plot.add_argument("--title", default="Swarm · campaign")
         plot.add_argument(
             "--label", action="append", help="One display label per report, in input order"
         )

@@ -399,13 +399,10 @@ def _evaluation_commit_events(
     return {event["aggregate_id"]: event for event in events}
 
 
-def create_report(
-    transaction: Transaction,
-    campaign_row: JsonObject,
-    *,
-    recent_limit: int = 20,
-    report_id: str | None = None,
+def capture_snapshot(
+    transaction: Transaction, campaign_row: JsonObject, *, recent_limit: int = 20
 ) -> JsonObject:
+    """Read bounded campaign evidence without creating records or events."""
     campaign = CampaignData.model_validate(campaign_row["data"])
     details = research_details(transaction, campaign_row, campaign, limit=recent_limit)
     counts = transaction.connection.execute(
@@ -527,6 +524,17 @@ def create_report(
     snapshot["observed_cohorts"] = observed_cohorts(
         evaluations, complete=snapshot["evaluation_window"]["complete"]
     )
+    return snapshot
+
+
+def create_report(
+    transaction: Transaction,
+    campaign_row: JsonObject,
+    *,
+    recent_limit: int = 20,
+    report_id: str | None = None,
+) -> JsonObject:
+    snapshot = capture_snapshot(transaction, campaign_row, recent_limit=recent_limit)
     content: JsonObject = {"snapshot": snapshot, "markdown": markdown(snapshot)}
     content["report_digest"] = record_digest("research.report", content)
     if len(canonical_bytes(content)) > MAX_REPORT_BYTES:
@@ -542,5 +550,5 @@ def create_report(
         campaign_id=campaign_row["id"],
         parent_id=campaign_row["id"],
     )
-    transaction.event("report.created", row, {"evidence_through": watermark})
+    transaction.event("report.created", row, {"evidence_through": snapshot["evidence_through"]})
     return row

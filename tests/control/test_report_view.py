@@ -104,15 +104,15 @@ def test_all_captured_branches_failure_and_workers_are_honest() -> None:
     assert "Best observed path (ties retained); no confirmed winner" in html
     assert "1 distinct historical IDs; not live concurrency" in html
     assert "--paper:#fafaf8" in html
-    assert "data-tab=score" in html and "data-tab=lineage" in html
+    assert "data-tab=" not in html and "data-panel=score" not in html
     assert "Cyclic captured lineage" not in html
     lineage = Tags()
     lineage.feed(html.split("<div data-panel=lineage>", 1)[1])
     edge_colors = [attrs["stroke"] for tag, attrs in lineage.tags if tag == "path"]
     assert edge_colors.count("#168273") == 1  # Actual root → best-observed child.
     assert edge_colors.count("#bbc1bd") == 1  # Rejected side branch remains visible.
-    assert "data-tab=lineage aria-selected=true" in html
-    assert "data-panel=score class=score hidden" in html
+    assert "data-panel=lineage" in html
+    assert "<select data-run-selector" not in html
     # All observed candidates are present; order is score-driven within the leaderboard.
     table = html.split("<h2>Leaderboard</h2>", 1)[1].split("<h2>Activity", 1)[0]
     assert table.index("candidate-1") < table.index("candidate-2") < table.index("candidate-0")
@@ -168,37 +168,24 @@ def test_tree_extreme_finite_scores_have_finite_ordered_geometry(
     assert ">inf<" not in html and ">nan<" not in html
 
 
-def test_embedded_time_chart_keeps_overlay_legend_and_bounded_evidence_outside_svg() -> None:
+def test_campaign_picker_scopes_all_panels_and_no_alternate_view() -> None:
     first, second = evidence(), evidence()
-    second["campaign_id"] = "other-synthetic-run"
-    second["evaluation_count"] = 10
-    second["evaluation_window"]["complete"] = False
-    second["recent_evaluations"][0]["eligible"] = False
-    second["recent_evaluations"][1]["primary_metric"]["unit"] = "other"
-    second["recent_evaluations"][2]["commit_event"] = None
+    second["campaign_id"] = "second-campaign"
     html = render_report_html(
         [first, second],
         comparison_digest="synthetic-cohort",
         metric=METRIC,
-        labels=["Synthetic A", "Synthetic B <unavailable>"],
+        labels=["First", "Second"],
     )
-    time = html.split("<div data-panel=score class=score hidden>", 1)[1].split(
-        "<div data-panel=lineage>", 1
-    )[0]
-    svg = time.split("<svg", 1)[1].split("</svg>", 1)[0]
-    assert 'viewBox="0 0 740 440"' in svg
-    assert "RESEARCH SWARM / EVIDENCE VIEW" not in svg
-    assert "Synthetic A" not in svg and "capture" not in svg
-    notes = time.split("</svg>", 1)[1]
-    assert "Synthetic A" in notes and "Synthetic B &lt;unavailable&gt;" in notes
-    assert "Complete capture: 3/3 receipts; 3 plotted." in notes
-    assert "INCOMPLETE capture: 3/10 receipts; 0 plotted." in notes
-    assert "Excluded: 1 ineligible, 1 other cohort/metric, 1 missing/invalid timing." in notes
-    assert "original baseline: 4 ratio" in notes
-    assert "original baseline: unavailable for this cohort/time window" in notes
-    assert "not new evaluations or confirmed winners" in notes
-    assert "Best observed" in notes and "Original baseline" in notes
-    assert "loss [ratio] · minimize" in time
+    tags = Tags()
+    tags.feed(html)
+    assert "data-tab=" not in html
+    assert "data-panel=score" not in html
+    assert "data-run-selector" in html
+    for index in ("0", "1"):
+        scopes = [attrs for _, attrs in tags.tags if attrs.get("data-run") == index]
+        assert len(scopes) == 4  # About, graph, leaderboard, activity.
+        assert all(("hidden" in attrs) == (index == "1") for attrs in scopes)
 
 
 @pytest.mark.parametrize("labels", [[], ["a", "b"], [" "]])

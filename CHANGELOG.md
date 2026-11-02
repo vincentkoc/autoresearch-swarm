@@ -2,14 +2,17 @@
 
 ## Unreleased
 
+- Make the campaign workspace the only HTML view; remove the Time/Tree switch.
+  Serve a read-authenticated, paginated campaign picker alongside the existing API,
+  with direct loading for single-campaign stores and exports. Refreshing the view
+  reads bounded evidence without creating reports, events or changing research state.
+
 - Add a Swarm GitHub link and optional project GitHub attribution to the campaign
   view, with draggable and keyboard-resizable sidebars plus collapse controls.
   Pass `report view --project-repository https://github.com/OWNER/REPO` to supply
   project attribution without modifying captured scientific evidence.
 
-- Keep Tree coordinates finite for extreme scores and render the Time pane as an
-  embedded chart with readable run legends, capture completeness and exclusion
-  summaries at desktop and mobile sizes, without cropped standalone-export text.
+- Keep campaign graph coordinates finite for extreme scores.
 
 - Rework the campaign view into a compact three-column workspace: narrow context
   rail, score-positioned candidate ancestry with muted branches, and a stacked
@@ -17,7 +20,7 @@
   support keyboard inspection without inventing scores or agent attribution.
 
 - Qualify the synthetic offline report in real headless Chrome CI with desktop/mobile
-  layout, tab interactions, page-error checks and captured browser screenshots.
+  layout, campaign selection, page-error checks and captured browser screenshots.
 
 - Add an offline interactive campaign HTML export using the same bounded score
   projection, with off-white styling, captured lineage, qualified-selection versus

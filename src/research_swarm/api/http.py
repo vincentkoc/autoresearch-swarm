@@ -7,7 +7,7 @@ from typing import Annotated, Any, BinaryIO
 
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import ValidationError
 from starlette.types import Receive, Scope, Send
 
@@ -216,6 +216,57 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
     @app.get("/healthz")
     async def health() -> JsonObject:
         return {"status": "alive"}
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def campaign_ui() -> HTMLResponse:
+        from research_swarm.api.campaign_ui import campaign_shell
+
+        return HTMLResponse(campaign_shell(), headers={"Cache-Control": "no-store"})
+
+    @app.get("/v1/campaigns")
+    async def campaign_list(
+        context: Annotated[CommandContext, Depends(read_context)],
+        cursor: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    ) -> JsonObject:
+        return await asyncio.to_thread(
+            queries.list, context, RecordQuery(kind="campaign", cursor=cursor, limit=limit)
+        )
+
+    @app.get("/v1/campaigns/{campaign_id}/snapshot")
+    async def campaign_snapshot(
+        campaign_id: str, context: Annotated[CommandContext, Depends(read_context)]
+    ) -> JsonObject:
+        return await asyncio.to_thread(queries.campaign_snapshot, context, campaign_id)
+
+    @app.get("/v1/campaigns/{campaign_id}/view", response_class=HTMLResponse)
+    async def campaign_view(
+        campaign_id: str,
+        context: Annotated[CommandContext, Depends(read_context)],
+        comparison_digest: str | None = None,
+    ) -> HTMLResponse:
+        from research_swarm.control.report_view import render_report_html
+        from research_swarm.domain.experiments import MetricDefinition
+
+        snapshot = await asyncio.to_thread(queries.campaign_snapshot, context, campaign_id)
+        cohorts = [item["comparison_digest"] for item in snapshot["observed_cohorts"]]
+        if comparison_digest is None:
+            if len(cohorts) > 1:
+                raise ResearchError(
+                    ErrorCode.PROJECT_CONTRACT_INVALID, "Select an explicit comparison cohort"
+                )
+            comparison_digest = cohorts[0] if cohorts else "no-observed-cohort"
+        metric = MetricDefinition.model_validate(
+            snapshot["research"]["objective"]["primary_metric"]
+        )
+        html = await asyncio.to_thread(
+            render_report_html,
+            [snapshot],
+            comparison_digest=comparison_digest,
+            metric=metric,
+            title=snapshot["research"]["objective"]["name"],
+        )
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     @app.get("/v1/capabilities")
     async def get_capabilities(

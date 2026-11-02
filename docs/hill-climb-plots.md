@@ -120,9 +120,8 @@ research report view --file report.json \
 ~~~
 
 The standalone off-white page opens directly in a browser. No server, network
-request, controller credential, or live-state mutation is required. A fixed,
-content-security-policy-hashed script switches the Score and Lineage panels
-(Lineage opens by default so all captured paths are immediately visible);
+request, controller credential, or live-state mutation is required. The campaign workspace is the only HTML view. A fixed,
+content-security-policy-hashed script handles selection and panel resizing;
 report text never becomes executable JavaScript or raw HTML.
 
 The view is a viewport-height, three-column workspace: a narrow context rail,
@@ -142,20 +141,16 @@ attribution, not captured scientific evidence; no repository is guessed when it
 is omitted. Only HTTPS GitHub repository URLs without credentials or query strings
 are accepted.
 
-Tree opens by default. Its points use the best captured eligible score per candidate
+The campaign graph opens directly. Its points use the best captured eligible score per candidate
 on the vertical axis and captured candidate order on the horizontal axis. Parent
 edges connect those points; this is not a box-and-arrow diagram. Lower values appear
 higher for minimize metrics, and higher values appear higher for maximize metrics.
 Candidates without an eligible score remain on a separate unscored rail; their
 parent edges are dashed. Click a point, or focus it and press Enter/Space, to inspect
 its exact ID and score. A campaign selector switches captured trees when comparing
-several reports. Time shows the elapsed-wall-time score overlay using a dedicated
-chart viewport, not a cropped standalone export. A wrapping, scrollable evidence
-section identifies each run by its line color and label, with capture completeness,
-plotted/excluded counts, baseline availability and time provenance. This section
-uses normal HTML text so resizing the chart cannot crop or scale away disclosures.
-Tree normalizes finite scores before positioning points, including opposite extreme
-values; overflow in a baseline difference is disclosed rather than shown as a win.
+several reports. The graph normalizes finite scores before positioning points,
+including opposite extreme values; overflow in a baseline difference is disclosed
+rather than shown as a win.
 All captured
 branches remain muted and visible, including rejected candidates. Teal ancestry
 marks the current qualified confirmed selection only when the report's exact
@@ -172,7 +167,7 @@ preserves failed/unscored trials. Evaluated observations are ordered by commit
 time and event sequence; proposal states are not assigned invented times or
 causal attribution. Captured distinct worker IDs describe historical evidence,
 never live concurrency. Captured candidate order is not a trial count or a time
-axis; elapsed controller wall time remains the only time basis in the Time view.
+axis. Standalone SVG exports retain the explicit controller-time projection.
 
 The Python API is `research_swarm.control.report_view.render_report_html`, with
 the same snapshots, comparison digest, metric, optional title and labels as the
@@ -184,19 +179,18 @@ invented evidence and clearly labelled **SYNTHETIC DEMO**.
 
 The dedicated `report-view` CI job generates this synthetic demo and opens it in
 the GitHub Ubuntu runner's preinstalled Google Chrome. Node 22's built-in
-WebSocket/CDP support drives real tab clicks; no npm or core dependency is added.
+WebSocket/CDP support drives real campaign and sidebar interactions; no npm or core dependency is added.
 
 ~~~sh
 uv run --no-sync python examples/hill_climb/generate.py
 node tests/visual/report-view-smoke.mjs
 ~~~
 
-The test verifies the title, computed off-white background, initial Tree
-visibility, Time/Tree switching, keyboard point inspection, all captured branches,
+The test verifies the title, computed off-white background, campaign graph
+visibility, paginated campaign selection, keyboard point inspection, all captured branches,
 and page errors (including CSP violations). At 1440px the compact header, rail
 proportions and graph must fit one viewport, at both 1000px and 700px heights.
-The Time pane checks axis-label bounds, readable evidence text and nonoverlapping
-chart/legend geometry. Both desktop and 390px mobile layouts must have no document
+Both desktop and 390px mobile layouts must have no document
 horizontal overflow. Real PNG captures
 are written to `artifacts/report-view/` and uploaded as a synthetic-only CI
 artifact, retained for 14 days. Partial captures on failure are diagnostic, not

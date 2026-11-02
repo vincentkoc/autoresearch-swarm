@@ -599,6 +599,18 @@ class ResearchQueries:
 
         return self.database.store.read(read)
 
+    def campaign_snapshot(self, context: CommandContext, campaign_id: str) -> JsonObject:
+        """Read the same bounded evidence as an export without writing a report."""
+        from research_swarm.control.reports import capture_snapshot
+
+        context.principal.require("read")
+
+        def read(connection: SqlSession) -> JsonObject:
+            transaction = Transaction(connection, context)
+            return capture_snapshot(transaction, transaction.get("campaign", campaign_id))
+
+        return self.database.store.read(read)
+
     def context(self, context: CommandContext, campaign_id: str, *, limit: int = 10) -> JsonObject:
         from research_swarm.control.campaigns import target_met
 

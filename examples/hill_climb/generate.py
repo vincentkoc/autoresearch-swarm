@@ -4,6 +4,7 @@ import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from research_swarm.api.campaign_ui import campaign_shell
 from research_swarm.control.report_plot import render_hill_climb_svg
 from research_swarm.control.report_view import render_report_html
 from research_swarm.domain.experiments import MetricDefinition
@@ -167,6 +168,7 @@ def main() -> None:
         encoding="utf-8",
     )
     print(html)
+    html.with_name("synthetic-server-shell.html").write_text(campaign_shell(), encoding="utf-8")
 
 
 if __name__ == "__main__":

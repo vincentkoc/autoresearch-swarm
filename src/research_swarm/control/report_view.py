@@ -12,9 +12,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from research_swarm.control.report_plot import (
     MAX_OBSERVATIONS,
-    RUN_COLORS,
     PlotRun,
-    _embedded_time_chart,
     project_hill_climb,
 )
 from research_swarm.domain.experiments import MetricDefinition
@@ -179,22 +177,13 @@ addEventListener('resize', () => {
   syncDividers();
 });
 syncDividers();
-document.querySelectorAll('[data-tab]').forEach(button => {
-  button.addEventListener('click', () => {
-    const target = button.dataset.tab;
-    document.querySelectorAll('[data-panel]').forEach(panel => {
-      panel.hidden = panel.dataset.panel !== target;
-    });
-    document.querySelectorAll('[data-tab]').forEach(tab => {
-      tab.setAttribute('aria-selected', String(tab === button));
-    });
-  });
-});
 const runSelector = document.querySelector('[data-run-selector]');
 if (runSelector) runSelector.addEventListener('change', () => {
   document.querySelectorAll('[data-run]').forEach(run => {
     run.hidden = run.dataset.run !== runSelector.value;
   });
+  document.querySelector('.graph-selection').textContent =
+    'Select a point to inspect its candidate and observed score.';
 });
 document.querySelectorAll('[data-candidate]').forEach(node => {
   const select = () => {
@@ -474,44 +463,6 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
     )
 
 
-def _time_panel(
-    runs: Sequence[PlotRun], metric: MetricDefinition, labels: Sequence[str] | None
-) -> str:
-    evidence = []
-    for index, run in enumerate(runs):
-        label = labels[index] if labels is not None else f"Run {index + 1}"
-        scope = "Complete capture" if run.history_complete else "INCOMPLETE capture"
-        baseline = (
-            f"{run.baseline.value:.6g} {metric.unit}"
-            if run.baseline
-            else "unavailable for this cohort/time window"
-        )
-        evidence.append(
-            f"<div class=time-run style='border-color:{RUN_COLORS[index]}'>"
-            f"<strong>{_e(label)}</strong> · <code>{_e(run.campaign_id)}</code>"
-            f"<p>{scope}: {run.included}/{run.total} receipts; {len(run.points)} plotted.</p>"
-            f"<p>Excluded: {run.ineligible} ineligible, {run.nonmatching} other cohort/metric, "
-            f"{run.untimed} missing/invalid timing.</p>"
-            f"<p>Dashed reference · original baseline: {_e(baseline)}.</p>"
-            "<details><summary>Time provenance</summary>"
-            f"<p>Origin: {_e(run.origin or 'unavailable; no timestamps invented')}; "
-            f"captured: {_e(run.captured_at)}; revision {run.revision}; "
-            f"evidence through event {run.evidence_through}.</p></details></div>"
-        )
-    return (
-        f"<div class=time-metric>{_e(metric.name)} [{_e(metric.unit)}] · "
-        f"{_e(metric.direction)} · exact comparison cohort</div>"
-        "<div class=time-plot>"
-        + _embedded_time_chart(runs, metric)
-        + "</div><section class=time-evidence aria-label='Time chart legend and evidence'>"
-        "<p>● Trial receipts · ━ Best observed · ╌ Original baseline</p>"
-        "<p class=muted>Best observed is held to capture time, including idle periods; "
-        "not new evaluations or confirmed winners. Evaluation commit time, not training time.</p>"
-        + "".join(evidence)
-        + "</section>"
-    )
-
-
 def render_report_html(
     snapshots: Sequence[JsonObject],
     *,
@@ -543,10 +494,9 @@ def render_report_html(
         len(labels) != len(runs) or any(not label.strip() for label in labels)
     ):
         raise ValueError("Supply one nonempty label per report, or omit labels")
-    chart = _time_panel(runs, metric, labels)
     about, lineage, leaderboard, activity = [], [], [], []
     for index, (snapshot, run) in enumerate(zip(snapshots, runs, strict=True)):
-        label = labels[index] if labels is not None else f"Run {index + 1}"
+        label = labels[index] if labels is not None else str(snapshot["campaign_id"])
         research = snapshot["research"]
         # A local copy supplies the selector, without mutating report evidence.
         view = {**snapshot, "_view_comparison": comparison_digest}
@@ -562,7 +512,9 @@ def render_report_html(
             for item in snapshot.get("budget", [])
         )
         about.append(
-            f"<div class=run><h3>{_e(label)}</h3>"
+            f"<div class=run data-run='{index}'"
+            + (" hidden>" if index else ">")
+            + f"<h3>{_e(label)}</h3>"
             f"<p>{_e(objective.get('name', 'Objective unavailable'))}</p>"
             f"<code>{_e(run.campaign_id)}</code>"
             f"<p>State: {_e(snapshot.get('campaign_state', 'unknown'))}</p>"
@@ -621,7 +573,9 @@ def render_report_html(
                 "(absolute, not a statistical win).</p>"
             )
         leaderboard.append(
-            f"<div class=scope>{_e(label)} · {run.included}/{run.total} receipts captured. "
+            f"<div data-run='{index}'"
+            + (" hidden>" if index else ">")
+            + f"<div class=scope>{_e(label)} · {run.included}/{run.total} receipts captured. "
             "Observed scores, not confirmed rankings.</div>"
             + rows
             + ("<p class=scope>No eligible timed scores.</p>" if not rows else "")
@@ -630,6 +584,7 @@ def render_report_html(
                 if change
                 else ""
             )
+            + "</div>"
         )
         trials, trial_scope = _page(research, "trials")
         trial_rows = "".join(
@@ -655,18 +610,20 @@ def render_report_html(
             for row in proposals
         )
         activity.append(
-            f"{observations}<details class=scope>"
+            f"<div data-run='{index}'"
+            + (" hidden>" if index else ">")
+            + f"{observations}<details class=scope>"
             "<summary>All captured trials &amp; proposal actions</summary>"
             f"<p class=muted>Chronological commit times, not causal agent attribution.</p>"
             f"<h3>All captured trials</h3><small>{_e(trial_scope)}</small>"
             "<table><thead><tr><th>Trial</th><th>Execution</th><th>Evaluation</th></tr></thead>"
             f"<tbody>{trial_rows}</tbody></table><h3>Proposal actions</h3>"
             f"<small>{_e(proposal_scope)}; states only, timestamps unavailable.</small>"
-            f"<ul>{proposal_rows}</ul></details>"
+            f"<ul>{proposal_rows}</ul></details></div>"
         )
     script_hash = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
     selectors = "".join(
-        f"<option value='{i}'>{_e(labels[i] if labels else f'Run {i + 1}')}</option>"
+        f"<option value='{i}'>{_e(labels[i] if labels else runs[i].campaign_id)}</option>"
         for i in range(len(runs))
     )
     workers = {
@@ -691,7 +648,7 @@ def render_report_html(
         "<button class=rail-toggle data-toggle=right aria-expanded=true "
         "aria-controls=activity-rail>Leaderboard / activity</button><span class=header-meta>"
         f"{len(workers)} captured worker IDs · {trial_count} captured trials"
-        " · offline snapshot</span></div></header>"
+        " · read-only capture</span></div></header>"
         "<main><aside class=sidebar id=about-rail><div class=sidebar-section><h2>About</h2>"
         + project_link
         + "".join(about)
@@ -704,13 +661,12 @@ def render_report_html(
         "aria-orientation=vertical aria-label='Resize About panel' "
         "aria-controls=about-rail aria-valuemin=0></div>"
         "<section class=graph-panel><div class=panel-heading><h2>Graph</h2>"
-        f"<select data-run-selector aria-label='Campaign'>{selectors}</select>"
-        "<div class=tabs role=tablist aria-label='Evidence views'>"
-        "<button role=tab data-tab=score aria-selected=false>Time</button>"
-        "<button role=tab data-tab=lineage aria-selected=true>Tree</button></div></div>"
-        "<div class=graph-body><div data-panel=score class=score hidden>"
-        + chart
-        + "</div><div data-panel=lineage>"
+        + (
+            f"<select data-run-selector aria-label='Campaign'>{selectors}</select>"
+            if len(runs) > 1
+            else ""
+        )
+        + "</div><div class=graph-body><div data-panel=lineage>"
         + "".join(lineage)
         + "</div></div>"
         "<div class=graph-selection>Select a point to inspect "

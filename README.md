@@ -23,7 +23,8 @@ uv run research run examples/cpu_bigram
 
 The CPU example trains a small model and evaluates it independently. See
 [local runs](docs/local-runs.md) for budgets, resumption and campaign reports.
-Export trial-score curves with [native hill-climb SVGs](docs/hill-climb-plots.md).
+Open the [campaign view](docs/campaign-view.md) to inspect experiments, lineage,
+leaderboards and activity, either from an offline export or the existing API server.
 
 Expose the same control surface to an agent:
 
