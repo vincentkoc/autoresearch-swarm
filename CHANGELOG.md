@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add versioned training-time reactive contracts with declared numeric controls,
+  diagnostic visibility, policy identity, bounded decisions and separate application receipts.
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance
