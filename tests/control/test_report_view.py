@@ -112,10 +112,30 @@ def test_all_captured_branches_failure_and_workers_are_honest() -> None:
     assert "data-tab=lineage aria-selected=true" in html
     assert "data-panel=score class=score hidden" in html
     # All observed candidates are present; order is score-driven within the leaderboard.
-    table = html.split("<h2>Best observed candidates</h2>", 1)[1].split("<h2>Captured activity", 1)[
-        0
-    ]
+    table = html.split("<h2>Leaderboard</h2>", 1)[1].split("<h2>Activity", 1)[0]
     assert table.index("candidate-1") < table.index("candidate-2") < table.index("candidate-0")
+
+
+@pytest.mark.parametrize("direction", ["minimize", "maximize"])
+def test_tree_uses_real_scores_and_keeps_unscored_off_the_score_axis(direction: str) -> None:
+    value = evidence()
+    metric = METRIC.model_copy(update={"direction": direction})
+    for observation in value["recent_evaluations"]:
+        observation["primary_metric"]["direction"] = direction
+    value["research"]["candidates"]["items"].append(
+        {"id": "unscored", "state": "failed", "parent_ids": ["candidate-0"]}
+    )
+    html = render_report_html([value], comparison_digest="synthetic-cohort", metric=metric)
+    tags = Tags()
+    tags.feed(html.split("<div data-panel=lineage>", 1)[1])
+    circles = [attrs for tag, attrs in tags.tags if tag == "circle"]
+    assert len(circles) == 4
+    # Fixture scores are 4, 2, 3 in captured candidate order.
+    ys = [float(attrs["cy"]) for attrs in circles[:3]]
+    assert (ys[1] < ys[2] < ys[0]) if direction == "minimize" else (ys[0] < ys[2] < ys[1])
+    assert float(circles[-1]["cy"]) > max(ys)  # Separate unscored rail, not zero.
+    assert "Experiment · captured candidate order" in html
+    assert "Unscored / failed · no score inferred" in html
 
 
 def test_confirmed_branch_requires_current_qualified_matching_cohort() -> None:

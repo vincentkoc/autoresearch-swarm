@@ -117,6 +117,12 @@ async function assertPanel(cdp, panel, width) {
       title: document.title,
       background: getComputedStyle(document.body).backgroundColor,
       width: innerWidth,
+      height: innerHeight,
+      pageHeight: document.documentElement.scrollHeight,
+      headerHeight: document.querySelector('header').getBoundingClientRect().height,
+      graphWidth: document.querySelector('.graph-panel').getBoundingClientRect().width,
+      sidebarWidth: document.querySelector('.sidebar').getBoundingClientRect().width,
+      rightWidth: document.querySelector('.right').getBoundingClientRect().width,
       documentWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
       panels: Object.fromEntries([...document.querySelectorAll('[data-panel]')]
@@ -131,14 +137,21 @@ async function assertPanel(cdp, panel, width) {
     };
   })()`);
   assert.equal(state.title, title);
-  assert.equal(state.background, 'rgb(247, 246, 242)', 'Off-white body background');
+  assert.equal(state.background, 'rgb(250, 250, 248)', 'Off-white body background');
   assert.equal(state.width, width);
+  if (width === 1440) {
+    assert.equal(state.headerHeight, 52, 'Compact header, not a report masthead');
+    assert.ok(state.pageHeight <= state.height, 'Desktop workspace fits one viewport');
+    assert.ok(state.graphWidth > state.width * .5, 'Graph dominates the workspace');
+    assert.ok(state.sidebarWidth < state.width * .2, 'Narrow context rail');
+    assert.ok(state.rightWidth > state.width * .25, 'Readable leaderboard and activity rail');
+  }
   assert.ok(state.documentWidth <= width, `Document overflow: ${JSON.stringify(state)}`);
   assert.ok(state.bodyWidth <= width, `Body overflow: ${JSON.stringify(state)}`);
   assert.deepEqual(state.panels, { score: panel === 'score', lineage: panel === 'lineage' });
   assert.deepEqual(state.selected, [panel]);
-  assert.equal(state.nodes, 24, 'Both synthetic runs retain all captured candidate nodes');
-  assert.equal(state.greyEdges + state.tealEdges, 22, 'All captured parent paths remain');
+  assert.equal(state.nodes, 50, 'All scored and unscored candidates remain in the campaign');
+  assert.equal(state.greyEdges + state.tealEdges, 49, 'All captured parent paths remain');
   assert.ok(state.greyEdges > 0 && state.tealEdges > 0, 'Muted branches and highlighted ancestry');
   assert.ok(state.failed && state.unscored, 'Failed and unscored trials remain visible in evidence');
   assert.deepEqual(cdp.errors, [], 'No page exceptions, CSP violations or browser log errors');
@@ -238,6 +251,12 @@ async function main() {
       assert.equal(await cdp.evaluate('location.href'), demo.href);
       await settle(cdp);
       await assertPanel(cdp, 'lineage', width);
+      await cdp.evaluate("document.querySelector('.chart-node').focus()");
+      await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Enter', code: 'Enter'});
+      await cdp.send('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Enter', code: 'Enter'});
+      assert.match(await cdp.evaluate("document.querySelector('.graph-selection').textContent"),
+        /synthetic-run-A-candidate-0/, 'Keyboard point inspection shows exact candidate');
+      await cdp.evaluate("document.activeElement.blur()");
       await screenshot(cdp, width === 1440 ? 'lineage-desktop.png' : 'lineage-mobile.png');
       await clickTab(cdp, 'score');
       await assertPanel(cdp, 'score', width);

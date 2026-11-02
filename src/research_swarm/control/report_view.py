@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from collections.abc import Sequence
 from html import escape
 from xml.etree.ElementTree import Element, SubElement, tostring
@@ -18,30 +19,63 @@ from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.state.database import JsonObject
 
 _STYLE = """
-:root{color-scheme:light;--paper:#f7f6f2;--ink:#23312e;--muted:#6c7773;--line:#dedfd7;
---teal:#168273}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);
-font:14px/1.5 system-ui,"DejaVu Sans",sans-serif}header{padding:26px 32px;border-bottom:1px
-solid var(--line)}h1{font-size:26px;font-weight:550;margin:5px 0}h2{font-size:16px;
-font-weight:600}h3{font-size:13px;margin:18px 0 8px}p{margin:8px 0}.kicker,small,.muted{
-color:var(--muted)}.kicker{letter-spacing:.16em;font-size:11px}main{display:grid;
-grid-template-columns:minmax(220px,1fr) minmax(500px,3fr) minmax(260px,1.2fr);gap:20px;
-padding:24px;max-width:1800px;margin:auto}.card{background:#fffefa;border:1px solid
-var(--line);border-radius:8px;padding:18px;margin-bottom:18px;min-width:0}aside,section{
-min-width:0}code,.number,th,svg text{font-family:ui-monospace,"DejaVu Sans Mono",monospace}
-code{font-size:11px;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;
-font-size:12px}td,th{text-align:left;border-bottom:1px solid var(--line);padding:8px 4px;
-overflow-wrap:anywhere}th{font-size:10px;color:var(--muted);font-weight:400}.scroll{
-max-height:600px;overflow:auto}.score svg{width:100%;height:auto}.lineage svg{
-min-width:100%;max-width:none;height:auto}.tabs{display:flex;gap:8px;margin-bottom:12px}
-button{font:inherit;padding:7px 15px;background:transparent;border:1px solid var(--line);
-border-radius:5px;cursor:pointer}button[aria-selected=true]{color:var(--teal);
-border-color:var(--teal);background:#eaf3ee}.accent{color:var(--teal)}.badge{font-size:11px;
-padding:3px 6px;border:1px solid var(--line);border-radius:4px}.run{border-top:1px solid
-var(--line);padding-top:12px;margin-top:12px}details{margin:10px 0}summary{cursor:pointer}
-[hidden]{display:none!important}footer{padding:20px 32px;color:var(--muted);font-size:12px}
-@media(max-width:1100px){main{grid-template-columns:220px 1fr}.right{grid-column:1/-1;
-display:grid;grid-template-columns:1fr 1fr;gap:20px}}@media(max-width:720px){main,.right{
-display:block;padding:12px}header{padding:18px}.tabs{flex-wrap:wrap}}
+:root{color-scheme:light;--paper:#fafaf8;--ink:#21272a;--muted:#7e8588;--line:#e9eae8;
+--teal:#348a92}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);
+font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{height:52px;
+padding:0 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px
+solid var(--line);background:#fdfdfc;gap:20px}h1{font-size:16px;font-weight:600;margin:0}
+h2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:650;margin:0}
+h3{font-size:11px;font-weight:600;margin:16px 0 7px}p{margin:8px 0}small,.muted{color:var(--muted)}
+main{display:grid;grid-template-columns:18% minmax(0,1fr) 28.5%;height:calc(100vh - 52px);
+min-height:600px;margin:0}.sidebar{border-right:1px solid var(--line);overflow:auto}
+.sidebar-section{padding:18px 20px;border-bottom:1px solid var(--line)}
+.sidebar h2{margin-bottom:14px}.graph-panel{display:flex;flex-direction:column;min-width:0;
+overflow:hidden}.panel-heading{display:flex;align-items:center;justify-content:space-between;
+padding:14px 16px;gap:12px;min-height:52px}.graph-body{flex:1;min-height:0;position:relative}
+.graph-body>[data-panel]{height:100%;display:flex;flex-direction:column}
+.graph-body [data-run]{height:100%;display:flex;flex-direction:column}
+.graph-body .lineage{flex:1;min-height:0}.graph-body .graph-note{order:2}
+.lineage svg{width:100%;height:100%;display:block}
+.graph-note{padding:10px 20px;font-size:10px;color:var(--muted);border-top:1px solid var(--line)}
+.graph-note p{margin:2px 0}.right{border-left:1px solid var(--line);display:grid;
+grid-template-rows:44% 56%;min-width:0;min-height:0}.right-section{display:flex;
+flex-direction:column;min-height:0;overflow:hidden}.right-section+.right-section{border-top:1px
+solid var(--line)}.scroll{overflow:auto;min-height:0}.number,code,svg text{font-family:
+ui-monospace,SFMono-Regular,Menlo,monospace}code{font-size:10px;overflow-wrap:anywhere}
+table{width:100%;border-collapse:collapse;font-size:10px}td,th{text-align:left;border-bottom:1px
+solid var(--line);padding:7px 3px;overflow-wrap:anywhere}th{font-weight:400;color:var(--muted)}
+.tabs{display:flex;padding:2px;background:#f1f2ef;border-radius:5px;gap:2px}
+button,select{font:inherit;font-size:10px;color:inherit;border:0;background:transparent;
+padding:4px 10px;border-radius:3px;cursor:pointer}
+button[aria-selected=true]{background:#fff;box-shadow:0 1px 3px #00000012}
+select{border:1px solid var(--line);max-width:180px}.accent{color:var(--teal)}
+.badge{font-size:10px;color:var(--muted)}details{margin:10px 0}summary{cursor:pointer;color:
+var(--muted);font-size:10px}[hidden]{display:none!important}.run+.run{border-top:1px solid
+var(--line);margin-top:18px;padding-top:8px}.leader{display:grid;grid-template-columns:22px
+28px minmax(0,1fr) auto;align-items:center;gap:9px;padding:11px 15px;border-bottom:1px solid
+#eff0ed}.leader.selected{background:#eff5f8}.rank{font-size:10px;color:#6f858f}
+.avatar{display:flex;align-items:center;justify-content:center;width:27px;height:27px;
+border-radius:50%;background:#e6edef;color:#42828a;font:9px ui-monospace,monospace}
+.leader-name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.leader-detail{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;
+text-overflow:ellipsis}.leader-score{font-size:11px;align-self:start;padding-top:2px}
+.activity-item{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;padding:
+13px 15px;border-bottom:1px solid #eff0ed}.activity-icon{border:1px solid var(--line);
+border-radius:50%;width:23px;height:23px;text-align:center;line-height:21px;color:#8b9597}
+.activity-title{font-size:11px;overflow-wrap:anywhere}.activity-meta{font-size:10px;
+color:var(--muted);margin-top:3px}.scope{padding:0 16px 10px;font-size:10px;color:var(--muted)}
+.graph-selection{min-height:32px;padding:7px 20px;border-top:1px solid var(--line);
+font:10px ui-monospace,monospace;color:var(--muted)}.chart-node{cursor:pointer}
+.chart-node:hover circle{stroke:#243c44;stroke-width:2}.score svg{width:100%;height:100%}
+.header-meta{font-size:11px;color:var(--muted);text-align:right}
+@media(min-width:1800px){main{grid-template-columns:300px minmax(0,1fr) 480px}}
+@media(max-width:1000px){main{grid-template-columns:185px minmax(0,1fr) 270px}
+.sidebar-section{padding:14px}.leader{padding:10px;gap:6px}.header-meta{font-size:10px}}
+@media(max-width:720px){header{height:auto;min-height:52px;padding:12px;align-items:start}
+h1{font-size:13px}main{display:flex;flex-direction:column;height:auto;min-height:0}
+.sidebar{order:2;border:0}.graph-panel{order:0;height:600px}.right{order:1;border:0;
+grid-template-rows:300px 350px}.graph-note{font-size:9px}.header-meta{max-width:140px}
+.sidebar-section{padding:16px;border-top:1px solid var(--line)}}
 """
 _SCRIPT = """
 document.querySelectorAll('[data-tab]').forEach(button => {
@@ -53,6 +87,24 @@ document.querySelectorAll('[data-tab]').forEach(button => {
     document.querySelectorAll('[data-tab]').forEach(tab => {
       tab.setAttribute('aria-selected', String(tab === button));
     });
+  });
+});
+const runSelector = document.querySelector('[data-run-selector]');
+if (runSelector) runSelector.addEventListener('change', () => {
+  document.querySelectorAll('[data-run]').forEach(run => {
+    run.hidden = run.dataset.run !== runSelector.value;
+  });
+});
+document.querySelectorAll('[data-candidate]').forEach(node => {
+  const select = () => {
+    document.querySelector('.graph-selection').textContent = node.getAttribute('aria-label');
+  };
+  node.addEventListener('click', select);
+  node.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      select();
+    }
   });
 });
 """
@@ -155,24 +207,98 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
         highlighted.clear()
         claim = "Cyclic captured lineage; selection path unavailable"
         depth.update(dict.fromkeys(pending, 0))
-    positions: dict[str, tuple[int, int]] = {}
-    levels: dict[int, int] = {}
-    for identifier in sorted(by_id, key=lambda item: (depth[item], item)):
-        level = depth[identifier]
-        positions[identifier] = (24 + level * 220, 24 + levels.get(level, 0) * 100)
-        levels[level] = levels.get(level, 0) + 1
-    width = max((x for x, _ in positions.values()), default=24) + 200
-    height = max((y for _, y in positions.values()), default=24) + 90
+    # The horizontal axis is captured candidate order, not invented execution time.
+    # A separate rail keeps unscored/failed branches visible without assigning a score.
+    values: dict[str, float] = {}
+    extremum = min if metric.direction == "minimize" else max
+    for point in run.points:
+        values[point.candidate_id] = extremum(
+            values.get(point.candidate_id, point.value), point.value
+        )
+    low, high = min(values.values(), default=0), max(values.values(), default=1)
+    span = high - low or max(abs(high) * 0.1, 1)
+    low, high = low - span * 0.12, high + span * 0.12
+    positions: dict[str, tuple[float, float]] = {}
+    for index, row in enumerate(rows):
+        identifier = row["id"]
+        x = 64 + index * 626 / max(1, len(rows) - 1)
+        value = values.get(identifier)
+        if value is None:
+            y = 586.0
+        else:
+            fraction = (value - low) / (high - low)
+            y = 42 + (fraction if metric.direction == "minimize" else 1 - fraction) * 478
+        positions[identifier] = (x, y)
     svg = Element(
         "svg",
         {
             "xmlns": "http://www.w3.org/2000/svg",
-            "viewBox": f"0 0 {width} {height}",
-            "width": str(width),
+            "viewBox": "0 0 740 640",
             "role": "img",
-            "aria-label": "Captured candidate parent relationships",
+            "aria-label": "Captured candidate parent relationships positioned by observed score",
         },
     )
+    for tick in range(7):
+        fraction = tick / 6
+        y = 42 + fraction * 478
+        value = low + (fraction if metric.direction == "minimize" else 1 - fraction) * (high - low)
+        SubElement(
+            svg,
+            "line",
+            {
+                "x1": "60",
+                "x2": "702",
+                "y1": str(y),
+                "y2": str(y),
+                "stroke": "#f0f1ee",
+                "stroke-dasharray": "2 5",
+            },
+        )
+        SubElement(
+            svg,
+            "text",
+            {
+                "x": "49",
+                "y": str(y + 4),
+                "text-anchor": "end",
+                "font-size": "10",
+                "fill": "#909799",
+            },
+        ).text = f"{value:.4g}"
+    for tick in range(min(len(rows), 8)):
+        index = round(tick * max(0, len(rows) - 1) / max(1, min(len(rows), 8) - 1))
+        x = 64 + index * 626 / max(1, len(rows) - 1)
+        SubElement(
+            svg,
+            "text",
+            {
+                "x": str(x),
+                "y": "550",
+                "text-anchor": "middle",
+                "font-size": "10",
+                "fill": "#909799",
+            },
+        ).text = str(index + 1)
+    SubElement(
+        svg,
+        "text",
+        {"x": "375", "y": "572", "text-anchor": "middle", "font-size": "10", "fill": "#909799"},
+    ).text = "Experiment · captured candidate order"
+    SubElement(
+        svg,
+        "text",
+        {
+            "x": "14",
+            "y": "285",
+            "transform": "rotate(-90 14 285)",
+            "text-anchor": "middle",
+            "font-size": "10",
+            "fill": "#909799",
+        },
+    ).text = f"{metric.name} [{metric.unit}]"
+    SubElement(
+        svg, "text", {"x": "64", "y": "613", "font-size": "10", "fill": "#909799"}
+    ).text = "Unscored / failed · no score inferred"
     for parent, child in known:
         x1, y1 = positions[parent]
         x2, y2 = positions[child]
@@ -181,48 +307,57 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
             svg,
             "path",
             {
-                "d": (
-                    f"M {x1 + 170} {y1 + 30} C {x1 + 195} {y1 + 30}, "
-                    f"{x2 - 25} {y2 + 30}, {x2} {y2 + 30}"
-                ),
+                "d": f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}",
                 "fill": "none",
                 "stroke": "#168273" if active else "#bbc1bd",
-                "stroke-width": "2.5" if active else "1",
+                "stroke-width": "1.8" if active else "1",
+                "stroke-opacity": "0.9" if active else "0.3",
+                "stroke-dasharray": "3 4"
+                if parent not in values or child not in values
+                else "none",
             },
         )
     for identifier, row in by_id.items():
         x, y = positions[identifier]
-        node = SubElement(svg, "g")
-        SubElement(
-            node,
-            "rect",
+        value = values.get(identifier)
+        description = f"{identifier} · {row.get('state', 'unknown')} · " + (
+            f"{metric.name}={value:.6g} {metric.unit}" if value is not None else "unscored"
+        )
+        node = SubElement(
+            svg,
+            "g",
             {
-                "x": str(x),
-                "y": str(y),
-                "width": "170",
-                "height": "62",
-                "rx": "5",
-                "fill": "#edf5ef" if identifier in highlighted else "#f3f3ef",
-                "stroke": "#168273" if identifier in highlighted else "#cdd2cd",
+                "class": "chart-node",
+                "data-candidate": identifier,
+                "aria-label": description,
+                "role": "button",
+                "tabindex": "0",
             },
         )
-        SubElement(node, "title").text = identifier
-        SubElement(node, "text", {"x": str(x + 10), "y": str(y + 23), "font-size": "11"}).text = (
-            identifier if len(identifier) <= 24 else identifier[:8] + "…" + identifier[-12:]
-        )
+        SubElement(node, "title").text = description
         SubElement(
-            node, "text", {"x": str(x + 10), "y": str(y + 45), "font-size": "10", "fill": "#6c7773"}
-        ).text = str(row.get("state", "unknown"))[:24]
+            node,
+            "circle",
+            {
+                "cx": str(x),
+                "cy": str(y),
+                "r": "5" if identifier in highlighted else "3.5",
+                "fill": "#348a92" if identifier in highlighted else "#b9c4c3",
+                "fill-opacity": "1" if identifier in highlighted else "0.4",
+                "stroke": "#fafaf8",
+                "stroke-width": "1.2",
+            },
+        )
     omitted = sum(row.get("parent_ids_complete") is False for row in rows)
     missing_list = "".join(
         f"<li><code>{_e(parent)}</code> → <code>{_e(child)}</code></li>"
         for parent, child in missing
     )
     return (
-        f"<h3>{_e(run.campaign_id)}</h3><p class=accent>{_e(claim)}</p>"
+        f"<div class=graph-note><p class=accent>{_e(claim)}</p>"
         f"<p class=muted>{_e(scope)}. All {len(rows)} captured candidates shown; "
         f"{len(known)} captured parent edges, {len(missing)} missing-parent references; "
-        f"{omitted} truncated parent lists.</p><div class='scroll lineage'>"
+        f"{omitted} truncated parent lists.</p></div><div class=lineage>"
         + tostring(svg, encoding="unicode")
         + "</div>"
         + (
@@ -267,7 +402,7 @@ def render_report_html(
             for item in snapshot.get("budget", [])
         )
         about.append(
-            f"<div class=run><h2>{_e(label)}</h2>"
+            f"<div class=run><h3>{_e(label)}</h3>"
             f"<p>{_e(objective.get('name', 'Objective unavailable'))}</p>"
             f"<code>{_e(run.campaign_id)}</code>"
             f"<p>State: {_e(snapshot.get('campaign_state', 'unknown'))}</p>"
@@ -275,15 +410,21 @@ def render_report_html(
             f"<p class=badge>{_e(claim)}</p><p>Captured workers: "
             f"{len(workers) if workers else 'unavailable'} distinct historical IDs; "
             "not live concurrency.</p>"
+            f"<details><summary>Budget &amp; capture details</summary>"
             f"<small>Attempts: {_e(attempt_scope)}</small><h3>Budget ledger</h3>"
             "<table><thead><tr><th>Unit</th><th>Used</th><th>Held</th><th>Uncertain</th></tr></thead>"
             f"<tbody>{budget}</tbody></table>"
             + ("<p class=muted>No captured budget ledger.</p>" if not budget else "")
             + "<details><summary>Capture provenance</summary>"
             f"<p class=muted>Captured {_e(run.captured_at)} · revision {run.revision} · "
-            f"event {run.evidence_through}</p></details></div>"
+            f"event {run.evidence_through}</p></details></details></div>"
         )
-        lineage.append(_lineage(view, run, metric))
+        lineage.append(
+            f"<div data-run='{index}'"
+            + (" hidden>" if index else ">")
+            + _lineage(view, run, metric)
+            + "</div>"
+        )
         candidates: dict[str, float] = {}
         extremum = min if metric.direction == "minimize" else max
         for point in run.points:
@@ -295,10 +436,15 @@ def render_report_html(
             key=lambda item: (item[1] if metric.direction == "minimize" else -item[1], item[0]),
         )
         rows = "".join(
-            f"<tr><td><code>{_e(identifier)}</code>"
-            f"{' <span class=badge>highlighted path</span>' if identifier in selected else ''}</td>"
-            f"<td class=number>{value:.6g}</td></tr>"
-            for identifier, value in ordered
+            f"<div class='leader{' selected' if identifier in selected else ''}'>"
+            f"<span class='rank number'>{rank:02d}</span><span class=avatar>{index + 1:02d}</span>"
+            f"<div><div class=leader-name title='{_e(identifier)}'>"
+            f"Experiment {_e(identifier.split('-candidate-')[-1])}"
+            "</div>"
+            f"<div class=leader-detail>{_e(label)} · best observed receipt"
+            f"{' · highlighted path' if identifier in selected else ''}</div></div>"
+            f"<span class='leader-score number'>{value:.6g}</span></div>"
+            for rank, (identifier, value) in enumerate(ordered, 1)
         )
         baseline = run.baseline.value if run.baseline else None
         change = ""
@@ -314,13 +460,15 @@ def render_report_html(
                 "(absolute, not a statistical win).</p>"
             )
         leaderboard.append(
-            f"<h3>{_e(label)}</h3><p class=muted>One best captured receipt per candidate; "
-            "not seed averages or confirmed rankings. "
-            f"{run.included}/{run.total} receipts captured.</p>"
-            + change
-            + "<table><thead><tr><th>Candidate</th><th>Observed score</th></tr></thead>"
-            f"<tbody>{rows}</tbody></table>"
-            + ("<p>No eligible timed scores.</p>" if not rows else "")
+            f"<div class=scope>{_e(label)} · {run.included}/{run.total} receipts captured. "
+            "Observed scores, not confirmed rankings.</div>"
+            + rows
+            + ("<p class=scope>No eligible timed scores.</p>" if not rows else "")
+            + (
+                f"<details class=scope><summary>Baseline comparison</summary>{change}</details>"
+                if change
+                else ""
+            )
         )
         trials, trial_scope = _page(research, "trials")
         trial_rows = "".join(
@@ -330,9 +478,14 @@ def render_report_html(
             for row in trials
         )
         observations = "".join(
-            f"<li><span class=number>{point.hours:.3g}h · {point.value:.6g}</span> "
-            f"<code>{_e(point.candidate_id)}</code> · event {point.event_sequence}</li>"
-            for point in run.points
+            f"<div class=activity-item><span class=activity-icon>↗</span><div>"
+            f"<div class=activity-title>Experiment "
+            f"{_e(point.candidate_id.split('-candidate-')[-1])} evaluated</div>"
+            f"<div class=activity-meta>{_e(label)} · {point.hours:.3g}h · "
+            f"event {point.event_sequence}"
+            "</div></div>"
+            f"<span class=number>{point.value:.6g}</span></div>"
+            for point in reversed(run.points)
         )
         proposals, proposal_scope = _page(research, "proposals")
         proposal_rows = "".join(
@@ -341,15 +494,30 @@ def render_report_html(
             for row in proposals
         )
         activity.append(
-            f"<h3>{_e(label)} · evaluated outcomes</h3><ol>{observations}</ol>"
+            f"{observations}<details class=scope>"
+            "<summary>All captured trials &amp; proposal actions</summary>"
             f"<p class=muted>Chronological commit times, not causal agent attribution.</p>"
             f"<h3>All captured trials</h3><small>{_e(trial_scope)}</small>"
             "<table><thead><tr><th>Trial</th><th>Execution</th><th>Evaluation</th></tr></thead>"
             f"<tbody>{trial_rows}</tbody></table><h3>Proposal actions</h3>"
             f"<small>{_e(proposal_scope)}; states only, timestamps unavailable.</small>"
-            f"<ul>{proposal_rows}</ul>"
+            f"<ul>{proposal_rows}</ul></details>"
         )
     script_hash = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
+    selectors = "".join(
+        f"<option value='{i}'>{_e(labels[i] if labels else f'Run {i + 1}')}</option>"
+        for i in range(len(runs))
+    )
+    workers = {
+        row["worker_id"]
+        for snapshot in snapshots
+        for row in _page(snapshot["research"], "attempts")[0]
+        if row.get("worker_id")
+    }
+    trial_count = sum(len(_page(snapshot["research"], "trials")[0]) for snapshot in snapshots)
+    # Frame the existing time plot, without its standalone export title/legend.
+    chart = chart.replace('viewBox="0 0 1120 ', 'viewBox="65 170 1000 ', 1)
+    chart = re.sub(r'viewBox="65 170 1000 [0-9]+"', 'viewBox="65 170 1000 390"', chart, count=1)
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -357,33 +525,34 @@ def render_report_html(
         f"style-src 'unsafe-inline'; script-src 'sha256-{script_hash}'; "
         "base-uri 'none'; form-action 'none'\">"
         f"<title>{_e(title)}</title><style>{_STYLE}</style></head><body>"
-        "<header><div class=kicker>RESEARCH SWARM / IMMUTABLE CAMPAIGN REPORT</div>"
-        f"<h1>{_e(title)}</h1>"
-        "<p class=muted>Read-only captured evidence · all captured experiment paths</p>"
-        "<details><summary>Comparison identity</summary>"
-        f"<code>{_e(comparison_digest)}</code></details></header>"
-        "<main><aside><div class=card><h2>About this experiment</h2>"
+        f"<header><h1>{_e(title)}</h1><span class=header-meta>"
+        f"{len(workers)} captured worker IDs · {trial_count} captured trials"
+        " · offline snapshot</span></header>"
+        "<main><aside class=sidebar><div class=sidebar-section><h2>About</h2>"
         + "".join(about)
-        + "</div></aside><section><div class=card>"
+        + "</div><div class=sidebar-section><h2>Evidence</h2>"
+        "<p class=muted>Captured report only. No live concurrency inferred.</p>"
+        "<details><summary>Comparison identity</summary>"
+        f"<code>{_e(comparison_digest)}</code></details>"
+        "<p class=muted>Observed extrema are not confirmed or official wins.</p></div></aside>"
+        "<section class=graph-panel><div class=panel-heading><h2>Graph</h2>"
+        f"<select data-run-selector aria-label='Campaign'>{selectors}</select>"
         "<div class=tabs role=tablist aria-label='Evidence views'>"
-        "<button role=tab data-tab=score aria-selected=false>Score</button>"
-        "<button role=tab data-tab=lineage aria-selected=true>Lineage</button></div>"
-        "<div data-panel=score class=score hidden>" + chart + "</div>"
-        "<div data-panel=lineage><p class=muted>"
-        "All captured branches remain visible in grey. "
-        "Teal highlights a qualified current selection, or explicitly labelled "
-        "best-observed ancestry. "
-        "Missing parents and omitted history are not reconstructed.</p>"
+        "<button role=tab data-tab=score aria-selected=false>Time</button>"
+        "<button role=tab data-tab=lineage aria-selected=true>Tree</button></div></div>"
+        "<div class=graph-body><div data-panel=score class=score hidden>"
+        + chart
+        + "</div><div data-panel=lineage>"
         + "".join(lineage)
-        + "</div>"
-        "</div></section><aside class=right><div class=card><h2>Best observed candidates</h2>"
-        "<div class=scroll>" + "".join(leaderboard) + "</div></div>"
-        "<div class=card><h2>Captured activity</h2><div class=scroll>"
+        + "</div></div>"
+        "<div class=graph-selection>Select a point to inspect "
+        "its candidate and observed score.</div>"
+        "</section><aside class=right><section class=right-section>"
+        "<div class=panel-heading><h2>Leaderboard</h2><span class=badge>Observed score</span></div>"
+        "<div class=scroll>" + "".join(leaderboard) + "</div></section>"
+        "<section class=right-section><div class=panel-heading><h2>Activity</h2>"
+        "<span class=badge>Evaluation receipts</span></div><div class=scroll>"
         + "".join(activity)
-        + "</div></div></aside></main>"
-        "<footer>Offline snapshot, not live telemetry. "
-        "Failed or unscored experiments remain in trial "
-        "outcomes. Observed extrema do not establish confirmed, "
-        "protected or official wins.</footer>"
+        + "</div></section></aside></main>"
         f"<script>{_SCRIPT}</script></body></html>\n"
     )

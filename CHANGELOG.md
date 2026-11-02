@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Rework the campaign view into a compact three-column workspace: narrow context
+  rail, score-positioned candidate ancestry with muted branches, and a stacked
+  leaderboard/activity rail. Preserve unscored candidates on a separate rail and
+  support keyboard inspection without inventing scores or agent attribution.
+
 - Qualify the synthetic offline report in real headless Chrome CI with desktop/mobile
   layout, tab interactions, page-error checks and captured browser screenshots.
 

@@ -125,9 +125,19 @@ content-security-policy-hashed script switches the Score and Lineage panels
 (Lineage opens by default so all captured paths are immediately visible);
 report text never becomes executable JavaScript or raw HTML.
 
-The three-column responsive view includes objective/metric/budget context,
-score curves, all captured candidate branches, a best-observed candidate table,
-trial outcomes and proposal states. IDs and scores use monospace. All captured
+The view is a viewport-height, three-column workspace: a narrow context rail,
+a dominant graph, and a leaderboard stacked above the activity feed. Light
+borders divide off-white panes; IDs and scores use monospace. Budget and provenance
+details expand in the context rail instead of displacing the graph.
+
+Tree opens by default. Its points use the best captured eligible score per candidate
+on the vertical axis and captured candidate order on the horizontal axis. Parent
+edges connect those points; this is not a box-and-arrow diagram. Lower values appear
+higher for minimize metrics, and higher values appear higher for maximize metrics.
+Candidates without an eligible score remain on a separate unscored rail; their
+parent edges are dashed. Click a point, or focus it and press Enter/Space, to inspect
+its exact ID and score. A campaign selector switches captured trees when comparing
+several reports. Time shows the elapsed-wall-time score overlay. All captured
 branches remain muted and visible, including rejected candidates. Teal ancestry
 marks the current qualified confirmed selection only when the report's exact
 comparison cohort, complete confirmation history and incumbent eligibility agree.
@@ -142,8 +152,8 @@ metric units, not automatically called percentage error reduction. Activity
 preserves failed/unscored trials. Evaluated observations are ordered by commit
 time and event sequence; proposal states are not assigned invented times or
 causal attribution. Captured distinct worker IDs describe historical evidence,
-never live concurrency. No trial-index axis is offered: elapsed controller wall
-time remains the only time basis.
+never live concurrency. Captured candidate order is not a trial count or a time
+axis; elapsed controller wall time remains the only time basis in the Time view.
 
 The Python API is `research_swarm.control.report_view.render_report_html`, with
 the same snapshots, comparison digest, metric, optional title and labels as the
@@ -162,10 +172,11 @@ uv run --no-sync python examples/hill_climb/generate.py
 node tests/visual/report-view-smoke.mjs
 ~~~
 
-The test verifies the title, computed off-white background, initial Lineage
-visibility, Score/Lineage switching, captured branches and page errors (including
-CSP violations). Both 1440px desktop and 390px mobile layouts must have no document
-horizontal overflow; the lineage panel may scroll internally. Real PNG captures
+The test verifies the title, computed off-white background, initial Tree
+visibility, Time/Tree switching, keyboard point inspection, all captured branches,
+and page errors (including CSP violations). At 1440px the compact header, rail
+proportions and graph must fit one viewport. Both desktop and 390px mobile layouts
+must have no document horizontal overflow. Real PNG captures
 are written to `artifacts/report-view/` and uploaded as a synthetic-only CI
 artifact, retained for 14 days. Partial captures on failure are diagnostic, not
 passing proof.

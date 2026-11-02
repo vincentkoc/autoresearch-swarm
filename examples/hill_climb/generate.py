@@ -1,5 +1,6 @@
 """Generate a visibly synthetic hill-climb overlay, without opening a controller."""
 
+import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -139,13 +140,28 @@ def main() -> None:
     )
     print(output)
     html = output.with_suffix(".html")
+    campaign = synthetic_run(
+        "synthetic-run-A",
+        [3.4 - 0.85 * (1 - math.exp(-i / 12)) + (0.15 if i % 4 == 2 else 0) for i in range(48)],
+        0.2,
+    )
+    best = 0
+    candidates = campaign["research"]["candidates"]["items"]
+    observations = campaign["recent_evaluations"]
+    for i in range(1, 48):
+        candidates[i]["parent_ids"] = [candidates[best]["id"]]
+        if (
+            observations[i]["primary_metric"]["value"]
+            < observations[best]["primary_metric"]["value"]
+        ):
+            best = i
     html.write_text(
         render_report_html(
-            runs,
+            [campaign],
             comparison_digest="synthetic-shared-contract",
             metric=MetricDefinition(name="validation_loss", unit="nats", direction="minimize"),
             title="SYNTHETIC DEMO · campaign cockpit",
-            labels=("Synthetic search A", "Synthetic search B"),
+            labels=("Synthetic loss optimization",),
         ),
         encoding="utf-8",
     )
