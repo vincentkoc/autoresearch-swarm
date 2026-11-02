@@ -697,12 +697,16 @@ def test_controller_readiness_rejects_an_existing_unrelated_listener(pipeline: P
 
 
 @pytest.mark.parametrize(
-    "pipeline", [{"source_finish_gate": True, "source_train_timeout_ms": 30000}], indirect=True
+    # Cover the cumulative restart choreography; individual watchdogs stay short.
+    "pipeline",
+    [{"source_finish_gate": True, "source_train_timeout_ms": 120000}],
+    indirect=True,
 )
 @pytest.mark.parametrize("cancel_offline", [False, True])
 def test_independent_worker_process_restart_recovers_the_original_running_native_scope(
     pipeline: Pipeline, tmp_path: Path, cancel_offline: bool
 ) -> None:
+    fixture_started = time.monotonic()
     root = tmp_path / "remote"
     first_witness, resumed_witness = (
         tmp_path / "first-driver.json",
@@ -843,6 +847,38 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     "identity_matches": current.create_time() == created if created else None,
                 }
 
+            def outcome_file() -> Any:
+                assert running is not None
+                path = (
+                    journal.path.parent
+                    / "executions"
+                    / running.dispatch.attempt_id
+                    / "outcome.json"
+                )
+                with path.open("rb") as stream:
+                    payload = stream.read(8193)
+                if len(payload) > 8192:
+                    return {"finding": "Outcome exceeded diagnostic byte bound"}
+                value = json.loads(payload)
+                findings = []
+                for item in value.get("closure", {}).get("findings", [])[:8]:
+                    for private in (
+                        connected.bundle.token,
+                        str(root),
+                        str(pipeline.runtime.root),
+                        sys.executable,
+                        str(REPO_ROOT),
+                        str(Path.home()),
+                    ):
+                        item = item.replace(private, "<redacted>")
+                    findings.append(item[:512])
+                return {
+                    "reason": value.get("reason"),
+                    "elapsed_ms": value.get("elapsed_ms"),
+                    "scope_closed": value.get("closure", {}).get("scope_closed"),
+                    "findings": findings,
+                }
+
             def journal_state() -> Any:
                 assert running is not None
                 entry = journal.get(running.dispatch.attempt_id)
@@ -869,6 +905,13 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             return json.dumps(
                 {
                     "phase": phase,
+                    "fixture_elapsed_ms": int((time.monotonic() - fixture_started) * 1000),
+                    "native_timeout_ms": running.command.timeout_ms,
+                    "hard_deadline_at": running.dispatch.hard_deadline_at,
+                    "timing_caps": running.timing.caps.model_dump(mode="json")
+                    if running.timing
+                    else None,
+                    "outcome_file": read(outcome_file),
                     "journal": read(journal_state),
                     "control": read(
                         lambda: pipeline.client.get("attempt_control", running.dispatch.attempt_id)
@@ -903,7 +946,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 time.sleep(0.01)
             assert running.native is not None
             assert running.prepared is not None
-            native_parent = psutil.Process(running.native.pid).parent()
+            native_root = psutil.Process(running.native.pid)
+            native_root.create_time()
+            native_parent = native_root.parent()
             assert native_parent is not None
             supervisor = (native_parent.pid, native_parent.create_time())
             output_root = Path(running.prepared.context.output_root)
@@ -920,9 +965,10 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             first_driver.wait(timeout=5)
             first.communicate(timeout=5)
             assert not first_driver.is_running()
-            assert native_parent.is_running() and native_parent.create_time() == supervisor[1]
-            native_root = psutil.Process(running.native.pid)
-            assert native_root.is_running()
+            assert native_parent.is_running() and native_parent.create_time() == supervisor[1], (
+                diagnostics("supervisor after driver exit")
+            )
+            assert native_root.is_running(), diagnostics("native root after driver exit")
             if sys.platform == "win32":
                 current_start_token = f"native-created:{native_root.create_time().hex()}"
             else:
@@ -1030,6 +1076,10 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             assert len(pipeline.client.list(RecordQuery(kind="attempt"))["items"]) == 1
             assert connected.bundle.token not in stdout + stderr
             assert (output_root / "payload-finished").read_text() == "1"
+        except psutil.NoSuchProcess as error:
+            if running is not None and running.native is not None:
+                error.add_note(diagnostics("native process disappeared"))
+            raise
         finally:
             if release is not None:
                 release.touch()
