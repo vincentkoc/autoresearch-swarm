@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a cooperative training hook that applies bounded control changes at update
+  boundaries, records readback and stops intervention after uncertain mutation.
+
 - Persist local reactive decisions in an append-only SQLite journal with one
   outstanding request, exclusive training ownership and uncertain-application recovery.
 

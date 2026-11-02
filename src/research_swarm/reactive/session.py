@@ -124,13 +124,15 @@ class TrainingSession:
                 request=record.request, proposal=record.proposal, step=step, target=target
             )
 
-    def record_application(self, receipt: ApplicationReceipt) -> DecisionRecord:
+    def record_application(
+        self, receipt: ApplicationReceipt, *, detail: str = ""
+    ) -> DecisionRecord:
         receipt = ApplicationReceipt.model_validate(receipt)
         with self.journal._connect(write=True) as connection:
             state = self._owned(connection)
             record = self.journal._decision(connection, receipt.request_id)
             if record is not None and record.receipt is not None:
-                if record.receipt != receipt:
+                if record.receipt != receipt or record.detail != detail:
                     raise JournalConflict("Application receipt differs from recorded evidence")
                 return record
             self._active(state)
@@ -162,7 +164,8 @@ class TrainingSession:
             ):
                 raise JournalConflict("Application receipt does not match the proposed controls")
             updated = DecisionRecord.model_validate(
-                record.model_dump() | {"receipt": receipt, "status": receipt.outcome}
+                record.model_dump()
+                | {"receipt": receipt, "status": receipt.outcome, "detail": detail}
             )
             self.journal._append(
                 connection,

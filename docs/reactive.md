@@ -37,3 +37,27 @@ These APIs assume trusted local workloads, agents and filesystem access. The
 diagnostic allowlist is a declaration, not proof that workload code has not
 mislabelled a metric. It is not a Python sandbox or evaluator boundary. No cloud
 adapter or hosted authorization is implied by the local journal API.
+
+## Cooperative training hook
+
+`ReactiveHook(journal, target)` owns a fresh session with the declared initial
+controls. The workload provides synchronous `target.read()` and `target.apply()`
+methods. They must be short operations on the declared controls. They must not
+perform inference, block on network calls or replace optimizer implementations.
+
+Call `await hook.boundary(observation)` between completed updates. The hook
+yields once to cooperative tasks, polls for a response and returns without
+waiting for a decision. A due observation creates a request with bounded recent
+history. Delayed decisions expire at the declared step limit. An explicit
+`step` argument records a later request/application boundary than the observation.
+
+Only the boundary can apply a response. The hook checks current controls,
+applies a changed target and reads back actual values before recording success.
+A keep response or a set response with identical values performs no mutation.
+Exceptions, unexpected control drift and readback mismatches record uncertainty
+and stop later interventions. They do not restore model or optimizer state.
+
+Use the hook as a context manager or call `close()` explicitly. Closing cancels
+pending requests without waiting for inference. The workload still owns and
+enforces its training deadline; the hook does not extend that deadline or bound
+the execution time of arbitrary workload code.
