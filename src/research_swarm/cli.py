@@ -52,6 +52,21 @@ def parser() -> argparse.ArgumentParser:
     witness_serve.add_argument("--tls-certificate-file", type=Path)
     witness_serve.add_argument("--tls-key-file", type=Path)
     commands.add_parser("mcp", help="Expose typed agent tools over stdio")
+    reactive = commands.add_parser(
+        "reactive", help="Operate one explicitly granted local decision session"
+    )
+    reactive.add_argument("--session", type=Path, required=True)
+    reactive_actions = reactive.add_subparsers(dest="reactive_action", required=True)
+    for operation in ("inspect", "pending", "mcp"):
+        reactive_actions.add_parser(operation)
+    reactive_respond = reactive_actions.add_parser("respond")
+    reactive_respond.add_argument(
+        "--file", type=Path, required=True, help="Bounded decision proposal JSON"
+    )
+    reactive_export = reactive_actions.add_parser("export")
+    reactive_export.add_argument("--after", type=int, default=-1)
+    reactive_export.add_argument("--limit", type=int, default=20)
+    reactive_export.add_argument("--max-bytes", type=int, default=65536)
     commands.add_parser("capabilities")
     backup = commands.add_parser("backup", help="Export and verify a sealed native checkpoint")
     backups = backup.add_subparsers(dest="backup_action", required=True)
@@ -513,6 +528,26 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     result: Any
     try:
+        if args.action == "reactive":
+            if args.state_dir is not None or args.controller or args.token_file is not None:
+                raise ValueError(
+                    "Reactive tools grant one local session, not controller credentials"
+                )
+            from research_swarm.reactive.client import DecisionClient
+
+            decisions = DecisionClient(args.session)
+            if args.reactive_action == "mcp":
+                from research_swarm.reactive.mcp import make_reactive_mcp
+
+                make_reactive_mcp(decisions).run(transport="stdio")
+                return 0
+            arguments = {}
+            if args.reactive_action == "respond":
+                arguments = {"proposal": _request(args.file, limit=17408)}
+            elif args.reactive_action == "export":
+                arguments = {"after": args.after, "limit": args.limit, "max_bytes": args.max_bytes}
+            _emit_json(decisions.dispatch(args.reactive_action, arguments))
+            return 0
         if args.action == "witness":
             if args.state_dir is not None or args.controller or args.token_file is not None:
                 raise ValueError("A witness does not use controller state or research credentials")
