@@ -79,6 +79,8 @@ class _RouteClient:
             "drive_turn",
             "orchestration_wait",
             "campaign",
+            "scientific_completion",
+            "campaign_resource_closure",
         }:
             raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Delivery query is unavailable")
         context = self._context(new_id())

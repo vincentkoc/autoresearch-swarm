@@ -99,6 +99,15 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
                 training.read_text(encoding="utf-8")
                 + "\nrequest = context()\n"
                 + 'marker = Path(request["output_root"]) / "payload-finished"\n'
+                + (
+                    "import os, json\n"
+                    + 'marker.with_name("payload-identity.json").write_text(json.dumps({\n'
+                    + '    "attempt_id": request["attempt_id"], "pid": os.getpid(),\n'
+                    + '    "parent_pid": os.getppid()\n'
+                    + '}), encoding="utf-8")\n'
+                    if finish_gate
+                    else ""
+                )
                 + "count = int(marker.read_text()) if marker.exists() else 0\n"
                 + "marker.write_text(str(count + 1))\n"
                 + "import time\n"

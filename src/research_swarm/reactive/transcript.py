@@ -11,6 +11,7 @@ from research_swarm.domain.canonical import canonical_bytes, record_digest, stri
 from research_swarm.domain.types import VersionedRecord
 from research_swarm.reactive.contracts import (
     ApplicationReceipt,
+    ReactiveContract,
     proposed_controls,
     validate_request,
 )
@@ -18,6 +19,42 @@ from research_swarm.reactive.journal import DecisionJournal
 from research_swarm.reactive.journal_records import DecisionRecord, JournalEvent, SessionState
 
 MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024
+
+
+def _validate_call(record: DecisionRecord, contract: ReactiveContract) -> None:
+    call = record.call
+    if call is None:
+        return
+    if call.outcome == "started" or call.completed_at is None:
+        raise ValueError("Transcript contains an unfinished policy call")
+    if (
+        call.policy_digest != contract.policy_digest
+        or call.timeout_ms != contract.decision_timeout_ms
+    ):
+        raise ValueError("Transcript policy call differs from its admitted contract")
+    if call.outcome != "returned":
+        expected_failures = (
+            {"cancelled"} if call.outcome == "cancelled" else {"exception", "invalid_response"}
+        )
+        if (
+            call.proposal is not None
+            or call.disposition is not None
+            or call.failure_code not in expected_failures
+        ):
+            raise ValueError("Transcript policy failure has inconsistent terminal fields")
+        return
+    if call.proposal is None or call.disposition is None or call.failure_code is not None:
+        raise ValueError("Transcript policy return has inconsistent terminal fields")
+    proposed_controls(contract, record.request, call.proposal, step=record.request.requested_step)
+    if call.disposition in {"accepted", "late"}:
+        if record.proposal != call.proposal or record.response_disposition != call.disposition:
+            raise ValueError("Transcript policy return differs from its recorded response")
+        if call.disposition == "accepted" and call.fence is not None:
+            raise ValueError("Transcript cannot accept a fenced policy return")
+    elif record.proposal is None or (call.proposal == record.proposal) != (
+        call.disposition == "duplicate"
+    ):
+        raise ValueError("Transcript policy conflict or duplicate differs from its response")
 
 
 class ControlTranscript(VersionedRecord):
@@ -54,8 +91,7 @@ class ControlTranscript(VersionedRecord):
                 proposed_controls(
                     state.contract, request, record.proposal, step=request.requested_step
                 )
-            if record.call is not None and record.call.outcome == "started":
-                raise ValueError("Transcript contains an unfinished policy call")
+            _validate_call(record, state.contract)
             receipt = record.receipt
             if receipt is None:
                 if (

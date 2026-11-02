@@ -162,7 +162,62 @@ async def test_lost_initial_closure_reply_replays_after_reopening(elected):
     before = snapshot(e.target)
     reopened = FixtureStore(Database(e.target.delegate.path).store)
     reopened.identity = e.target.identity
-    assert await call(e, request, store=reopened) == committed[0]
+    assert strict_json_loads(await call(e, request, store=reopened)) == committed[0]
+    assert snapshot(e.target) == before
+
+
+async def test_rejected_closure_acknowledgment_is_durable_and_binds_its_request(elected):
+    e = elected
+    await admit(e)
+    request = command(e)
+    correct_revision = request["expected_revision"]
+    request["expected_revision"] += 1
+    before = snapshot(e.target)
+    with pytest.raises(ResearchError) as first:
+        await call(e, request)
+    assert first.value.code == ErrorCode.REVISION_CONFLICT
+    assert first.value.command_id is not None
+    after = snapshot(e.target)
+    added = [row for row in after["commands"] if row not in before["commands"]]
+    assert len(added) == 1 and added[0]["command_id"] == first.value.command_id
+    assert after["records"] == before["records"]
+    assert after["budget_reservations"] == before["budget_reservations"]
+
+    reopened = FixtureStore(Database(e.target.delegate.path).store)
+    reopened.identity = e.target.identity
+    with pytest.raises(ResearchError) as replayed:
+        await call(e, request, store=reopened)
+    assert replayed.value.as_dict() == first.value.as_dict()
+    assert snapshot(e.target) == after
+    corrected = {**request, "expected_revision": correct_revision}
+    with pytest.raises(ResearchError) as conflict:
+        await call(e, corrected)
+    assert conflict.value.code == ErrorCode.IDEMPOTENCY_CONFLICT
+    assert snapshot(e.target) == after
+    corrected["request_id"] = new_id()
+    assert strict_json_loads(await call(e, corrected))["disposition"] == "accepted"
+
+
+async def test_lost_rejection_reply_replays_the_committed_command_identity(elected):
+    e = elected
+    await admit(e)
+    request = command(e)
+    request["expected_revision"] += 1
+    committed = []
+
+    class Lost:
+        identity = e.target.identity
+
+        def write(self, callback):
+            committed.append(e.target.write(callback))
+            raise OSError("Synthetic lost rejection reply")
+
+    with pytest.raises(OSError, match="lost rejection reply"):
+        await call(e, request, store=Lost())
+    before = snapshot(e.target)
+    with pytest.raises(ResearchError) as replayed:
+        await call(e, request)
+    assert replayed.value.as_dict() == committed[0]
     assert snapshot(e.target) == before
 
 

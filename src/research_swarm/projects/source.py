@@ -235,12 +235,19 @@ class _BundleWriter:
 def _selected_files(root: Path, patterns: tuple[str, ...]) -> Iterable[tuple[str, Path]]:
     for pattern in patterns:
         path_pattern(pattern)
+    directory_patterns = tuple(
+        "/".join(parts[:length])
+        for pattern in patterns
+        for parts in (pattern.split("/"),)
+        for length in range(1, len(parts) + 1)
+    )
     for directory, children, files in os.walk(root, followlinks=False):
         children[:] = sorted(name for name in children if name != ".git")
         for name in children:
             path = Path(directory) / name
-            if path.is_symlink():
-                raise ValueError("Source trees must not contain directory symlinks")
+            relative = path.relative_to(root).as_posix()
+            if path.is_symlink() and matches(relative, directory_patterns):
+                raise ValueError("Selected source paths must not contain directory symlinks")
         for name in sorted(files):
             path = Path(directory) / name
             relative = path.relative_to(root).as_posix()

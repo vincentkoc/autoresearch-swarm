@@ -5,6 +5,30 @@
 - Expose a bounded Git source-capture timeout through the sync/async SDK,
   project CLI and local MCP tool, shared across manifest reads and bundling.
 
+- Allow hosted delivery to read scientific completion and resource closure records when deciding whether a campaign is terminal.
+
+- Preserve safe SQLite cancellation-read failure codes and close worker-journal connections when setup fails.
+
+- Qualify Windows fixtures with byte-stable sources, private registration roots and pinned-interpreter recovery diagnostics.
+
+- Keep synchronous and asynchronous delivery available after scientific completion until resource obligations are explicitly closed.
+
+- Treat positively closed, never-released work as unstarted for launch and evaluation-exposure accounting, preserving supervisor diagnostics.
+
+- Preserve rejected Cloudflare recovery-turn acknowledgments across retries and lost replies.
+
+- Validate settled reactive policy-call identities, limits and terminal evidence before accepting transcripts.
+
+- Declare the expected evaluation panel in the project-manifest template and explain receipt completeness.
+
+- Ignore directory symlinks outside source selections while rejecting selected symlink paths.
+
+- Report interrupted artifact and worker downloads as retryable transport failures, with partial-file cleanup.
+
+- Return structured capability errors for unknown HTTP commands instead of uncertain-delivery advice.
+
+- Check upload and read permissions before creating artifact uploads or reserving storage.
+
 - Add an ordinary CPU project that demonstrates pending-decision training,
   bounded intervention, a fixed-control baseline and independently evaluated replay.
 

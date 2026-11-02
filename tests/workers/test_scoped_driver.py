@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -36,6 +37,7 @@ from tests.cli_process import (
     OwnedCliProcess,
     PipeTail,
     acknowledge_driver,
+    read_acknowledgment,
     require_ancestry,
     require_driver,
 )
@@ -43,6 +45,7 @@ from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.orchestration.test_http_delivery import serving
 from tests.paths import REPO_ROOT
+from tests.process_witness import ProcessWitness
 
 
 @contextmanager
@@ -754,6 +757,8 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
         resumed = None
         release = None
         supervisor = None
+        root_witness = workload_witness = None
+        diagnostic_wait_ms = None
 
         def setup_diagnostics(
             process: Any, phase: str, captured: tuple[bytes, bytes] | None = None
@@ -832,6 +837,21 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             return json.dumps(result, sort_keys=True)
 
         def diagnostics(phase: str) -> str:
+            nonlocal diagnostic_wait_ms
+
+            def bounded(value: Any, limit: int = 4096) -> str:
+                text = value.decode(errors="replace") if isinstance(value, bytes) else str(value)
+                for private in (
+                    connected.bundle.token,
+                    str(root),
+                    str(pipeline.runtime.root),
+                    sys.executable,
+                    str(REPO_ROOT),
+                    str(Path.home()),
+                ):
+                    text = text.replace(private, "<redacted>")
+                return text[:limit]
+
             def read(call: Any) -> Any:
                 try:
                     return call()
@@ -874,6 +894,8 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     findings.append(item[:512])
                 return {
                     "reason": value.get("reason"),
+                    "exit_code": value.get("exit_code"),
+                    "released_at": value.get("released_at"),
                     "elapsed_ms": value.get("elapsed_ms"),
                     "scope_closed": value.get("closure", {}).get("scope_closed"),
                     "findings": findings,
@@ -893,18 +915,38 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                         "reason": entry.outcome.reason,
                         "exit_code": entry.outcome.exit_code,
                         "scope_closed": entry.outcome.closure.scope_closed,
-                        "findings": [item[:512] for item in entry.outcome.closure.findings[:8]],
+                        "findings": [
+                            bounded(item, 512) for item in entry.outcome.closure.findings[:8]
+                        ],
                     }
                     if entry.outcome
                     else None,
-                    "finding": entry.finding[:512],
+                    "finding": bounded(entry.finding, 512),
                 }
 
             assert running is not None
             assert running.native is not None
+            execution = journal.path.parent / "executions" / running.dispatch.attempt_id
+            if diagnostic_wait_ms is None:
+                observed_at = time.monotonic()
+                deadline = observed_at + 2
+                while not (execution / "outcome.json").exists():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(0.05, remaining))
+                diagnostic_wait_ms = int((time.monotonic() - observed_at) * 1000)
+
+            def output_tail(name: str) -> str:
+                with (execution / "output" / name).open("rb") as stream:
+                    stream.seek(0, 2)
+                    stream.seek(max(0, stream.tell() - 4096))
+                    return bounded(stream.read(4096))
+
             return json.dumps(
                 {
                     "phase": phase,
+                    "sqlite_version": sqlite3.sqlite_version,
                     "fixture_elapsed_ms": int((time.monotonic() - fixture_started) * 1000),
                     "native_timeout_ms": running.command.timeout_ms,
                     "hard_deadline_at": running.dispatch.hard_deadline_at,
@@ -912,6 +954,11 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     if running.timing
                     else None,
                     "outcome_file": read(outcome_file),
+                    "late_outcome_wait_ms": diagnostic_wait_ms,
+                    "stdout_tail": read(lambda: output_tail("stdout")),
+                    "stderr_tail": read(lambda: output_tail("stderr")),
+                    "pinned_root": read(root_witness.report) if root_witness else None,
+                    "pinned_workload": read(workload_witness.report) if workload_witness else None,
                     "journal": read(journal_state),
                     "control": read(
                         lambda: pipeline.client.get("attempt_control", running.dispatch.attempt_id)
@@ -958,6 +1005,18 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     first, "first driver before payload marker"
                 )
                 time.sleep(0.01)
+            with (output_root / "payload-identity.json").open("rb") as stream:
+                witness_bytes = stream.read(2049)
+            assert len(witness_bytes) <= 2048
+            witness = json.loads(witness_bytes)
+            assert set(witness) == {"attempt_id", "pid", "parent_pid"}
+            assert witness["attempt_id"] == running.dispatch.attempt_id
+            assert type(witness["pid"]) is int and witness["pid"] > 0
+            workload = psutil.Process(witness["pid"])
+            assert workload.ppid() == witness["parent_pid"]
+            require_ancestry(workload, native_root)
+            root_witness = ProcessWitness(native_root)
+            workload_witness = ProcessWitness(workload)
             first_driver = require_driver(first_launcher, first_witness, first_nonce)
             require_ancestry(native_parent, first_driver)
             # Interrupt the interpreter, not a venv redirector that may outlive it.
@@ -969,6 +1028,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 diagnostics("supervisor after driver exit")
             )
             assert native_root.is_running(), diagnostics("native root after driver exit")
+            assert (
+                workload.is_running() and workload.create_time() == workload_witness.created_at
+            ), diagnostics("workload after driver exit")
             if sys.platform == "win32":
                 current_start_token = f"native-created:{native_root.create_time().hex()}"
             else:
@@ -1016,9 +1078,8 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     assert resumed.poll() is None and time.monotonic() < until, setup_diagnostics(
                         resumed, "resumed driver before attempt lock"
                     )
-                    try:
-                        acquired = json.loads(marker.read_text(encoding="utf-8"))
-                    except FileNotFoundError:
+                    acquired = read_acknowledgment(marker)
+                    if acquired is None:
                         time.sleep(0.01)
                     else:
                         assert acquired == {
@@ -1066,6 +1127,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             closed = journal.get(running.dispatch.attempt_id)
             assert closed.state == JournalState.CLOSED and closed.native == running.native
             assert closed.outcome is not None and closed.outcome.closure.scope_closed
+            if sys.platform == "win32":
+                assert root_witness.report()["windows_exit_code"] != 259
+                assert workload_witness.report()["windows_exit_code"] != 259
             if cancel_offline:
                 assert closed.outcome.reason == "cancelled"
                 assert (
@@ -1081,6 +1145,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 error.add_note(diagnostics("native process disappeared"))
             raise
         finally:
+            for retained in (workload_witness, root_witness):
+                if retained is not None:
+                    retained.close()
             if release is not None:
                 release.touch()
             for process, launcher, driver, witness, nonce in (

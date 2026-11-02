@@ -166,6 +166,73 @@ async def test_post_bootstrap_campaign_registers_and_delivers_across_lost_reply_
     assert len([row for row in rows(e, "records") if row["kind"] == "delivery_registration"]) == 1
 
 
+def retained_completion(e, state, *, kind=None):
+    # Exercise reads of retained ledger state without adding hosted command authority.
+    context = CommandContext(
+        principal=e.manifest.credentials[0].principal, idempotency_key=new_id()
+    )
+
+    def persist(sql):
+        transaction = Transaction(sql, context)
+        campaign = transaction.get("campaign", e.reference["campaign_id"])
+        transaction.update(
+            "campaign",
+            campaign["id"],
+            expected_revision=campaign["revision"],
+            data=campaign["data"],
+            state=state,
+        )
+        if kind is not None:
+            transaction.insert(
+                kind,
+                campaign["id"],
+                {"campaign_id": campaign["id"]},
+                state="immutable",
+                campaign_id=campaign["id"],
+            )
+
+    e.store.write(persist)
+
+
+@pytest.mark.parametrize("state", ["completed", "cancelled", "failed"])
+async def test_terminal_campaign_delivery_reads_absent_scientific_completion(production, state):
+    e = production
+    await register(e)
+    retained_completion(e, state)
+    before = rows(e, "records"), rows(e, "events"), rows(e, "commands"), len(e.witness.requests)
+    status, result = await delivery(e)
+    assert status == 200 and result["state"] == "terminal"
+    assert (
+        rows(e, "records"),
+        rows(e, "events"),
+        rows(e, "commands"),
+        len(e.witness.requests),
+    ) == (before)
+
+
+async def test_scientific_completion_delivery_waits_for_resource_closure(production):
+    e = production
+    await register(e)
+    retained_completion(e, "completed", kind="scientific_completion")
+    before = rows(e, "records"), rows(e, "events"), rows(e, "commands"), len(e.witness.requests)
+    status, result = await delivery(e)
+    assert status == 200 and result["state"] == "idle"
+    assert (
+        rows(e, "records"),
+        rows(e, "events"),
+        rows(e, "commands"),
+        len(e.witness.requests),
+    ) == (before)
+    retained_completion(e, "completed", kind="campaign_resource_closure")
+    status, result = await delivery(e)
+    assert status == 200 and result["state"] == "terminal"
+    e.store.write(
+        lambda sql: sql.execute("UPDATE credentials SET revoked=1 WHERE id=?", (e.driver.id,))
+    )
+    status, refused = await delivery(e)
+    assert status == 403 and refused["error"]["code"] == "AUTHORIZATION_DENIED"
+
+
 @pytest.mark.parametrize("changed", ["outside-roster", "revoked", "expires", "principal", "digest"])
 async def test_registration_roster_preflight_refuses_before_witness(production, changed):
     e, intent = production, production.intent

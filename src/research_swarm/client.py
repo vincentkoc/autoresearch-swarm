@@ -391,20 +391,34 @@ class HTTPTransport:
     def download(self, identifier: str, destination: Path) -> ArtifactRef:
         identifier = TypeAdapter(ID).validate_python(identifier)
         record = ArtifactRecord.model_validate(self._request("GET", f"/v1/artifacts/{identifier}"))
-        with self.http.stream("GET", f"/v1/artifacts/{identifier}/content") as response:
-            if response.status_code != 200:
-                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact download failed")
-            return write_download(record.reference, response.iter_bytes(64 * 1024), destination)
+        return self._download(
+            record.reference, destination, "GET", f"/v1/artifacts/{identifier}/content"
+        )
 
     def worker_download(self, request: WorkerArtifactRead, destination: Path) -> ArtifactRef:
         payload = WorkerArtifactRead.model_validate(request).model_dump(mode="json")
         reference = ArtifactRef.model_validate(
             self._request("POST", "/v1/worker/input", json=payload)
         )
-        with self.http.stream("POST", "/v1/worker/input/content", json=payload) as response:
-            if response.status_code != 200:
-                raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Worker input download failed")
-            return write_download(reference, response.iter_bytes(64 * 1024), destination)
+        return self._download(
+            reference, destination, "POST", "/v1/worker/input/content", json=payload
+        )
+
+    def _download(
+        self, reference: ArtifactRef, destination: Path, method: str, path: str, **kwargs: Any
+    ) -> ArtifactRef:
+        try:
+            with self.http.stream(method, path, **kwargs) as response:
+                if response.status_code != 200:
+                    raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact download failed")
+                return write_download(reference, response.iter_bytes(64 * 1024), destination)
+        except httpx.RequestError as error:
+            raise ResearchError(
+                ErrorCode.TRANSPORT_UNAVAILABLE,
+                "Artifact download failed",
+                retryable=True,
+                details={"recovery": "retry_query"},
+            ) from error
 
     def close(self) -> None:
         self.http.close()

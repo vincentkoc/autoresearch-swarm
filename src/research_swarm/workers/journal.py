@@ -92,10 +92,10 @@ class WorkerJournal:
             if getattr(self, "_existing_only", False)
             else sqlite3.connect(self.path, isolation_level=None, timeout=10)
         )
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute("PRAGMA synchronous=FULL")
         try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA synchronous=FULL")
             yield connection
         finally:
             connection.close()
@@ -577,9 +577,7 @@ class WorkerJournal:
             state = JournalState.UNKNOWN
             if outcome.closure.scope_closed:
                 state = (
-                    JournalState.NOT_STARTED
-                    if outcome.reason == "not_started"
-                    else JournalState.CLOSED
+                    JournalState.NOT_STARTED if outcome.released_at is None else JournalState.CLOSED
                 )
             return entry.model_copy(update={"state": state, "outcome": outcome})
 
