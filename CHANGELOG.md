@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Qualify the synthetic offline report in real headless Chrome CI with desktop/mobile
+  layout, tab interactions, page-error checks and captured browser screenshots.
+
 - Add an offline interactive campaign HTML export using the same bounded score
   projection, with off-white styling, captured lineage, qualified-selection versus
   observed-path labels, candidate scores, budgets and honest historical activity.

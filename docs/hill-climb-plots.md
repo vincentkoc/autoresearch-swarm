@@ -150,3 +150,31 @@ the same snapshots, comparison digest, metric, optional title and labels as the
 SVG renderer. It returns a complete HTML document. The demo generator also writes
 [synthetic-demo.html](../examples/hill_climb/synthetic-demo.html), containing only
 invented evidence and clearly labelled **SYNTHETIC DEMO**.
+
+### Real-browser smoke proof
+
+The dedicated `report-view` CI job generates this synthetic demo and opens it in
+the GitHub Ubuntu runner's preinstalled Google Chrome. Node 22's built-in
+WebSocket/CDP support drives real tab clicks; no npm or core dependency is added.
+
+~~~sh
+uv run --no-sync python examples/hill_climb/generate.py
+node tests/visual/report-view-smoke.mjs
+~~~
+
+The test verifies the title, computed off-white background, initial Lineage
+visibility, Score/Lineage switching, captured branches and page errors (including
+CSP violations). Both 1440px desktop and 390px mobile layouts must have no document
+horizontal overflow; the lineage panel may scroll internally. Real PNG captures
+are written to `artifacts/report-view/` and uploaded as a synthetic-only CI
+artifact, retained for 14 days. Partial captures on failure are diagnostic, not
+passing proof.
+
+Chrome must be installed: a missing executable fails explicitly, never skips.
+`CHROME_BIN` accepts an exact executable path, including macOS app paths with
+spaces. `REPORT_VIEW_HTML` and `REPORT_VIEW_OUTPUT_DIR` optionally override the
+synthetic input file and screenshot directory when running on another host;
+do not supply private campaign reports. Each run uses a fresh temporary Chrome
+profile and an OS-assigned loopback CDP port, with bounded command/startup waits,
+a 90-second run deadline and process/profile cleanup. This test neither starts a
+controller nor accesses running experiments.
