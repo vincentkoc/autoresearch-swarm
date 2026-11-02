@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve rejected Cloudflare recovery-turn acknowledgments across retries and lost replies.
+
 - Validate settled reactive policy-call identities, limits and terminal evidence before accepting transcripts.
 
 - Declare the expected evaluation panel in the project-manifest template and explain receipt completeness.
