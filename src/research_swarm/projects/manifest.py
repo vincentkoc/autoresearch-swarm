@@ -20,6 +20,7 @@ from research_swarm.projects.source import (
     path_pattern,
     portable_path,
 )
+from research_swarm.reactive.contracts import ReactiveContract
 
 MAX_PROJECT_MANIFEST_BYTES = 1024 * 1024
 
@@ -97,6 +98,7 @@ class ProjectManifest(VersionedRecord):
     evaluation: EvaluatorContract
     timing: TimingContract
     stages: tuple[StageSpec, ...] = Field(min_length=1, max_length=256)
+    reactive: ReactiveContract | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="before")
     @classmethod
@@ -128,6 +130,8 @@ class ProjectManifest(VersionedRecord):
     @model_validator(mode="after")
     def valid_stages(self) -> ProjectManifest:
         validate_stage_graph(self.stages)
+        if self.reactive is not None and not any(stage.kind == "train" for stage in self.stages):
+            raise ValueError("Reactive controls require a train stage")
         if not any(stage.kind == "evaluate" for stage in self.stages):
             raise ValueError("A research project requires an evaluation stage")
         if self.timing.scope == "active_training" and not any(
@@ -224,6 +228,11 @@ def resolve_project(
             "data_manifest_digest": data_digest,
             "evaluator_contract_digest": evaluator_digest,
             "timing": manifest.timing.model_dump(mode="json"),
+            **(
+                {"reactive": manifest.reactive.model_dump(mode="json")}
+                if manifest.reactive is not None
+                else {}
+            ),
         },
     )
     return ResolvedProject(

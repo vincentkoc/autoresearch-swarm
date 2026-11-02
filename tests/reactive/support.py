@@ -18,6 +18,27 @@ from research_swarm.reactive.journal import DecisionJournal
 from research_swarm.reactive.journal_records import ApplicationIntent
 
 DIGEST = "sha256:" + "a" * 64
+REACTIVE_TOML = (
+    '''
+[reactive]
+policy_name = "fixture-v1"
+policy_digest = "'''
+    + DIGEST
+    + """"
+interval_steps = 5
+max_lag_steps = 10
+
+[[reactive.controls]]
+name = "lr"
+minimum = 0.0
+maximum = 1.0
+initial = 0.1
+
+[[reactive.diagnostics]]
+name = "loss"
+source = "train"
+"""
+)
 
 
 def create_journal(path: Path) -> DecisionJournal:

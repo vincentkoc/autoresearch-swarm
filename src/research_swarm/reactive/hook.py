@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from pathlib import Path
 from types import TracebackType
 from typing import Literal, Protocol, Self
 
 from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes
 from research_swarm.domain.types import VersionedRecord, new_id
+from research_swarm.projects.workload import WorkloadContext
+from research_swarm.reactive.admission import create_session
 from research_swarm.reactive.contracts import (
     ApplicationReceipt,
     DecisionRequest,
@@ -37,6 +40,13 @@ class BoundaryResult(VersionedRecord):
 
 
 class ReactiveHook:
+    @classmethod
+    def from_context(
+        cls, context: WorkloadContext, target: ControlTarget, *, session_path: Path | None = None
+    ) -> ReactiveHook:
+        """Use the admitted declaration; no caller-supplied contract override is accepted."""
+        return cls(create_session(context, path=session_path), target)
+
     def __init__(self, journal: DecisionJournal, target: ControlTarget) -> None:
         self.journal, self.target = journal, target
         state = journal.inspect()

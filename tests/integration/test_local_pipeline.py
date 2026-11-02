@@ -61,6 +61,7 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     train_timeout = campaign_options.pop("source_train_timeout_ms", None)
     scoring_delay_seed = campaign_options.pop("source_scoring_delay_seed", None)
     network_policy = campaign_options.pop("source_network_policy", None)
+    reactive_toml = campaign_options.pop("source_reactive_toml", None)
     if (
         parallel_stage
         or learning_rate is not None
@@ -69,10 +70,16 @@ def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
         or train_timeout is not None
         or scoring_delay_seed is not None
         or network_policy is not None
+        or reactive_toml is not None
     ):
         copied = tmp_path / "parallel-source"
         shutil.copytree(source, copied)
         source = copied
+        if reactive_toml is not None:
+            manifest = source / "research.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8") + reactive_toml, encoding="utf-8"
+            )
         if learning_rate is not None:
             training = source / "train.py"
             training.write_text(

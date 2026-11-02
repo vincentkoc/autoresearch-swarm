@@ -171,3 +171,25 @@ Exports are bounded by both event count and serialized bytes. Continue from
 budget, increase `max_bytes` within its documented schema bound. These are local
 tools for trusted workloads and agents; controller credentials, hosted adapter
 parity and filesystem sandboxing are separate capabilities.
+
+## Admitted workload binding
+
+An optional `[reactive]` declaration in `research.toml` fixes the controls,
+diagnostics, policy fingerprint and limits before project admission. It becomes
+part of the protocol digest and sealed experiment specification. Projects
+without this declaration retain their existing serialized records and digests.
+
+Only stages with `kind = "train"` receive the declaration in their sealed
+`WorkloadContext.parameters`. Evaluation and `policy_train` stages do not receive
+it. This is an exact stage-kind rule, not a classifier of what the workload does.
+Prepared execution verifies the correspondence again, including reused markers.
+
+The training workload can call `ReactiveHook.from_context(context, target)`.
+This creates the journal at `output_root/reactive.sqlite` and binds it to the
+admitted contract and exact trial, attempt, stage, specification and context.
+An optional `session_path` changes the journal location, not its contract.
+There is no hook argument that replaces the admitted controls or policy.
+
+The workload still owns its Python code and numeric target. The declaration is
+a data and mutation contract for trusted local execution; it does not prove that
+arbitrary workload code labelled its diagnostics correctly.

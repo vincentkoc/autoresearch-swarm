@@ -11,6 +11,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import DispatchEnvelope, ExperimentSpec
 from research_swarm.domain.types import ID, Digest, VersionedRecord
 from research_swarm.projects.workload import WorkloadContext, absolute_path
+from research_swarm.reactive.admission import verify_parameters
 from research_swarm.workers.contracts import NativeCommand
 from research_swarm.workers.engine_binding import EngineBinding
 
@@ -33,6 +34,13 @@ class PreparedExecution(VersionedRecord):
 
     def verify(self, dispatch: DispatchEnvelope, spec: ExperimentSpec) -> None:
         self.context.verify()
+        stage = next(stage for stage in spec.stages if stage.id == dispatch.stage_id)
+        try:
+            verify_parameters(self.context, spec, stage)
+        except ValueError:
+            raise ResearchError(
+                ErrorCode.AUTHORIZATION_DENIED, "Reactive workload context differs"
+            ) from None
         if (self.engine is None) != ("engine" not in self.context.parameters):
             raise ResearchError(
                 ErrorCode.AUTHORIZATION_DENIED,
@@ -58,7 +66,6 @@ class PreparedExecution(VersionedRecord):
             )
         if self.engine is not None:
             declared = self.context.parameters.get("engine")
-            stage = next(stage for stage in spec.stages if stage.id == dispatch.stage_id)
             if not isinstance(declared, dict) or (
                 declared.get("execution_fingerprint") != self.profile_digest
                 or declared.get("environment_digest") != spec.environment_digest

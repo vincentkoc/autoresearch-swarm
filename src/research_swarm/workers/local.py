@@ -41,6 +41,7 @@ from research_swarm.projects.workload import (
     read_report,
     verify_outputs,
 )
+from research_swarm.reactive.admission import training_parameters
 from research_swarm.runtime import private_state_directory, read_private, write_private
 from research_swarm.workers.authority import DispatchVerifier, VerifiedDispatch
 from research_swarm.workers.clock_estimates import ClockSampler
@@ -360,9 +361,14 @@ class LocalWorker:
                 inputs=materialized,
                 output_root=str(outputs),
                 report_path=str(root / "report.json"),
-                parameters={"engine": engine_context(self.registration, trial.spec, stage)}
-                if self.registration is not None
-                else {},
+                parameters={
+                    **(
+                        {"engine": engine_context(self.registration, trial.spec, stage)}
+                        if self.registration is not None
+                        else {}
+                    ),
+                    **training_parameters(trial.spec, stage),
+                },
             ).sealed()
             write_private(root / "context.json", context.model_dump_json().encode("utf-8"))
             prepared = PreparedExecution(
