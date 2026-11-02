@@ -13,7 +13,7 @@ from research_swarm.control.queries import summarize
 from research_swarm.control.report_details import research_details
 from research_swarm.control.report_selection import observed_cohorts
 from research_swarm.domain.budgets import BudgetAccount
-from research_swarm.domain.canonical import canonical_bytes, record_digest
+from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord, new_id, utc_now
 from research_swarm.state.database import JsonObject, Transaction
@@ -379,13 +379,30 @@ def markdown(snapshot: JsonObject) -> str:
     return "\n".join(lines)
 
 
-def create_report(
-    transaction: Transaction,
-    campaign_row: JsonObject,
-    *,
-    recent_limit: int = 20,
-    report_id: str | None = None,
+def _evaluation_commit_events(
+    transaction: Transaction, identifiers: tuple[str, ...], watermark: int
+) -> dict[str, JsonObject]:
+    """Scan event history once, returning only the first event per bounded receipt ID."""
+    if not identifiers:
+        return {}
+    placeholders = ",".join("?" for _ in identifiers)
+    rows = transaction.connection.execute(
+        "SELECT e.payload FROM events e JOIN ("
+        "SELECT MIN(sequence) AS first_sequence FROM events WHERE workspace_id=? "
+        "AND sequence<=? AND json_extract(payload,'$.type')='evaluation.recorded' "
+        f"AND json_extract(payload,'$.aggregate_id') IN ({placeholders}) "
+        "GROUP BY json_extract(payload,'$.aggregate_id')"
+        ") selected ON e.sequence=selected.first_sequence WHERE e.workspace_id=?",
+        (transaction.workspace_id, watermark, *identifiers, transaction.workspace_id),
+    ).fetchall()
+    events = [strict_json_loads(row["payload"]) for row in rows]
+    return {event["aggregate_id"]: event for event in events}
+
+
+def capture_snapshot(
+    transaction: Transaction, campaign_row: JsonObject, *, recent_limit: int = 20
 ) -> JsonObject:
+    """Read bounded campaign evidence without creating records or events."""
     campaign = CampaignData.model_validate(campaign_row["data"])
     details = research_details(transaction, campaign_row, campaign, limit=recent_limit)
     counts = transaction.connection.execute(
@@ -402,9 +419,18 @@ def create_report(
     evaluation_ids = tuple(
         dict.fromkeys((*details["pinned_evaluation_ids"], *(item["id"] for item in recent)))
     )
+    watermark = transaction.connection.execute(
+        "SELECT next_sequence-1 FROM workspaces WHERE id=?",
+        (transaction.workspace_id,),
+    ).one()[0]
+    commit_events = _evaluation_commit_events(transaction, evaluation_ids, watermark)
     for identifier in evaluation_ids:
         row = transaction.get("evaluation_receipt", identifier)
         evidence = summarize(row)
+        event = commit_events.get(identifier)
+        evidence["commit_event"] = (
+            {key: event[key] for key in ("id", "sequence", "recorded_at")} if event else None
+        )
         authorization = EvaluationAuthorization.model_validate(
             transaction.get("evaluation_request", evidence["data"]["request_id"])["data"]
         )
@@ -437,13 +463,13 @@ def create_report(
         (transaction.workspace_id, campaign_row["id"]),
     ).fetchall()
     accounts = [BudgetAccount.model_validate_json(item["payload"]) for item in budget_rows]
-    watermark = transaction.connection.execute(
-        "SELECT next_sequence-1 FROM workspaces WHERE id=?",
-        (transaction.workspace_id,),
-    ).one()[0]
     selection = None
     if campaign.incumbent_promotion_id:
         selection = summarize(transaction.get("promotion", campaign.incumbent_promotion_id))
+    campaign_created = transaction.connection.execute(
+        "SELECT created_at FROM records WHERE workspace_id=? AND kind='campaign' AND id=?",
+        (transaction.workspace_id, campaign_row["id"]),
+    ).one()["created_at"]
     snapshot = {
         "schema_version": "1.0",
         "campaign_id": campaign_row["id"],
@@ -451,6 +477,7 @@ def create_report(
         "campaign_revision": campaign_row["revision"],
         "stopping_reason": campaign.stopping_reason,
         "captured_at": utc_now(),
+        "campaign_created_at": campaign_created,
         "evidence_through": watermark,
         "protocol_digest": campaign.contract.protocol_digest,
         "campaign_contract_digest": campaign.contract_digest,
@@ -497,6 +524,17 @@ def create_report(
     snapshot["observed_cohorts"] = observed_cohorts(
         evaluations, complete=snapshot["evaluation_window"]["complete"]
     )
+    return snapshot
+
+
+def create_report(
+    transaction: Transaction,
+    campaign_row: JsonObject,
+    *,
+    recent_limit: int = 20,
+    report_id: str | None = None,
+) -> JsonObject:
+    snapshot = capture_snapshot(transaction, campaign_row, recent_limit=recent_limit)
     content: JsonObject = {"snapshot": snapshot, "markdown": markdown(snapshot)}
     content["report_digest"] = record_digest("research.report", content)
     if len(canonical_bytes(content)) > MAX_REPORT_BYTES:
@@ -512,5 +550,5 @@ def create_report(
         campaign_id=campaign_row["id"],
         parent_id=campaign_row["id"],
     )
-    transaction.event("report.created", row, {"evidence_through": watermark})
+    transaction.event("report.created", row, {"evidence_through": snapshot["evidence_through"]})
     return row

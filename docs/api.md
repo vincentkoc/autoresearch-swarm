@@ -6,7 +6,7 @@ service owns state, idempotency, revisions, budgets, and evidence acceptance.
 ## Authentication and command identity
 
 All research endpoints require a bearer credential. `/healthz` reports only
-process liveness and is public. The credential resolves to a server-owned actor,
+process liveness and is public. `/` serves only the credential-free campaign browser shell. The credential resolves to a server-owned actor,
 workspace, and scopes. Request bodies cannot supply their own authority.
 
 Credential storage contains a domain-separated token hash. Issuance returns the
@@ -53,6 +53,9 @@ bodies are rejected. The command body limit is 1 MiB.
 | `GET /v1/records/{kind}/{id}` | One authorized public research record |
 | `POST /v1/proposal/get` | Assigned proposal and optional immutable response under `proposal.respond` |
 | `POST /v1/query` | Up to 100 summarized records and an opaque next cursor |
+| `GET /v1/campaigns` | Workspace-scoped campaign list; `limit` (1–100) and opaque `cursor` |
+| `GET /v1/campaigns/{id}/snapshot` | Read-only bounded campaign evidence; no report or event writes |
+| `GET /v1/campaigns/{id}/view` | Campaign HTML; optional explicit `comparison_digest` |
 | `GET /v1/campaigns/{id}/context` | Bounded recent evidence, lifecycle, contract, counts, and budget |
 | `GET /v1/campaigns/{id}/budget` | Exact decimal account values and availability |
 | `GET /v1/events?after=N` | Up to 1,000 events after a workspace sequence |

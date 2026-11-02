@@ -16,3 +16,4 @@ dist/
 node_modules/
 .wrangler/
 target/
+artifacts/report-view/

@@ -2,6 +2,64 @@
 
 ## Unreleased
 
+- Add a reproducible synthetic research atlas with 600 records and 2,028 links,
+  including branching trials and cross-area references, for the README graph example.
+
+- Apply newly requested graph layouts while reduced motion or Pause is active,
+  without accepting queued animation frames.
+
+- Share sidebar width, collapse and section-height resizing across campaign and
+  inventory views; retain widths when switching views and support keyboard dividers.
+
+- Add a layout selector for connected clusters, category groups and a symmetric
+  ring plus a broad spread-out force view, retaining filters, selection and recorded ancestry across layout changes.
+
+- Move graph layout to an offline D3 Barnes–Hut worker, batch edge drawing and
+  render only on changes. Default to topology-led layout without circular category
+  anchors; category grouping remains optional.
+
+- Refresh selected graph connection visibility annotations when search or category
+  filters change, including when filters are cleared.
+
+- Add a standalone, offline force-directed experiment inventory with up to 5,000
+  nodes, category layout, search/filter, pan/zoom, pinned-node dragging and explicit
+  causal ancestry inspection. Source references stay non-causal; inventory size
+  does not expand the bounded report measurement window.
+
+- Add Hill climb / Graph tabs within the resizable campaign workspace. Hill climb
+  retains chronological receipts and a separate running best per selected comparable
+  campaign. Graph arrows use explicit parent IDs only, fade older generations and
+  highlight the inspected ancestry without implying a new scientific selection.
+
+- Make the campaign workspace the only HTML view; remove the Time/Tree switch.
+  Serve a read-authenticated, paginated campaign picker alongside the existing API,
+  with direct loading for single-campaign stores and exports. Refreshing the view
+  reads bounded evidence without creating reports, events or changing research state.
+
+- Add a Swarm GitHub link and optional project GitHub attribution to the campaign
+  view, with draggable and keyboard-resizable sidebars plus collapse controls.
+  Pass `report view --project-repository https://github.com/OWNER/REPO` to supply
+  project attribution without modifying captured scientific evidence.
+
+- Keep campaign graph coordinates finite for extreme scores.
+
+- Rework the campaign view into a compact three-column workspace: narrow context
+  rail, score-positioned candidate ancestry with muted branches, and a stacked
+  leaderboard/activity rail. Preserve unscored candidates on a separate rail and
+  support keyboard inspection without inventing scores or agent attribution.
+
+- Qualify the synthetic offline report in real headless Chrome CI with desktop/mobile
+  layout, campaign selection, page-error checks and captured browser screenshots.
+
+- Add an offline interactive campaign HTML export using the same bounded score
+  projection, with off-white styling, captured lineage, qualified-selection versus
+  observed-path labels, candidate scores, budgets and honest historical activity.
+
+- Export native, dependency-free hill-climb SVGs from immutable reports, with
+  exact metric/comparison selection, comparable-run overlays, original baseline
+  references and bounded-history disclosure. Capture controller evaluation event
+  times and campaign creation time without inferring training time or confirmed wins.
+
 - Expose a bounded Git source-capture timeout through the sync/async SDK,
   project CLI and local MCP tool, shared across manifest reads and bundling.
 

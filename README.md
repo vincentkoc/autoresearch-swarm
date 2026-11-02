@@ -23,6 +23,8 @@ uv run research run examples/cpu_bigram
 
 The CPU example trains a small model and evaluates it independently. See
 [local runs](docs/local-runs.md) for budgets, resumption and campaign reports.
+Open the [campaign view](docs/campaign-view.md) to inspect experiments, lineage,
+leaderboards and activity, either from an offline export or the existing API server.
 
 Expose the same control surface to an agent:
 
@@ -35,6 +37,20 @@ Agents can propose candidates, submit trials, inspect results and request promot
 The engine owns execution state, budgets and evaluator authority.
 Start with [agent control](docs/agent-control.md), the [Python SDK](docs/sdk.md)
 or the [HTTP API](docs/api.md).
+
+## Interactive views
+
+The [campaign workspace](docs/campaign-view.md) combines hill-climb history,
+lineage, leaderboards and activity. The [experiment inventory](docs/experiment-graph.md)
+adds four graph layouts: **Connected clusters** (default), **Spread-out force**,
+**Category groups**, and **Symmetric ring**. Both views share resizable sidebars
+and section dividers, keyboard controls, and locally saved panel sizes.
+
+![Symmetric ring layout with synthetic experiment data](docs/images/symmetric-ring.png)
+
+*Example: the optional symmetric ring layout with 600 synthetic records and 2,028
+links across six research areas. [Generate and explore this sample](examples/graph_inventory).
+Position shows layout only—not experiment quality, similarity or execution order.*
 
 ## Examples
 

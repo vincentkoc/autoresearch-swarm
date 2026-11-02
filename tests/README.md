@@ -18,6 +18,7 @@ Tests follow the component they exercise. Run a folder for a focused check or ru
 | `api/` | HTTP, SDK, CLI and MCP |
 | `adapters/` | Cloudflare and Temporal contracts and runtime qualification |
 | `integration/` | Complete research cycles and installed-package checks |
+| `visual/` | Real Chrome smoke test of the synthetic offline campaign view (Node 22+) |
 
 Root fixtures and support modules are shared. Use `tests.paths.REPO_ROOT` and
 `TEST_ROOT` for repository and fixture paths. Do not derive these paths from a
