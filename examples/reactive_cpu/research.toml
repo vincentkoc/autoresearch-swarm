@@ -1,0 +1,88 @@
+schema_version = "1.0"
+
+[project]
+name = "Reactive CPU control example"
+slug = "reactive-cpu"
+description = "Short gradient-descent, fixed-control baseline and recorded-schedule replay."
+
+[source]
+mode = "directory"
+paths = ["*.py", "*.json", "research.toml"]
+
+[mutation]
+allow = ["train.py"]
+
+[environment]
+profile = "python-cpu"
+lock_path = "environment.json"
+network_policy = "inherit"
+
+[data]
+manifest_path = "dataset.json"
+
+[evaluation]
+protected_paths = ["common.py", "evaluate.py", "policy.py"]
+comparison_class = "reactive-cpu-synthetic-v1"
+measurement_trust = "authenticated"
+expected_members = ["synthetic-linear-evaluation-v1"]
+
+[[evaluation.metrics]]
+name = "mse"
+unit = "squared_error"
+direction = "minimize"
+aggregation = "mean_over_evaluation_inputs"
+
+[timing]
+budget_ms = 1000
+scope = "active_training"
+timer_authority = "project_reported"
+
+[reactive]
+policy_name = "reactive-cpu-v1"
+policy_digest = "sha256:1cd6d76eb3c5ebf87ce7409a66e4f837d1edfe80e887e3af2aa8fe9f0af980b1"
+interval_steps = 8
+max_lag_steps = 24
+max_decisions = 1
+decision_timeout_ms = 500
+
+[[reactive.controls]]
+name = "learning_rate"
+minimum = 0.001
+maximum = 0.3
+initial = 0.01
+
+[[reactive.diagnostics]]
+name = "train_mse"
+source = "train"
+unit = "squared_error"
+
+[[stages]]
+id = "train"
+kind = "train"
+argv = ["python", "train.py"]
+timeout_ms = 10000
+output_names = ["model", "transcript", "trajectory"]
+
+[[stages]]
+id = "baseline"
+kind = "train"
+argv = ["python", "train.py", "--mode", "keep"]
+timeout_ms = 10000
+output_names = ["baseline"]
+
+[[stages]]
+id = "replay"
+kind = "train"
+argv = ["python", "train.py", "--mode", "replay"]
+dependencies = ["train"]
+required_artifacts = ["transcript"]
+timeout_ms = 10000
+output_names = ["replay_model", "replay_trace"]
+
+[[stages]]
+id = "evaluate"
+kind = "evaluate"
+argv = ["python", "evaluate.py"]
+dependencies = ["train", "baseline", "replay"]
+required_artifacts = ["model", "baseline", "replay_model"]
+timeout_ms = 10000

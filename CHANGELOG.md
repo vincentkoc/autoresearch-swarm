@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an ordinary CPU project that demonstrates pending-decision training,
+  bounded intervention, a fixed-control baseline and independently evaluated replay.
+
 - Replay settled reactive control schedules at their recorded application steps,
   with bounded transcripts, separate provenance and non-resumable mutation traces.
 
