@@ -48,7 +48,8 @@ and section dividers, keyboard controls, and locally saved panel sizes.
 
 ![Symmetric ring layout with synthetic experiment data](docs/images/symmetric-ring.png)
 
-*Example: the optional symmetric ring layout, generated from 240 synthetic records.
+*Example: the optional symmetric ring layout with 600 synthetic records and 2,028
+links across six research areas. [Generate and explore this sample](examples/graph_inventory).
 Position shows layout only—not experiment quality, similarity or execution order.*
 
 ## Examples

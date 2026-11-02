@@ -53,6 +53,8 @@ try {
     '[(out/f"synthetic-{n}.html").write_text(render_experiment_graph_html(fixture(n)), encoding="utf-8") for n in (0,240,5000)]; isolated=fixture(12); isolated["edges"]=isolated["edges"][:1]; (out/"synthetic-separated.html").write_text(render_experiment_graph_html(isolated))'
   ],{stdio:'inherit'});
   assert.equal(await new Promise((r,j)=>{fixture.on('exit',r);fixture.on('error',j);}),0);
+  const atlas=spawn('.venv/bin/python',['examples/graph_inventory/build.py','--output',join(output,'atlas')],{stdio:'inherit'});
+  assert.equal(await new Promise((r,j)=>{atlas.on('exit',r);atlas.on('error',j);}),0);
   chrome=spawn(process.env.CHROME_BIN || 'google-chrome',[
     '--headless','--disable-gpu','--no-first-run','--no-default-browser-check',
     '--disable-background-networking','--remote-debugging-address=127.0.0.1',
@@ -147,11 +149,20 @@ try {
   assert.notDeepEqual(await evaluate('window.__dots[0]'),after,'Zoom changes screen position');
   await click('#fit');
   await screenshot('graph-desktop.png');
-  // Public README example uses only this synthetic fixture, never a private capture.
+  // Public README uses the populated synthetic atlas, never a private capture.
+  await load('atlas/index.html');
+  assert.match(await evaluate('document.getElementById("count").textContent'),/600 \/ 600 records · 2,028 links/);
   await evaluate('document.getElementById("layout").value="ring";document.getElementById("layout").dispatchEvent(new Event("change"))');
   await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'README ring settles');
   await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  await click('[data-id="area-0-035"]');
+  assert.match(await evaluate('document.getElementById("detail").textContent'),/Illustrative supporting record/);
+  await evaluate('document.getElementById("graph").focus()');
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});
+  await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
   await screenshot('graph-ring-example.png');
+  await load('synthetic-240.html');
   await evaluate('document.getElementById("layout").value="topology";document.getElementById("layout").dispatchEvent(new Event("change"))');
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a reproducible synthetic research atlas with 600 records and 2,028 links,
+  including branching trials and cross-area references, for the README graph example.
+
 - Apply newly requested graph layouts while reduced motion or Pause is active,
   without accepting queued animation frames.
 
