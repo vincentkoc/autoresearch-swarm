@@ -13,7 +13,7 @@ import httpx
 
 from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.queries import RecordQuery
-from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
+from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.runtime import LocalRuntime, read_private
@@ -67,6 +67,23 @@ def parser() -> argparse.ArgumentParser:
     reactive_export.add_argument("--after", type=int, default=-1)
     reactive_export.add_argument("--limit", type=int, default=20)
     reactive_export.add_argument("--max-bytes", type=int, default=65536)
+    reports = commands.add_parser("report", help="Render immutable research reports")
+    report_actions = reports.add_subparsers(dest="report_action", required=True)
+    plot = report_actions.add_parser("plot", help="Export a bounded hill-climb SVG")
+    source = plot.add_mutually_exclusive_group(required=True)
+    source.add_argument("--report-id", help="Existing immutable report ID")
+    source.add_argument("--file", type=Path, help="Offline report record or snapshot JSON")
+    plot.add_argument("--compare-report", action="append", default=[], help="Comparable report ID")
+    plot.add_argument("--compare-file", action="append", type=Path, default=[])
+    plot.add_argument("--comparison-digest", required=True)
+    plot.add_argument("--metric", required=True)
+    plot.add_argument("--unit", required=True)
+    plot.add_argument("--direction", choices=("minimize", "maximize"), required=True)
+    plot.add_argument("--output", type=Path, required=True, help="New SVG path; never overwrite")
+    plot.add_argument("--title", default="Swarm · hill-climb observations")
+    plot.add_argument(
+        "--label", action="append", help="One display label per report, in input order"
+    )
     commands.add_parser("capabilities")
     backup = commands.add_parser("backup", help="Export and verify a sealed native checkpoint")
     backups = backup.add_subparsers(dest="backup_action", required=True)
@@ -325,7 +342,45 @@ def _request(path: Path | None, *, limit: int = 1024 * 1024) -> dict[str, Any]:
     return dict(value)
 
 
+def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
+    from research_swarm.control.report_plot import render_hill_climb_svg
+    from research_swarm.domain.experiments import MetricDefinition
+
+    snapshots = []
+    for report in reports:
+        content = report.get("data", report)
+        if not isinstance(content, dict):
+            raise ValueError("Report content must be an object")
+        if "report_digest" in content:
+            expected = record_digest(
+                "research.report",
+                {key: value for key, value in content.items() if key != "report_digest"},
+            )
+            if content["report_digest"] != expected:
+                raise ValueError("Report digest does not match its captured content")
+        snapshots.append(content.get("snapshot", content))
+    metric = MetricDefinition(name=args.metric, unit=args.unit, direction=args.direction)
+    svg = render_hill_climb_svg(
+        snapshots,
+        comparison_digest=args.comparison_digest,
+        metric=metric,
+        title=args.title,
+        labels=args.label,
+    )
+    with args.output.open("x", encoding="utf-8", newline="\n") as output:
+        output.write(svg)
+    return {"output": str(args.output), "format": "svg", "reports": len(snapshots)}
+
+
 def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
+    if args.action == "report":
+        return _plot_reports(
+            [
+                client.get("report", identifier)
+                for identifier in [args.report_id, *args.compare_report]
+            ],
+            args,
+        )
     if args.action == "run":
         from research_swarm.engines.registration import read_registration
         from research_swarm.orchestration.bootstrap import RunOptions
@@ -531,6 +586,26 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     result: Any
     try:
+        if args.action == "report":
+            from research_swarm.control.report_plot import MAX_RUNS
+
+            if args.file is not None:
+                if args.compare_report or args.controller or args.state_dir or args.token_file:
+                    raise ValueError("Offline reports cannot mix live controller inputs")
+                if len(args.compare_file) >= MAX_RUNS:
+                    raise ValueError("At most eight reports may be plotted")
+                _emit_json(
+                    _plot_reports(
+                        [
+                            _request(path, limit=2 * 1024 * 1024)
+                            for path in [args.file, *args.compare_file]
+                        ],
+                        args,
+                    )
+                )
+                return 0
+            if args.compare_file or len(args.compare_report) >= MAX_RUNS:
+                raise ValueError("Use at most eight report IDs, without offline files")
         if args.action == "reactive":
             if args.state_dir is not None or args.controller or args.token_file is not None:
                 raise ValueError(

@@ -171,3 +171,110 @@ def test_oversized_report_does_not_publish_partial_snapshot_or_mutate_campaign(
     assert pipeline.client.list(RecordQuery(kind="report"))["items"] == []
     assert pipeline.client.get("campaign", campaign["id"]) == campaign
     assert pipeline.client.budget(campaign["id"]) == budget
+
+
+def test_plot_uses_committed_event_time_and_exports_existing_report_read_only(
+    pipeline: Pipeline, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from xml.etree import ElementTree
+
+    from research_swarm.cli import main
+
+    receipt = evaluated(pipeline)
+    commit(pipeline, assess(pipeline, receipt))
+    recorded = report(pipeline, "plot-report")
+    snapshot = recorded["data"]["snapshot"]
+    evaluation = snapshot["recent_evaluations"][0]
+    event = next(
+        item
+        for item in pipeline.client.events(
+            after=evaluation["commit_event"]["sequence"] - 1, limit=1
+        )["events"]
+        if item["type"] == "evaluation.recorded" and item["aggregate_id"] == receipt["id"]
+    )
+    assert evaluation["commit_event"] == {
+        key: event[key] for key in ("id", "sequence", "recorded_at")
+    }
+    assert snapshot["campaign_created_at"] <= event["recorded_at"] <= snapshot["captured_at"]
+    before = pipeline.client.get("campaign", pipeline.campaign["id"])
+    output = tmp_path / "curve.svg"
+    metric = evaluation["primary_metric"]
+    assert (
+        main(
+            [
+                "--state-dir",
+                str(pipeline.runtime.root),
+                "report",
+                "plot",
+                "--report-id",
+                recorded["id"],
+                "--comparison-digest",
+                evaluation["comparison_digest"],
+                "--metric",
+                metric["name"],
+                "--unit",
+                metric["unit"],
+                "--direction",
+                metric["direction"],
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    root = ElementTree.fromstring(output.read_text(encoding="utf-8"))
+    assert len(root.findall(".//{http://www.w3.org/2000/svg}circle")) == 1
+    assert pipeline.client.get("campaign", pipeline.campaign["id"]) == before
+    assert pipeline.client.get("report", recorded["id"]) == recorded
+    assert '"format":"svg"' in capsys.readouterr().out
+
+
+def test_evaluation_times_use_one_bounded_query_over_substantial_history() -> None:
+    import sqlite3
+    from types import SimpleNamespace
+    from typing import cast
+
+    from research_swarm.control.reports import _evaluation_commit_events
+    from research_swarm.state.database import Transaction
+    from research_swarm.state.sqlite import SQLiteSession
+
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("CREATE TABLE events(workspace_id TEXT, sequence INTEGER, payload TEXT)")
+        connection.execute("CREATE UNIQUE INDEX event_sequence ON events(workspace_id, sequence)")
+        for sequence in range(1, 3001):
+            identifier = {11: "first", 21: "second", 31: "first", 2999: "after-watermark"}.get(
+                sequence, "noise"
+            )
+            payload = {
+                "id": f"event-{sequence}",
+                "aggregate_id": identifier,
+                "type": "evaluation.recorded",
+                "sequence": sequence,
+                "recorded_at": "2026-01-01T01:00:00.000Z",
+            }
+            connection.execute(
+                "INSERT INTO events VALUES (?,?,?)",
+                ("synthetic-workspace", sequence, canonical_bytes(payload).decode()),
+            )
+        queries = []
+        connection.set_trace_callback(queries.append)
+        transaction = cast(
+            Transaction,
+            SimpleNamespace(
+                connection=SQLiteSession(connection), workspace_id="synthetic-workspace"
+            ),
+        )
+        events = _evaluation_commit_events(
+            transaction, ("first", "second", "after-watermark", "missing"), 100
+        )
+        assert len(queries) == 1
+        assert {key: value["sequence"] for key, value in events.items()} == {
+            "first": 11,
+            "second": 21,
+        }
+        assert _evaluation_commit_events(transaction, (), 100) == {}
+        assert len(queries) == 1
+    finally:
+        connection.close()

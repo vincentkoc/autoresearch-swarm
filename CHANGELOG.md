@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Export native, dependency-free hill-climb SVGs from immutable reports, with
+  exact metric/comparison selection, comparable-run overlays, original baseline
+  references and bounded-history disclosure. Capture controller evaluation event
+  times and campaign creation time without inferring training time or confirmed wins.
+
 - Expose a bounded Git source-capture timeout through the sync/async SDK,
   project CLI and local MCP tool, shared across manifest reads and bundling.
 
