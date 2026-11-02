@@ -196,6 +196,39 @@ def test_symlink_source_is_rejected_without_reading_target(tmp_path: Path) -> No
     assert not destination.exists()
 
 
+def test_excluded_directory_symlink_does_not_change_selected_source(tmp_path: Path) -> None:
+    root = project(tmp_path)
+    baseline = capture(root, tmp_path / "baseline.zip")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "private.py").write_text("excluded fixture")
+    try:
+        (root / "cache").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlink creation requires platform privileges")
+    selected = capture(root, tmp_path / "selected.zip")
+    assert selected == baseline
+    assert all("cache" not in entry.path for entry in selected.entries)
+
+
+@pytest.mark.parametrize("pattern", ["cache/**", "cache/private.py", "**/*.py"])
+def test_selected_directory_symlink_is_rejected_without_traversal(
+    tmp_path: Path, pattern: str
+) -> None:
+    root = project(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "private.py").write_text("excluded fixture")
+    try:
+        (root / "cache").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlink creation requires platform privileges")
+    destination = tmp_path / "bundle.zip"
+    with pytest.raises(ValueError, match="directory symlinks"):
+        bundle_directory(root, destination, paths=("train.py", pattern))
+    assert not destination.exists()
+
+
 def test_git_bundle_reads_pinned_commit_and_preserves_dirty_checkout(tmp_path: Path) -> None:
     root = project(tmp_path)
 

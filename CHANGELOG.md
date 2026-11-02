@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Declare the expected evaluation panel in the project-manifest template and explain receipt completeness.
+
+- Ignore directory symlinks outside source selections while rejecting selected symlink paths.
+
 - Report interrupted artifact and worker downloads as retryable transport failures, with partial-file cleanup.
 
 - Return structured capability errors for unknown HTTP commands instead of uncertain-delivery advice.

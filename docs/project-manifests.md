@@ -43,6 +43,7 @@ manifest_path = "data-manifest.json"
 protected_paths = ["evaluate.py"]
 comparison_class = "example-v1"
 measurement_trust = "authenticated"
+expected_members = ["validation-a", "validation-b"]
 
 [[evaluation.metrics]]
 name = "loss"
@@ -69,6 +70,12 @@ dependencies = ["train"]
 required_artifacts = ["model"]
 timeout_ms = 60000
 ~~~
+
+`expected_members` names the complete evaluation panel declared by the dataset.
+In this template, the evaluator must report observations for both `validation-a`
+and `validation-b`. Replace these names with the members of your dataset and keep
+the evaluator's `observed_members` consistent with that declaration. Authorization
+requires a declared panel; a receipt missing any member is incomplete.
 
 ## Resolution and comparison
 
