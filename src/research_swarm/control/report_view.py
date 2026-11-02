@@ -8,11 +8,12 @@ import math
 import re
 from collections.abc import Sequence
 from html import escape
-from xml.etree.ElementTree import Element, SubElement, tostring
+from xml.etree.ElementTree import Element, SubElement, fromstring, tostring
 
 from research_swarm.control.report_plot import (
     MAX_OBSERVATIONS,
     PlotRun,
+    _embedded_time_chart,
     project_hill_climb,
 )
 from research_swarm.domain.experiments import MetricDefinition
@@ -70,7 +71,8 @@ border-radius:50%;width:23px;height:23px;text-align:center;line-height:21px;colo
 color:var(--muted);margin-top:3px}.scope{padding:0 16px 10px;font-size:10px;color:var(--muted)}
 .graph-selection{min-height:32px;padding:7px 20px;border-top:1px solid var(--line);
 font:10px ui-monospace,monospace;color:var(--muted)}.chart-node{cursor:pointer}
-.chart-node:hover circle{stroke:#243c44;stroke-width:2}.score svg{width:100%;height:100%}
+.chart-node:focus-visible circle,.chart-node:hover circle{stroke:#243c44;stroke-width:2}
+.score svg{width:100%;height:100%}
 .time-plot{flex:1;min-height:120px}.time-evidence{flex:none;max-height:45%;overflow:auto;
 border-top:1px solid var(--line);padding:10px 16px;font-size:11px;overflow-wrap:anywhere}
 .time-evidence p{margin:3px 0}.time-run{border-left:3px solid;padding-left:9px;margin-top:10px}
@@ -177,6 +179,61 @@ addEventListener('resize', () => {
   syncDividers();
 });
 syncDividers();
+
+const tabs = [...document.querySelectorAll('[data-tab]')];
+function showPanel(tab) {
+  tabs.forEach(button => {
+    const active = button === tab;
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll('[data-panel]').forEach(panel => {
+    panel.hidden = panel.dataset.panel !== tab.dataset.tab;
+  });
+  document.querySelector('.graph-selection').textContent =
+    'Select a point to inspect its candidate and observed score.';
+}
+tabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => showPanel(tab));
+  tab.addEventListener('keydown', event => {
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
+      event.key === 'ArrowRight' ? (index + 1) % tabs.length :
+      event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : null;
+    if (next !== null) {
+      event.preventDefault();
+      showPanel(tabs[next]);
+      tabs[next].focus();
+    }
+  });
+});
+function highlightLineage(node) {
+  const graph = node.closest('.lineage');
+  if (!graph || graph.querySelector('[data-cyclic=true]')) return;
+  const ancestors = new Set([node.dataset.candidate]);
+  const edges = [...graph.querySelectorAll('[data-parent]')];
+  for (let i = 0; i < graph.querySelectorAll('[data-candidate]').length; i++) {
+    edges.forEach(edge => {
+      if (ancestors.has(edge.dataset.child)) ancestors.add(edge.dataset.parent);
+    });
+  }
+  edges.forEach(edge => {
+    const active = ancestors.has(edge.dataset.parent) && ancestors.has(edge.dataset.child);
+    edge.setAttribute('stroke', active ? '#168273' : '#bbc1bd');
+    edge.setAttribute('stroke-width', active ? '1.8' : '1');
+    edge.setAttribute('stroke-opacity', active ? '.95' : edge.dataset.opacity);
+    edge.dataset.highlighted = String(active);
+  });
+  graph.querySelectorAll('[data-candidate]').forEach(point => {
+    const active = ancestors.has(point.dataset.candidate);
+    const circle = point.querySelector('circle');
+    circle.setAttribute('fill', active ? '#348a92' : '#b9c4c3');
+    circle.setAttribute('fill-opacity', active ? '1' : '.4');
+    circle.setAttribute('r', active ? '5' : '3.5');
+    point.setAttribute('aria-pressed', String(point === node));
+  });
+  graph.parentElement.querySelector('[data-lineage-claim]').textContent =
+    'Inspected candidate ancestry · not a promotion or winner claim';
+}
 const runSelector = document.querySelector('[data-run-selector]');
 if (runSelector) runSelector.addEventListener('change', () => {
   document.querySelectorAll('[data-run]').forEach(run => {
@@ -185,9 +242,10 @@ if (runSelector) runSelector.addEventListener('change', () => {
   document.querySelector('.graph-selection').textContent =
     'Select a point to inspect its candidate and observed score.';
 });
-document.querySelectorAll('[data-candidate]').forEach(node => {
+document.querySelectorAll('[data-candidate], [data-observation]').forEach(node => {
   const select = () => {
     document.querySelector('.graph-selection').textContent = node.getAttribute('aria-label');
+    highlightLineage(node);
   };
   node.addEventListener('click', select);
   node.addEventListener('keydown', event => {
@@ -255,7 +313,7 @@ def _leaders(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> tu
     )
 
 
-def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> str:
+def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition, run_index: int) -> str:
     rows, scope = _page(snapshot["research"], "candidates")
     selected, claim = _leaders(snapshot, run, metric)
     by_id: dict[str, JsonObject] = {}
@@ -271,7 +329,9 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
         ):
             raise ValueError("Candidate parents require at most 64 nonempty string IDs")
         by_id[identifier] = row
-    edges = [(parent, row["id"]) for row in rows for parent in row.get("parent_ids", [])]
+    edges = list(
+        dict.fromkeys((parent, row["id"]) for row in rows for parent in row.get("parent_ids", []))
+    )
     missing = [(parent, child) for parent, child in edges if parent not in by_id]
     known = [(parent, child) for parent, child in edges if parent in by_id]
     highlighted = set(selected)
@@ -329,8 +389,23 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
             "viewBox": "0 0 740 640",
             "role": "img",
             "aria-label": "Captured candidate parent relationships positioned by observed score",
+            "data-cyclic": str(bool(pending)).lower(),
         },
     )
+    marker = SubElement(
+        SubElement(svg, "defs"),
+        "marker",
+        {
+            "id": f"parent-arrow-{run_index}",
+            "viewBox": "0 0 10 10",
+            "refX": "14",
+            "refY": "5",
+            "markerWidth": "5",
+            "markerHeight": "5",
+            "orient": "auto",
+        },
+    )
+    SubElement(marker, "path", {"d": "M 0 0 L 10 5 L 0 10 z", "fill": "context-stroke"})
     for tick in range(7):
         fraction = tick / 6
         y = 42 + fraction * 478
@@ -392,11 +467,14 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
     SubElement(
         svg, "text", {"x": "64", "y": "613", "font-size": "10", "fill": "#909799"}
     ).text = "Unscored / failed · no score inferred"
+    latest_generation = max(depth.values(), default=0)
     for parent, child in known:
+        age = latest_generation - depth[child] if not pending else 0
+        opacity = max(0.08, 0.5 * 0.8**age)
         x1, y1 = positions[parent]
         x2, y2 = positions[child]
         active = parent in highlighted and child in highlighted
-        SubElement(
+        edge = SubElement(
             svg,
             "path",
             {
@@ -404,11 +482,23 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
                 "fill": "none",
                 "stroke": "#168273" if active else "#bbc1bd",
                 "stroke-width": "1.8" if active else "1",
-                "stroke-opacity": "0.9" if active else "0.3",
+                "stroke-opacity": "0.95" if active else f"{opacity:.4f}",
+                "data-parent": parent,
+                "data-child": child,
+                "data-generation-age": str(age),
+                "data-opacity": f"{opacity:.4f}",
+                "data-highlighted": str(active).lower(),
+                "marker-end": f"url(#parent-arrow-{run_index})",
                 "stroke-dasharray": "3 4"
                 if parent not in values or child not in values
                 else "none",
             },
+        )
+        SubElement(edge, "title").text = (
+            f"Parent {parent} → child {child}; captured generation age {age}; "
+            f"muted opacity {opacity:.4f}; highlighted opacity 0.95"
+            if not pending
+            else f"Parent {parent} → child {child}; cyclic lineage; age unavailable"
         )
     for identifier, row in by_id.items():
         x, y = positions[identifier]
@@ -447,10 +537,12 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
         for parent, child in missing
     )
     return (
-        f"<div class=graph-note><p class=accent>{_e(claim)}</p>"
+        f"<div class=graph-note><p class=accent data-lineage-claim>{_e(claim)}</p>"
         f"<p class=muted>{_e(scope)}. All {len(rows)} captured candidates shown; "
         f"{len(known)} captured parent edges, {len(missing)} missing-parent references; "
-        f"{omitted} truncated parent lists.</p></div><div class=lineage>"
+        f"{omitted} truncated parent lists.</p>"
+        "<p>Arrows: explicit parent → child only. Older generations fade; "
+        "highlighted ancestry stays visible.</p></div><div class=lineage>"
         + tostring(svg, encoding="unicode")
         + "</div>"
         + (
@@ -460,6 +552,39 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> st
             else ""
         )
         + ("<p>No captured candidate lineage.</p>" if not rows else "")
+    )
+
+
+def _hill_climb(run: PlotRun, metric: MetricDefinition) -> str:
+    """Reuse the bounded chronological projection, keeping each run's best independent."""
+    svg = fromstring(_embedded_time_chart([run], metric))
+    namespace = "{http://www.w3.org/2000/svg}"
+    for dot in svg.iter(namespace + "circle"):
+        title = dot.find(namespace + "title")
+        dot.set("data-observation", dot.attrib["data-evaluation"])
+        dot.set("tabindex", "0")
+        dot.set("role", "button")
+        dot.set("aria-label", title.text if title is not None and title.text else "Observation")
+    for element in svg.iter():
+        element.tag = element.tag.removeprefix(namespace)
+    svg.set("xmlns", "http://www.w3.org/2000/svg")
+    status = "complete" if run.history_complete else "INCOMPLETE"
+    baseline = (
+        f"Original baseline: {run.baseline.value:.6g} {metric.unit} (dashed)."
+        if run.baseline
+        else "Original baseline unavailable for this cohort/time window."
+    )
+    return (
+        "<div class='score time-plot'>" + tostring(svg, encoding="unicode") + "</div>"
+        "<div class=time-evidence>"
+        "<p>Dots: chronological evaluation receipts. Steps: running best observed for this "
+        "campaign only, not a confirmed winner or parent relationship.</p>"
+        "<p>Last best held to capture time; idle tail is not a new observation.</p>"
+        f"<p>{_e(baseline)}</p><p>{status}: {run.included}/{run.total} receipts captured; "
+        f"{len(run.points)} plotted. Excluded: {run.ineligible} ineligible, "
+        f"{run.nonmatching} other cohort/metric, {run.untimed} missing/invalid timing.</p>"
+        f"<p>Origin: {_e(run.origin or 'unavailable')}; captured {_e(run.captured_at)}; "
+        f"revision {run.revision}; event {run.evidence_through}.</p></div>"
     )
 
 
@@ -494,7 +619,7 @@ def render_report_html(
         len(labels) != len(runs) or any(not label.strip() for label in labels)
     ):
         raise ValueError("Supply one nonempty label per report, or omit labels")
-    about, lineage, leaderboard, activity = [], [], [], []
+    about, lineage, hill_climb, leaderboard, activity = [], [], [], [], []
     for index, (snapshot, run) in enumerate(zip(snapshots, runs, strict=True)):
         label = labels[index] if labels is not None else str(snapshot["campaign_id"])
         research = snapshot["research"]
@@ -534,7 +659,13 @@ def render_report_html(
         lineage.append(
             f"<div data-run='{index}'"
             + (" hidden>" if index else ">")
-            + _lineage(view, run, metric)
+            + _lineage(view, run, metric, index)
+            + "</div>"
+        )
+        hill_climb.append(
+            f"<div data-run='{index}'"
+            + (" hidden>" if index else ">")
+            + _hill_climb(run, metric)
             + "</div>"
         )
         candidates: dict[str, float] = {}
@@ -660,15 +791,22 @@ def render_report_html(
         "<div class=splitter role=separator tabindex=0 data-resize=left "
         "aria-orientation=vertical aria-label='Resize About panel' "
         "aria-controls=about-rail aria-valuemin=0></div>"
-        "<section class=graph-panel><div class=panel-heading><h2>Graph</h2>"
+        "<section class=graph-panel><div class=panel-heading>"
+        "<div class=tabs role=tablist aria-label='Campaign visualization'>"
+        "<button id=hill-tab role=tab data-tab=score aria-selected=true "
+        "aria-controls=hill-panel>Hill climb</button>"
+        "<button id=graph-tab role=tab data-tab=lineage aria-selected=false "
+        "aria-controls=graph-panel tabindex=-1>Graph</button></div>"
         + (
             f"<select data-run-selector aria-label='Campaign'>{selectors}</select>"
             if len(runs) > 1
             else ""
         )
-        + "</div><div class=graph-body><div data-panel=lineage>"
-        + "".join(lineage)
-        + "</div></div>"
+        + "</div><div class=graph-body>"
+        "<div data-panel=score id=hill-panel role=tabpanel aria-labelledby=hill-tab>"
+        + "".join(hill_climb)
+        + "</div><div data-panel=lineage id=graph-panel role=tabpanel "
+        "aria-labelledby=graph-tab hidden>" + "".join(lineage) + "</div></div>"
         "<div class=graph-selection>Select a point to inspect "
         "its candidate and observed score.</div>"
         "</section><div class=splitter role=separator tabindex=0 data-resize=right "

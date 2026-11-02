@@ -104,11 +104,13 @@ def test_all_captured_branches_failure_and_workers_are_honest() -> None:
     assert "Best observed path (ties retained); no confirmed winner" in html
     assert "1 distinct historical IDs; not live concurrency" in html
     assert "--paper:#fafaf8" in html
-    assert "data-tab=" not in html and "data-panel=score" not in html
+    assert "Hill climb</button>" in html and "Graph</button>" in html
     assert "Cyclic captured lineage" not in html
     lineage = Tags()
-    lineage.feed(html.split("<div data-panel=lineage>", 1)[1])
-    edge_colors = [attrs["stroke"] for tag, attrs in lineage.tags if tag == "path"]
+    lineage.feed(html.split("<div data-panel=lineage", 1)[1])
+    edge_colors = [
+        attrs["stroke"] for tag, attrs in lineage.tags if tag == "path" and "stroke" in attrs
+    ]
     assert edge_colors.count("#168273") == 1  # Actual root → best-observed child.
     assert edge_colors.count("#bbc1bd") == 1  # Rejected side branch remains visible.
     assert "data-panel=lineage" in html
@@ -129,7 +131,7 @@ def test_tree_uses_real_scores_and_keeps_unscored_off_the_score_axis(direction: 
     )
     html = render_report_html([value], comparison_digest="synthetic-cohort", metric=metric)
     tags = Tags()
-    tags.feed(html.split("<div data-panel=lineage>", 1)[1])
+    tags.feed(html.split("<div data-panel=lineage", 1)[1])
     circles = [attrs for tag, attrs in tags.tags if tag == "circle"]
     assert len(circles) == 4
     # Fixture scores are 4, 2, 3 in captured candidate order.
@@ -154,7 +156,7 @@ def test_tree_extreme_finite_scores_have_finite_ordered_geometry(
         )
     html = render_report_html([value], comparison_digest="synthetic-cohort", metric=metric)
     tags = Tags()
-    tags.feed(html.split("<div data-panel=lineage>", 1)[1])
+    tags.feed(html.split("<div data-panel=lineage", 1)[1])
     circles = [attrs for tag, attrs in tags.tags if tag == "circle"]
     ys = [float(attrs["cy"] or "") for attrs in circles]
     assert all(math.isfinite(y) and 42 <= y <= 520 for y in ys)
@@ -168,7 +170,7 @@ def test_tree_extreme_finite_scores_have_finite_ordered_geometry(
     assert ">inf<" not in html and ">nan<" not in html
 
 
-def test_campaign_picker_scopes_all_panels_and_no_alternate_view() -> None:
+def test_campaign_picker_scopes_both_views_and_all_panels() -> None:
     first, second = evidence(), evidence()
     second["campaign_id"] = "second-campaign"
     html = render_report_html(
@@ -179,12 +181,12 @@ def test_campaign_picker_scopes_all_panels_and_no_alternate_view() -> None:
     )
     tags = Tags()
     tags.feed(html)
-    assert "data-tab=" not in html
-    assert "data-panel=score" not in html
+    assert "data-tab=score" in html and "data-tab=lineage" in html
+    assert "data-panel=score" in html
     assert "data-run-selector" in html
     for index in ("0", "1"):
         scopes = [attrs for _, attrs in tags.tags if attrs.get("data-run") == index]
-        assert len(scopes) == 4  # About, graph, leaderboard, activity.
+        assert len(scopes) == 5  # About, hill climb, graph, leaderboard, activity.
         assert all(("hidden" in attrs) == (index == "1") for attrs in scopes)
 
 
@@ -387,3 +389,83 @@ def test_project_link_rejects_non_repository_urls(url: str) -> None:
             metric=METRIC,
             project_repository=url,
         )
+
+
+@pytest.mark.parametrize("direction", ["minimize", "maximize"])
+def test_hill_climb_chronology_best_and_comparable_run_isolation(direction: str) -> None:
+    first, second = evidence(), evidence()
+    second["campaign_id"] = "second-run"
+    # Second run has a different trend; no pooled best or cross-run connection.
+    for observation in second["recent_evaluations"]:
+        observation["primary_metric"]["value"] += 10
+    for value in (first, second):
+        for observation in value["recent_evaluations"]:
+            observation["primary_metric"]["direction"] = direction
+    html = render_report_html(
+        [first, second],
+        comparison_digest="synthetic-cohort",
+        metric=METRIC.model_copy(update={"direction": direction}),
+    )
+    tags = Tags()
+    tags.feed(html.split("<div data-panel=score", 1)[1].split("<div data-panel=lineage", 1)[0])
+    dots = [attrs for tag, attrs in tags.tags if tag == "circle"]
+    assert [dot["data-evaluation"] for dot in dots] == ["receipt-0", "receipt-1", "receipt-2"] * 2
+    paths = [attrs["d"] for tag, attrs in tags.tags if attrs.get("data-series") == "best-observed"]
+    assert len(paths) == 2
+    for path in paths:
+        assert path is not None
+        coords = path.split()
+        ys = [float(coords[i]) for i in (2, 6, 10)]
+        assert ys[2] == ys[1]  # Third receipt does not improve either running best.
+        if direction == "minimize":
+            assert ys[1] > ys[0]
+        else:
+            assert ys[1] == ys[0]
+    assert all(dot["role"] == "button" and dot["tabindex"] == "0" for dot in dots)
+    assert "running best observed for this campaign only" in html
+
+
+def test_graph_only_explicit_edges_decay_by_generation_not_order() -> None:
+    value = evidence()
+    # Shuffle source order and use an unscored chain to make generation != row index.
+    page = value["research"]["candidates"]
+    page["items"] = [
+        {"id": "leaf", "parent_ids": ["middle", "middle"]},
+        {"id": "candidate-0", "parent_ids": []},
+        {"id": "middle", "parent_ids": ["candidate-0"]},
+        {"id": "candidate-1", "parent_ids": ["candidate-0"]},
+        {"id": "candidate-2", "parent_ids": ["candidate-0", "missing"]},
+    ]
+    page["total"] = 5
+    tags = Tags()
+    tags.feed(render(value))
+    edges = [attrs for _, attrs in tags.tags if "data-parent" in attrs]
+    assert {(edge["data-parent"], edge["data-child"]) for edge in edges} == {
+        ("middle", "leaf"),
+        ("candidate-0", "middle"),
+        ("candidate-0", "candidate-1"),
+        ("candidate-0", "candidate-2"),
+    }
+    assert len(edges) == 4  # Duplicate supplied parent reference is not a second edge.
+    recent = next(edge for edge in edges if edge["data-child"] == "leaf")
+    old = next(edge for edge in edges if edge["data-child"] == "middle")
+    assert recent["data-generation-age"] == "0" and old["data-generation-age"] == "1"
+    assert float(recent["stroke-opacity"] or "") > float(old["stroke-opacity"] or "")
+    selected = next(edge for edge in edges if edge["data-child"] == "candidate-1")
+    assert selected["stroke-opacity"] == "0.95"
+    assert all(edge["marker-end"] == "url(#parent-arrow-0)" for edge in edges)
+
+
+def test_hill_climb_discloses_untimed_nonmatching_and_empty_runs() -> None:
+    value = evidence()
+    value["recent_evaluations"][0]["commit_event"] = None
+    value["recent_evaluations"][1]["comparison_digest"] = "different"
+    html = render(value)
+    assert (
+        "1 plotted. Excluded: 0 ineligible, 1 other cohort/metric, 1 missing/invalid timing" in html
+    )
+    value["recent_evaluations"] = []
+    value["evaluation_window"]["complete"] = False
+    html = render(value)
+    assert "No eligible timed observations in the selected cohort" in html
+    assert "INCOMPLETE: 0/3 receipts captured" in html

@@ -149,8 +149,8 @@ async function assertPanel(cdp, panel, width) {
   }
   assert.ok(state.documentWidth <= width, `Document overflow: ${JSON.stringify(state)}`);
   assert.ok(state.bodyWidth <= width, `Body overflow: ${JSON.stringify(state)}`);
-  assert.deepEqual(state.panels, { lineage: true });
-  assert.deepEqual(state.selected, []);
+  assert.deepEqual(state.panels, { score: panel === 'score', lineage: panel === 'lineage' });
+  assert.deepEqual(state.selected, [panel]);
   assert.equal(state.nodes, 50, 'All scored and unscored candidates remain in the campaign');
   assert.equal(state.greyEdges + state.tealEdges, 49, 'All captured parent paths remain');
   assert.ok(state.greyEdges > 0 && state.tealEdges > 0, 'Muted branches and highlighted ancestry');
@@ -293,20 +293,57 @@ async function main() {
       await waitUntil(() => cdp.loaded.has(navigation.loaderId), 'Demo load');
       assert.equal(await cdp.evaluate('location.href'), demo.href);
       await settle(cdp);
-      await assertPanel(cdp, 'lineage', width);
+      await assertPanel(cdp, 'score', width);
       await testRails(cdp, width);
+      await assertPanel(cdp, 'score', width);
+      assert.equal(await cdp.evaluate("document.querySelectorAll('.score [data-series=best-observed]').length"), 1);
+      assert.equal(await cdp.evaluate("document.querySelectorAll('.score [data-observation]').length"), 48);
+      await screenshot(cdp, height === 700 ? 'score-short-desktop.png' :
+        width === 1440 ? 'score-desktop.png' : 'score-mobile.png');
+      // Use the actual tab keyboard interaction, not an implementation helper.
+      await cdp.evaluate("document.querySelector('[data-tab=score]').focus()");
+      await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight'});
+      await cdp.send('Input.dispatchKeyEvent', {type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight'});
       await assertPanel(cdp, 'lineage', width);
+      assert.ok(await cdp.evaluate(`[...document.querySelectorAll('[data-parent]')].every(edge => {
+        const id = edge.getAttribute('marker-end').slice(5, -1);
+        return document.getElementById(id) && edge.querySelector('title').textContent.includes('opacity');
+      })`), 'Directed arrows resolve and expose parent/child opacity tooltips');
+      const decay = await cdp.evaluate("[...document.querySelectorAll('[data-parent]')].filter(e=>e.dataset.highlighted==='false').map(e=>+e.dataset.opacity)");
+      assert.ok(new Set(decay).size > 1, 'Older nonselected generations have distinct faded opacity');
       await cdp.evaluate("document.querySelector('.chart-node').focus()");
       await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Enter', code: 'Enter'});
       await cdp.send('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Enter', code: 'Enter'});
       assert.match(await cdp.evaluate("document.querySelector('.graph-selection').textContent"),
         /synthetic-run-A-candidate-0/, 'Keyboard point inspection shows exact candidate');
+      assert.equal(await cdp.evaluate("document.querySelectorAll('[data-highlighted=true]').length"), 0,
+        'Selecting root highlights no unrelated edges');
+      await cdp.evaluate("document.querySelectorAll('.chart-node')[3].dispatchEvent(new MouseEvent('click'))");
+      const inspected = await cdp.evaluate(`[...document.querySelectorAll('[data-highlighted=true]')]
+        .map(edge => [edge.dataset.parent, edge.dataset.child, +edge.getAttribute('stroke-opacity')])`);
+      assert.ok(inspected.length > 0 && inspected.every(edge => edge[2] === .95),
+        'Inspected ancestry stays bright');
+      assert.ok(inspected.some(edge => edge[1] === 'synthetic-run-A-candidate-3'));
       await cdp.evaluate("document.activeElement.blur()");
       if (height !== 700) {
         await screenshot(cdp, width === 1440 ? 'lineage-desktop.png' : 'lineage-mobile.png');
       }
       assert.deepEqual(await cdp.evaluate('window.__smokeErrors'), [], 'No page/CSP errors');
     }
+    const comparison = new URL('synthetic-comparison.html', demo);
+    const compared = await cdp.send('Page.navigate', {url: comparison.href});
+    await waitUntil(() => cdp.loaded.has(compared.loaderId), 'Comparison load');
+    await cdp.evaluate(`document.querySelector('[data-tab=lineage]').click();
+      const picker = document.querySelector('[data-run-selector]');
+      picker.value = '1'; picker.dispatchEvent(new Event('change'));`);
+    const selectedRuns = await cdp.evaluate(`[...document.querySelectorAll('[data-run]')]
+      .filter(run=>!run.hidden).map(run=>run.dataset.run)`);
+    assert.deepEqual(selectedRuns, ['1', '1', '1', '1', '1'],
+      'Campaign switch updates both views and all three evidence panels');
+    await cdp.evaluate("document.querySelector('[data-tab=score]').click()");
+    assert.equal(await cdp.evaluate(`document.querySelector('[data-panel=score] [data-run="1"] [data-campaign]').dataset.campaign`),
+      'synthetic-run-B', 'Hill climb uses selected run, not pooled running best');
+
     // Serve the actual shell against synthetic paginated API responses.
     const shell = await readFile(new URL('synthetic-server-shell.html', demo), 'utf8');
     const report = await readFile(demo, 'utf8');
@@ -364,7 +401,8 @@ async function main() {
     }, 'Embedded campaign controls');
     const checked = await cdp.send('Runtime.evaluate', {
       expression: `document.querySelector('[data-toggle=left]').click();
-        document.querySelector('.sidebar').hidden`, returnByValue: true,
+        document.querySelector('[data-tab=lineage]').click();
+        document.querySelector('.sidebar').hidden && !document.querySelector('[data-panel=lineage]').hidden`, returnByValue: true,
     }, sessionId);
     assert.equal(checked.result.value, true, 'Embedded report script executes under shell CSP');
     await cdp.evaluate(`document.querySelector('#campaign').value = 'campaign-100';
@@ -394,7 +432,7 @@ async function main() {
     assert.equal(await cdp.evaluate("document.querySelector('iframe').hasAttribute('srcdoc')"), false);
     assert.deepEqual(await cdp.evaluate('window.__smokeErrors'), [], 'Shell CSP and page errors');
     assert.deepEqual(cdp.errors, [], 'No browser exceptions');
-    console.log(`PASS: synthetic report, desktop/mobile layout, campaign-only view, no exceptions; PNGs: ${fileURLToPath(output)}`);
+    console.log(`PASS: synthetic report, desktop/mobile layout, dual campaign views, generation decay, selection, no exceptions; PNGs: ${fileURLToPath(output)}`);
   } finally {
     cdp?.socket.close();
     if (server) {

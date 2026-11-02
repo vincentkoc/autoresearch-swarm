@@ -1,9 +1,39 @@
 # Campaign view
 
 The campaign workspace is the only HTML view: About on the left, the scored
-experiment graph in the center, and leaderboard/activity on the right.
+experiment view in the center, and leaderboard/activity on the right.
 Resize or collapse either sidebar. Click or keyboard-select a graph point to
 inspect the exact candidate and score.
+
+## Hill climb / Graph
+
+The center opens on **Hill climb**. Switch to **Graph** in the same workspace;
+About, leaderboard, activity and resized/collapsed sidebars remain in place.
+The tabs support Left/Right and Home/End keyboard navigation.
+
+- **Hill climb** plots individual eligible evaluation receipts chronologically by
+  controller commit time, with an independent running-best step curve for the
+  selected campaign. Minimize/maximize follows the declared metric. Switching
+  campaigns switches the curve, baseline and provenance together: runs are never
+  pooled. The last best holds to capture time without inventing another evaluation.
+  Original baselines, excluded receipts, missing timing and incomplete captures
+  remain explicit. No candidate-order chronology is substituted for missing times.
+- **Graph** draws arrows only from captured parent IDs to their children; it never
+  connects adjacent observations or infers parentage from scores. The score axis
+  retains unscored candidates on a separate rail. Nonselected edges fade by
+  generation age: maximum captured depth minus child depth, where depth is the
+  longest known parent path. Opacity is `max(0.08, 0.5 × 0.8^age)`.
+  The initial qualified-selection/best-observed ancestry stays bright. Selecting
+  a point highlights only its captured ancestors at 0.95 opacity; this is inspection,
+  not promotion. Cycles suppress ancestry highlighting and generation-age inference.
+  Missing parents and truncated parent lists are disclosed, never reconstructed.
+
+The reusable Python API remains
+`research_swarm.control.report_view.render_report_html(snapshots,
+comparison_digest=..., metric=..., labels=..., project_repository=...)`.
+No new data field or mode argument is required; both views use the same bounded
+snapshot and exact comparison/metric selection. Live adapters can render new
+captures with this API without changing training, scheduling or controller state.
 
 ## Serve with the existing API
 
@@ -52,4 +82,4 @@ should link its main project in About. The Swarm repository link is always
 present. Repository attribution is never guessed.
 
 The standalone `report plot` SVG export remains a compatibility utility; it is
-not an alternate mode in the campaign UI.
+separate from the two modes inside the campaign workspace.

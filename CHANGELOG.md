@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add Hill climb / Graph tabs within the resizable campaign workspace. Hill climb
+  retains chronological receipts and a separate running best per selected comparable
+  campaign. Graph arrows use explicit parent IDs only, fade older generations and
+  highlight the inspected ancestry without implying a new scientific selection.
+
 - Make the campaign workspace the only HTML view; remove the Time/Tree switch.
   Serve a read-authenticated, paginated campaign picker alongside the existing API,
   with direct loading for single-campaign stores and exports. Refreshing the view

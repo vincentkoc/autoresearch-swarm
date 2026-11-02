@@ -40,7 +40,7 @@ def test_campaign_browser_auth_pagination_and_read_only_capture(
         view = api.client.get(f"/v1/campaigns/{first['id']}/view")
         assert view.status_code == 200, view.text
         assert "data-panel=lineage" in view.text
-        assert "data-tab=" not in view.text
+        assert "data-tab=score" in view.text and "data-tab=lineage" in view.text
         assert "<select data-run-selector" not in view.text
         assert view.headers["cache-control"] == "no-store"
     assert queries.context(research.context(), first["id"])["watermark"] == before

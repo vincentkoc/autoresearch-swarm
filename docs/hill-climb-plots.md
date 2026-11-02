@@ -141,9 +141,10 @@ attribution, not captured scientific evidence; no repository is guessed when it
 is omitted. Only HTTPS GitHub repository URLs without credentials or query strings
 are accepted.
 
-The campaign graph opens directly. Its points use the best captured eligible score per candidate
-on the vertical axis and captured candidate order on the horizontal axis. Parent
-edges connect those points; this is not a box-and-arrow diagram. Lower values appear
+The campaign opens on Hill climb with chronological receipts and a separate running-best
+curve per selected comparable run. Use the Hill climb / Graph tabs to switch the center
+without changing the sidebars. The Graph view points use the best captured eligible score per candidate
+on the vertical axis and captured candidate order on the horizontal axis. Explicit parent-to-child arrows connect those points; this is not a box-and-arrow diagram. Lower values appear
 higher for minimize metrics, and higher values appear higher for maximize metrics.
 Candidates without an eligible score remain on a separate unscored rail; their
 parent edges are dashed. Click a point, or focus it and press Enter/Space, to inspect
@@ -151,8 +152,10 @@ its exact ID and score. A campaign selector switches captured trees when compari
 several reports. The graph normalizes finite scores before positioning points,
 including opposite extreme values; overflow in a baseline difference is disclosed
 rather than shown as a win.
-All captured
-branches remain muted and visible, including rejected candidates. Teal ancestry
+All captured branches remain visible, including rejected candidates. Nonselected edges
+fade with generation age (maximum captured depth minus child depth); selected ancestry
+stays bright. Clicking a node highlights only its own ancestor path, with an explicit
+inspection-only label. Teal ancestry
 marks the current qualified confirmed selection only when the report's exact
 comparison cohort, complete confirmation history and incumbent eligibility agree.
 Otherwise it explicitly marks best-observed ancestry, preserving ties and making
@@ -187,7 +190,8 @@ node tests/visual/report-view-smoke.mjs
 ~~~
 
 The test verifies the title, computed off-white background, campaign graph
-visibility, paginated campaign selection, keyboard point inspection, all captured branches,
+visibility, both tabs, paginated campaign selection, keyboard point inspection,
+generation decay, selected ancestry, all captured branches,
 and page errors (including CSP violations). At 1440px the compact header, rail
 proportions and graph must fit one viewport, at both 1000px and 700px heights.
 Both desktop and 390px mobile layouts must have no document

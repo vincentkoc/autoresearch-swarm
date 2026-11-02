@@ -168,6 +168,16 @@ def main() -> None:
         encoding="utf-8",
     )
     print(html)
+    html.with_name("synthetic-comparison.html").write_text(
+        render_report_html(
+            runs,
+            comparison_digest="synthetic-shared-contract",
+            metric=MetricDefinition(name="validation_loss", unit="nats", direction="minimize"),
+            title="SYNTHETIC DEMO · campaign cockpit",
+            labels=("Synthetic search A", "Synthetic search B"),
+        ),
+        encoding="utf-8",
+    )
     html.with_name("synthetic-server-shell.html").write_text(campaign_shell(), encoding="utf-8")
 
 
