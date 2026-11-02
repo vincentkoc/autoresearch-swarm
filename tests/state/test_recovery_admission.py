@@ -175,8 +175,12 @@ def test_http_cannot_invoke_native_admission(election):
             json=claim.model_dump(mode="json"),
             headers={"Idempotency-Key": "wire-bypass"},
         )
-        assert refused.status_code == 404
-        assert refused.json() == {"detail": "Not Found"}
+        assert refused.status_code == 501
+        response = refused.json()
+        assert response["error"]["code"] == ErrorCode.CAPABILITY_UNAVAILABLE
+        assert response["error"]["retryable"] is False
+        assert response.get("command_id") is None
+        assert response.get("disposition") is None and "result" not in response
     assert runtime.database.snapshot(context) == before
 
 
