@@ -36,6 +36,7 @@ from tests.cli_process import (
     OwnedCliProcess,
     PipeTail,
     acknowledge_driver,
+    read_acknowledgment,
     require_ancestry,
     require_driver,
 )
@@ -1075,9 +1076,8 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                     assert resumed.poll() is None and time.monotonic() < until, setup_diagnostics(
                         resumed, "resumed driver before attempt lock"
                     )
-                    try:
-                        acquired = json.loads(marker.read_text(encoding="utf-8"))
-                    except FileNotFoundError:
+                    acquired = read_acknowledgment(marker)
+                    if acquired is None:
                         time.sleep(0.01)
                     else:
                         assert acquired == {
