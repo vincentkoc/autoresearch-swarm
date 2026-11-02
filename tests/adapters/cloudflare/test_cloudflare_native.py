@@ -59,6 +59,8 @@ def close_owned_group(process):
             except ProcessLookupError:
                 process.wait(timeout=10)
                 return
+            except PermissionError:
+                process.poll()
             time.sleep(0.02)
     raise AssertionError("Owned workerd process group did not close; refusing state reuse")
 
