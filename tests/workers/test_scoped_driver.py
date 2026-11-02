@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -945,6 +946,7 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             return json.dumps(
                 {
                     "phase": phase,
+                    "sqlite_version": sqlite3.sqlite_version,
                     "fixture_elapsed_ms": int((time.monotonic() - fixture_started) * 1000),
                     "native_timeout_ms": running.command.timeout_ms,
                     "hard_deadline_at": running.dispatch.hard_deadline_at,
