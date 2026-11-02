@@ -79,6 +79,24 @@ def test_local_sdk_captures_registers_replays_and_reopens(
         assert len(restarted.list(RecordQuery(kind="trial"))["items"]) == 0
 
 
+@pytest.mark.parametrize("operation", ["capture_project", "register_project"])
+async def test_capture_timeout_reaches_sync_and_async_sdk(tmp_path: Path, operation: str) -> None:
+    with ResearchClient.local(tmp_path / "capture-state") as client:
+        with pytest.raises(ValueError, match="capture timeout"):
+            getattr(client, operation)(
+                tmp_path / "absent",
+                idempotency_key="sync",
+                capture_timeout_seconds=0,
+            )
+        with pytest.raises(ValueError, match="capture timeout"):
+            await getattr(AsyncResearchClient(client), operation)(
+                tmp_path / "absent",
+                idempotency_key="async",
+                capture_timeout_seconds=0,
+            )
+        assert client.list(RecordQuery(kind="project"))["items"] == []
+
+
 def test_http_sdk_matches_control_and_replays_complete_upload(
     api: APIFixture, research: ResearchFixture, tmp_path: Path
 ) -> None:

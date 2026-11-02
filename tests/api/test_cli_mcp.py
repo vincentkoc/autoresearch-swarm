@@ -141,6 +141,68 @@ async def test_remote_tool_catalog_has_no_local_file_capture(tmp_path: Path) -> 
     assert len(canonical_bytes(result.structured_content)) < MAX_TOOL_BYTES
 
 
+@pytest.mark.parametrize("operation", ["capture", "register"])
+def test_cli_capture_timeout_is_enforced(tmp_path: Path, operation: str) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "research_swarm.cli",
+            "--state-dir",
+            str(tmp_path / "capture-state"),
+            "project",
+            operation,
+            str(tmp_path / "absent"),
+            "--key",
+            "invalid-timeout",
+            "--capture-timeout-seconds",
+            "0",
+        ],
+        capture_output=True,
+        env=process_environment(),
+        timeout=20,
+    )
+    assert result.returncode == 2
+    assert result.stdout == b""
+    error = strict_json_loads(result.stderr)["error"]
+    assert error["code"] == "PROJECT_CONTRACT_INVALID"
+    assert error["message"] == "Operation failed: ValueError"
+
+
+async def test_local_mcp_capture_timeout_is_enforced(
+    research: ResearchFixture, tmp_path: Path
+) -> None:
+    state = tmp_path / "capture-mcp"
+    cli(state, "init")
+    async with Client(stdio(state), read_timeout_seconds=20, cache=None) as agent:
+        catalog = {tool.name: tool for tool in (await agent.list_tools()).tools}
+        limit = catalog["research_capture_project"].input_schema["properties"][
+            "capture_timeout_seconds"
+        ]
+        assert limit["exclusiveMinimum"] == 0
+        assert limit["maximum"] == 3600
+        result = await agent.call_tool(
+            "research_capture_project",
+            {
+                "path": str(tmp_path / "absent"),
+                "idempotency_key": "invalid-timeout",
+                "capture_timeout_seconds": 0,
+            },
+        )
+        assert result.is_error
+        captured = await agent.call_tool(
+            "research_capture_project",
+            {
+                "path": str(research.source),
+                "idempotency_key": "valid-timeout",
+                "capture_timeout_seconds": 120,
+            },
+        )
+        assert not captured.is_error
+        assert captured.structured_content is not None
+        assert captured.structured_content["result"]["digest"].startswith("sha256:")
+
+
 @pytest.mark.parametrize("content", [b'{"id":1,"id":2}', b'{"id":NaN}', b"[]"])
 def test_cli_rejects_invalid_json_with_clean_error(tmp_path: Path, content: bytes) -> None:
     result = subprocess.run(

@@ -56,6 +56,17 @@ The client methods include `command`, `capabilities`, `get`, `list`, `context`,
 `budget`, `events`, `upload_file`, `capture_project`, `register_project`, and
 `download`. `RecordQuery` supplies bounded filters and cursors for `list`.
 
+`capture_project` and `register_project` accept `capture_timeout_seconds=30`
+on both clients. For larger Git projects, choose a finite positive value up to
+3600 seconds. One budget covers committed-manifest reads and all selected Git
+blobs; it does not restart for each file. Uploads, HTTP requests, directory-mode
+capture and training have separate limits. The timeout does not change source
+digests, file/byte bounds, or execution authority.
+
+The CLI exposes `--capture-timeout-seconds` on `project capture` and
+`project register`. The local `research_capture_project` MCP tool accepts the
+same `capture_timeout_seconds` argument under its existing source-capture scope.
+
 `artifact(identifier)` returns the typed artifact catalog record and current
 lifecycle state without transferring bytes. It requires workspace `read` access,
 has an async equivalent, and uses the existing artifact metadata HTTP endpoint.
