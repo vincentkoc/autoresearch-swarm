@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Qualify Windows fixtures with byte-stable sources, private registration roots and pinned-interpreter recovery diagnostics.
+
 - Keep synchronous and asynchronous delivery available after scientific completion until resource obligations are explicitly closed.
 
 - Treat positively closed, never-released work as unstarted for launch and evaluation-exposure accounting, preserving supervisor diagnostics.
