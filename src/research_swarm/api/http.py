@@ -257,6 +257,15 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
             },
         )(command_endpoint(operation))
 
+    @app.post("/v1/commands/{operation:path}", include_in_schema=False)
+    async def unknown_command(
+        operation: str,
+        request: Request,
+        context: Annotated[CommandContext, Depends(write_context)],
+    ) -> JsonObject:
+        payload = await read_json(request)
+        return await asyncio.to_thread(dispatch_command, service, context, operation, payload)
+
     @app.get("/v1/records/{kind}/{identifier}")
     async def get_record(
         kind: RecordKind, identifier: str, context: Annotated[CommandContext, Depends(read_context)]
