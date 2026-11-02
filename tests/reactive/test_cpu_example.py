@@ -24,7 +24,7 @@ async def test_registered_cpu_project_records_pending_progress_baseline_replay_a
     bundle_directory(source, bundle, paths=manifest.source.paths)
     resolved = resolve_project(bundle)
     registered = register_environment(
-        tmp_path / "engine.json",
+        tmp_path / "registration" / "engine.json",
         profile="python-cpu",
         executable=Path(sys.executable),
         environment_contracts=(resolved.environment_contract_digest,),

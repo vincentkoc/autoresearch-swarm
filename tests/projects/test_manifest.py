@@ -74,11 +74,11 @@ timeout_ms = 1000
 def project(tmp_path: Path) -> Path:
     root = tmp_path / "project"
     root.mkdir()
-    (root / "research.toml").write_text(MANIFEST)
-    (root / "train.py").write_text("rate = 0.1\n")
-    (root / "evaluate.py").write_text("metric = 'loss'\n")
-    (root / "data-manifest.json").write_text('{"version": 1}\n')
-    (root / "requirements.lock").write_text("stdlib-only\n")
+    (root / "research.toml").write_bytes(MANIFEST.encode("utf-8"))
+    (root / "train.py").write_bytes(b"rate = 0.1\n")
+    (root / "evaluate.py").write_bytes(b"metric = 'loss'\n")
+    (root / "data-manifest.json").write_bytes(b'{"version": 1}\n')
+    (root / "requirements.lock").write_bytes(b"stdlib-only\n")
     return root
 
 

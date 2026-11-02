@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import sqlite3
 import sys
 import threading
 import time
@@ -176,6 +177,25 @@ def run_native(
         "descendants_remaining",
     ] = "not_started"
     findings: list[str] = []
+
+    def cancellation_requested() -> bool:
+        try:
+            return cancelled()
+        except sqlite3.Error as error:
+            detail = "SQLite failure phase=cancellation_read"
+            code = getattr(error, "sqlite_errorcode", None)
+            name = getattr(error, "sqlite_errorname", None)
+            if type(code) is int and 0 <= code <= 0x7FFFFFFF:
+                detail += f" sqlite_errorcode={code}"
+                if (
+                    isinstance(name, str)
+                    and name.startswith("SQLITE_")
+                    and getattr(sqlite3, name, None) == code
+                ):
+                    detail += f" sqlite_errorname={name}"
+            findings.append(detail)
+            raise
+
     with ExitStack() as stack:
         stdout = _Capture(
             "stdout",
@@ -228,7 +248,7 @@ def run_native(
             if (
                 permitted
                 and not deadline_hit.is_set()
-                and not cancelled()
+                and not cancellation_requested()
                 and continuous_time() < launch_deadline
             ):
                 released_at = utc_now()
@@ -236,7 +256,7 @@ def run_native(
                 on_released(released_at)
                 reason = "exited"
                 while child.active():
-                    if cancelled():
+                    if cancellation_requested():
                         reason = "cancelled"
                         break
                     if continuous_time() >= deadline:
@@ -252,7 +272,7 @@ def run_native(
                 # bounded closure/drain progress before classifying surviving work.
                 settle_until = min(deadline, continuous_time() + command.grace_ms / 1000)
                 while not closure.scope_closed and continuous_time() < settle_until:
-                    if cancelled():
+                    if cancellation_requested():
                         reason = "cancelled"
                         break
                     drain()
