@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expose a bounded Git source-capture timeout through the sync/async SDK,
+  project CLI and local MCP tool, shared across manifest reads and bundling.
+
 - Allow hosted delivery to read scientific completion and resource closure records when deciding whether a campaign is terminal.
 
 - Preserve safe SQLite cancellation-read failure codes and close worker-journal connections when setup fails.
