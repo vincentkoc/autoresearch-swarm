@@ -111,6 +111,7 @@ function collapse(side, collapsed) {
   rail(side).hidden = collapsed;
   document.querySelector('[data-toggle="' + side + '"]').setAttribute(
     'aria-expanded', String(!collapsed));
+  if (!collapsed && !narrow()) resizeRail(side, rail(side).getBoundingClientRect().width);
   syncDividers();
 }
 function syncDividers() {
@@ -128,7 +129,9 @@ function resizeRail(side, width) {
   const maximum = Math.max(0, Math.min(workspace.clientWidth * .45,
     workspace.clientWidth - other - 296));
   const minimum = Math.min(160, maximum);
-  collapse(side, false);
+  workspace.dataset[side + 'Collapsed'] = 'false';
+  rail(side).hidden = false;
+  document.querySelector('[data-toggle="' + side + '"]').setAttribute('aria-expanded', 'true');
   workspace.style.setProperty('--' + side + '-width',
     Math.round(Math.max(minimum, Math.min(maximum, width))) + 'px');
   syncDividers();

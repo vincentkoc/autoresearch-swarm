@@ -1,4 +1,4 @@
-<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta http-equiv=Content-Security-Policy content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-xZdUdnMSZEwk+lrtQRkdIhwPRMBgINd4qqZrGGP6Tkk='; base-uri 'none'; form-action 'none'"><title>SYNTHETIC DEMO · campaign cockpit</title><style>
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta http-equiv=Content-Security-Policy content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-9VK0avd5Vq6HtjQwIhtEiOZL/6Qz9P7upaTi9cimsDI='; base-uri 'none'; form-action 'none'"><title>SYNTHETIC DEMO · campaign cockpit</title><style>
 :root{color-scheme:light;--paper:#fafaf8;--ink:#21272a;--muted:#7e8588;--line:#e9eae8;
 --teal:#348a92}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);
 font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{height:52px;
@@ -7,7 +7,8 @@ solid var(--line);background:#fdfdfc;gap:20px}h1{font-size:16px;font-weight:600;
 h2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:650;margin:0}
 h3{font-size:11px;font-weight:600;margin:16px 0 7px}p{margin:8px 0}small,.muted{color:var(--muted)}
 main{--left-width:18%;--right-width:28.5%;display:grid;
-grid-template-columns:var(--left-width) 8px minmax(0,1fr) 8px var(--right-width);height:calc(100vh - 52px);
+grid-template-columns:var(--left-width) 8px minmax(0,1fr) 8px var(--right-width);
+height:calc(100vh - 52px);
 min-height:600px;margin:0}.sidebar{min-width:0;border-right:1px solid var(--line);overflow:auto}
 .sidebar{grid-column:1}.splitter[data-resize=left]{grid-column:2}
 .graph-panel{grid-column:3}.splitter[data-resize=right]{grid-column:4}.right{grid-column:5}
@@ -183,6 +184,7 @@ function collapse(side, collapsed) {
   rail(side).hidden = collapsed;
   document.querySelector('[data-toggle="' + side + '"]').setAttribute(
     'aria-expanded', String(!collapsed));
+  if (!collapsed && !narrow()) resizeRail(side, rail(side).getBoundingClientRect().width);
   syncDividers();
 }
 function syncDividers() {
@@ -200,7 +202,9 @@ function resizeRail(side, width) {
   const maximum = Math.max(0, Math.min(workspace.clientWidth * .45,
     workspace.clientWidth - other - 296));
   const minimum = Math.min(160, maximum);
-  collapse(side, false);
+  workspace.dataset[side + 'Collapsed'] = 'false';
+  rail(side).hidden = false;
+  document.querySelector('[data-toggle="' + side + '"]').setAttribute('aria-expanded', 'true');
   workspace.style.setProperty('--' + side + '-width',
     Math.round(Math.max(minimum, Math.min(maximum, width))) + 'px');
   syncDividers();

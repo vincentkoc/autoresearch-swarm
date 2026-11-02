@@ -130,6 +130,18 @@ a dominant graph, and a leaderboard stacked above the activity feed. Light
 borders divide off-white panes; IDs and scores use monospace. Budget and provenance
 details expand in the context rail instead of displacing the graph.
 
+Drag either vertical divider to resize the sidebars, or focus a divider and use
+Left/Right arrows. Enter or the header's About and Leaderboard / activity buttons
+collapse and restore a sidebar. Restoring a wide sidebar preserves space for the
+graph. On mobile, the panels stack and the header buttons still toggle them.
+
+The header links to `vincentkoc/autoresearch-swarm`. To also link the campaign's
+main project in About, supply `--project-repository https://github.com/OWNER/REPO`
+(or `project_repository=` to the Python renderer). This is optional display
+attribution, not captured scientific evidence; no repository is guessed when it
+is omitted. Only HTTPS GitHub repository URLs without credentials or query strings
+are accepted.
+
 Tree opens by default. Its points use the best captured eligible score per candidate
 on the vertical axis and captured candidate order on the horizontal axis. Parent
 edges connect those points; this is not a box-and-arrow diagram. Lower values appear

@@ -236,6 +236,26 @@ async function testRails(cdp, width) {
     assert.ok(Math.abs(await railWidth() - resized + 20) < 2, 'Keyboard resizes rail');
     await cdp.evaluate("document.querySelector('main').style.removeProperty('--" + side + "-width')");
   }
+  if (width === 1440) {
+    for (const side of ['left', 'right']) {
+      const opposite = side === 'left' ? 'right' : 'left';
+      const dragWide = async target => {
+        const point = await cdp.evaluate('(function(){const r=document.querySelector(\'[data-resize="' + target + '"]\').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+        const x = point.x + (target === 'left' ? 1000 : -1000);
+        await cdp.send('Input.dispatchMouseEvent', {type:'mousePressed', ...point, button:'left', clickCount:1});
+        await cdp.send('Input.dispatchMouseEvent', {type:'mouseMoved', x, y:point.y, button:'left', buttons:1});
+        await cdp.send('Input.dispatchMouseEvent', {type:'mouseReleased', x, y:point.y, button:'left', clickCount:1});
+      };
+      const toggle = () => cdp.evaluate('document.querySelector(\'[data-toggle="' + side + '"]\').click()');
+      await dragWide(side);
+      await toggle();
+      await dragWide(opposite);
+      await toggle();
+      assert.ok(await cdp.evaluate("document.querySelector('.graph-panel').getBoundingClientRect().width") >= 280,
+        'Restoring a wide collapsed rail preserves the graph minimum');
+      await cdp.evaluate("document.querySelector('main').style.removeProperty('--left-width'); document.querySelector('main').style.removeProperty('--right-width')");
+    }
+  }
   await cdp.evaluate('document.activeElement.blur(); window.scrollTo(0, 0)');
 }
 
