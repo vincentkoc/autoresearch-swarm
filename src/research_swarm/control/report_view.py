@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import math
+import re
 from collections.abc import Sequence
 from html import escape
 from xml.etree.ElementTree import Element, SubElement, tostring
@@ -27,8 +28,12 @@ padding:0 20px;display:flex;align-items:center;justify-content:space-between;bor
 solid var(--line);background:#fdfdfc;gap:20px}h1{font-size:16px;font-weight:600;margin:0}
 h2{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:650;margin:0}
 h3{font-size:11px;font-weight:600;margin:16px 0 7px}p{margin:8px 0}small,.muted{color:var(--muted)}
-main{display:grid;grid-template-columns:18% minmax(0,1fr) 28.5%;height:calc(100vh - 52px);
-min-height:600px;margin:0}.sidebar{border-right:1px solid var(--line);overflow:auto}
+main{--left-width:18%;--right-width:28.5%;display:grid;
+grid-template-columns:var(--left-width) 8px minmax(0,1fr) 8px var(--right-width);
+height:calc(100vh - 52px);
+min-height:600px;margin:0}.sidebar{min-width:0;border-right:1px solid var(--line);overflow:auto}
+.sidebar{grid-column:1}.splitter[data-resize=left]{grid-column:2}
+.graph-panel{grid-column:3}.splitter[data-resize=right]{grid-column:4}.right{grid-column:5}
 .sidebar-section{padding:18px 20px;border-bottom:1px solid var(--line)}
 .sidebar h2{margin-bottom:14px}.graph-panel{display:flex;flex-direction:column;min-width:0;
 overflow:hidden}.panel-heading{display:flex;align-items:center;justify-content:space-between;
@@ -73,16 +78,104 @@ border-top:1px solid var(--line);padding:10px 16px;font-size:11px;overflow-wrap:
 .time-evidence p{margin:3px 0}.time-run{border-left:3px solid;padding-left:9px;margin-top:10px}
 .time-metric{padding:8px 16px;font-size:11px;overflow-wrap:anywhere}
 .header-meta{font-size:11px;color:var(--muted);text-align:right}
-@media(min-width:1800px){main{grid-template-columns:300px minmax(0,1fr) 480px}}
-@media(max-width:1000px){main{grid-template-columns:185px minmax(0,1fr) 270px}
+a{color:var(--teal);text-decoration:none}a:hover{text-decoration:underline}
+.repo-link{display:block;overflow-wrap:anywhere;margin:8px 0;font:10px/1.5
+ui-monospace,SFMono-Regular,Menlo,monospace}.header-title{display:flex;gap:16px;
+align-items:center;min-width:0}.header-actions{display:flex;gap:8px;align-items:center}
+.rail-toggle{border:1px solid var(--line);white-space:nowrap}
+.rail-toggle[aria-expanded=false]{background:#e6edef}.splitter{cursor:col-resize;
+touch-action:none;position:relative;background:var(--paper)}
+.splitter:after{content:"";position:absolute;top:45%;bottom:45%;left:3px;
+border-left:2px solid #c7ccca}.splitter:hover,.splitter:focus-visible{background:#e6edef;
+outline:1px solid var(--teal);outline-offset:-1px}
+main[data-left-collapsed=true]{--left-width:0px!important}
+main[data-right-collapsed=true]{--right-width:0px!important}
+body.resizing{cursor:col-resize;user-select:none}
+@media(min-width:1800px){main{--left-width:300px;--right-width:480px}}
+@media(max-width:1000px){main{--left-width:185px;--right-width:270px}
 .sidebar-section{padding:14px}.leader{padding:10px;gap:6px}.header-meta{font-size:10px}}
 @media(max-width:720px){header{height:auto;min-height:52px;padding:12px;align-items:start}
+.header-title{display:block;flex:1}.header-actions{flex:1;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+.header-title .repo-link{font-size:9px;margin:3px 0}.splitter{display:none}
 h1{font-size:13px}main{display:flex;flex-direction:column;height:auto;min-height:0}
 .sidebar{order:2;border:0}.graph-panel{order:0;height:600px}.right{order:1;border:0;
 grid-template-rows:300px 350px}.graph-note{font-size:9px}.header-meta{max-width:140px}
 .sidebar-section{padding:16px;border-top:1px solid var(--line)}}
 """
 _SCRIPT = """
+const workspace = document.querySelector('main');
+const narrow = () => matchMedia('(max-width:720px)').matches;
+const rail = side => document.querySelector(side === 'left' ? '.sidebar' : '.right');
+function collapse(side, collapsed) {
+  workspace.dataset[side + 'Collapsed'] = String(collapsed);
+  rail(side).hidden = collapsed;
+  document.querySelector('[data-toggle="' + side + '"]').setAttribute(
+    'aria-expanded', String(!collapsed));
+  syncDividers();
+}
+function syncDividers() {
+  document.querySelectorAll('[data-resize]').forEach(handle => {
+    const side = handle.dataset.resize;
+    const width = Math.round(rail(side).getBoundingClientRect().width);
+    handle.setAttribute('aria-valuenow', String(width));
+    handle.setAttribute('aria-valuemax', String(Math.round(workspace.clientWidth * .45)));
+    handle.setAttribute('aria-valuetext', rail(side).hidden ? 'Collapsed' : width + ' pixels');
+  });
+}
+function resizeRail(side, width) {
+  if (narrow()) return;
+  const other = rail(side === 'left' ? 'right' : 'left').getBoundingClientRect().width;
+  const maximum = Math.max(0, Math.min(workspace.clientWidth * .45,
+    workspace.clientWidth - other - 296));
+  const minimum = Math.min(160, maximum);
+  collapse(side, false);
+  workspace.style.setProperty('--' + side + '-width',
+    Math.round(Math.max(minimum, Math.min(maximum, width))) + 'px');
+  syncDividers();
+}
+document.querySelectorAll('[data-toggle]').forEach(button => {
+  button.addEventListener('click', () => {
+    const side = button.dataset.toggle;
+    collapse(side, !rail(side).hidden);
+  });
+});
+document.querySelectorAll('[data-resize]').forEach(handle => {
+  const side = handle.dataset.resize;
+  let drag = null;
+  handle.addEventListener('pointerdown', event => {
+    if (narrow() || event.button !== 0) return;
+    event.preventDefault();
+    drag = {x: event.clientX, width: rail(side).getBoundingClientRect().width};
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add('resizing');
+  });
+  handle.addEventListener('pointermove', event => {
+    if (drag) resizeRail(side, drag.width + (side === 'left' ? 1 : -1) *
+      (event.clientX - drag.x));
+  });
+  const stop = () => { drag = null; document.body.classList.remove('resizing'); };
+  handle.addEventListener('pointerup', stop);
+  handle.addEventListener('pointercancel', stop);
+  handle.addEventListener('lostpointercapture', stop);
+  handle.addEventListener('keydown', event => {
+    const width = rail(side).getBoundingClientRect().width;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      const delta = (event.key === 'ArrowRight' ? 20 : -20) * (side === 'left' ? 1 : -1);
+      resizeRail(side, width + delta);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      collapse(side, !rail(side).hidden);
+    }
+  });
+});
+addEventListener('resize', () => {
+  // A desktop drag must not impose stale pixel widths after shrinking the viewport.
+  workspace.style.removeProperty('--left-width');
+  workspace.style.removeProperty('--right-width');
+  syncDividers();
+});
+syncDividers();
 document.querySelectorAll('[data-tab]').forEach(button => {
   button.addEventListener('click', () => {
     const target = button.dataset.tab;
@@ -423,8 +516,25 @@ def render_report_html(
     metric: MetricDefinition,
     title: str = "Swarm · campaign evidence",
     labels: Sequence[str] | None = None,
+    project_repository: str | None = None,
 ) -> str:
-    """Render a self-contained read-only cockpit; scripts only switch local panels."""
+    """Render captured evidence with local layout controls and optional project attribution."""
+    project_link = ""
+    if project_repository is not None:
+        match = re.fullmatch(
+            r"https://github[.]com/([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9_.-]+)/?",
+            project_repository,
+        )
+        if not match or match[2] in {".", ".."}:
+            raise ValueError("Project repository must be an HTTPS GitHub repository URL")
+        owner, repo = match[1], match[2].removesuffix(".git")
+        if not repo or repo in {".", ".."}:
+            raise ValueError("Project repository must name a repository")
+        project_link = (
+            f"<a class=repo-link href='https://github.com/{owner}/{repo}' "
+            f"target=_blank rel='noopener noreferrer' aria-label='Project repository on GitHub'>"
+            f"Project ↗ {_e(owner)}/{_e(repo)}</a>"
+        )
     runs = project_hill_climb(snapshots, comparison_digest=comparison_digest, metric=metric)
     if labels is not None and (
         len(labels) != len(runs) or any(not label.strip() for label in labels)
@@ -570,16 +680,26 @@ def render_report_html(
         f"style-src 'unsafe-inline'; script-src 'sha256-{script_hash}'; "
         "base-uri 'none'; form-action 'none'\">"
         f"<title>{_e(title)}</title><style>{_STYLE}</style></head><body>"
-        f"<header><h1>{_e(title)}</h1><span class=header-meta>"
+        f"<header><div class=header-title><h1>{_e(title)}</h1>"
+        "<a class=repo-link href='https://github.com/vincentkoc/autoresearch-swarm' "
+        "target=_blank rel='noopener noreferrer'>vincentkoc/autoresearch-swarm ↗</a></div>"
+        "<div class=header-actions><button class=rail-toggle data-toggle=left "
+        "aria-expanded=true aria-controls=about-rail>About</button>"
+        "<button class=rail-toggle data-toggle=right aria-expanded=true "
+        "aria-controls=activity-rail>Leaderboard / activity</button><span class=header-meta>"
         f"{len(workers)} captured worker IDs · {trial_count} captured trials"
-        " · offline snapshot</span></header>"
-        "<main><aside class=sidebar><div class=sidebar-section><h2>About</h2>"
+        " · offline snapshot</span></div></header>"
+        "<main><aside class=sidebar id=about-rail><div class=sidebar-section><h2>About</h2>"
+        + project_link
         + "".join(about)
         + "</div><div class=sidebar-section><h2>Evidence</h2>"
         "<p class=muted>Captured report only. No live concurrency inferred.</p>"
         "<details><summary>Comparison identity</summary>"
         f"<code>{_e(comparison_digest)}</code></details>"
         "<p class=muted>Observed extrema are not confirmed or official wins.</p></div></aside>"
+        "<div class=splitter role=separator tabindex=0 data-resize=left "
+        "aria-orientation=vertical aria-label='Resize About panel' "
+        "aria-controls=about-rail aria-valuemin=0></div>"
         "<section class=graph-panel><div class=panel-heading><h2>Graph</h2>"
         f"<select data-run-selector aria-label='Campaign'>{selectors}</select>"
         "<div class=tabs role=tablist aria-label='Evidence views'>"
@@ -592,7 +712,10 @@ def render_report_html(
         + "</div></div>"
         "<div class=graph-selection>Select a point to inspect "
         "its candidate and observed score.</div>"
-        "</section><aside class=right><section class=right-section>"
+        "</section><div class=splitter role=separator tabindex=0 data-resize=right "
+        "aria-orientation=vertical aria-label='Resize leaderboard and activity panel' "
+        "aria-controls=activity-rail aria-valuemin=0></div>"
+        "<aside class=right id=activity-rail><section class=right-section>"
         "<div class=panel-heading><h2>Leaderboard</h2><span class=badge>Observed score</span></div>"
         "<div class=scroll>" + "".join(leaderboard) + "</div></section>"
         "<section class=right-section><div class=panel-heading><h2>Activity</h2>"

@@ -89,6 +89,10 @@ def parser() -> argparse.ArgumentParser:
         plot.add_argument(
             "--label", action="append", help="One display label per report, in input order"
         )
+        if operation == "view":
+            plot.add_argument(
+                "--project-repository", help="Optional HTTPS GitHub project repository for About"
+            )
     commands.add_parser("capabilities")
     backup = commands.add_parser("backup", help="Export and verify a sealed native checkpoint")
     backups = backup.add_subparsers(dest="backup_action", required=True)
@@ -372,12 +376,16 @@ def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> di
 
         renderer = render_report_html
         output_format = "html"
+    presentation = (
+        {"project_repository": args.project_repository} if args.report_action == "view" else {}
+    )
     rendered = renderer(
         snapshots,
         comparison_digest=args.comparison_digest,
         metric=metric,
         title=args.title,
         labels=args.label,
+        **presentation,
     )
     with args.output.open("x", encoding="utf-8", newline="\n") as output:
         output.write(rendered)

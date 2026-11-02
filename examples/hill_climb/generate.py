@@ -162,6 +162,7 @@ def main() -> None:
             metric=MetricDefinition(name="validation_loss", unit="nats", direction="minimize"),
             title="SYNTHETIC DEMO · campaign cockpit",
             labels=("Synthetic loss optimization",),
+            project_repository="https://github.com/vincentkoc/autoresearch-swarm",
         ),
         encoding="utf-8",
     )

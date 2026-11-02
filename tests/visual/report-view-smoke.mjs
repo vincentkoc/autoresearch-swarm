@@ -206,6 +206,39 @@ async function clickTab(cdp, tab) {
   await settle(cdp);
 }
 
+async function testRails(cdp, width) {
+  const initial = await cdp.evaluate("({left: document.querySelector('.sidebar').getBoundingClientRect().width, right: document.querySelector('.right').getBoundingClientRect().width, links: [...document.querySelectorAll('a')].map(a=>a.href)})");
+  assert.ok(initial.links.includes('https://github.com/vincentkoc/autoresearch-swarm'));
+  for (const side of ['left', 'right']) {
+    const selector = side === 'left' ? '.sidebar' : '.right';
+    const railWidth = () => cdp.evaluate("document.querySelector('" + selector + "').getBoundingClientRect().width");
+    const toggle = () => cdp.evaluate('document.querySelector(\'[data-toggle="' + side + '"]\').click()');
+    await toggle();
+    assert.equal(await railWidth(), 0, 'Rail collapses completely');
+    if (width === 1440) {
+      assert.ok(await cdp.evaluate("document.querySelector('.graph-panel').getBoundingClientRect().width")
+        > width * .5, 'Collapsing a rail preserves graph placement');
+    }
+    await toggle();
+    assert.ok(await railWidth() > 0);
+    if (width !== 1440) continue;
+    const point = await cdp.evaluate('(function(){const r=document.querySelector(\'[data-resize="' + side + '"]\').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+    const delta = side === 'left' ? 40 : -40;
+    await cdp.send('Input.dispatchMouseEvent', {type:'mousePressed', ...point, button:'left', clickCount:1});
+    await cdp.send('Input.dispatchMouseEvent', {type:'mouseMoved', x:point.x+delta, y:point.y, button:'left', buttons:1});
+    await cdp.send('Input.dispatchMouseEvent', {type:'mouseReleased', x:point.x+delta, y:point.y, button:'left', clickCount:1});
+    const resized = await railWidth();
+    assert.ok(Math.abs(resized - initial[side] - 40) < 2, 'Pointer drag resizes rail');
+    await cdp.evaluate('document.querySelector(\'[data-resize="' + side + '"]\').focus()');
+    const key = side === 'left' ? 'ArrowLeft' : 'ArrowRight';
+    await cdp.send('Input.dispatchKeyEvent', {type:'keyDown', key, code:key});
+    await cdp.send('Input.dispatchKeyEvent', {type:'keyUp', key, code:key});
+    assert.ok(Math.abs(await railWidth() - resized + 20) < 2, 'Keyboard resizes rail');
+    await cdp.evaluate("document.querySelector('main').style.removeProperty('--" + side + "-width')");
+  }
+  await cdp.evaluate('document.activeElement.blur(); window.scrollTo(0, 0)');
+}
+
 async function screenshot(cdp, name) {
   const { cssContentSize } = await cdp.send('Page.getLayoutMetrics');
   assert.ok(cssContentSize.height > 0 && cssContentSize.height <= 20_000, 'Bounded screenshot height');
@@ -287,6 +320,8 @@ async function main() {
       await waitUntil(() => cdp.loaded.has(navigation.loaderId), 'Demo load');
       assert.equal(await cdp.evaluate('location.href'), demo.href);
       await settle(cdp);
+      await assertPanel(cdp, 'lineage', width);
+      await testRails(cdp, width);
       await assertPanel(cdp, 'lineage', width);
       await cdp.evaluate("document.querySelector('.chart-node').focus()");
       await cdp.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Enter', code: 'Enter'});

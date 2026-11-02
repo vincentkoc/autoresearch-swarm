@@ -307,6 +307,8 @@ def test_offline_html_cli_shares_selection_and_output_integrity(tmp_path: Path) 
                 str(output),
                 "--label",
                 "Synthetic local run",
+                "--project-repository",
+                "https://github.com/example/research-project",
             ]
         )
         == 0
@@ -314,6 +316,7 @@ def test_offline_html_cli_shares_selection_and_output_integrity(tmp_path: Path) 
     html = output.read_text(encoding="utf-8")
     assert html.startswith("<!doctype html>")
     assert "Synthetic local run" in html
+    assert "https://github.com/example/research-project" in html
 
 
 @pytest.mark.parametrize(
@@ -354,3 +357,46 @@ def test_malformed_lineage_is_rejected_not_collapsed(malformation: str) -> None:
         page["included"] = 52
     with pytest.raises(ValueError):
         render(value)
+
+
+def test_project_link_is_optional_and_normalized_without_mutating_evidence() -> None:
+    value = evidence()
+    original = deepcopy(value)
+    html = render_report_html(
+        [value],
+        comparison_digest="synthetic-cohort",
+        metric=METRIC,
+        project_repository="https://github.com/example/research-project.git",
+    )
+    assert value == original
+    tags = Tags()
+    tags.feed(html)
+    links = [attrs for tag, attrs in tags.tags if tag == "a"]
+    assert {attrs["href"] for attrs in links} == {
+        "https://github.com/vincentkoc/autoresearch-swarm",
+        "https://github.com/example/research-project",
+    }
+    assert all(attrs.get("rel") == "noopener noreferrer" for attrs in links)
+    assert "Project repository on GitHub" not in render(value)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(1)",
+        "https://github.com.evil.test/example/repo",
+        "https://user:secret@github.com/example/repo",
+        "https://github.com/example/repo?token=x",
+        "https://github.com/example/..",
+        "https://github.com/example/.git",
+        "https://github.com/example/repo/pull/1",
+    ],
+)
+def test_project_link_rejects_non_repository_urls(url: str) -> None:
+    with pytest.raises(ValueError, match="repository"):
+        render_report_html(
+            [evidence()],
+            comparison_digest="synthetic-cohort",
+            metric=METRIC,
+            project_repository=url,
+        )

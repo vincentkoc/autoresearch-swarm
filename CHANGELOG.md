@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a Swarm GitHub link and optional project GitHub attribution to the campaign
+  view, with draggable and keyboard-resizable sidebars plus collapse controls.
+  Pass `report view --project-repository https://github.com/OWNER/REPO` to supply
+  project attribution without modifying captured scientific evidence.
+
 - Keep Tree coordinates finite for extreme scores and render the Time pane as an
   embedded chart with readable run legends, capture completeness and exclusion
   summaries at desktop and mobile sizes, without cropped standalone-export text.
