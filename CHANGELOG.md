@@ -62,6 +62,8 @@
 
 ### Packaging and maintenance
 
+- Align the Cloudflare Worker runtime lock with Pydantic 2.14.1 and its
+  matching WASM core wheel.
 - Add build-once release previews, exact-artifact installation checks and
   tag-gated PyPI Trusted Publishing with attestations and release checksums.
 - Pin release tooling, limit source distributions to package inputs, and
