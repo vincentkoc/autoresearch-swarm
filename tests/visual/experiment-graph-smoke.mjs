@@ -90,7 +90,7 @@ try {
   });
   await load('synthetic-240.html');
   assert.equal(await evaluate('window.__workers'),1,'One offline layout worker');
-  assert.equal(await evaluate('document.getElementById("group").checked'),false);
+  assert.equal(await evaluate('document.getElementById("layout").value'),'topology');
   assert.equal(await evaluate('getComputedStyle(document.body).backgroundColor'),'rgb(250, 250, 248)');
   assert.equal(await evaluate('document.querySelectorAll(".node-item").length'),100);
   assert.match(await evaluate('document.getElementById("count").textContent'),/240 \/ 240/);
@@ -161,8 +161,34 @@ try {
   const idleDraws=await evaluate('__drawCount');
   await delay(150);
   assert.equal(await evaluate('__drawCount'),idleDraws,'Settled graph performs no idle redraws');
-  await click('#group');
+  await evaluate('document.getElementById("layout").value="category";document.getElementById("layout").dispatchEvent(new Event("change"))');
   await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'optional category layout');
+  await evaluate('document.getElementById("layout").value="ring";document.getElementById("layout").dispatchEvent(new Event("change"))');
+  await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'ring settles');
+  await evaluate('new Promise(r=>requestAnimationFrame(r))');
+  const ring=await evaluate('__dots');
+  assert.equal(ring.length,12,'Ring keeps every record');
+  const center=ring.reduce((c,p)=>({x:c.x+p.x/12,y:c.y+p.y/12}),{x:0,y:0});
+  const radii=ring.map(p=>Math.hypot(p.x-center.x,p.y-center.y));
+  assert.ok(Math.max(...radii)-Math.min(...radii)<.01,'Equal-radius symmetric ring');
+  await screenshot('graph-ring.png');
+  await click('#pause');await click('#pause');
+  await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'ring resumes without a simulation');
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'No mobile ring overflow');
+  await screenshot('graph-ring-mobile.png');
+  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+
+  await click('[data-id="experiment-1"]');
+  assert.match(await evaluate('document.getElementById("detail").textContent'),/1 causal ancestors/);
+  await evaluate('document.getElementById("search").value="not present";document.getElementById("search").dispatchEvent(new Event("input"))');
+  assert.equal(await evaluate('document.getElementById("empty").hidden'),false);
+  await evaluate('document.getElementById("search").value="";document.getElementById("search").dispatchEvent(new Event("input"));document.getElementById("layout").value="topology";document.getElementById("layout").dispatchEvent(new Event("change"))');
+  await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'switch back to connected clusters');
+  await evaluate('new Promise(r=>requestAnimationFrame(r))');
+  assert.ok(await evaluate('Math.min(...__dots.slice(2).map(p=>p.x))>Math.max(...__dots.slice(0,2).map(p=>p.x))'),
+    'Returning from ring restores component packing');
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
   await load('synthetic-240.html');
   assert.equal(await evaluate('document.getElementById("pause").textContent'),'Resume');

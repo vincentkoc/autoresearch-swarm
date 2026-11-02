@@ -49,7 +49,11 @@ border-top:1px solid var(--line);border-right:0}.details{grid-row:3;border-left:
 border-top:1px solid var(--line)}#motion{margin-left:0}}
 """
 
-SCRIPT = "const layoutWorkerSource = " + json.dumps(WORKER) + ";\n" + r"""
+SCRIPT = (
+    "const layoutWorkerSource = "
+    + json.dumps(WORKER)
+    + ";\n"
+    + r"""
 (() => {
 'use strict';
 const data = JSON.parse(document.getElementById('graph-data').textContent);
@@ -97,7 +101,7 @@ worker.onmessage=({data:m})=>{
 };
 function layout() {
   settled=false;layoutToken++;
-  worker.postMessage({type:'layout',token:layoutToken,paused,grouped:$('group').checked,
+  worker.postMessage({type:'layout',token:layoutToken,paused,mode:$('layout').value,
     nodes:visible.map(n=>({id:n.id,cluster:n.cluster,x:n.x,y:n.y,
       fx:n.pinned?n.x:null,fy:n.pinned?n.y:null})),
     edges:visibleEdges.map(e=>({source:e.source,target:e.target,kind:e.kind}))});
@@ -329,7 +333,7 @@ $('fit').onclick=()=>{autoFit=false;fit();};
 $('zoom-in').onclick=()=>zoom(1.25);$('zoom-out').onclick=()=>zoom(.8);
 $('pause').onclick=()=>{paused=!paused;syncPause();worker.postMessage({type:'pause',paused});
   $('motion').textContent=paused?'Layout paused':'Arranging…';};
-$('reset').onclick=reset;$('group').onchange=reset;
+$('reset').onclick=reset;$('layout').onchange=reset;
 new ResizeObserver(()=>{
   const rect=canvas.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);
   width=rect.width;height=rect.height;canvas.width=Math.round(width*dpr);
@@ -339,3 +343,4 @@ reset();renderList();$('empty').hidden=visible.length>0;
 addEventListener('pagehide',e=>{if(!e.persisted)worker.terminate();});
 })();
 """
+)

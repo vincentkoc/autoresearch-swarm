@@ -11,9 +11,7 @@ from pathlib import Path
 from research_swarm.control.experiment_graph import render_experiment_graph_html
 
 dataset = json.loads(Path("inventory.json").read_text())
-Path("experiment-graph.html").write_text(
-    render_experiment_graph_html(dataset), encoding="utf-8"
-)
+Path("experiment-graph.html").write_text(render_experiment_graph_html(dataset), encoding="utf-8")
 ```
 
 The normalized dataset is an object with:
@@ -56,6 +54,14 @@ controls simulation. Keyboard users can select inventory items, follow connectio
 buttons, pan with arrows, zoom with +/− and clear selection with Escape on canvas.
 Reduced-motion users start paused, and may explicitly resume.
 
-The renderer uses bounded local spatial-grid repulsion, link springs, category
-gravity and cooling; it needs no CDN, npm package, network or WebGL support.
+Choose **Connected clusters** (the default) to pack disconnected components
+separately, **Category groups** for category-based gravity, or **Symmetric ring**
+for an evenly spaced circle sorted by category and ID. Switching layout clears
+pins and fits the matching records, while keeping filters and selection. Ring
+positions imply no ancestry, similarity, score ranking or execution order.
+
+The renderer runs bundled D3 Barnes–Hut repulsion, link springs and cooling in an
+offline worker, with batched Canvas drawing only when needed. Ring positions are
+computed directly without a running simulation. No CDN, npm install, network
+or WebGL support is needed.
 The document uses hash-based CSP and DOM text nodes for capture content.

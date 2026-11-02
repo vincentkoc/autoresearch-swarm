@@ -113,10 +113,13 @@ def render_experiment_graph_html(
         '<input id="search" type="search" placeholder="Name, ID, status, summary…">'
         '<label for="cluster">Category</label><select id="cluster">'
         '<option value="">All categories</option></select>'
-        '<label class="check"><input id="group" type="checkbox">'
-        'Group by category</label><p class="muted">Category proximity is layout only, '
-        "not ancestry or scientific similarity. Disconnected components are packed "
-        "separately.</p></section>"
+        '<label for="layout">Layout</label><select id="layout">'
+        '<option value="topology">Connected clusters</option>'
+        '<option value="category">Category groups</option>'
+        '<option value="ring">Symmetric ring</option></select>'
+        '<p class="muted">Category proximity is layout only, '
+        "not ancestry or scientific similarity. Connected clusters pack disconnected "
+        "components separately; the ring arranges all matching records equally.</p></section>"
         '<div id="node-list" aria-label="Matching experiments"></div>'
         '<button id="more" hidden>Show 100 more</button></aside>'
         '<section class="graph"><nav aria-label="Graph controls">'
