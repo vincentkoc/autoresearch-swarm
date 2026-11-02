@@ -577,9 +577,7 @@ class WorkerJournal:
             state = JournalState.UNKNOWN
             if outcome.closure.scope_closed:
                 state = (
-                    JournalState.NOT_STARTED
-                    if outcome.reason == "not_started"
-                    else JournalState.CLOSED
+                    JournalState.NOT_STARTED if outcome.released_at is None else JournalState.CLOSED
                 )
             return entry.model_copy(update={"state": state, "outcome": outcome})
 

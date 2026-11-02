@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Treat positively closed, never-released work as unstarted for launch and evaluation-exposure accounting, preserving supervisor diagnostics.
+
 - Preserve rejected Cloudflare recovery-turn acknowledgments across retries and lost replies.
 
 - Validate settled reactive policy-call identities, limits and terminal evidence before accepting transcripts.
