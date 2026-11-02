@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a standalone, offline force-directed experiment inventory with up to 5,000
+  nodes, category layout, search/filter, pan/zoom, pinned-node dragging and explicit
+  causal ancestry inspection. Source references stay non-causal; inventory size
+  does not expand the bounded report measurement window.
+
 - Add Hill climb / Graph tabs within the resizable campaign workspace. Hill climb
   retains chronological receipts and a separate running best per selected comparable
   campaign. Graph arrows use explicit parent IDs only, fade older generations and
