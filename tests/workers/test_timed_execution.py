@@ -364,13 +364,22 @@ def test_lost_permit_reply_never_releases_work_or_relaunches(
     monkeypatch.setattr(WorkerJournal, method, committed_then_lost)
     completed = worker.execute(row["id"])
     entry = worker.journal.get(row["id"])
-    assert completed["state"] in {"not_started", "failed"}
-    assert entry.state in {JournalState.NOT_STARTED, JournalState.CLOSED}
+    assert completed["state"] == "not_started"
+    assert entry.state == JournalState.NOT_STARTED
     if phase == "claim":
         assert entry.native is None and entry.outcome is None
     else:
         assert entry.native is not None and entry.outcome is not None
         assert entry.outcome.released_at is None and entry.outcome.closure.scope_closed
+        assert entry.outcome.reason == "supervisor_error"
+        assert any("EOFError" in finding for finding in entry.outcome.closure.findings)
+        assert "OSError" in entry.finding
+    attempts = next(
+        item
+        for item in pipeline.client.budget(pipeline.campaign["id"])["accounts"]
+        if item["dimension"] == "attempts"
+    )
+    assert attempts["consumed"] == attempts["uncertain"] == "0"
     assert worker.execute(row["id"]) == completed
     assert worker.resources.availability() == {"cpu": 1}
 

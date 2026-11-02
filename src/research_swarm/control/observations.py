@@ -153,13 +153,7 @@ def validate_native_observation(
         and outcome is not None
         and outcome.closure.scope_closed
     )
-    not_started = not_started or (
-        closed
-        and journal.state == JournalState.NOT_STARTED
-        and outcome is not None
-        and outcome.reason == "not_started"
-        and outcome.released_at is None
-    )
+    not_started = not_started or (closed and outcome is not None and outcome.released_at is None)
     unknown = journal.state == JournalState.UNKNOWN
     if not (not_started or closed or unknown):
         raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Observation lacks native closure")
@@ -230,6 +224,7 @@ def validate_observation(
                 raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Native log identity differs")
     success = (
         closed
+        and not not_started
         and outcome is not None
         and outcome.reason == "exited"
         and outcome.exit_code == 0
