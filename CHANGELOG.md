@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Move graph layout to an offline D3 Barnes–Hut worker, batch edge drawing and
+  render only on changes. Default to topology-led layout without circular category
+  anchors; category grouping remains optional.
+
 - Refresh selected graph connection visibility annotations when search or category
   filters change, including when filters are cleared.
 

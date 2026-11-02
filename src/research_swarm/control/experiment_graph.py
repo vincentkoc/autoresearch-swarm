@@ -98,7 +98,7 @@ def render_experiment_graph_html(
     policy = (
         "default-src 'none'; "
         f"script-src 'sha256-{script_hash}'; style-src 'sha256-{style_hash}'; "
-        "base-uri 'none'; form-action 'none'"
+        "worker-src blob:; base-uri 'none'; form-action 'none'"
     )
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -113,9 +113,10 @@ def render_experiment_graph_html(
         '<input id="search" type="search" placeholder="Name, ID, status, summary…">'
         '<label for="cluster">Category</label><select id="cluster">'
         '<option value="">All categories</option></select>'
-        '<label class="check"><input id="group" type="checkbox" checked>'
+        '<label class="check"><input id="group" type="checkbox">'
         'Group by category</label><p class="muted">Category proximity is layout only, '
-        "not ancestry or scientific similarity.</p></section>"
+        "not ancestry or scientific similarity. Disconnected components are packed "
+        "separately.</p></section>"
         '<div id="node-list" aria-label="Matching experiments"></div>'
         '<button id="more" hidden>Show 100 more</button></aside>'
         '<section class="graph"><nav aria-label="Graph controls">'
@@ -132,7 +133,7 @@ def render_experiment_graph_html(
         '<div id="tooltip" role="tooltip" hidden></div>'
         '<p id="empty" hidden>No experiments match these filters.</p></div>'
         '<footer><span class="causal">━━▶</span> Explicit causal link '
-        '<span class="reference">┄┄┄</span> Source reference · not ancestry'
+        '<span class="reference">──</span> Source reference · not ancestry'
         "<p>Drag a node to pin it; double-click to release. Drag space to pan. "
         "Scroll / + / − to zoom; F to fit; Escape clears selection.</p></footer></section>"
         '<aside class="details"><section><h2>Inspect experiment</h2>'

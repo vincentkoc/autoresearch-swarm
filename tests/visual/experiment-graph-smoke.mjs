@@ -50,7 +50,7 @@ try {
     'import runpy; from pathlib import Path; from research_swarm.control.experiment_graph import render_experiment_graph_html; '+
     'fixture=runpy.run_path("tests/control/test_experiment_graph.py")["dataset"]; '+
     'out=Path('+JSON.stringify(output)+'); '+
-    '[(out/f"synthetic-{n}.html").write_text(render_experiment_graph_html(fixture(n)), encoding="utf-8") for n in (0,240,5000)]'
+    '[(out/f"synthetic-{n}.html").write_text(render_experiment_graph_html(fixture(n)), encoding="utf-8") for n in (0,240,5000)]; isolated=fixture(12); isolated["edges"]=isolated["edges"][:1]; (out/"synthetic-separated.html").write_text(render_experiment_graph_html(isolated))'
   ],{stdio:'inherit'});
   assert.equal(await new Promise((r,j)=>{fixture.on('exit',r);fixture.on('error',j);}),0);
   chrome=spawn(process.env.CHROME_BIN || 'google-chrome',[
@@ -81,14 +81,16 @@ try {
   await send('Page.enable');await send('Runtime.enable');await send('Log.enable');
   // Observe drawn node centers, without adding a production debug API.
   await send('Page.addScriptToEvaluateOnNewDocument',{source:
-    'window.__dots=[];window.__pageErrors=[];'+
+    'window.__dots=[];window.__pageErrors=[];window.__drawCount=0;window.__workers=0;const NativeWorker=Worker;window.Worker=class extends NativeWorker{constructor(...args){super(...args);__workers++;}};'+
     'addEventListener("securitypolicyviolation", e=>__pageErrors.push(e.violatedDirective));'+
     'const clear=CanvasRenderingContext2D.prototype.clearRect,arc=CanvasRenderingContext2D.prototype.arc;'+
-    'CanvasRenderingContext2D.prototype.clearRect=function(...a){window.__dots=[];return clear.apply(this,a)};'+
+    'CanvasRenderingContext2D.prototype.clearRect=function(...a){window.__dots=[];window.__drawCount++;return clear.apply(this,a)};'+
     'CanvasRenderingContext2D.prototype.arc=function(x,y,...a){const t=this.getTransform();'+
     'window.__dots.push({x:t.a*x+t.e,y:t.d*y+t.f});return arc.call(this,x,y,...a)};'
   });
   await load('synthetic-240.html');
+  assert.equal(await evaluate('window.__workers'),1,'One offline layout worker');
+  assert.equal(await evaluate('document.getElementById("group").checked'),false);
   assert.equal(await evaluate('getComputedStyle(document.body).backgroundColor'),'rgb(250, 250, 248)');
   assert.equal(await evaluate('document.querySelectorAll(".node-item").length'),100);
   assert.match(await evaluate('document.getElementById("count").textContent'),/240 \/ 240/);
@@ -151,6 +153,16 @@ try {
   await screenshot('graph-mobile.png');
   await load('synthetic-0.html');
   assert.equal(await evaluate('document.getElementById("empty").hidden'),false);
+  await load('synthetic-separated.html');
+  await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'separate components settle');
+  await evaluate('new Promise(r=>requestAnimationFrame(r))');
+  assert.ok(await evaluate('Math.min(...__dots.slice(2).map(p=>p.x))>Math.max(...__dots.slice(0,2).map(p=>p.x))'),
+    'Disconnected components packed outside linked component bounds, not into an orbit');
+  const idleDraws=await evaluate('__drawCount');
+  await delay(150);
+  assert.equal(await evaluate('__drawCount'),idleDraws,'Settled graph performs no idle redraws');
+  await click('#group');
+  await wait(()=>evaluate('document.getElementById("motion").textContent==="Layout settled"'),'optional category layout');
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
   await load('synthetic-240.html');
   assert.equal(await evaluate('document.getElementById("pause").textContent'),'Resume');
