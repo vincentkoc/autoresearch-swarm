@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Apply newly requested graph layouts while reduced motion or Pause is active,
+  without accepting queued animation frames.
+
 - Share sidebar width, collapse and section-height resizing across campaign and
   inventory views; retain widths when switching views and support keyboard dividers.
 

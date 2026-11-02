@@ -205,6 +205,20 @@ try {
   await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
   await load('synthetic-240.html');
   assert.equal(await evaluate('document.getElementById("pause").textContent'),'Resume');
+  await load('synthetic-separated.html');
+  await wait(()=>evaluate('Math.min(...__dots.slice(2).map(p=>p.x))>Math.max(...__dots.slice(0,2).map(p=>p.x))'),
+    'reduced-motion initial component layout is applied');
+  await evaluate('document.getElementById("layout").value="ring";document.getElementById("layout").dispatchEvent(new Event("change"))');
+  const isRing='(()=>{if(__dots.length!==12)return false;const c=__dots.reduce((a,p)=>({x:a.x+p.x/12,y:a.y+p.y/12}),{x:0,y:0});const r=__dots.map(p=>Math.hypot(p.x-c.x,p.y-c.y));return Math.max(...r)-Math.min(...r)<.01})()';
+  await wait(()=>evaluate(isRing),'reduced-motion ring applies without Resume');
+  assert.equal(await evaluate('document.getElementById("pause").textContent'),'Resume');
+  const pausedDraws=await evaluate('__drawCount');
+  await delay(150);
+  assert.equal(await evaluate('__drawCount'),pausedDraws,'Reduced motion does not animate after layout');
+  await evaluate('document.getElementById("search").value="not present";document.getElementById("search").dispatchEvent(new Event("input"))');
+  await wait(()=>evaluate('__dots.length===0'),'paused filter clears positions');
+  await evaluate('document.getElementById("search").value="";document.getElementById("search").dispatchEvent(new Event("input"))');
+  await wait(()=>evaluate(isRing),'paused filter restoration applies new ring');
   await send('Emulation.setEmulatedMedia',{features:[]});
   const start=Date.now();
   await load('synthetic-5000.html');

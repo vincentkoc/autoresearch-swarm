@@ -25,12 +25,12 @@ function packComponents() {
   }
 }
 
-function publish() {
+function publish(initial=false) {
   if(packing)packComponents();
   const positions = new Float32Array(nodes.length * 2);
   for(let i=0;i<nodes.length;i++) {const o=offsets.get(nodes[i].id)||{x:0,y:0};positions[2*i]=nodes[i].x+o.x;positions[2*i+1]=nodes[i].y+o.y;}
   const settled = !simulation || simulation.alpha() < .015 || !nodes.length;
-  postMessage({token,positions,settled},[positions.buffer]);
+  postMessage({token,positions,settled,initial},[positions.buffer]);
   lastPost = performance.now();
   return settled;
 }
@@ -63,7 +63,7 @@ onmessage=({data:m})=>{
         const angle=2*Math.PI*i/Math.max(1,ordered.length)-Math.PI/2;
         n.x=Math.cos(angle)*radius;n.y=Math.sin(angle)*radius;n.vx=0;n.vy=0;
       });
-      publish();return;
+      publish(true);return;
     }
     const degree=new Map(nodes.map(n=>[n.id,0]));
     for(const e of m.edges) {degree.set(e.source,degree.get(e.source)+1);degree.set(e.target,degree.get(e.target)+1);}
@@ -123,7 +123,7 @@ onmessage=({data:m})=>{
       .force('y',Force.forceY(n=>spread?0:grouped?centers.get(n.cluster).y:componentCenters.get(n.id).y).strength(n=>spread?.0018:grouped?.018:componentCenters.get(n.id).strength))
       .force('collision',Force.forceCollide(5).iterations(1));
     if(!nodes.length) simulation.alpha(0);
-    publish();if(nodes.length)wake(1);
+    publish(true);if(nodes.length)wake(1);
   } else if(m.type==='pause') {
     paused=m.paused;
     if(paused){clearTimeout(timer);timer=null;publish();}

@@ -92,8 +92,9 @@ worker.onerror=()=>{
   workerFailed=true;$('motion').textContent='Layout unavailable; reload to retry';
 };
 worker.onmessage=({data:m})=>{
-  // Pause freezes the displayed frame immediately, including queued worker output.
-  if(m.token!==layoutToken || paused) return;
+  // A requested layout needs its initial frame even when animation is paused.
+  // Continue rejecting queued simulation ticks so Pause freezes motion immediately.
+  if(m.token!==layoutToken || (paused && !m.initial)) return;
   for(let i=0;i<visible.length;i++) if(!visible[i].pinned) {
     visible[i].x=m.positions[2*i];visible[i].y=m.positions[2*i+1];
   }
