@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from research_swarm.control.report_plot import render_hill_climb_svg
+from research_swarm.control.report_view import render_report_html
 from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.state.database import JsonObject
 
@@ -34,7 +35,7 @@ def synthetic_run(name: str, scores: list[float], interval: float) -> JsonObject
         }
         for index, score in enumerate(scores)
     ]
-    return {
+    snapshot: JsonObject = {
         "schema_version": "1.0",
         "campaign_id": name,
         "campaign_revision": 40,
@@ -44,8 +45,78 @@ def synthetic_run(name: str, scores: list[float], interval: float) -> JsonObject
         "evaluation_count": len(observations),
         "evaluation_window": {"complete": True},
         "recent_evaluations": observations,
-        "research": {"baseline": {"evaluation_id": observations[0]["id"]}},
+        "campaign_state": "active",
+        "budget": [
+            {"dimension": "trials", "consumed": str(len(scores)), "reserved": "0", "uncertain": "0"}
+        ],
+        "research": {
+            "baseline": {"evaluation_id": observations[0]["id"]},
+            "objective": {"name": "Synthetic loss optimization, not a running experiment"},
+            "candidates": {
+                "total": len(scores),
+                "complete": True,
+                "items": [
+                    {
+                        "id": f"{name}-candidate-{index}",
+                        "state": "evaluated",
+                        "parent_ids": [f"{name}-candidate-{max(0, index - 2)}"] if index else [],
+                        "parent_ids_complete": True,
+                    }
+                    for index in range(len(scores))
+                ],
+            },
+            "trials": {
+                "total": len(scores),
+                "complete": True,
+                "items": [
+                    {
+                        "id": f"{name}-trial-{index}",
+                        "candidate_id": f"{name}-candidate-{index}",
+                        "execution_outcome": "succeeded",
+                        "evaluation_status": "valid",
+                    }
+                    for index in range(len(scores))
+                ],
+            },
+            "attempts": {
+                "total": 2,
+                "complete": True,
+                "items": [
+                    {"id": f"{name}-attempt-{index}", "worker_id": f"synthetic-worker-{index}"}
+                    for index in range(2)
+                ],
+            },
+            "proposals": {
+                "total": 1,
+                "complete": True,
+                "items": [{"id": f"{name}-proposal", "state": "responded"}],
+            },
+            "confirmed_cohorts": [],
+        },
     }
+    for suffix, outcome, status, parent in (
+        ("failed", "failed", "pending", 1),
+        ("unscored", "pending", "pending", 3),
+    ):
+        snapshot["research"]["candidates"]["items"].append(
+            {
+                "id": f"{name}-candidate-{suffix}",
+                "state": "rejected" if suffix == "failed" else "proposed",
+                "parent_ids": [f"{name}-candidate-{parent}"],
+                "parent_ids_complete": True,
+            }
+        )
+        snapshot["research"]["trials"]["items"].append(
+            {
+                "id": f"{name}-trial-{suffix}",
+                "candidate_id": f"{name}-candidate-{suffix}",
+                "execution_outcome": outcome,
+                "evaluation_status": status,
+            }
+        )
+    for section in ("candidates", "trials"):
+        snapshot["research"][section]["total"] = len(snapshot["research"][section]["items"])
+    return snapshot
 
 
 def main() -> None:
@@ -67,6 +138,18 @@ def main() -> None:
         encoding="utf-8",
     )
     print(output)
+    html = output.with_suffix(".html")
+    html.write_text(
+        render_report_html(
+            runs,
+            comparison_digest="synthetic-shared-contract",
+            metric=MetricDefinition(name="validation_loss", unit="nats", direction="minimize"),
+            title="SYNTHETIC DEMO · campaign cockpit",
+            labels=("Synthetic search A", "Synthetic search B"),
+        ),
+        encoding="utf-8",
+    )
+    print(html)
 
 
 if __name__ == "__main__":

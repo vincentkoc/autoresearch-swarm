@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add an offline interactive campaign HTML export using the same bounded score
+  projection, with off-white styling, captured lineage, qualified-selection versus
+  observed-path labels, candidate scores, budgets and honest historical activity.
+
 - Export native, dependency-free hill-climb SVGs from immutable reports, with
   exact metric/comparison selection, comparable-run overlays, original baseline
   references and bounded-history disclosure. Capture controller evaluation event

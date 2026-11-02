@@ -69,21 +69,26 @@ def parser() -> argparse.ArgumentParser:
     reactive_export.add_argument("--max-bytes", type=int, default=65536)
     reports = commands.add_parser("report", help="Render immutable research reports")
     report_actions = reports.add_subparsers(dest="report_action", required=True)
-    plot = report_actions.add_parser("plot", help="Export a bounded hill-climb SVG")
-    source = plot.add_mutually_exclusive_group(required=True)
-    source.add_argument("--report-id", help="Existing immutable report ID")
-    source.add_argument("--file", type=Path, help="Offline report record or snapshot JSON")
-    plot.add_argument("--compare-report", action="append", default=[], help="Comparable report ID")
-    plot.add_argument("--compare-file", action="append", type=Path, default=[])
-    plot.add_argument("--comparison-digest", required=True)
-    plot.add_argument("--metric", required=True)
-    plot.add_argument("--unit", required=True)
-    plot.add_argument("--direction", choices=("minimize", "maximize"), required=True)
-    plot.add_argument("--output", type=Path, required=True, help="New SVG path; never overwrite")
-    plot.add_argument("--title", default="Swarm · hill-climb observations")
-    plot.add_argument(
-        "--label", action="append", help="One display label per report, in input order"
-    )
+    for operation in ("plot", "view"):
+        plot = report_actions.add_parser(operation, help="Export bounded captured evidence")
+        source = plot.add_mutually_exclusive_group(required=True)
+        source.add_argument("--report-id", help="Existing immutable report ID")
+        source.add_argument("--file", type=Path, help="Offline report record or snapshot JSON")
+        plot.add_argument(
+            "--compare-report", action="append", default=[], help="Comparable report ID"
+        )
+        plot.add_argument("--compare-file", action="append", type=Path, default=[])
+        plot.add_argument("--comparison-digest", required=True)
+        plot.add_argument("--metric", required=True)
+        plot.add_argument("--unit", required=True)
+        plot.add_argument("--direction", choices=("minimize", "maximize"), required=True)
+        plot.add_argument(
+            "--output", type=Path, required=True, help="New SVG/HTML path; never overwrite"
+        )
+        plot.add_argument("--title", default="Swarm · hill-climb observations")
+        plot.add_argument(
+            "--label", action="append", help="One display label per report, in input order"
+        )
     commands.add_parser("capabilities")
     backup = commands.add_parser("backup", help="Export and verify a sealed native checkpoint")
     backups = backup.add_subparsers(dest="backup_action", required=True)
@@ -360,7 +365,14 @@ def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> di
                 raise ValueError("Report digest does not match its captured content")
         snapshots.append(content.get("snapshot", content))
     metric = MetricDefinition(name=args.metric, unit=args.unit, direction=args.direction)
-    svg = render_hill_climb_svg(
+    renderer = render_hill_climb_svg
+    output_format = "svg"
+    if args.report_action == "view":
+        from research_swarm.control.report_view import render_report_html
+
+        renderer = render_report_html
+        output_format = "html"
+    rendered = renderer(
         snapshots,
         comparison_digest=args.comparison_digest,
         metric=metric,
@@ -368,8 +380,8 @@ def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> di
         labels=args.label,
     )
     with args.output.open("x", encoding="utf-8", newline="\n") as output:
-        output.write(svg)
-    return {"output": str(args.output), "format": "svg", "reports": len(snapshots)}
+        output.write(rendered)
+    return {"output": str(args.output), "format": output_format, "reports": len(snapshots)}
 
 
 def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:

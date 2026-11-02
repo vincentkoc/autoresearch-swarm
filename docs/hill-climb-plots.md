@@ -106,3 +106,47 @@ uv run python examples/hill_climb/generate.py
 This generates [synthetic-demo.svg](../examples/hill_climb/synthetic-demo.svg)
 from invented scores and timestamps, prominently labelled **SYNTHETIC DEMO**.
 It is a presentation example, not evidence from a running campaign or fleet.
+
+## Interactive campaign view
+
+Use `research report view` with the **same** input, metric, comparison and label
+arguments, changing only the output extension to `.html`:
+
+~~~sh
+research report view --file report.json \
+  --comparison-digest sha256:COMPARISON_DIGEST \
+  --metric validation_loss --unit nats --direction minimize \
+  --label 'Captured experiment' --output campaign.html
+~~~
+
+The standalone off-white page opens directly in a browser. No server, network
+request, controller credential, or live-state mutation is required. A fixed,
+content-security-policy-hashed script switches the Score and Lineage panels
+(Lineage opens by default so all captured paths are immediately visible);
+report text never becomes executable JavaScript or raw HTML.
+
+The three-column responsive view includes objective/metric/budget context,
+score curves, all captured candidate branches, a best-observed candidate table,
+trial outcomes and proposal states. IDs and scores use monospace. All captured
+branches remain muted and visible, including rejected candidates. Teal ancestry
+marks the current qualified confirmed selection only when the report's exact
+comparison cohort, complete confirmation history and incumbent eligibility agree.
+Otherwise it explicitly marks best-observed ancestry, preserving ties and making
+no confirmed-winner claim. Parent edges come only from captured parent IDs;
+missing parents, truncated lists and incomplete pages are disclosed. Cyclic
+input suppresses selection-path highlighting. No missing graph is reconstructed.
+
+Candidate rows rank each candidate's best captured eligible receipt, not an
+average or statistical score. Absolute improvement is labelled in the declared
+metric units, not automatically called percentage error reduction. Activity
+preserves failed/unscored trials. Evaluated observations are ordered by commit
+time and event sequence; proposal states are not assigned invented times or
+causal attribution. Captured distinct worker IDs describe historical evidence,
+never live concurrency. No trial-index axis is offered: elapsed controller wall
+time remains the only time basis.
+
+The Python API is `research_swarm.control.report_view.render_report_html`, with
+the same snapshots, comparison digest, metric, optional title and labels as the
+SVG renderer. It returns a complete HTML document. The demo generator also writes
+[synthetic-demo.html](../examples/hill_climb/synthetic-demo.html), containing only
+invented evidence and clearly labelled **SYNTHETIC DEMO**.
