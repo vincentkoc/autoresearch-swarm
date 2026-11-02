@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Share sidebar width, collapse and section-height resizing across campaign and
+  inventory views; retain widths when switching views and support keyboard dividers.
+
 - Add a layout selector for connected clusters, category groups and a symmetric
   ring plus a broad spread-out force view, retaining filters, selection and recorded ancestry across layout changes.
 

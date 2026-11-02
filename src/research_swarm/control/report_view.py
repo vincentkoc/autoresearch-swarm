@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from html import escape
 from xml.etree.ElementTree import Element, SubElement, fromstring, tostring
 
+from research_swarm.control.panel_layout import PANEL_SCRIPT, PANEL_STYLE
 from research_swarm.control.report_plot import (
     MAX_OBSERVATIONS,
     PlotRun,
@@ -102,84 +103,9 @@ h1{font-size:13px}main{display:flex;flex-direction:column;height:auto;min-height
 grid-template-rows:300px 350px}.graph-note{font-size:9px}.header-meta{max-width:140px}
 .sidebar-section{padding:16px;border-top:1px solid var(--line)}}
 """
-_SCRIPT = """
-const workspace = document.querySelector('main');
-const narrow = () => matchMedia('(max-width:720px)').matches;
-const rail = side => document.querySelector(side === 'left' ? '.sidebar' : '.right');
-function collapse(side, collapsed) {
-  workspace.dataset[side + 'Collapsed'] = String(collapsed);
-  rail(side).hidden = collapsed;
-  document.querySelector('[data-toggle="' + side + '"]').setAttribute(
-    'aria-expanded', String(!collapsed));
-  if (!collapsed && !narrow()) resizeRail(side, rail(side).getBoundingClientRect().width);
-  syncDividers();
-}
-function syncDividers() {
-  document.querySelectorAll('[data-resize]').forEach(handle => {
-    const side = handle.dataset.resize;
-    const width = Math.round(rail(side).getBoundingClientRect().width);
-    handle.setAttribute('aria-valuenow', String(width));
-    handle.setAttribute('aria-valuemax', String(Math.round(workspace.clientWidth * .45)));
-    handle.setAttribute('aria-valuetext', rail(side).hidden ? 'Collapsed' : width + ' pixels');
-  });
-}
-function resizeRail(side, width) {
-  if (narrow()) return;
-  const other = rail(side === 'left' ? 'right' : 'left').getBoundingClientRect().width;
-  const maximum = Math.max(0, Math.min(workspace.clientWidth * .45,
-    workspace.clientWidth - other - 296));
-  const minimum = Math.min(160, maximum);
-  workspace.dataset[side + 'Collapsed'] = 'false';
-  rail(side).hidden = false;
-  document.querySelector('[data-toggle="' + side + '"]').setAttribute('aria-expanded', 'true');
-  workspace.style.setProperty('--' + side + '-width',
-    Math.round(Math.max(minimum, Math.min(maximum, width))) + 'px');
-  syncDividers();
-}
-document.querySelectorAll('[data-toggle]').forEach(button => {
-  button.addEventListener('click', () => {
-    const side = button.dataset.toggle;
-    collapse(side, !rail(side).hidden);
-  });
-});
-document.querySelectorAll('[data-resize]').forEach(handle => {
-  const side = handle.dataset.resize;
-  let drag = null;
-  handle.addEventListener('pointerdown', event => {
-    if (narrow() || event.button !== 0) return;
-    event.preventDefault();
-    drag = {x: event.clientX, width: rail(side).getBoundingClientRect().width};
-    handle.setPointerCapture(event.pointerId);
-    document.body.classList.add('resizing');
-  });
-  handle.addEventListener('pointermove', event => {
-    if (drag) resizeRail(side, drag.width + (side === 'left' ? 1 : -1) *
-      (event.clientX - drag.x));
-  });
-  const stop = () => { drag = null; document.body.classList.remove('resizing'); };
-  handle.addEventListener('pointerup', stop);
-  handle.addEventListener('pointercancel', stop);
-  handle.addEventListener('lostpointercapture', stop);
-  handle.addEventListener('keydown', event => {
-    const width = rail(side).getBoundingClientRect().width;
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      event.preventDefault();
-      const delta = (event.key === 'ArrowRight' ? 20 : -20) * (side === 'left' ? 1 : -1);
-      resizeRail(side, width + delta);
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      collapse(side, !rail(side).hidden);
-    }
-  });
-});
-addEventListener('resize', () => {
-  // A desktop drag must not impose stale pixel widths after shrinking the viewport.
-  workspace.style.removeProperty('--left-width');
-  workspace.style.removeProperty('--right-width');
-  syncDividers();
-});
-syncDividers();
+_STYLE += PANEL_STYLE
 
+_SCRIPT = """
 const tabs = [...document.querySelectorAll('[data-tab]')];
 function showPanel(tab) {
   tabs.forEach(button => {
@@ -256,6 +182,7 @@ document.querySelectorAll('[data-candidate], [data-observation]').forEach(node =
   });
 });
 """
+_SCRIPT = PANEL_SCRIPT + _SCRIPT
 
 
 def _e(value: object) -> str:

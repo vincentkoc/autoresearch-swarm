@@ -3,6 +3,7 @@
 import json
 
 from research_swarm.control.experiment_graph_worker import WORKER
+from research_swarm.control.panel_layout import PANEL_SCRIPT, PANEL_STYLE
 
 STYLE = """
 :root{color-scheme:light;--paper:#fafaf8;--ink:#21272a;--muted:#697677;--line:#e5e8e3;
@@ -48,6 +49,8 @@ h1{font-size:14px}main{height:auto;grid-template-columns:minmax(0,1fr)}
 border-top:1px solid var(--line);border-right:0}.details{grid-row:3;border-left:0;
 border-top:1px solid var(--line)}#motion{margin-left:0}}
 """
+
+STYLE += PANEL_STYLE
 
 SCRIPT = (
     "const layoutWorkerSource = "
@@ -344,3 +347,5 @@ addEventListener('pagehide',e=>{if(!e.persisted)worker.terminate();});
 })();
 """
 )
+
+SCRIPT = PANEL_SCRIPT + SCRIPT

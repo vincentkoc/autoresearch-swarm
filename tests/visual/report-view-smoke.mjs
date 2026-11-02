@@ -208,7 +208,21 @@ async function testRails(cdp, width) {
       await cdp.evaluate("document.querySelector('main').style.removeProperty('--left-width'); document.querySelector('main').style.removeProperty('--right-width')");
     }
   }
-  await cdp.evaluate('document.activeElement.blur(); window.scrollTo(0, 0)');
+  if (width === 1440) for (const side of ['left','right']) {
+    const selector='.layout-'+side;
+    const initialHeight=await cdp.evaluate('document.querySelector("'+selector+' .layout-section").getBoundingClientRect().height');
+    const point=await cdp.evaluate('(()=>{const r=document.querySelector("'+selector+' .section-splitter").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+    await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y+30,button:'left',buttons:1});
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y+30,button:'left',clickCount:1});
+    const height=await cdp.evaluate('document.querySelector("'+selector+' .layout-section").getBoundingClientRect().height');
+    assert.ok(Math.abs(height-initialHeight-30)<2,'Section pointer resize includes padding');
+    await cdp.evaluate('document.querySelector("'+selector+' .section-splitter").focus()');
+    await cdp.send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowUp',code:'ArrowUp'});
+    await cdp.send('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowUp',code:'ArrowUp'});
+    assert.ok(Math.abs(await cdp.evaluate('document.querySelector("'+selector+' .layout-section").getBoundingClientRect().height')-height+20)<2,'Section keyboard resize');
+  }
+  await cdp.evaluate('document.querySelector("[data-layout-reset]").click();document.activeElement.blur(); window.scrollTo(0, 0)');
 }
 
 async function screenshot(cdp, name) {

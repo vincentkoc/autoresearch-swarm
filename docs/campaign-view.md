@@ -2,8 +2,13 @@
 
 The campaign workspace is the only HTML view: About on the left, the scored
 experiment view in the center, and leaderboard/activity on the right.
-Resize or collapse either sidebar. Click or keyboard-select a graph point to
-inspect the exact candidate and score.
+Resize or collapse either sidebar. Drag a divider between sidebar sections to
+change their heights. Focus a divider and use arrow keys to resize it; Enter on
+a vertical divider toggles its sidebar. Sidebar widths and section sizes are
+saved locally and reused by the standalone inventory graph on the same origin.
+**Reset panels** restores the defaults. On small screens, panels stack and
+dividers are hidden. Click or keyboard-select a graph point to inspect the exact
+candidate and score.
 
 ## Hill climb / Graph
 

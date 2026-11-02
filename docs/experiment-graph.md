@@ -41,7 +41,11 @@ references never imply ancestry. Categories are optional layout constraints,
 not inferred relationships; grouping creates no edges.
 
 The off-white three-pane workspace includes a paginated searchable inventory,
-Canvas force graph, and selection/provenance details. Search and category filters
+Canvas force graph, and selection/provenance details. Drag vertical dividers to
+resize the sidebars and horizontal dividers to resize their sections. Focus a
+divider and use arrow keys for keyboard resizing. Sidebar widths and section
+sizes are saved locally, shared with the campaign view on the same origin, and
+restored by **Reset panels**. On small screens, panels stack without dividers. Search and category filters
 control visible nodes and edges without modifying the capture. The list reveals
 100 rows at a time; every matching node stays on the graph. Selection details
 show the first 100 adjacent connections and disclose the full count. Ancestor
