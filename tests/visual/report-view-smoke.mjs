@@ -372,6 +372,22 @@ async function main() {
     await waitUntil(() => requests.includes('/v1/campaigns/campaign-100/view'), 'Select paginated campaign');
     await waitUntil(() => cdp.evaluate("document.querySelector('#status').textContent.includes('Read-only capture')"),
       'Selected campaign rendered');
+    const selectedFrame = await waitUntil(async () => {
+      const {targetInfos} = await cdp.send('Target.getTargets');
+      return targetInfos.find(info => info.type === 'iframe' && info.targetId !== embedded.targetId);
+    }, 'Selected campaign frame replaces previous navigation');
+    const {sessionId: selectedSession} = await cdp.send('Target.attachToTarget', {
+      targetId: selectedFrame.targetId, flatten: true,
+    });
+    await cdp.send('Runtime.enable', {}, selectedSession);
+    const rendered = await cdp.send('Runtime.evaluate', {
+      expression: `new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const graph = document.querySelector('.graph-panel');
+        resolve(Boolean(graph && graph.getBoundingClientRect().width >= 280 &&
+          document.querySelectorAll('.chart-node').length === 50));
+      })))`, awaitPromise: true, returnByValue: true,
+    }, selectedSession);
+    assert.equal(rendered.result.value, true, 'Selected campaign graph is laid out before capture');
     await settle(cdp);
     await screenshot(cdp, 'campaign-served-desktop.png');
     await cdp.evaluate("document.querySelector('#disconnect').click()");

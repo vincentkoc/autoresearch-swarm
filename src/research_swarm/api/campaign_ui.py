@@ -9,7 +9,7 @@ _SCRIPT = """
 const login = document.querySelector('form');
 const picker = document.querySelector('#campaign');
 const cohorts = document.querySelector('#cohort');
-const frame = document.querySelector('iframe');
+let frame = document.querySelector('iframe');
 const status = document.querySelector('#status');
 let token = '';
 let generation = 0;
@@ -49,9 +49,13 @@ async function showView(current = ++generation) {
     const path = 'v1/campaigns/' + encodeURIComponent(picker.value) + '/view' + query;
     const html = await read(path, true);
     if (current !== generation) return;
-    const loaded = new Promise(resolve => frame.addEventListener('load', resolve, {once: true}));
-    frame.srcdoc = html;
-    frame.hidden = false;
+    const nextFrame = frame.cloneNode(false);
+    const loaded = new Promise(resolve =>
+      nextFrame.addEventListener('load', resolve, {once: true}));
+    nextFrame.srcdoc = html;
+    nextFrame.hidden = false;
+    frame.replaceWith(nextFrame);
+    frame = nextFrame;
     await loaded;
     if (current !== generation) return;
     status.textContent = 'Read-only capture · refresh for current evidence';
