@@ -8,7 +8,7 @@ from research_swarm.control.recovery_turns import recovery_turn_context
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import ID, Revision, VersionedRecord
-from research_swarm.state.database import Database, encode
+from research_swarm.state.database import Database, _deliver, encode
 
 if __package__:
     from ..runtime.exclusive import exclusive
@@ -82,13 +82,20 @@ async def reconcile_target_turn(
                 crypto_provider=crypto,
             )
             control = OrchestrationControl(database, no_dispatch, crypto_provider=crypto)
-            if request.operation == "orchestration.close_turn":
-                result = control.close(guarded, intent)
-            else:
-                result = control.reconcile(guarded, intent)
+            try:
+                if request.operation == "orchestration.close_turn":
+                    result = control.close(guarded, intent)
+                else:
+                    result = control.reconcile(guarded, intent)
+            except ResearchError as error:
+                if error.command_id is None:
+                    raise
+                # The kernel stored this rejection inside the outer write. Deliver
+                # it only after that write and the admission recheck have committed.
+                result = error.as_dict()
             verifier.read_admission(sql, authority=store.identity, context=context, crypto=crypto)
-            return encode(result)
+            return result
 
-        return store.write(commit)
+        return encode(_deliver(store.write(commit)))
 
     return await exclusive(state, reconcile)
