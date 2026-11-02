@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Validate settled reactive policy-call identities, limits and terminal evidence before accepting transcripts.
+
 - Declare the expected evaluation panel in the project-manifest template and explain receipt completeness.
 
 - Ignore directory symlinks outside source selections while rejecting selected symlink paths.
