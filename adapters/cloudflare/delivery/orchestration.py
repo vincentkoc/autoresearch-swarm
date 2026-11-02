@@ -61,6 +61,8 @@ OrchestrationRecordKind = Literal[
     "wait_readiness",
     "wakeup_delivery",
     "wakeup_acknowledgment",
+    "scientific_completion",
+    "campaign_resource_closure",
 ]
 
 
