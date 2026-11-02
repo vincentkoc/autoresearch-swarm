@@ -118,6 +118,18 @@ class AsyncDeliveryKernel:
                 )
         campaign = await client.get("campaign", reference.campaign_id)
         if campaign["state"] in {"completed", "cancelled", "failed"}:
+            try:
+                await client.get("scientific_completion", reference.campaign_id)
+            except ResearchError as error:
+                if error.code != ErrorCode.NOT_FOUND:
+                    raise
+            else:
+                try:
+                    await client.get("campaign_resource_closure", reference.campaign_id)
+                except ResearchError as error:
+                    if error.code != ErrorCode.NOT_FOUND:
+                        raise
+                    return PendingWork("idle")
             return PendingWork("terminal")
         return PendingWork("idle")
 
