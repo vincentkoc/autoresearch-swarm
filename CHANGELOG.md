@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Allow hosted delivery to read scientific completion and resource closure records when deciding whether a campaign is terminal.
+
 - Preserve safe SQLite cancellation-read failure codes and close worker-journal connections when setup fails.
 
 - Qualify Windows fixtures with byte-stable sources, private registration roots and pinned-interpreter recovery diagnostics.
