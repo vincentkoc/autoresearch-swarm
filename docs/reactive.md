@@ -61,3 +61,34 @@ Use the hook as a context manager or call `close()` explicitly. Closing cancels
 pending requests without waiting for inference. The workload still owns and
 enforces its training deadline; the hook does not extend that deadline or bound
 the execution time of arbitrary workload code.
+
+## Decision policies and runner
+
+`DecisionRunner(journal, policy)` can run beside training or in a separate local
+process that opens the same session. It never acquires training ownership.
+`poll()` schedules available work and returns immediately; `await run()` serves
+the session until it closes. The policy implements `digest` and an async
+`decide(request, contract)` method. Its fingerprint must match the admitted
+contract. `ThresholdPolicy` hashes its configuration; `CallbackPolicy` requires
+the caller to declare the version fingerprint of its own callback.
+
+The runner persists a call claim before invoking a policy, outside the database
+transaction. Another runner cannot repeat a recorded call. There is at most one
+in-flight call per session. A monotonic deadline fences a late result and requests
+task cancellation. If a callback resists cancellation, its claim stays in flight
+and prevents replacement calls. Closing requests cancellation without waiting.
+Call outcomes include generic failure codes rather than exception messages that
+could contain credentials.
+
+Callbacks must cooperate with the event loop. Arbitrary blocking Python code
+cannot be forcibly stopped by this runner. Use a bounded HTTP provider or a
+separate supervised process for untrusted or blocking implementations. Local
+cancellation does not prove that a remote provider stopped processing or billing.
+An interrupted call remains recorded and is never silently retried.
+
+Manual agents can still use `respond` while a call is pending. Timeout or
+cancellation cannot overwrite an accepted response or application. Later policy
+responses are retained as late or conflicting evidence, not applied changes.
+The contract caps decision count and serialized context/output size. Token caps
+are for providers that support them; reported usage is telemetry, not billing
+authority or proof of actual provider consumption.
