@@ -60,6 +60,9 @@
   references and bounded-history disclosure. Capture controller evaluation event
   times and campaign creation time without inferring training time or confirmed wins.
 
+- Accept identical package metadata from editable installations during engine
+  probing while preserving rejection of conflicting installed versions.
+
 - Expose a bounded Git source-capture timeout through the sync/async SDK,
   project CLI and local MCP tool, shared across manifest reads and bundling.
 

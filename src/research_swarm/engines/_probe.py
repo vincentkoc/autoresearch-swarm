@@ -67,7 +67,10 @@ def inventory() -> list[dict[str, str]]:
             raise ValueError("Package inventory exceeds the bound")
         name = re.sub(r"[-_.]+", "-", distribution.metadata["Name"]).lower()
         packages.append({"name": name, "version": distribution.version})
-    return sorted(packages, key=lambda item: (item["name"], item["version"]))
+    return [
+        {"name": name, "version": version}
+        for name, version in sorted({(item["name"], item["version"]) for item in packages})
+    ]
 
 
 def torch_device(torch: Any, backend: str, index: int) -> dict[str, Any] | None:

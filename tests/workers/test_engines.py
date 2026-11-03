@@ -66,6 +66,51 @@ def descriptor(**updates: Any) -> EngineDescriptor:
     )
 
 
+def test_inventory_accepts_identical_editable_package_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        _probe.importlib.metadata,
+        "distributions",
+        lambda: iter(
+            (
+                SimpleNamespace(metadata={"Name": "Example.Project"}, version="1.0"),
+                SimpleNamespace(metadata={"Name": "example_project"}, version="1.0"),
+            )
+        ),
+    )
+    observed = descriptor(packages=_probe.inventory())
+    assert observed.packages == (PackageVersion(name="example-project", version="1.0"),)
+
+
+def test_inventory_preserves_conflicting_package_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        _probe.importlib.metadata,
+        "distributions",
+        lambda: iter(
+            (
+                SimpleNamespace(metadata={"Name": "example-project"}, version="1.0"),
+                SimpleNamespace(metadata={"Name": "example-project"}, version="2.0"),
+            )
+        ),
+    )
+    with pytest.raises(ValidationError, match="Ambiguous installed package versions"):
+        descriptor(packages=_probe.inventory())
+
+
+def test_inventory_bounds_raw_metadata_before_coalescing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    distribution = SimpleNamespace(metadata={"Name": "example-project"}, version="1.0")
+    monkeypatch.setattr(
+        _probe.importlib.metadata, "distributions", lambda: (distribution for _ in range(4097))
+    )
+    with pytest.raises(ValueError, match="Package inventory exceeds the bound"):
+        _probe.inventory()
+
+
 def test_registry_imports_no_optional_framework_and_separates_layers() -> None:
     process = subprocess.run(
         [
