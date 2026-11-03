@@ -54,7 +54,11 @@ class WorkerDescription(VersionedRecord):
 
     @property
     def max_concurrency(self) -> int:
-        return 1 if self.profile.accelerator_count else self.profile.cpu_slots
+        return (
+            max(1, self.profile.shared_execution_slots)
+            if self.profile.accelerator_count
+            else self.profile.cpu_slots
+        )
 
     @model_validator(mode="after")
     def supported(self) -> Self:

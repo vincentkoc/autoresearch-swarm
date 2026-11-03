@@ -223,9 +223,7 @@ def ensure_local_enrollment(
                     principal_id=state.worker_principal_id,
                     name="Local CPU worker",
                     profiles=(state.profile,),
-                    max_concurrency=1
-                    if registration and registration.descriptor.device
-                    else cpu_slots,
+                    max_concurrency=registration.max_concurrency if registration else cpu_slots,
                     environment_contracts=registration.environment_contracts
                     if registration
                     else None,
@@ -247,7 +245,7 @@ def ensure_local_enrollment(
             or registered.principal_id != state.worker_principal_id
             or registered.profiles != (state.profile,)
             or registered.max_concurrency
-            != (1 if registration and registration.descriptor.device else cpu_slots)
+            != (registration.max_concurrency if registration else cpu_slots)
             or registered.environment_contracts
             != (registration.environment_contracts if registration else None)
         ):

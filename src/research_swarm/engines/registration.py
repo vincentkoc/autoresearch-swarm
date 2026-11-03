@@ -31,6 +31,18 @@ class ExecutionPolicy(VersionedRecord):
     compilation: Literal["project_declared", "eager", "cold", "warm"] = "project_declared"
     cpu_fallback: Literal["forbid"] = "forbid"
     python_search: Literal["isolated_probe_project_launch"] = "isolated_probe_project_launch"
+    device_admission: Literal["exclusive", "mps_shared"] = Field(
+        default="exclusive", exclude_if=lambda value: value == "exclusive"
+    )
+    mps_shared_slots: int = Field(
+        default=1, strict=True, ge=1, le=8, exclude_if=lambda value: value == 1
+    )
+
+    @model_validator(mode="after")
+    def admission(self) -> Self:
+        if self.device_admission == "exclusive" and self.mps_shared_slots != 1:
+            raise ValueError("Shared slots require explicit MPS sharing")
+        return self
 
 
 class EnvironmentRegistration(VersionedRecord):
@@ -60,6 +72,14 @@ class EnvironmentRegistration(VersionedRecord):
             raise ValueError("Requested CPU capacity exceeds observed capacity")
         if list(self.environment_contracts) != sorted(set(self.environment_contracts)):
             raise ValueError("Environment contract identities must be sorted and unique")
+        if self.policy.device_admission == "mps_shared" and (
+            self.descriptor.device_backend != "mps"
+            or self.descriptor.device is None
+            or not self.descriptor.device.unified_memory
+            or self.descriptor.device.physical_id is None
+            or self.launch_adapter_digest is None
+        ):
+            raise ValueError("Shared admission requires a registered physical MPS device")
         return self
 
     @property
@@ -92,11 +112,19 @@ class EnvironmentRegistration(VersionedRecord):
                 {
                     "registered-python-v1",
                     *({"shared-host-device-memory"} if device and device.unified_memory else set()),
+                    *(
+                        {"mps-shared-execution-slots"}
+                        if self.policy.device_admission == "mps_shared"
+                        else set()
+                    ),
                 }
             )
             if self.launch_adapter_digest is not None
             else frozenset(),
             accelerator_count=1 if device else 0,
+            shared_execution_slots=(
+                self.policy.mps_shared_slots if self.policy.device_admission == "mps_shared" else 0
+            ),
             # Unified memory belongs to the same admitted host pool, never a second pool.
             accelerator_memory_bytes=(
                 self.memory_bytes if device.unified_memory else device.memory_bytes
@@ -118,6 +146,18 @@ class EnvironmentRegistration(VersionedRecord):
         # must not split one physical device into several supposedly exclusive pools.
         identity = record_digest("research.physical-device.v1", {"physical_id": device.physical_id})
         return "device:" + identity.removeprefix("sha256:")
+
+    @property
+    def shared_device_pool(self) -> str | None:
+        if self.policy.device_admission != "mps_shared":
+            return None
+        pool = self.device_pool
+        assert pool is not None
+        return "mps-shared:" + pool.removeprefix("device:")
+
+    @property
+    def max_concurrency(self) -> int:
+        return self.policy.mps_shared_slots if self.descriptor.device else self.cpu_slots
 
     def require_environment(self, environment_digest: str) -> None:
         if environment_digest not in self.environment_contracts:

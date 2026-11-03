@@ -123,8 +123,7 @@ class LocalWorker:
             worker.profiles != (registration.profile,)
             or worker.environment_contracts != registration.environment_contracts
             or self.executable != Path(registration.executable)
-            or worker.max_concurrency
-            > (1 if registration.descriptor.device else registration.cpu_slots)
+            or worker.max_concurrency > registration.max_concurrency
         ):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Worker registration differs from enrollment"

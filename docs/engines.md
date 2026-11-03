@@ -148,11 +148,32 @@ memory capacity; it is not a second independent GPU memory pool. Native worker
 admission atomically reserves that key. This is scheduling admission under the
 declared `trusted_local` mode, not hardware isolation.
 
-Accelerator stages must declare exactly one accelerator and `exclusive_device = true`.
+Accelerator stages declare exactly one accelerator. Admission is exclusive by default.
 For unified memory, host and accelerator byte requests are conservatively summed
 into one `memory` pool. Requests whose sum exceeds admitted host memory fail.
 CUDA/ROCm VRAM remains a device capacity constraint; exclusive allocation reserves
 the whole physical device. UNKNOWN retains every pool until native closure.
+
+MPS registrations may opt into bounded sharing with
+`ExecutionPolicy(device_admission="mps_shared", mps_shared_slots=2)`. The slot
+count is 1–8, is part of the execution fingerprint, and does not increase
+`accelerator_count`. A shared stage must set `exclusive_device=false` and require
+the `mps-shared-execution-slots` feature. Other backends retain exclusive admission.
+
+Shared slots use the same physical identity in one machine registry. The physical
+pool remains capacity one; a separate canonical MPS slot pool bounds concurrency.
+Exclusive claims and shared claims exclude each other atomically, including
+UNKNOWN claims. SQLite allocation triggers also protect against older exclusive
+writers. CPU, summed unified memory and scratch are reserved per attempt from the
+same host pools, not copied per worker.
+
+The operator may explicitly update admitted aggregate capacities with
+`MachineResources.enroll(binding, capacities, resize=True)` after checking measured
+host limits. The default rejects changed capacities. Resize preserves the pool
+owner and all claims, refuses a capacity below held usage, and cannot raise the
+physical device capacity. For two fits requiring CPU2, 64 GiB unified memory and
+256 MiB scratch each, admit CPU4, 128 GiB and 512 MiB once on the host registry.
+Increase the slot count only after measuring the previous concurrency stage.
 
 ## Execute a registered project
 
@@ -169,7 +190,8 @@ research worker describe --worker-dir /opt/research/private/worker \
 
 The remote provision/connect/start flow is unchanged. Match `--cpu-slots` to the
 registration. Each installation pins exactly one registration and one profile.
-An accelerator installation has concurrency one. Separate workers can register
+An exclusive accelerator installation has concurrency one; an opted-in MPS
+installation uses its registered slot count. Separate workers can register
 different devices; registrations for the same physical device contend through
 the shared machine registry. Replacing an existing legacy or registered
 installation requires explicit migration; omission of `--registration` cannot

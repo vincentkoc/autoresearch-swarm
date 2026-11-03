@@ -23,6 +23,8 @@ def capacities(registration: EnvironmentRegistration) -> dict[str, int]:
         result["scratch"] = registration.scratch_bytes
     if registration.device_pool is not None:
         result[registration.device_pool] = 1
+    if registration.shared_device_pool is not None:
+        result[registration.shared_device_pool] = registration.policy.mps_shared_slots
     return result
 
 
@@ -40,12 +42,17 @@ def demand(
                 "Registered stage must reserve its complete selected device",
             )
         if device is not None:
-            if not resources.exclusive_device:
+            pool = registration.device_pool
+            if not resources.exclusive_device and (
+                registration.shared_device_pool is None
+                or "mps-shared-execution-slots" not in resources.required_features
+            ):
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE,
                     "Registered accelerator stages require exclusive admission",
                 )
-            pool = registration.device_pool
+            if not resources.exclusive_device:
+                pool = registration.shared_device_pool
             assert pool is not None
             result[pool] = 1
             if device.unified_memory:

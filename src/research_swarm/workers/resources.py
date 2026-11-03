@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -64,6 +65,34 @@ CREATE TABLE IF NOT EXISTS allocations (
 );
 PRAGMA user_version=1;
 """
+
+
+# The trigger is installed with explicit shared-pool enrollment and survives older
+# SDK clients reopening the same registry. Their allocation inserts cannot bypass it.
+_DEVICE_CONFLICT = """
+SELECT 1 FROM allocations a JOIN claims c ON c.attempt_id=a.attempt_id
+WHERE c.state!='released' AND (
+    (NEW.pool LIKE 'device:%' AND a.pool='mps-shared:' || substr(NEW.pool,8))
+    OR (NEW.pool LIKE 'mps-shared:%' AND a.pool='device:' || substr(NEW.pool,12))
+)
+"""
+_DEVICE_TRIGGERS = tuple(
+    f"""
+    CREATE TRIGGER IF NOT EXISTS mps_device_{operation.lower()}
+    BEFORE {operation} ON allocations
+    WHEN ({_DEVICE_CONFLICT})
+    BEGIN SELECT RAISE(ABORT,'Physical device admission conflict'); END
+    """
+    for operation in ("INSERT", "UPDATE")
+)
+
+
+def _opposite_pool(name: str) -> str | None:
+    if re.fullmatch(r"device:[0-9a-f]{64}", name):
+        return "mps-shared:" + name[7:]
+    if re.fullmatch(r"mps-shared:[0-9a-f]{64}", name):
+        return "device:" + name[11:]
+    return None
 
 
 class MachineResources:
@@ -131,23 +160,56 @@ class MachineResources:
                 connection.rollback()
                 raise
 
-    def enroll(self, binding: WorkerBinding, capacities: ResourceDemand) -> None:
+    def enroll(
+        self, binding: WorkerBinding, capacities: ResourceDemand, *, resize: bool = False
+    ) -> None:
         """Explicit native operator enrollment. It does not probe or claim unlisted devices."""
         binding = WorkerBinding.model_validate(binding)
         capacities = ResourceDemand.model_validate(capacities)
         with self._transaction() as connection:
             for name, amount in capacities.amounts.items():
+                if name.startswith("device:") and amount != 1:
+                    raise ResearchError(
+                        ErrorCode.RESOURCE_UNAVAILABLE, "Physical device capacity must remain one"
+                    )
+                if name.startswith("mps-shared:"):
+                    physical = _opposite_pool(name)
+                    if physical is None or not 1 <= amount <= 8:
+                        raise ResearchError(
+                            ErrorCode.RESOURCE_UNAVAILABLE, "Invalid shared MPS slot pool"
+                        )
+                    row = connection.execute(
+                        "SELECT * FROM pools WHERE name=?", (physical,)
+                    ).fetchone()
+                    if row is None or (
+                        row["capacity"] != 1
+                        or row["controller_id"] != binding.controller_id
+                        or row["workspace_id"] != binding.workspace_id
+                    ):
+                        raise ResearchError(
+                            ErrorCode.AUTHORIZATION_DENIED, "Shared slots lack their physical pool"
+                        )
+                    for trigger in _DEVICE_TRIGGERS:
+                        connection.execute(trigger)
                 prior = connection.execute("SELECT * FROM pools WHERE name=?", (name,)).fetchone()
                 if prior is not None:
                     if (
                         prior["controller_id"] != binding.controller_id
                         or prior["workspace_id"] != binding.workspace_id
-                        or prior["capacity"] != amount
+                        or (prior["capacity"] != amount and not resize)
                     ):
                         raise ResearchError(
                             ErrorCode.RESOURCE_UNAVAILABLE,
                             "Native resource already has another enrollment or capacity",
                             details={"resource": name},
+                        )
+                    if prior["capacity"] != amount:
+                        if amount < self._occupied(connection, name):
+                            raise ResearchError(
+                                ErrorCode.RESOURCE_UNAVAILABLE, "Resize would discard held capacity"
+                            )
+                        connection.execute(
+                            "UPDATE pools SET capacity=? WHERE name=?", (amount, name)
                         )
                     continue
                 connection.execute(
@@ -191,6 +253,15 @@ class MachineResources:
                 ):
                     raise ResearchError(
                         ErrorCode.AUTHORIZATION_DENIED, "Native pool is not enrolled"
+                    )
+                opposite = _opposite_pool(name)
+                if opposite is not None and (
+                    opposite in demand.amounts or self._occupied(connection, opposite)
+                ):
+                    raise ResearchError(
+                        ErrorCode.RESOURCE_UNAVAILABLE,
+                        "Physical device admission conflict",
+                        details={"resource": name},
                     )
                 available = pool["capacity"] - self._occupied(connection, name)
                 if amount > available:
@@ -316,7 +387,12 @@ class MachineResources:
             connection.execute("BEGIN")
             pools = connection.execute("SELECT name,capacity FROM pools ORDER BY name").fetchall()
             result = {
-                row["name"]: row["capacity"] - self._occupied(connection, row["name"])
+                row["name"]: (
+                    0
+                    if (opposite := _opposite_pool(row["name"])) is not None
+                    and self._occupied(connection, opposite)
+                    else row["capacity"] - self._occupied(connection, row["name"])
+                )
                 for row in pools
             }
             connection.commit()

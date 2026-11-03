@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add opt-in bounded MPS execution slots on one physical device, with shared host
+  resource admission and atomic exclusion against exclusive and unresolved claims.
+
 - Accept identical package metadata from editable installations during engine
   probing while preserving rejection of conflicting installed versions.
 
