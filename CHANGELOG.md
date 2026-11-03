@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Accept identical package metadata from editable installations during engine
+  probing while preserving rejection of conflicting installed versions.
+
 - Expose a bounded Git source-capture timeout through the sync/async SDK,
   project CLI and local MCP tool, shared across manifest reads and bundling.
 
