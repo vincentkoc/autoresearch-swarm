@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add opt-in CUDA sharing for up to twenty workers on one physical GPU, with
+  aggregate VRAM admission, exclusive-device conflict guards and per-worker
+  concurrency limits independent of machine capacity.
+
 - Add opt-in bounded MPS execution slots on one physical device, with shared host
   resource admission and atomic exclusion against exclusive and unresolved claims.
 

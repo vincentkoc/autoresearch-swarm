@@ -24,7 +24,9 @@ def capacities(registration: EnvironmentRegistration) -> dict[str, int]:
     if registration.device_pool is not None:
         result[registration.device_pool] = 1
     if registration.shared_device_pool is not None:
-        result[registration.shared_device_pool] = registration.policy.mps_shared_slots
+        result[registration.shared_device_pool] = registration.max_concurrency
+    if registration.accelerator_memory_pool is not None:
+        result[registration.accelerator_memory_pool] = registration.policy.cuda_memory_bytes
     return result
 
 
@@ -45,7 +47,7 @@ def demand(
             pool = registration.device_pool
             if not resources.exclusive_device and (
                 registration.shared_device_pool is None
-                or "mps-shared-execution-slots" not in resources.required_features
+                or registration.profile.shared_execution_feature not in resources.required_features
             ):
                 raise ResearchError(
                     ErrorCode.CAPABILITY_UNAVAILABLE,
@@ -57,6 +59,10 @@ def demand(
             result[pool] = 1
             if device.unified_memory:
                 memory += resources.accelerator_memory_bytes
+            elif not resources.exclusive_device:
+                memory_pool = registration.accelerator_memory_pool
+                assert memory_pool is not None
+                result[memory_pool] = resources.accelerator_memory_bytes
         if memory > registration.memory_bytes:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE,

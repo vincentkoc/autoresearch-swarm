@@ -35,7 +35,7 @@ class EngineCapabilities(VersionedRecord):
     accelerator_count: int = Field(default=0, strict=True, ge=0)
     accelerator_memory_bytes: ByteCount = 0
     shared_execution_slots: int = Field(
-        default=0, strict=True, ge=0, le=8, exclude_if=lambda value: value == 0
+        default=0, strict=True, ge=0, le=20, exclude_if=lambda value: value == 0
     )
     features: StringSet = frozenset()
     isolation: StringSet = frozenset({"trusted_local"})
@@ -44,13 +44,23 @@ class EngineCapabilities(VersionedRecord):
     @model_validator(mode="after")
     def shared_admission(self) -> Self:
         if self.shared_execution_slots and (
-            self.name != "pytorch-mps"
-            or self.backend != "pytorch"
+            self.backend != "pytorch"
             or self.accelerator_count != 1
-            or "mps-shared-execution-slots" not in self.features
+            or self.shared_execution_feature not in self.features
+            or (self.name == "pytorch-mps" and self.shared_execution_slots > 8)
+            or (self.name == "pytorch-cuda" and not self.accelerator_memory_bytes)
         ):
-            raise ValueError("Shared execution slots require explicit MPS capability")
+            raise ValueError(
+                "Shared execution slots require explicit bounded accelerator capability"
+            )
         return self
+
+    @property
+    def shared_execution_feature(self) -> str | None:
+        return {
+            "pytorch-mps": "mps-shared-execution-slots",
+            "pytorch-cuda": "cuda-shared-execution-slots",
+        }.get(self.name)
 
     def require(self, resources: ResourceRequirements, network_policy: str) -> None:
         registered_mismatch = "registered-python-v1" in self.features and (
@@ -60,10 +70,10 @@ class EngineCapabilities(VersionedRecord):
                 self.accelerator_count > 0
                 and not resources.exclusive_device
                 and not (
-                    self.name == "pytorch-mps"
-                    and self.shared_execution_slots > 0
-                    and "mps-shared-execution-slots" in self.features
-                    and "mps-shared-execution-slots" in resources.required_features
+                    self.shared_execution_slots > 0
+                    and self.shared_execution_feature in self.features
+                    and self.shared_execution_feature in resources.required_features
+                    and (self.name != "pytorch-cuda" or resources.accelerator_memory_bytes > 0)
                 )
             )
             or (

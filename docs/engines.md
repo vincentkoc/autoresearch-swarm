@@ -158,14 +158,32 @@ MPS registrations may opt into bounded sharing with
 `ExecutionPolicy(device_admission="mps_shared", mps_shared_slots=2)`. The slot
 count is 1–8, is part of the execution fingerprint, and does not increase
 `accelerator_count`. A shared stage must set `exclusive_device=false` and require
-the `mps-shared-execution-slots` feature. Other backends retain exclusive admission.
+the `mps-shared-execution-slots` feature.
+
+CUDA registrations may use
+`ExecutionPolicy(device_admission="cuda_shared", cuda_shared_slots=20, cuda_memory_bytes=...)`.
+The slot count is 1-20. The positive admitted VRAM capacity must not exceed the
+observed physical GPU capacity. Operators must leave measured headroom for the
+driver, CUDA contexts and other allocations. Each shared stage sets
+`exclusive_device=false`, requires `cuda-shared-execution-slots`, and declares
+positive `accelerator_memory_bytes`. Native admission reserves these bytes in
+one aggregate per-device VRAM pool, separate from host RAM. This is scheduling
+admission, not enforcement of a process's CUDA allocator. Other backends retain
+exclusive admission.
 
 Shared slots use the same physical identity in one machine registry. The physical
-pool remains capacity one; a separate canonical MPS slot pool bounds concurrency.
+pool remains capacity one; a separate canonical slot pool bounds concurrency.
 Exclusive claims and shared claims exclude each other atomically, including
 UNKNOWN claims. SQLite allocation triggers also protect against older exclusive
 writers. CPU, summed unified memory and scratch are reserved per attempt from the
 same host pools, not copied per worker.
+
+For separate remote workers with one attempt each, call
+`describe_worker(..., concurrency_limit=1)` for each distinct worker root while
+using the same registration and machine registry. The optional cap is pinned
+in the description and controller enrollment, cannot exceed registered capacity,
+and does not divide or duplicate the machine pools. Omitting it preserves the
+previous concurrency behavior.
 
 The operator may explicitly update admitted aggregate capacities with
 `MachineResources.enroll(binding, capacities, resize=True)` after checking measured

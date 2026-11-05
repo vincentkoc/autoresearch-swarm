@@ -99,6 +99,30 @@ def test_parallel_description_and_provisioning_reuse_one_scoped_identity(
         )
 
 
+def test_cuda_worker_cap_is_preserved_by_controller_provisioning(
+    pipeline: Pipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.workers.test_cuda_sharing import registered
+
+    monkeypatch.setattr(remote_enrollment, "verify_registration", lambda _: None)
+    monkeypatch.setattr(remote_enrollment.os, "cpu_count", lambda: 8)
+    registration = registered(tmp_path)
+    description = describe_worker(
+        tmp_path / "remote",
+        registration=registration,
+        cpu_slots=registration.cpu_slots,
+        machine_registry=tmp_path / "remote-machine" / "resources.sqlite",
+        concurrency_limit=1,
+    )
+    bundle = provision(pipeline, description, tmp_path, "https://controller.example")
+    assert bundle.worker.max_concurrency == 1
+    assert bundle.worker.profiles == (registration.profile,)
+    assert bundle.description.profile.shared_execution_slots == 20
+    assert bundle == provision(pipeline, description, tmp_path, "https://controller.example")
+    row = pipeline.client.get("worker", description.worker_id)
+    assert row["data"]["max_concurrency"] == 1
+
+
 def test_connected_http_worker_executes_and_resumes_without_local_controller_authority(
     pipeline: Pipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

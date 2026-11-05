@@ -72,13 +72,17 @@ PRAGMA user_version=1;
 _DEVICE_CONFLICT = """
 SELECT 1 FROM allocations a JOIN claims c ON c.attempt_id=a.attempt_id
 WHERE c.state!='released' AND (
-    (NEW.pool LIKE 'device:%' AND a.pool='mps-shared:' || substr(NEW.pool,8))
-    OR (NEW.pool LIKE 'mps-shared:%' AND a.pool='device:' || substr(NEW.pool,12))
+    (NEW.pool LIKE 'device:%' AND a.pool IN (
+        'mps-shared:' || substr(NEW.pool,8), 'cuda-shared:' || substr(NEW.pool,8)))
+    OR (NEW.pool LIKE 'mps-shared:%' AND a.pool IN (
+        'device:' || substr(NEW.pool,12), 'cuda-shared:' || substr(NEW.pool,12)))
+    OR (NEW.pool LIKE 'cuda-shared:%' AND a.pool IN (
+        'device:' || substr(NEW.pool,13), 'mps-shared:' || substr(NEW.pool,13)))
 )
 """
 _DEVICE_TRIGGERS = tuple(
     f"""
-    CREATE TRIGGER IF NOT EXISTS mps_device_{operation.lower()}
+    CREATE TRIGGER IF NOT EXISTS shared_device_v2_{operation.lower()}
     BEFORE {operation} ON allocations
     WHEN ({_DEVICE_CONFLICT})
     BEGIN SELECT RAISE(ABORT,'Physical device admission conflict'); END
@@ -87,12 +91,15 @@ _DEVICE_TRIGGERS = tuple(
 )
 
 
-def _opposite_pool(name: str) -> str | None:
-    if re.fullmatch(r"device:[0-9a-f]{64}", name):
-        return "mps-shared:" + name[7:]
-    if re.fullmatch(r"mps-shared:[0-9a-f]{64}", name):
-        return "device:" + name[11:]
-    return None
+def _conflicting_pools(name: str) -> tuple[str, ...]:
+    if not re.fullmatch(r"(device|mps-shared|cuda-shared):[0-9a-f]{64}", name):
+        return ()
+    mode, identity = name.split(":")
+    return tuple(
+        prefix + ":" + identity
+        for prefix in ("device", "mps-shared", "cuda-shared")
+        if prefix != mode
+    )
 
 
 class MachineResources:
@@ -172,12 +179,16 @@ class MachineResources:
                     raise ResearchError(
                         ErrorCode.RESOURCE_UNAVAILABLE, "Physical device capacity must remain one"
                     )
-                if name.startswith("mps-shared:"):
-                    physical = _opposite_pool(name)
-                    if physical is None or not 1 <= amount <= 8:
+                if name.startswith(("mps-shared:", "cuda-shared:", "cuda-memory:")):
+                    mode, identity = name.split(":", 1)
+                    limit = 8 if mode == "mps-shared" else 20 if mode == "cuda-shared" else None
+                    if not re.fullmatch(r"[0-9a-f]{64}", identity) or (
+                        limit is not None and amount > limit
+                    ):
                         raise ResearchError(
-                            ErrorCode.RESOURCE_UNAVAILABLE, "Invalid shared MPS slot pool"
+                            ErrorCode.RESOURCE_UNAVAILABLE, "Invalid shared accelerator pool"
                         )
+                    physical = "device:" + identity
                     row = connection.execute(
                         "SELECT * FROM pools WHERE name=?", (physical,)
                     ).fetchone()
@@ -191,6 +202,26 @@ class MachineResources:
                         )
                     for trigger in _DEVICE_TRIGGERS:
                         connection.execute(trigger)
+                    if mode == "cuda-shared" and (
+                        "cuda-memory:" + identity not in capacities.amounts
+                        and connection.execute(
+                            "SELECT 1 FROM pools WHERE name=?", ("cuda-memory:" + identity,)
+                        ).fetchone()
+                        is None
+                    ):
+                        raise ResearchError(
+                            ErrorCode.RESOURCE_UNAVAILABLE, "CUDA slots require a VRAM pool"
+                        )
+                    if (
+                        mode == "cuda-memory"
+                        and connection.execute(
+                            "SELECT 1 FROM pools WHERE name=?", ("cuda-shared:" + identity,)
+                        ).fetchone()
+                        is None
+                    ):
+                        raise ResearchError(
+                            ErrorCode.RESOURCE_UNAVAILABLE, "CUDA VRAM requires a shared slot pool"
+                        )
                 prior = connection.execute("SELECT * FROM pools WHERE name=?", (name,)).fetchone()
                 if prior is not None:
                     if (
@@ -230,6 +261,14 @@ class MachineResources:
     def reserve(self, verified: VerifiedDispatch, demand: ResourceDemand) -> MachineClaim:
         verified.spec.verify()
         demand = ResourceDemand.model_validate(demand)
+        for name in demand.amounts:
+            if name.startswith(("cuda-shared:", "cuda-memory:")):
+                mode, identity = name.split(":", 1)
+                other = "cuda-memory:" if mode == "cuda-shared" else "cuda-shared:"
+                if other + identity not in demand.amounts:
+                    raise ResearchError(
+                        ErrorCode.RESOURCE_UNAVAILABLE, "CUDA claims require slots and VRAM"
+                    )
         envelope = verified.envelope
         digest = record_digest("research.dispatch", envelope.model_dump(mode="json"))
         with self._transaction() as connection:
@@ -254,9 +293,9 @@ class MachineResources:
                     raise ResearchError(
                         ErrorCode.AUTHORIZATION_DENIED, "Native pool is not enrolled"
                     )
-                opposite = _opposite_pool(name)
-                if opposite is not None and (
+                if any(
                     opposite in demand.amounts or self._occupied(connection, opposite)
+                    for opposite in _conflicting_pools(name)
                 ):
                     raise ResearchError(
                         ErrorCode.RESOURCE_UNAVAILABLE,
@@ -389,8 +428,10 @@ class MachineResources:
             result = {
                 row["name"]: (
                     0
-                    if (opposite := _opposite_pool(row["name"])) is not None
-                    and self._occupied(connection, opposite)
+                    if any(
+                        self._occupied(connection, opposite)
+                        for opposite in _conflicting_pools(row["name"])
+                    )
                     else row["capacity"] - self._occupied(connection, row["name"])
                 )
                 for row in pools

@@ -31,17 +31,26 @@ class ExecutionPolicy(VersionedRecord):
     compilation: Literal["project_declared", "eager", "cold", "warm"] = "project_declared"
     cpu_fallback: Literal["forbid"] = "forbid"
     python_search: Literal["isolated_probe_project_launch"] = "isolated_probe_project_launch"
-    device_admission: Literal["exclusive", "mps_shared"] = Field(
+    device_admission: Literal["exclusive", "mps_shared", "cuda_shared"] = Field(
         default="exclusive", exclude_if=lambda value: value == "exclusive"
     )
     mps_shared_slots: int = Field(
         default=1, strict=True, ge=1, le=8, exclude_if=lambda value: value == 1
     )
+    cuda_shared_slots: int = Field(
+        default=1, strict=True, ge=1, le=20, exclude_if=lambda value: value == 1
+    )
+    cuda_memory_bytes: ByteCount = Field(default=0, exclude_if=lambda value: value == 0)
 
     @model_validator(mode="after")
     def admission(self) -> Self:
-        if self.device_admission == "exclusive" and self.mps_shared_slots != 1:
+        if self.device_admission != "mps_shared" and self.mps_shared_slots != 1:
             raise ValueError("Shared slots require explicit MPS sharing")
+        if self.device_admission == "cuda_shared":
+            if not self.cuda_memory_bytes:
+                raise ValueError("CUDA sharing requires a positive admitted VRAM capacity")
+        elif self.cuda_shared_slots != 1 or self.cuda_memory_bytes:
+            raise ValueError("CUDA capacity requires explicit CUDA sharing")
         return self
 
 
@@ -80,6 +89,16 @@ class EnvironmentRegistration(VersionedRecord):
             or self.launch_adapter_digest is None
         ):
             raise ValueError("Shared admission requires a registered physical MPS device")
+        if self.policy.device_admission == "cuda_shared" and (
+            self.descriptor.profile != "pytorch-cuda"
+            or self.descriptor.device_backend != "cuda"
+            or self.descriptor.device is None
+            or self.descriptor.device.unified_memory
+            or self.descriptor.device.physical_id is None
+            or self.launch_adapter_digest is None
+            or self.policy.cuda_memory_bytes > self.descriptor.device.memory_bytes
+        ):
+            raise ValueError("Shared admission requires registered physical CUDA VRAM capacity")
         return self
 
     @property
@@ -117,17 +136,26 @@ class EnvironmentRegistration(VersionedRecord):
                         if self.policy.device_admission == "mps_shared"
                         else set()
                     ),
+                    *(
+                        {"cuda-shared-execution-slots"}
+                        if self.policy.device_admission == "cuda_shared"
+                        else set()
+                    ),
                 }
             )
             if self.launch_adapter_digest is not None
             else frozenset(),
             accelerator_count=1 if device else 0,
             shared_execution_slots=(
-                self.policy.mps_shared_slots if self.policy.device_admission == "mps_shared" else 0
+                self.max_concurrency if self.shared_device_pool is not None else 0
             ),
             # Unified memory belongs to the same admitted host pool, never a second pool.
             accelerator_memory_bytes=(
-                self.memory_bytes if device.unified_memory else device.memory_bytes
+                self.memory_bytes
+                if device.unified_memory
+                else self.policy.cuda_memory_bytes
+                if self.policy.device_admission == "cuda_shared"
+                else device.memory_bytes
             )
             if device
             else 0,
@@ -149,14 +177,25 @@ class EnvironmentRegistration(VersionedRecord):
 
     @property
     def shared_device_pool(self) -> str | None:
-        if self.policy.device_admission != "mps_shared":
+        if self.policy.device_admission == "exclusive":
             return None
         pool = self.device_pool
         assert pool is not None
-        return "mps-shared:" + pool.removeprefix("device:")
+        prefix = "cuda-shared:" if self.policy.device_admission == "cuda_shared" else "mps-shared:"
+        return prefix + pool.removeprefix("device:")
+
+    @property
+    def accelerator_memory_pool(self) -> str | None:
+        if self.policy.device_admission != "cuda_shared":
+            return None
+        pool = self.device_pool
+        assert pool is not None
+        return "cuda-memory:" + pool.removeprefix("device:")
 
     @property
     def max_concurrency(self) -> int:
+        if self.policy.device_admission == "cuda_shared":
+            return self.policy.cuda_shared_slots
         return self.policy.mps_shared_slots if self.descriptor.device else self.cpu_slots
 
     def require_environment(self, environment_digest: str) -> None:

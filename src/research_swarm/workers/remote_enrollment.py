@@ -51,9 +51,16 @@ class WorkerDescription(VersionedRecord):
     environment_contracts: tuple[Digest, ...] | None = Field(
         default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
     )
+    concurrency_limit: int | None = Field(
+        default=None, strict=True, ge=1, le=1024, exclude_if=lambda value: value is None
+    )
 
     @property
     def max_concurrency(self) -> int:
+        return self.concurrency_limit or self.capacity_concurrency
+
+    @property
+    def capacity_concurrency(self) -> int:
         return (
             max(1, self.profile.shared_execution_slots)
             if self.profile.accelerator_count
@@ -62,6 +69,11 @@ class WorkerDescription(VersionedRecord):
 
     @model_validator(mode="after")
     def supported(self) -> Self:
+        if (
+            self.concurrency_limit is not None
+            and self.concurrency_limit > self.capacity_concurrency
+        ):
+            raise ValueError("Worker concurrency limit exceeds its registered capacity")
         legacy = self.environment_contracts is None
         if self.clock_profile not in NATIVE_CLOCK_PROFILES or (
             legacy and (self.profile.name != "python-cpu" or self.profile.backend != "python")
@@ -241,6 +253,7 @@ def describe_worker(
     machine_registry: Path | None = None,
     registration: EnvironmentRegistration | None = None,
     clock_admission: AuthorityClockAdmission | None = None,
+    concurrency_limit: int | None = None,
 ) -> WorkerDescription:
     """Persist a machine request before emitting its non-secret provisioning description."""
     if type(cpu_slots) is not int or not 1 <= cpu_slots <= (os.cpu_count() or 1):
@@ -268,6 +281,7 @@ def describe_worker(
                 or state.description.profile.cpu_slots != cpu_slots
                 or state.registration != registration
                 or state.description.clock_admission != clock_admission
+                or state.description.concurrency_limit != concurrency_limit
             ):
                 raise ResearchError(
                     ErrorCode.IDEMPOTENCY_CONFLICT, "Worker description inputs changed"
@@ -288,6 +302,7 @@ def describe_worker(
                 clock_profile=native_clock().profile,
                 clock_admission=clock_admission,
                 environment_contracts=registration.environment_contracts if registration else None,
+                concurrency_limit=concurrency_limit,
             ),
             machine_registry=str(registry),
             registration=registration,
