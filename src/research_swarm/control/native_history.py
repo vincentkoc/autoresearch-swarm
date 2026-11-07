@@ -120,7 +120,7 @@ def project_native_history(
                     f"Study {row.study}; campaign {row.campaign_id}; attempt {row.attempt_id}; "
                     f"start {row.started_at or 'unavailable'}; "
                     f"finish {row.finished_at or 'unavailable'}; "
-                    f"fit barrier {row.fit_completed_at or 'unavailable'}; "
+                    f"pair-fit barrier {row.fit_completed_at or 'unavailable'}; "
                     f"time basis {row.timestamp_basis}; source {row.source_revision}; "
                     f"artifact {row.source_sha256}"
                 ),

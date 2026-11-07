@@ -794,8 +794,17 @@ setTimeout(() => location.reload(), 60000);
         if status_age is None or status_age > 300
         else "Recent coordinator status"
     )
+    phase_label = str(status.get("phase", "unavailable")).replace("_", " ")
     metrics = sorted({metric for row in history.observations for metric in row.metrics})
-    cohorts = sorted({row.cohort for row in history.observations})
+    timed_cohorts = {
+        row.cohort
+        for row in history.observations
+        if row.status == "completed" and row.metrics and (row.observed_at or row.finished_at)
+    }
+    cohorts = sorted(
+        {row.cohort for row in history.observations},
+        key=lambda cohort: (cohort not in timed_cohorts, cohort),
+    )
     panels = []
     for metric in metrics:
         for cohort in cohorts:
@@ -849,7 +858,8 @@ setTimeout(() => location.reload(), 60000);
         "form-action 'none'\"><title>Swarm · native experiment timeline</title>"
         f"<style>{_STYLE}.graph-panel{{overflow:auto;padding:0 16px}}"
         ".native-chart{height:420px}.native-cohort{border-bottom:1px solid var(--line)}"
-        ".right{display:block;overflow:auto}.native-status{white-space:normal}"
+        ".right{display:block;overflow:auto}"
+        ".native-status{white-space:normal;overflow-wrap:anywhere}"
         ".native-selection{white-space:pre-wrap;overflow-wrap:anywhere}"
         "@media(max-width:700px){main{display:block;height:auto}.graph-panel{min-height:500px}"
         ".sidebar,.right{max-height:400px}.native-chart{height:300px}}</style></head><body>"
@@ -857,7 +867,7 @@ setTimeout(() => location.reload(), 60000);
         "<a href=https://github.com/vincentkoc/autoresearch-swarm>Original Swarm renderer ↗</a>"
         "</header><main><aside class=sidebar><section class=sidebar-section>"
         "<h2>Coordinator</h2>"
-        f"<p class=native-status>{_e(status.get('phase', 'unavailable'))}</p>"
+        f"<p class=native-status>{_e(phase_label)}</p>"
         f"<p>Status updated: {_e(status.get('updated_at_utc', 'unavailable'))}</p>"
         f"<p>{status_label}</p>"
         f"<p>Last verified fitting workers: {_e(fitting)}</p>"
