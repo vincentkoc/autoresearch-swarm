@@ -1,5 +1,39 @@
 # Hill-climb SVG reports
 
+## Native history preview
+
+`research_swarm.api.native_history` serves an explicit `native-history-v1` manifest
+through the original timeline geometry and campaign layout. It has no controller,
+credentials, database initialization or mutation routes. Its only GET routes are
+`/`, `/healthz` and paginated `/v1/native-history?offset=0&limit=100`.
+
+```sh
+python -m research_swarm.api.native_history \
+  --history /private/research/native-timeline.json \
+  --status /private/research/coordinator-status.json \
+  --host 127.0.0.1 --port 8765
+```
+
+The two input paths are fixed at launch and reread on each request. Publish a new
+manifest by atomic replacement. Keep this unauthenticated preview on a private
+interface. This mode does not share the authenticated control API.
+
+Native entries retain original trial, attempt, arm, seed, source, cohort, metric,
+status and execution timestamp provenance. They never become evaluator receipts.
+Missing execution times stay unavailable; imports and failed/running attempts stay
+visible without invented scores. Cohorts and aggregation metrics remain separate.
+All captured entries are shown, with a bounded maximum of 10,000 observations;
+the eight-campaign and 52-receipt report limits do not truncate this explicit view.
+
+The optional `scripts/reconstruct_native_timeline.py` adapter verifies the pinned
+research archives and imports a read-only SQLite snapshot without opening its WAL.
+It refuses a nonempty WAL; use an authenticated online backup in that case. Its
+`--refresh` operation retains the old capture timestamp when evidence is unchanged.
+Additional `--additional-native-history` manifests can add genuine successor
+observations or update uncompleted records. Completed observations are immutable.
+Never substitute publication timestamps for execution events. Preview refreshes
+and source-only tests are not new experiments.
+
 Export trial scores against elapsed wall-clock hours with the native CLI.
 The renderer is read-only, has no extra dependency, and writes standalone SVG
 (no scripts, external fonts/assets, browser, or plotting service required).

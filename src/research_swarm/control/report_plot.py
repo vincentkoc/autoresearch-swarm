@@ -51,6 +51,8 @@ class PlotPoint:
     event_sequence: int
     hours: float
     value: float
+    evidence_kind: str = "evaluation"
+    details: str = ""
 
 
 @dataclass(frozen=True)
@@ -230,6 +232,7 @@ def _draw_time_chart(
     metric: MetricDefinition,
     *,
     bounds: tuple[float, float, float, float],
+    time_label: str = "Elapsed wall hours since each campaign's creation (evaluation commit time)",
 ) -> None:
     """Draw only axes and captured series; the caller owns legend and evidence text."""
     left, right, top, bottom = bounds
@@ -279,7 +282,7 @@ def _draw_time_chart(
         group,
         (left + right) / 2,
         bottom + 50,
-        "Elapsed wall hours since each campaign's creation (evaluation commit time)",
+        time_label,
         font_size=13,
         text_anchor="middle",
     )
@@ -330,11 +333,17 @@ def _draw_time_chart(
                 fill="#8b969e",
                 fill_opacity=0.55,
                 data_evaluation=point.evaluation_id,
+                data_evidence_kind=point.evidence_kind,
             )
             _element(dot, "title").text = _clean(
                 f"Trial {point.trial_id}; candidate {point.candidate_id}; seed {point.seed}\n"
-                f"Evaluation {point.evaluation_id}; committed {point.recorded_at}\n"
-                f"{point.hours:.6g} h; {metric.name}={point.value:.8g} {metric.unit}"
+                + (
+                    f"Evaluation {point.evaluation_id}; committed {point.recorded_at}\n"
+                    if point.evidence_kind == "evaluation" and not point.details
+                    else f"{point.evidence_kind} {point.evaluation_id}; observed "
+                    f"{point.recorded_at}\n{point.details}\n"
+                )
+                + f"{point.hours:.6g} h; {metric.name}={point.value:.8g} {metric.unit}"
             )
     if not points:
         _text(
@@ -347,7 +356,9 @@ def _draw_time_chart(
         )
 
 
-def _embedded_time_chart(runs: Sequence[PlotRun], metric: MetricDefinition) -> str:
+def _embedded_time_chart(
+    runs: Sequence[PlotRun], metric: MetricDefinition, *, time_label: str | None = None
+) -> str:
     """Chart-only viewport; HTML supplies readable, wrapping evidence outside the SVG."""
     svg = Element(
         "svg",
@@ -359,7 +370,8 @@ def _embedded_time_chart(runs: Sequence[PlotRun], metric: MetricDefinition) -> s
         },
     )
     group = _element(svg, "g", fill="#627280")
-    _draw_time_chart(group, runs, metric, bounds=(90.0, 715.0, 20.0, 370.0))
+    options = {"time_label": time_label} if time_label is not None else {}
+    _draw_time_chart(group, runs, metric, bounds=(90.0, 715.0, 20.0, 370.0), **options)
     return tostring(svg, encoding="unicode")
 
 

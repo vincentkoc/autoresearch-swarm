@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extend the original timeline with explicit native measurements and actual execution
+  timestamps, separate cohorts and metrics, complete inventory, and a read-only
+  private preview that does not initialize a controller or fabricate evaluator receipts.
+
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.
 

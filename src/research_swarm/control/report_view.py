@@ -10,11 +10,13 @@ from collections.abc import Sequence
 from html import escape
 from xml.etree.ElementTree import Element, SubElement, fromstring, tostring
 
+from research_swarm.control.native_history import NativeHistory, project_native_history
 from research_swarm.control.panel_layout import PANEL_SCRIPT, PANEL_STYLE
 from research_swarm.control.report_plot import (
     MAX_OBSERVATIONS,
     PlotRun,
     _embedded_time_chart,
+    _time,
     project_hill_climb,
 )
 from research_swarm.domain.experiments import MetricDefinition
@@ -684,6 +686,7 @@ def render_report_html(
         f"<option value='{i}'>{_e(labels[i] if labels else runs[i].campaign_id)}</option>"
         for i in range(len(runs))
     )
+
     workers = {
         row["worker_id"]
         for snapshot in snapshots
@@ -747,4 +750,132 @@ def render_report_html(
         + "".join(activity)
         + "</div></section></aside></main>"
         f"<script>{_SCRIPT}</script></body></html>\n"
+    )
+
+
+def render_native_history_html(history: NativeHistory, status: JsonObject) -> str:
+    """The original timeline and workspace, with explicitly separate native evidence."""
+    from datetime import UTC, datetime
+
+    script = """
+const picker = document.querySelector('#native-metric');
+picker.addEventListener('change', () => {
+  document.querySelectorAll('[data-native-metric]').forEach(section => {
+    section.hidden = section.dataset.nativeMetric !== picker.value;
+  });
+});
+picker.dispatchEvent(new Event('change'));
+document.querySelectorAll('circle[data-evaluation]').forEach(point => {
+  point.setAttribute('tabindex', '0');
+  point.setAttribute('role', 'button');
+  const text = point.querySelector('title').textContent;
+  point.setAttribute('aria-label', text);
+  point.addEventListener('click', () => {
+    document.querySelector('#native-selection').textContent = text;
+  });
+});
+setTimeout(() => location.reload(), 60000);
+"""
+    digest = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+    captured = datetime.fromisoformat(history.captured_at.replace("Z", "+00:00"))
+    age = max(0, (datetime.now(UTC) - captured).total_seconds())
+    last_native_event = max(
+        (
+            row.observed_at or row.finished_at or ""
+            for row in history.observations
+            if row.observed_at or row.finished_at
+        ),
+        default="unavailable",
+    )
+    status_time = _time(status.get("updated_at_utc"))
+    status_age = (datetime.now(UTC) - status_time).total_seconds() if status_time else None
+    status_label = (
+        "STALE coordinator status"
+        if status_age is None or status_age > 300
+        else "Recent coordinator status"
+    )
+    metrics = sorted({metric for row in history.observations for metric in row.metrics})
+    cohorts = sorted({row.cohort for row in history.observations})
+    panels = []
+    for metric in metrics:
+        for cohort in cohorts:
+            run, rows = project_native_history(history, cohort, metric)
+            if not any(metric in row.metrics for row in rows):
+                continue
+            definition = MetricDefinition(name=metric, unit="degrees", direction="minimize")
+            chart = _embedded_time_chart(
+                [run],
+                definition,
+                time_label=f"Execution wall hours since {run.origin} (UTC)",
+            )
+            panels.append(
+                f"<section data-native-metric='{_e(metric)}' class=native-cohort>"
+                f"<h3>{_e(cohort)}</h3><div class='score native-chart'>{chart}</div>"
+                f"<p>{len(run.points)} scored observations; {run.untimed} missing execution time. "
+                "Native measurements do not create evaluator or promotion authority. "
+                "Steps show best observed within this exact cohort and metric.</p></section>"
+            )
+    counters = status.get("live_research_counters", {})
+    if not isinstance(counters, dict):
+        counters = {}
+    fitting = counters.get("current_fitting_workers", "unknown")
+    source_tests = counters.get("source_only_synthetic_tests_reported_pass", "unknown")
+    inventory = "".join(
+        f"<tr><td>{_e(key.replace('_', ' '))}</td><td>{value}</td></tr>"
+        for key, value in sorted(history.inventory.items())
+    )
+    activity = "".join(
+        "<div class=activity-item><span class=activity-icon>·</span><div>"
+        f"<div class=activity-title>{_e(row.study)} · {_e(row.arm)} · seed {_e(row.seed)}</div>"
+        f"<div class=activity-meta>{_e(row.kind)} · {_e(row.status)}<br>"
+        f"start {_e(row.started_at or 'unavailable')}<br>"
+        f"finish {_e(row.finished_at or 'unavailable')}<br>"
+        f"measurement event {_e(row.observed_at or row.finished_at or 'unavailable')}<br>"
+        f"time basis {_e(row.timestamp_basis)}<br>"
+        f"trial <code>{_e(row.trial_id)}</code><br>"
+        f"attempt <code>{_e(row.attempt_id)}</code><br>"
+        f"metrics {_e(row.metrics)}</div></div></div>"
+        for row in sorted(
+            history.observations, key=lambda item: item.finished_at or "", reverse=True
+        )
+    )
+    options = "".join(f"<option value='{_e(metric)}'>{_e(metric)}</option>" for metric in metrics)
+    limitations = "".join(f"<li>{_e(item)}</li>" for item in history.limitations)
+    return (
+        "<!doctype html><html lang=en><head><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<meta http-equiv=Content-Security-Policy content=\"default-src 'none'; "
+        f"script-src 'sha256-{digest}'; style-src 'unsafe-inline'; base-uri 'none'; "
+        "form-action 'none'\"><title>Swarm · native experiment timeline</title>"
+        f"<style>{_STYLE}.graph-panel{{overflow:auto;padding:0 16px}}"
+        ".native-chart{height:420px}.native-cohort{border-bottom:1px solid var(--line)}"
+        ".right{display:block;overflow:auto}.native-status{white-space:normal}"
+        ".native-selection{white-space:pre-wrap;overflow-wrap:anywhere}"
+        "@media(max-width:700px){main{display:block;height:auto}.graph-panel{min-height:500px}"
+        ".sidebar,.right{max-height:400px}.native-chart{height:300px}}</style></head><body>"
+        "<header><h1>Swarm · native experiment timeline</h1>"
+        "<a href=https://github.com/vincentkoc/autoresearch-swarm>Original Swarm renderer ↗</a>"
+        "</header><main><aside class=sidebar><section class=sidebar-section>"
+        "<h2>Coordinator</h2>"
+        f"<p class=native-status>{_e(status.get('phase', 'unavailable'))}</p>"
+        f"<p>Status updated: {_e(status.get('updated_at_utc', 'unavailable'))}</p>"
+        f"<p>{status_label}</p>"
+        f"<p>Last verified fitting workers: {_e(fitting)}</p>"
+        f"<p>Source-only synthetic tests: {_e(source_tests)}"
+        " (not scored experiments)</p>"
+        "</section><section class=sidebar-section><h2>Captured evidence</h2>"
+        f"<p>Snapshot {_e(history.captured_at)}<br>Age {age:.0f}s · "
+        f"{'STALE snapshot' if age > 300 else 'recent snapshot'}</p>"
+        f"<p>Last actual native event: {_e(last_native_event)}</p>"
+        "<p>Page reloads each minute. A reload is not new optimizer progress.</p>"
+        f"<table>{inventory}</table><details><summary>Scope and limitations</summary>"
+        f"<ul>{limitations}</ul></details></section></aside>"
+        "<div></div><section class=graph-panel><div class=panel-heading>"
+        "<h2>Hill climb · real trials</h2>"
+        f"<select id=native-metric aria-label='Metric'>{options}</select></div>"
+        + "".join(panels)
+        + "<h3>Selected observation</h3><pre id=native-selection class=native-selection>"
+        "Select a dot to inspect its exact provenance.</pre></section><div></div>"
+        "<aside class=right><div class=panel-heading><h2>All captured activity</h2></div>"
+        f"{activity}</aside></main><script>{script}</script></body></html>"
     )
