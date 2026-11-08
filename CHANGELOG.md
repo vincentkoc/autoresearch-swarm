@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep paired checkpoint timestamps separate from unknown individual-arm finishes in
+  imported native timelines, and preserve merged fit counts and evidence limitations.
+
 - Extend the original timeline with explicit native measurements and actual execution
   timestamps, separate cohorts and metrics, complete inventory, and a read-only
   private preview that does not initialize a controller or fabricate evaluator receipts.

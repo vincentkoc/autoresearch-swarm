@@ -124,3 +124,243 @@ def test_readonly_routes_paginate_and_reload_manifest(tmp_path) -> None:
         listener.shutdown()
         thread.join(timeout=5)
         listener.server_close()
+
+
+def test_absolute_level_timestamp_correction_preserves_inventory_and_geometry() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    producer_path = Path(__file__).resolve().parents[2] / "scripts/reconstruct_native_timeline.py"
+    spec = importlib.util.spec_from_file_location("native_timeline_producer", producer_path)
+    assert spec is not None and spec.loader is not None
+    producer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(producer)
+    previous = history().model_dump()
+    for row in previous["observations"]:
+        row["metrics"]["pooled_mae_deg"] = row["metrics"]["person_mae_deg"] + 0.1
+    additions = []
+    for seed in range(2026, 2036):
+        for arm in ("control", "treatment"):
+            row = deepcopy(previous["observations"][0])
+            row.update(
+                id=f"absolute-attempt-{seed}:{arm}:{seed}",
+                study="absolute-level-context-v1",
+                source_revision="4685c1abeab79a40f9d76fdeea40b9759aafe2f0",
+                timestamp_basis="final_full_FIT_diagnostic heartbeat; start unavailable",
+                arm=arm,
+                seed=seed,
+                trial_id=f"absolute-trial-{seed}",
+                attempt_id=f"absolute-attempt-{seed}",
+                campaign_id=f"absolute-campaign-{seed}",
+                started_at=None,
+                finished_at=None,
+                observed_at=f"2026-01-01T01:30:{seed - 2026:02d}Z",
+                fit_completed_at=f"2026-01-01T01:20:{seed - 2026:02d}Z",
+            )
+            additions.append(row)
+    original = deepcopy(additions)
+    corrected = [producer.absolute_level_timestamp(row) for row in additions]
+    assert additions == original
+    assert len(corrected) == 20
+    assert all(
+        row["fit_completed_at"] is None and row["finished_at"] is None and row["started_at"] is None
+        for row in corrected
+    )
+    assert (
+        len(
+            {
+                row["timestamp_basis"].split("paired_final_checkpoint_at=")[1].split(";")[0]
+                for row in corrected
+            }
+        )
+        == 10
+    )
+    for before, after in zip(original, corrected, strict=True):
+        assert after["observed_at"] == before["observed_at"]
+        assert "paired checkpoint is not an arm finish" in after["timestamp_basis"]
+        assert {
+            key: value
+            for key, value in before.items()
+            if key not in {"fit_completed_at", "timestamp_basis"}
+        } == {
+            key: value
+            for key, value in after.items()
+            if key not in {"fit_completed_at", "timestamp_basis"}
+        }
+        assert producer.absolute_level_timestamp(after) == after
+    for field, value in (
+        ("source_revision", "other-source"),
+        ("timestamp_basis", "genuine individual arm finish"),
+        ("study", "other-study"),
+        ("kind", "evaluation"),
+    ):
+        outside_scope = {**original[0], field: value}
+        before = deepcopy(outside_scope)
+        assert producer.absolute_level_timestamp(outside_scope) == before
+        assert outside_scope == before
+    genuine_finish = {
+        **original[0],
+        "timestamp_basis": "genuine individual arm finish",
+        "finished_at": "2026-01-01T01:19:59Z",
+    }
+    assert producer.absolute_level_timestamp(genuine_finish) == genuine_finish
+    # Existing cohorts and records retain their original meaning and times.
+    old_row = previous["observations"][0]
+    assert producer.absolute_level_timestamp(old_row) == old_row
+    for index in range(21):
+        row = deepcopy(previous["observations"][0])
+        row.update(
+            id=f"historical-{index}",
+            kind="historical_import",
+            trial_id=None,
+            attempt_id=None,
+            cohort="historical synthetic",
+            metrics={},
+        )
+        previous["observations"].append(row)
+    baseline = NativeHistory.model_validate(
+        {**previous, "observations": previous["observations"] + original}
+    )
+    actual = NativeHistory.model_validate(
+        {**previous, "observations": previous["observations"] + corrected}
+    )
+    assert len(actual.observations) == 131
+    for metric in ("person_mae_deg", "pooled_mae_deg"):
+        before_run, _ = project_native_history(baseline, "FIT synthetic", metric)
+        after_run, _ = project_native_history(actual, "FIT synthetic", metric)
+        assert len(after_run.points) == 110
+        assert [(p.evaluation_id, p.recorded_at, p.hours, p.value) for p in before_run.points] == [
+            (p.evaluation_id, p.recorded_at, p.hours, p.value) for p in after_run.points
+        ]
+    html = render_native_history_html(actual, {})
+    assert html.count('data-evidence-kind="native_fit"') == 220
+
+
+def test_additional_history_actual_cli_keeps_merged_counts_limitations_and_timestamps(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    import importlib.util
+    import json
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "scripts/reconstruct_native_timeline.py"
+    spec = importlib.util.spec_from_file_location("timeline_merge_cli", script)
+    assert spec is not None and spec.loader is not None
+    producer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(producer)
+    base = history().model_dump()
+    for index, row in enumerate(base["observations"]):
+        row["cohort"] = "FIT64 synthetic" if index < 60 else "inner16 synthetic"
+        row["metrics"]["pooled_mae_deg"] = row["metrics"]["person_mae_deg"] + 0.1
+    for index in range(21):
+        row = deepcopy(base["observations"][0])
+        row.update(
+            id=f"unscored-{index}",
+            kind="historical_import" if index < 7 else "attempt",
+            attempt_id=f"unscored-attempt-{index}",
+            trial_id=f"unscored-trial-{index}",
+            cohort="unscored synthetic",
+            metrics={},
+            status="historical" if index < 7 else "failed" if index < 16 else "queued",
+        )
+        base["observations"].append(row)
+    base["inventory"] = {
+        "completed_fits": 90,
+        "FIT64_completed_fits": 60,
+        "scored_native_observations": 90,
+        "evaluator_receipts": 4,
+        "historical_imports": 7,
+        "failed_attempts": 9,
+        "queued_trials": 5,
+    }
+    base["limitations"] = ["Synthetic base limitation", "Synthetic shared limitation"]
+    additional = {
+        **deepcopy(base),
+        "observations": [],
+        "inventory": {"completed_fits": 20},
+        "limitations": ["Synthetic shared limitation", "Absolute-level arm finish unknown"],
+    }
+    for seed in range(2026, 2036):
+        for arm in ("control", "treatment"):
+            row = deepcopy(base["observations"][0])
+            row.update(
+                id=f"latest-{seed}:{arm}",
+                arm=arm,
+                seed=seed,
+                trial_id=f"latest-trial-{seed}",
+                attempt_id=f"latest-attempt-{seed}",
+                study="absolute-level-context-v1",
+                cohort="FIT64 synthetic",
+                source_revision="4685c1abeab79a40f9d76fdeea40b9759aafe2f0",
+                timestamp_basis="final_full_FIT_diagnostic heartbeat; start unavailable",
+                started_at=None,
+                finished_at=None,
+                observed_at=f"2026-01-01T01:30:{seed - 2026:02d}Z",
+                fit_completed_at=f"2026-01-01T01:20:{seed - 2026:02d}Z",
+            )
+            additional["observations"].append(row)
+    original_base, original_additional = deepcopy(base), deepcopy(additional)
+    additional_path = tmp_path / "additional.json"
+    additional_path.write_text(json.dumps(additional))
+    output = tmp_path / "history.json"
+    monkeypatch.setattr(producer, "reconstruct", lambda *args: deepcopy(base))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(script),
+            "--evidence-repo",
+            str(tmp_path),
+            "--retained-dir",
+            str(tmp_path),
+            "--native-state",
+            str(tmp_path),
+            "--additional-native-history",
+            str(additional_path),
+            "--output",
+            str(output),
+            "--refresh",
+        ],
+    )
+    producer.main()
+    raw = output.read_bytes()
+    result = NativeHistory.model_validate_json(raw)
+    assert len(result.observations) == 131
+    assert result.inventory["completed_fits"] == 110
+    assert result.inventory["FIT64_completed_fits"] == 80
+    assert result.inventory["scored_native_observations"] == 110
+    for key in ("evaluator_receipts", "historical_imports", "failed_attempts", "queued_trials"):
+        assert result.inventory[key] == original_base["inventory"][key]
+    assert result.limitations == [
+        "Synthetic base limitation",
+        "Synthetic shared limitation",
+        "Absolute-level arm finish unknown",
+    ]
+    before_fingerprint = {
+        row["id"]: (
+            row["trial_id"],
+            row["attempt_id"],
+            row["arm"],
+            row["seed"],
+            row["cohort"],
+            row["metrics"],
+        )
+        for row in original_base["observations"] + original_additional["observations"]
+    }
+    assert before_fingerprint == {
+        row.id: (row.trial_id, row.attempt_id, row.arm, row.seed, row.cohort, row.metrics)
+        for row in result.observations
+    }
+    assert render_native_history_html(result, {}).count('data-evidence-kind="native_fit"') == 220
+    latest = [row for row in result.observations if row.study == "absolute-level-context-v1"]
+    assert len(latest) == 20
+    for before, after in zip(original_additional["observations"], latest, strict=True):
+        assert after.fit_completed_at is None
+        assert after.observed_at == before["observed_at"]
+        assert after.id == before["id"] and after.metrics == before["metrics"]
+        assert f"paired_final_checkpoint_at={before['fit_completed_at']}" in after.timestamp_basis
+    assert base == original_base and additional == original_additional
+    producer.main()
+    assert output.read_bytes() == raw
+    assert '"unchanged": true' in capsys.readouterr().out

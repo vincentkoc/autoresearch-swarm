@@ -47,6 +47,30 @@ def utc(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, UTC).isoformat()
 
 
+def absolute_level_timestamp(row: dict[str, Any]) -> dict[str, Any]:
+    """Preserve the paired checkpoint event without inventing an arm finish."""
+    if (
+        row["study"] != "absolute-level-context-v1"
+        or row["kind"] != "native_fit"
+        or row["source_revision"] != "4685c1abeab79a40f9d76fdeea40b9759aafe2f0"
+        or row["timestamp_basis"] != "final_full_FIT_diagnostic heartbeat; start unavailable"
+    ):
+        return row
+    checkpoint_at = row.get("fit_completed_at")
+    if checkpoint_at is None:
+        return row
+    return {
+        **row,
+        "fit_completed_at": None,
+        "timestamp_basis": (
+            f"{row['timestamp_basis']}; "
+            "timestamp_semantics=final_full_FIT_diagnostic_observed_at; "
+            f"paired_final_checkpoint_at={checkpoint_at}; "
+            "per-arm fit completion unavailable; paired checkpoint is not an arm finish"
+        ),
+    }
+
+
 def reconstruct(repo: Path, retained: Path, native: Path) -> dict[str, Any]:
     observations: list[dict[str, Any]] = []
     sources: list[dict[str, str | int]] = []
@@ -368,19 +392,32 @@ def main() -> None:
         additional = NativeHistory.model_validate_json(read(additional_path))
         rows = {row["id"]: row for row in result["observations"]}
         for item in additional.observations:
-            candidate = item.model_dump()
+            candidate = absolute_level_timestamp(item.model_dump())
             previous = rows.get(item.id)
             if previous and previous["status"] == "completed" and previous != candidate:
                 raise ValueError("Completed native history cannot be rewritten")
             rows[item.id] = candidate
         result["observations"] = list(rows.values())
         result["sources"].extend(additional.sources)
+        result["limitations"] = list(
+            dict.fromkeys([*result["limitations"], *additional.limitations])
+        )
         result["inventory"].update(
             {
                 "trials": len({row["trial_id"] for row in rows.values() if row["trial_id"]}),
                 "attempts": len({row["attempt_id"] for row in rows.values() if row["attempt_id"]}),
                 "completed_fits": sum(
                     row["kind"] == "native_fit" and row["status"] == "completed"
+                    for row in rows.values()
+                ),
+                "FIT64_completed_fits": sum(
+                    row["kind"] == "native_fit"
+                    and row["status"] == "completed"
+                    and row["cohort"].startswith("FIT64")
+                    for row in rows.values()
+                ),
+                "scored_native_observations": sum(
+                    row["kind"] == "native_fit" and bool(row.get("metrics"))
                     for row in rows.values()
                 ),
                 "running_observations": sum(row["status"] == "running" for row in rows.values()),
