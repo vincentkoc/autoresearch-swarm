@@ -524,6 +524,27 @@ the policy slot. It does not promote, rebase, move the incumbent, or settle
 physical resource/budget custody.
 
 
+### Keep a search loop running
+
+Use `research search advance CAMPAIGN --proposer PRINCIPAL --watch` to re-read
+persisted state while external proposers, workers and evaluators do their work.
+`--poll-seconds` sets the delay between bounded passes (default 1, range 0.01–60).
+`--max-steps` bounds each pass, not the campaign; sealed budgets and stopping rules
+remain authoritative. The default command without `--watch` still advances once.
+
+In Python, use `await driver.run_async(stop_event, poll_seconds=1, max_steps=32)`.
+Set the event to stop between passes. Cancellation waits for the current bounded
+pass to drain before releasing the client; it does not terminate external jobs.
+The returned `actions` describe only the last pass. Durable events retain earlier
+transitions, including rejected trials that led to the next proposal.
+
+The loop continues across execution/evaluation/proposal waits, revision contention
+and pass limits. It returns on pause, terminal policy state, review, budget or target
+boundaries, uncertain delivery, or unavailable transport. Resolve those boundaries
+explicitly before starting it again; uncertain commands are not blindly replayed.
+This runner does not invent hypotheses, launch providers, or replace worker loops.
+
+
 ## Evaluate work from independent workers
 
 `research evaluation advance` supplies the controller/evaluator part of the

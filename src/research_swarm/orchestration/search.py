@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import math
+from contextlib import suppress
+from functools import partial
 from typing import Literal
 
 from pydantic import Field
@@ -13,6 +16,7 @@ from research_swarm.control.observation_models import TrialObservation, observat
 from research_swarm.control.queries import RecordKind, RecordQuery
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, VersionedRecord
+from research_swarm.orchestration.custody import run_owned_step
 from research_swarm.search.greedy import (
     GreedyConfiguration,
     GreedyPolicy,
@@ -51,6 +55,7 @@ class SearchDriverResult(VersionedRecord):
         "delivery_uncertain",
         "step_limit",
         "transport_unavailable",
+        "stopped",
     ]
     reason: str
     evidence_ids: tuple[ID, ...] = ()
@@ -59,7 +64,7 @@ class SearchDriverResult(VersionedRecord):
 
 
 class SearchDriver:
-    """No native execution, provider calls, process-local custody, or implicit retries."""
+    """Bounded transitions with an opt-in paced loop; no native or provider execution."""
 
     def __init__(
         self,
@@ -380,4 +385,41 @@ class SearchDriver:
         )
 
     async def advance_async(self, *, max_steps: int = 32) -> SearchDriverResult:
-        return await asyncio.to_thread(self.advance, max_steps=max_steps)
+        return await run_owned_step(partial(self.advance, max_steps=max_steps))
+
+    async def run_async(
+        self, stop: asyncio.Event, *, poll_seconds: float = 1.0, max_steps: int = 32
+    ) -> SearchDriverResult:
+        """Re-read durable state until stopped or a policy/authority boundary is reached.
+
+        External proposers, workers and evaluators still supply the work. Each pass
+        retains the normal action bound; the result contains only the last pass.
+        Cancellation drains an in-flight pass before the caller can close its client.
+        """
+        if type(max_steps) is not int or not 1 <= max_steps <= 128:
+            raise ValueError("Search advance requires between 1 and 128 actions")
+        if (
+            isinstance(poll_seconds, bool)
+            or not math.isfinite(poll_seconds)
+            or not (0.01 <= poll_seconds <= 60)
+        ):
+            raise ValueError("Search polling interval must be between 0.01 and 60 seconds")
+        result = SearchDriverResult(
+            campaign_id=self.campaign_id, state="stopped", reason="Search loop stopped"
+        )
+        continuing = {
+            "awaiting_baseline",
+            "awaiting_proposal",
+            "awaiting_execution",
+            "awaiting_evaluation",
+            "awaiting_confirmation",
+            "step_limit",
+            "contended",
+        }
+        while not stop.is_set():
+            result = await self.advance_async(max_steps=max_steps)
+            if result.state not in continuing:
+                return result
+            with suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=poll_seconds)
+        return result.model_copy(update={"state": "stopped", "reason": "Search loop stopped"})
