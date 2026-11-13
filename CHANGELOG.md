@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Pause Windows CI and native qualification; retain Linux/macOS checks and all
+  test assertions unchanged.
+
 - Add opt-in continuous search driving through `SearchDriver.run_async` and
   `research search advance --watch`, with paced durable-state reads and explicit
   policy, budget, review and transport stops. Async cancellation now drains the
