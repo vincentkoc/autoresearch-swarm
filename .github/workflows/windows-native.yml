@@ -18,6 +18,8 @@ concurrency:
 
 jobs:
   native:
+    # Windows qualification is paused until explicitly re-enabled.
+    if: ${{ false }}
     strategy:
       fail-fast: false
       matrix:

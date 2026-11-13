@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Pause Windows CI and native qualification; retain Linux/macOS checks and all
+  test assertions unchanged.
+
+- Add opt-in continuous search driving through `SearchDriver.run_async` and
+  `research search advance --watch`, with paced durable-state reads and explicit
+  policy, budget, review and transport stops. Async cancellation now drains the
+  current bounded search pass before releasing the client.
+
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.
 

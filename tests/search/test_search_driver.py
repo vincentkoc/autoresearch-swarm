@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import shutil
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -512,3 +514,78 @@ def test_greedy_panel_finishes_or_records_ineligibility_without_another_panel(
         )
     assert len(pipeline.client.list(RecordQuery(kind="confirmation_plan"))["items"]) == 1
     assert len(pipeline.client.list(RecordQuery(kind="proposal_request"))["items"]) == 1
+
+
+@pytest.mark.parametrize("pipeline", [{"limits": PROPOSAL_LIMITS}], indirect=True)
+async def test_continuous_driver_requests_next_candidate_after_negative_result(
+    pipeline: Pipeline, tmp_path: Path
+) -> None:
+    principal, agent, _ = proposer(pipeline)
+    evaluate(pipeline, pipeline.trial)
+    driver = SearchDriver(
+        pipeline.client,
+        pipeline.campaign["id"],
+        GreedyConfiguration(proposer_id=principal.id, baseline_trial_id=pipeline.trial["id"]),
+    )
+    source = tmp_path / "disabled-optimizer"
+    shutil.copytree(pipeline.source, source)
+    training = source / "train.py"
+    training.write_text(training.read_text().replace("LEARNING_RATE = 0.35", "LEARNING_RATE = 0.0"))
+    artifact = pipeline.client.capture_project(source, idempotency_key="disabled-optimizer")
+    stop = asyncio.Event()
+    task = asyncio.create_task(driver.run_async(stop, poll_seconds=0.01, max_steps=1))
+
+    async def state_until(field: str) -> dict[str, Any]:
+        async def wait() -> dict[str, Any]:
+            while True:
+                try:
+                    state = pipeline.client.get("search_state", pipeline.campaign["id"])["data"]
+                except ResearchError as error:
+                    if error.code != ErrorCode.NOT_FOUND:
+                        raise
+                else:
+                    if state[field]:
+                        return state
+                await asyncio.sleep(0.01)
+
+        return await asyncio.wait_for(wait(), 10)
+
+    try:
+        request = (await state_until("pending_request_ids"))["pending_request_ids"][0]
+        agent.command(
+            "search.respond",
+            RespondToProposal(
+                request_id=request,
+                outcome="candidate",
+                source_artifact=artifact,
+                hypothesis="Disable optimizer updates as a negative control",
+            ),
+            idempotency_key="negative-control-response",
+        )
+        trial_id = (await state_until("active_trial_ids"))["active_trial_ids"][0]
+        await asyncio.to_thread(evaluate, pipeline, pipeline.client.get("trial", trial_id))
+        next_request = (await state_until("pending_request_ids"))["pending_request_ids"][0]
+        assert next_request != request
+        assert (
+            pipeline.client.get("campaign", pipeline.campaign["id"])["data"]["incumbent_revision"]
+            == 1
+        )
+        transitions = pipeline.client.list(RecordQuery(kind="observation_consumption"))["items"]
+        assert len(transitions) == 1
+        resolution = pipeline.client.get(
+            "policy_transition", transitions[0]["data"]["transition_id"]
+        )
+        assert resolution["data"]["outcome"] in {"rejected", "inconclusive"}
+        assert len(pipeline.client.list(RecordQuery(kind="trial"))["items"]) == 2
+        agent.command(
+            "search.respond",
+            RespondToProposal(
+                request_id=next_request, outcome="failed", finding="No further candidate in fixture"
+            ),
+            idempotency_key="second-response",
+        )
+        assert (await asyncio.wait_for(asyncio.shield(task), 10)).state == "budget_exhausted"
+        assert len(pipeline.client.list(RecordQuery(kind="proposal_request"))["items"]) == 2
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, 10)

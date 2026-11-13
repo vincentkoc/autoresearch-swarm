@@ -273,6 +273,10 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--instructions")
         if action == "advance":
             item.add_argument("--max-steps", type=int, default=32)
+            item.add_argument(
+                "--watch", action="store_true", help="Continue until stopped or a policy boundary"
+            )
+            item.add_argument("--poll-seconds", type=float, default=1.0)
     evaluation = commands.add_parser("evaluation", help="Advance independent evaluation control")
     evaluations = evaluation.add_subparsers(dest="evaluation_action", required=True)
     advance = evaluations.add_parser("advance")
@@ -455,11 +459,16 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 **({"instructions": args.instructions} if args.instructions is not None else {}),
             )
         driver = SearchDriver(client, args.campaign_id, config)
-        result = (
-            driver.plan()
-            if args.search_action == "plan"
-            else driver.advance(max_steps=args.max_steps)
-        )
+        if args.search_action == "plan":
+            return driver.plan().model_dump(mode="json")
+        if args.watch:
+            result = asyncio.run(
+                driver.run_async(
+                    asyncio.Event(), poll_seconds=args.poll_seconds, max_steps=args.max_steps
+                )
+            )
+        else:
+            result = driver.advance(max_steps=args.max_steps)
         return result.model_dump(mode="json")
     if args.action == "evaluation":
         from research_swarm.orchestration.evaluation import EvaluationCursor, EvaluationDriver

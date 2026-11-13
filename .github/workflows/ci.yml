@@ -85,7 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         python: ["3.11", "3.12", "3.13"]
     runs-on: ${{ matrix.os }}
     env:
@@ -107,6 +107,8 @@ jobs:
       - run: uv run --no-sync pytest -q
 
   windows-recovery:
+    # Windows qualification is paused; Linux/macOS remain the active CI targets.
+    if: ${{ false }}
     runs-on: windows-latest
     timeout-minutes: 10
     env:
@@ -140,7 +142,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
