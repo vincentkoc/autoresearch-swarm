@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep continuous search watchers running across retryable controller query outages,
+  with paced fresh-state reads. Preserve explicit stops for uncertain command delivery
+  and non-retryable errors; expose the original retryability in one-shot results.
+
 - Pause Windows CI and native qualification; retain Linux/macOS checks and all
   test assertions unchanged.
 

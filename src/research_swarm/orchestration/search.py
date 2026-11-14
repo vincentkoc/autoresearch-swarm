@@ -61,6 +61,7 @@ class SearchDriverResult(VersionedRecord):
     evidence_ids: tuple[ID, ...] = ()
     actions: tuple[SearchProgress, ...] = Field(default=(), max_length=128)
     error_code: ErrorCode | None = None
+    retryable: bool = False
 
 
 class SearchDriver:
@@ -376,6 +377,7 @@ class SearchDriver:
                     reason=error.message,
                     actions=tuple(completed),
                     error_code=error.code,
+                    retryable=error.retryable,
                 )
         return SearchDriverResult(
             campaign_id=self.campaign_id,
@@ -418,7 +420,8 @@ class SearchDriver:
         }
         while not stop.is_set():
             result = await self.advance_async(max_steps=max_steps)
-            if result.state not in continuing:
+            retry_query = result.state == "transport_unavailable" and result.retryable
+            if result.state not in continuing and not retry_query:
                 return result
             with suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=poll_seconds)

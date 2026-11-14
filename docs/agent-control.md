@@ -539,9 +539,15 @@ The returned `actions` describe only the last pass. Durable events retain earlie
 transitions, including rejected trials that led to the next proposal.
 
 The loop continues across execution/evaluation/proposal waits, revision contention
-and pass limits. It returns on pause, terminal policy state, review, budget or target
-boundaries, uncertain delivery, or unavailable transport. Resolve those boundaries
-explicitly before starting it again; uncertain commands are not blindly replayed.
+and pass limits. Retryable query transport failures also wait for the configured
+poll interval, then start a fresh durable-state read. This keeps temporary controller
+outages from ending the watcher. The one-shot result preserves the transport error
+and its `retryable` flag.
+
+The loop returns on pause, terminal policy state, review, budget or target boundaries,
+uncertain delivery, or non-retryable transport errors. Resolve those boundaries
+explicitly before starting it again; even retryable uncertain commands are not
+blindly replayed.
 This runner does not invent hypotheses, launch providers, or replace worker loops.
 
 
