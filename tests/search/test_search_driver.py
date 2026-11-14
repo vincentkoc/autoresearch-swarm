@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from starlette.types import Message, Receive, Scope, Send
 
 from research_swarm.api.http import create_app
 from research_swarm.client import LocalTransport, ResearchClient
@@ -589,3 +590,75 @@ async def test_continuous_driver_requests_next_candidate_after_negative_result(
     finally:
         stop.set()
         await asyncio.wait_for(task, 10)
+
+
+@pytest.mark.parametrize("pipeline", [{"limits": PROPOSAL_LIMITS}], indirect=True)
+@pytest.mark.parametrize("lost_ack", [False, True])
+async def test_watch_recovers_http_query_timeout_but_stops_on_lost_command_ack(
+    pipeline: Pipeline, monkeypatch: pytest.MonkeyPatch, lost_ack: bool
+) -> None:
+    # Use a real HTTP connection: withhold one response until the client times out.
+    # In the command case the mutation has already committed before its ack is lost.
+    principal, _, _ = proposer(pipeline)
+    if lost_ack:
+        evaluate(pipeline, pipeline.trial)
+    budget_before = pipeline.client.budget(pipeline.campaign["id"])
+    credential = pipeline.runtime.credentials.issue(
+        pipeline.runtime.principal(), pipeline.runtime.principal()
+    )
+    app = create_app(pipeline.runtime.service, pipeline.runtime.credentials)
+    release = threading.Event()
+    held = False
+
+    async def hold_first_response(scope: Scope, receive: Receive, send: Send) -> None:
+        async def gated(message: Message) -> None:
+            nonlocal held
+            selected = scope["path"].startswith("/v1/commands/") if lost_ack else True
+            if selected and message["type"] == "http.response.start" and not held:
+                held = True
+                assert await asyncio.to_thread(release.wait, 5)
+            await send(message)
+
+        await app(scope, receive, gated)
+
+    with (
+        serving(hold_first_response) as url,
+        ResearchClient.connect(url, credential.token, timeout=0.2) as remote,
+    ):
+        driver = SearchDriver(
+            remote,
+            pipeline.campaign["id"],
+            GreedyConfiguration(proposer_id=principal.id, baseline_trial_id=pipeline.trial["id"]),
+        )
+        states = []
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        advance = driver.advance
+
+        def observe(*, max_steps: int) -> Any:
+            result = advance(max_steps=max_steps)
+            states.append(result.state)
+            if result.error_code is not None:
+                assert result.retryable
+                release.set()
+            if result.state == "awaiting_execution":
+                loop.call_soon_threadsafe(stop.set)
+            return result
+
+        monkeypatch.setattr(driver, "advance", observe)
+        try:
+            result = await asyncio.wait_for(driver.run_async(stop, poll_seconds=0.01), 10)
+        finally:
+            release.set()
+    assert held
+    if lost_ack:
+        assert states == ["delivery_uncertain"]
+        assert result.state == "delivery_uncertain"
+        assert result.actions == ()  # No acknowledged action; preserve the uncertainty.
+        assert len(pipeline.client.list(RecordQuery(kind="promotion"))["items"]) == 1
+        assert pipeline.client.list(RecordQuery(kind="proposal_request"))["items"] == []
+    else:
+        assert states == ["transport_unavailable", "awaiting_execution"]
+        assert result.state == "stopped"
+        assert pipeline.client.list(RecordQuery(kind="promotion"))["items"] == []
+    assert pipeline.client.budget(pipeline.campaign["id"]) == budget_before

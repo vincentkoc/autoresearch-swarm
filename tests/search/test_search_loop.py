@@ -5,6 +5,7 @@ import threading
 
 import pytest
 
+from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from research_swarm.orchestration.search import SearchDriver, SearchDriverResult
 
@@ -67,6 +68,7 @@ async def test_boundaries_return_without_retry(
         "awaiting_confirmation",
         "step_limit",
         "contended",
+        "transport_unavailable",
     ],
 )
 async def test_wait_states_are_paced_and_stop_is_prompt(
@@ -79,7 +81,9 @@ async def test_wait_states_are_paced_and_stop_is_prompt(
     def advance(*, max_steps: int) -> SearchDriverResult:
         calls.append(max_steps)
         loop.call_soon_threadsafe(entered.set)
-        return SearchDriverResult(campaign_id=driver.campaign_id, state=state, reason="waiting")
+        return SearchDriverResult(
+            campaign_id=driver.campaign_id, state=state, reason="waiting", retryable=True
+        )
 
     monkeypatch.setattr(driver, "advance", advance)
     stop = asyncio.Event()
@@ -170,3 +174,56 @@ def test_cli_watch_routes_to_continuous_driver(
         arguments += ["--watch", "--poll-seconds", "0.05"]
     assert _execute(client, parser().parse_args(arguments)) == result.model_dump(mode="json")
     assert calls == ([("watch", 2, 0.05)] if watch else [("once", 2)])
+
+
+@pytest.mark.parametrize("retryable", [False, True])
+async def test_uncertain_delivery_stops_even_when_retryable(
+    driver: SearchDriver, monkeypatch: pytest.MonkeyPatch, retryable: bool
+) -> None:
+    calls = []
+
+    def plan() -> None:
+        calls.append("plan")
+        raise ResearchError(
+            ErrorCode.DELIVERY_UNCERTAIN, "Mutation acknowledgment lost", retryable=retryable
+        )
+
+    monkeypatch.setattr(driver, "plan", plan)
+    result = await driver.run_async(asyncio.Event(), poll_seconds=0.01)
+    assert result.state == "delivery_uncertain"
+    assert result.error_code == ErrorCode.DELIVERY_UNCERTAIN
+    assert result.retryable is retryable
+    assert calls == ["plan"]
+
+
+async def test_retryable_query_errors_recover_but_one_shot_still_reports_failure(
+    driver: SearchDriver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+
+    def plan() -> None:
+        calls.append("plan")
+        raise ResearchError(
+            ErrorCode.TRANSPORT_UNAVAILABLE, "Controller query failed", retryable=True
+        )
+
+    monkeypatch.setattr(driver, "plan", plan)
+    result = driver.advance()
+    assert result.state == "transport_unavailable"
+    assert result.error_code == ErrorCode.TRANSPORT_UNAVAILABLE
+    assert result.retryable
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def recovering_plan() -> None:
+        if len(calls) < 3:
+            plan()
+        loop.call_soon_threadsafe(stop.set)
+        plan()
+
+    monkeypatch.setattr(driver, "plan", recovering_plan)
+    result = await asyncio.wait_for(driver.run_async(stop, poll_seconds=0.01), 2)
+    assert result.state == "stopped"
+    assert result.error_code == ErrorCode.TRANSPORT_UNAVAILABLE
+    assert result.retryable
+    assert calls == ["plan"] * 4
