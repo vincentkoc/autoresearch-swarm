@@ -277,6 +277,110 @@ async def test_stop_drains_owned_execution_and_keeps_driver_lock_until_completio
         assert connected.worker.resources.availability() == {"cpu": 1}
 
 
+@pytest.mark.parametrize("boundary", ["before_launch", "after_native_closure"])
+async def test_unexpected_attempt_failure_is_contained_and_retried_on_the_same_worker(
+    pipeline: Pipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    with (
+        serving(create_app(pipeline.runtime.service, pipeline.runtime.credentials)) as url,
+        enrollment(pipeline, tmp_path / "remote", url) as connected,
+    ):
+        worker = connected.worker
+        execute, publish = worker.execute, worker._publish
+        loop = asyncio.get_running_loop()
+        retried = asyncio.Event()
+        calls: list[str] = []
+        published: list[str] = []
+        heartbeats = 0
+        command = worker.client.command
+
+        def counted(name: str, *args: Any, **kwargs: Any) -> Any:
+            nonlocal heartbeats
+            if name == "worker.heartbeat":
+                heartbeats += 1
+            return command(name, *args, **kwargs)
+
+        def fail_once(identifier: str) -> Any:
+            calls.append(identifier)
+            if boundary == "before_launch" and len(calls) == 1:
+                raise OSError("Synthetic local preparation failure")
+            result = execute(identifier)
+            if len(calls) >= 2:
+                loop.call_soon_threadsafe(retried.set)
+            return result
+
+        def lose_publication(entry: Any) -> Any:
+            published.append(entry.dispatch.attempt_id)
+            if len(published) == 1:
+                raise OSError("Synthetic local evidence write failure")
+            return publish(entry)
+
+        monkeypatch.setattr(worker.client, "command", counted)
+        monkeypatch.setattr(worker, "execute", fail_once)
+        if boundary == "after_native_closure":
+            monkeypatch.setattr(worker, "_publish", lose_publication)
+        driver = ScopedWorkerDriver(connected, poll_ms=50, maximum_backoff_ms=100)
+        task = asyncio.create_task(driver.run())
+        try:
+            await driver_gate(
+                retried, task, timeout=30, message="Failed attempt was not retried in place"
+            )
+        finally:
+            driver.stop.set()
+            result = await asyncio.wait_for(task, timeout=30)
+        assert result.state == "stopped" and result.observation_count == 1
+        assert len(set(calls)) == 1 and len(calls) == 2
+        assert heartbeats > 0
+        entry = worker.journal.get(calls[0])
+        assert entry.state == JournalState.CLOSED
+        if boundary == "after_native_closure":
+            # The retry publishes the original native closure; it never relaunches.
+            assert entry.native is not None and len(published) == 2
+        attempt = pipeline.client.get("attempt", calls[0])
+        assert attempt["data"]["publication_status"] == "accepted"
+        assert worker.resources.availability() == {"cpu": 1}
+
+
+async def test_one_shot_reports_contained_local_failure_without_raising(
+    pipeline: Pipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with (
+        serving(create_app(pipeline.runtime.service, pipeline.runtime.credentials)) as url,
+        enrollment(pipeline, tmp_path / "remote", url) as connected,
+    ):
+
+        def broken(identifier: str) -> Any:
+            raise ValueError("Synthetic local observer failure")
+
+        monkeypatch.setattr(connected.worker, "execute", broken)
+        result = await ScopedWorkerDriver(connected, poll_ms=50).run(once=True)
+        assert result.state == "blocked" and result.observation_count == 0
+        (attempt,) = (
+            finding.split(":", 1)[1]
+            for finding in result.findings
+            if finding.startswith("EXECUTION_UNKNOWN:")
+        )
+        assert "LOCAL_FAILURE:" + attempt + ":ValueError" in result.findings
+
+
+@pytest.mark.parametrize("code", [ErrorCode.AUTHORIZATION_DENIED, ErrorCode.STALE_FENCE])
+async def test_attempt_authority_loss_still_stops_the_driver(
+    pipeline: Pipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: ErrorCode
+) -> None:
+    with (
+        serving(create_app(pipeline.runtime.service, pipeline.runtime.credentials)) as url,
+        enrollment(pipeline, tmp_path / "remote", url) as connected,
+    ):
+
+        def revoked(identifier: str) -> Any:
+            raise ResearchError(code, "Synthetic authority loss")
+
+        monkeypatch.setattr(connected.worker, "execute", revoked)
+        with pytest.raises(ResearchError) as raised:
+            await ScopedWorkerDriver(connected, poll_ms=50).run()
+        assert raised.value.code == code
+
+
 async def test_cancelled_control_call_keeps_ownership_until_its_durable_reply_is_recorded(
     pipeline: Pipeline, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

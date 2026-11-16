@@ -399,6 +399,7 @@ class ScopedWorkerDriver:
         recent: deque[str] = deque(maxlen=50)
         observations, backoff_ms = 0, self.poll_ms
         findings: set[str] = set()
+        failures: dict[str, str] = {}
         disconnected = False
         try:
             self._identity()
@@ -428,6 +429,7 @@ class ScopedWorkerDriver:
                     except ResearchError as error:
                         if error.code in {ErrorCode.AUTHORIZATION_DENIED, ErrorCode.STALE_FENCE}:
                             raise
+                        failures.pop(identifier, None)
                         deferred[identifier] = error.code
                         retry_at[identifier] = (
                             asyncio.get_running_loop().time() + self.maximum_backoff_ms / 1000
@@ -435,6 +437,16 @@ class ScopedWorkerDriver:
                         recovery_fences.add(identifier)
                         if error.code in TRANSIENT_DELIVERY:
                             disconnected = True
+                    except Exception as error:
+                        # An unexpected local failure belongs to this attempt only. Keep
+                        # heartbeats and owned siblings running; the journal fence holds
+                        # new admission until the exact attempt is reconciled and retried.
+                        deferred[identifier] = ErrorCode.EXECUTION_UNKNOWN
+                        retry_at[identifier] = (
+                            asyncio.get_running_loop().time() + self.maximum_backoff_ms / 1000
+                        )
+                        recovery_fences.add(identifier)
+                        failures[identifier] = type(error).__name__
                     else:
                         observations += 1
                         recent.append(identifier)
@@ -461,6 +473,7 @@ class ScopedWorkerDriver:
                             capacity_released = True
                             recovery_fences.discard(identifier)
                             retry_at.pop(identifier, None)
+                            failures.pop(identifier, None)
                 if capacity_released:
                     deferred = {
                         key: code
@@ -474,6 +487,11 @@ class ScopedWorkerDriver:
                         del deferred[identifier]
                         retry_at.pop(identifier, None)
                 findings = {code.value + ":" + identifier for identifier, code in deferred.items()}
+                findings.update(
+                    "LOCAL_FAILURE:" + identifier + ":" + name
+                    for identifier, name in failures.items()
+                    if identifier in deferred
+                )
                 if not self.stop.is_set():
                     try:
                         await self._schedule(intents, active, deferred, recovery_fences, findings)

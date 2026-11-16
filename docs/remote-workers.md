@@ -166,6 +166,16 @@ an in-flight failure becomes visible remains reserved for recovery. Other worker
 retain their independent authority and resource accounting. Clock or lease expiry
 never substitutes for native closure.
 
+A failed stage, observation, or publication step affects only its own attempt.
+An unexpected local exception while executing or publishing one attempt (for
+example an `OSError` writing evidence) is recorded as
+`EXECUTION_UNKNOWN:<attempt>` plus `LOCAL_FAILURE:<attempt>:<exception type>`.
+The driver keeps heartbeats and owned siblings running and fences new admission,
+then retries that exact attempt on the same worker after backoff. The retry
+reconciles the journal: it publishes an existing native closure instead of
+launching again. Only authority loss (`AUTHORIZATION_DENIED`, `STALE_FENCE`),
+non-retryable control failures, or an explicit stop end a persistent driver.
+
 `driver.stop.set()` stops new scheduling and drains already launched native work.
 Cancellation of the run task also retains its owner lock until outstanding control
 calls and execution threads finish. A control call accepted during cancellation
