@@ -7,6 +7,9 @@
   `LOCAL_FAILURE` findings, fences admission, and retries the exact attempt on the
   same worker. Authority loss still stops the driver.
 
+- Remove the unused `evidence_receipt` helper and `DeadlinePolicy` model, and the
+  disabled Windows CI jobs. Windows runtime code stays; qualification remains paused.
+
 - Keep continuous search watchers running across retryable controller query outages,
   with paced fresh-state reads. Preserve explicit stops for uncertain command delivery
   and non-retryable errors; expose the original retryability in one-shot results.
