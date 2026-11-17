@@ -123,11 +123,6 @@ class BudgetEntry(Record):
     reason: str
 
 
-class DeadlinePolicy(Record):
-    wall_limit_ms: int = Field(strict=True, gt=0)
-    pause_counts: bool = True
-
-
 class Reservation(Record):
     id: ID = Field(default_factory=new_id)
     campaign_id: ID

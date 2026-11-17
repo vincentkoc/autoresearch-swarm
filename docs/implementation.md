@@ -3,6 +3,12 @@
 This is the completion ledger for the design contract. Pending means unproven,
 not implicitly supported.
 
+Windows CI and native Windows qualification are paused. Continuous CI covers
+Linux and macOS only. The Windows results below are historical and bound to
+their recorded commits. They do not qualify later revisions. Windows runtime code
+and its platform-gated tests remain in the tree. Re-enabling qualification means
+restoring a Windows workflow from Git history and recording a fresh run.
+
 The [native clock and cleanup qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41284221451)
 passed all nine Linux/macOS/Windows and Python 3.11–3.13 cells at
 `a5d2fb2f6e945741124044f8341acaa94b4fc8d2`. Each Linux/macOS cell passed

@@ -106,38 +106,6 @@ jobs:
       - run: uv run --no-sync mypy src
       - run: uv run --no-sync pytest -q
 
-  windows-recovery:
-    # Windows qualification is paused; Linux/macOS remain the active CI targets.
-    if: ${{ false }}
-    runs-on: windows-latest
-    timeout-minutes: 10
-    env:
-      UV_PYTHON: "3.13.17"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Verify proof source
-        shell: pwsh
-        run: |
-          $expected = '${{ github.event.pull_request.head.sha || github.sha }}'
-          $actual = git rev-parse HEAD
-          if ($actual -ne $expected) { throw "Proof checkout differs from event source" }
-          Write-Output "proof_source=$actual"
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.13.17"
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-      - run: uv sync --locked --group dev --python 3.13.17
-      - name: Verify proof interpreter
-        run: uv run --no-sync python -c "import sys; print('proof_python=' + sys.version); assert sys.version_info[:3] == (3, 13, 17)"
-      - name: Qualify native restart and offline cancellation
-        run: >-
-          uv run --no-sync pytest -q
-          tests/workers/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
-          tests/projects/test_manifest.py::test_absent_reactive_declaration_preserves_legacy_hashes_and_nested_wire
-          tests/reactive/test_cpu_example.py
-
   package:
     strategy:
       fail-fast: false

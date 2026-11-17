@@ -116,18 +116,6 @@ def verify_upload(
     return receipt, data, row, upload, attempt
 
 
-def evidence_receipt(
-    transaction: Transaction,
-    intent: WorkerOutputIntent,
-    reference: ArtifactRef,
-) -> WorkerUploadData:
-    """Require a completed transfer for this exact attempt, role, and canonical reference."""
-    worker, attempt = historical_attempt_owner(
-        transaction, intent.worker_id, intent.session_id, intent.attempt_id
-    )
-    return verify_evidence_receipt(transaction, intent, reference, worker, attempt)
-
-
 def verify_evidence_receipt(
     transaction: Transaction,
     intent: WorkerOutputIntent,
