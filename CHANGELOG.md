@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Contain unexpected local failures to one attempt in `ScopedWorkerDriver`. The
+  driver keeps heartbeats and sibling work running, reports `EXECUTION_UNKNOWN` and
+  `LOCAL_FAILURE` findings, fences admission, and retries the exact attempt on the
+  same worker. Authority loss still stops the driver.
+
 - Keep continuous search watchers running across retryable controller query outages,
   with paced fresh-state reads. Preserve explicit stops for uncertain command delivery
   and non-retryable errors; expose the original retryability in one-shot results.
