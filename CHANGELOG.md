@@ -81,6 +81,7 @@
 
 - Dispatch tagged SkyPilot managed jobs across multiple locations. A lost spot
   attempt requeues with on-demand placement inside the campaign retry budget.
+  AWS placements name each eligible region for scoped resource cleanup.
 
 - Add a layout selector for connected clusters, category groups and a symmetric
   ring plus a broad spread-out force view, retaining filters, selection and recorded ancestry across layout changes.

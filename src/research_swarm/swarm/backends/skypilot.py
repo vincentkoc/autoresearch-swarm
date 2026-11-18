@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 import shlex
 import shutil
 import tempfile
@@ -83,14 +84,20 @@ class SkyPilotBackend:
             raise ValueError("idle, poll and startup intervals must be positive")
         self.inventory = Inventory(state)
         self.cli = SkyCLI(sky)
-        self.placements = list(placements)
-        self.aws_regions = sorted(
-            {
-                parts[1]
-                for p in placements
-                if (parts := p.split("/"))[0] == "aws" and len(parts) >= 2
-            }
-        )
+        self.placements = []
+        aws_regions: set[str] = set()
+        for placement in placements:
+            cloud, _, location = placement.partition("/")
+            if not re.fullmatch(r"[A-Za-z][\w-]*", cloud):
+                raise ValueError("specify a named cloud for each SkyPilot placement")
+            if cloud.lower() == "aws":
+                region = location.split("/", 1)[0]
+                if not re.fullmatch(r"[a-z0-9-]+", region):
+                    raise ValueError("specify an AWS region so campaign gc can find its resources")
+                aws_regions.add(region)
+                placement = f"aws/{location}"
+            self.placements.append(placement)
+        self.aws_regions = sorted(aws_regions)
         self.accelerators, self.setup, self.data = accelerators, setup, data
         self.device = device or ("cuda" if accelerators else "cpu")
         self.python = python

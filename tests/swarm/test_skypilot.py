@@ -97,6 +97,19 @@ def campaign(root: Path) -> tuple[CampaignSpec, Trial]:
     return spec, trial
 
 
+def test_gc_inventory_requires_concrete_aws_regions(tmp_path: Path) -> None:
+    for placement in ("aws", "aws/*/us-west-2a", "AWS/us-*/spot", "*/us-west-2"):
+        with pytest.raises(ValueError, match="AWS region|named cloud"):
+            SkyPilotBackend(state=tmp_path, placements=[placement], max_workers=1)
+    backend = SkyPilotBackend(
+        state=tmp_path,
+        placements=["AWS/us-west-2/*", "aws/us-west-2", "gcp/us-central1"],
+        max_workers=1,
+    )
+    assert backend.aws_regions == ["us-west-2"]
+    assert backend.placements == ["aws/us-west-2/*", "aws/us-west-2", "gcp/us-central1"]
+
+
 @pytest.mark.parametrize("first_status", ["RECOVERING", "FAILED_NO_RESOURCE", "FAILED_CONTROLLER"])
 async def test_managed_job_loss_requeues_on_demand_and_preserves_trial(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first_status: str
