@@ -17,8 +17,7 @@ import pytest
 from mcp import Client, StdioServerParameters
 
 from scripts.release import digest, prebuilt_wheel, source_identity
-from tests.api.test_cli_mcp import process_environment
-from tests.integration.test_agent_research_cycle import command, context, record, tool
+from tests.api.test_cli_mcp import command, context, process_environment, record, tool
 from tests.paths import REPO_ROOT
 
 pytestmark = pytest.mark.skipif(

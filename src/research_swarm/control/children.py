@@ -54,15 +54,11 @@ def charge_trial(
     campaign: CampaignData,
     campaign_id: str,
     trial_id: str,
-    *,
-    consuming_proposal_id: str | None = None,
 ) -> None:
     if not any(item.dimension == "trial_admissions" for item in campaign.contract.limits):
         return
     amounts = {"trial_admissions": Decimal(1)}
-    require_funded_trials(
-        transaction, campaign_id, campaign, Decimal(1), consuming_proposal_id=consuming_proposal_id
-    )
+    require_funded_trials(transaction, campaign_id, campaign, Decimal(1))
     reservation = BudgetLedger.reserve(transaction, campaign_id, trial_id, amounts)
     BudgetLedger.settle(transaction, reservation.id, new_id(), amounts)
 

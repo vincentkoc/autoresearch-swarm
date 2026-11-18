@@ -44,6 +44,32 @@ def stdio(state: Path, *arguments: str) -> StdioServerParameters:
     )
 
 
+async def tool(agent: Client, name: str, **arguments: Any) -> dict[str, Any]:
+    response = await agent.call_tool("research_" + name, arguments)
+    assert not response.is_error, response.structured_content
+    assert response.structured_content is not None
+    return dict(response.structured_content)
+
+
+async def command(
+    agent: Client, operation: str, request: dict[str, Any], key: str, revision: int | None = None
+) -> dict[str, Any]:
+    arguments: dict[str, Any] = {"request": request, "idempotency_key": key}
+    if revision is not None:
+        arguments["expected_revision"] = revision
+    return await tool(agent, operation.replace(".", "_"), **arguments)
+
+
+async def record(agent: Client, kind: str, identifier: str) -> dict[str, Any]:
+    return (await tool(agent, "get_record", kind=kind, identifier=identifier, detail=True))[
+        "result"
+    ]
+
+
+async def context(agent: Client, campaign_id: str) -> dict[str, Any]:
+    return (await tool(agent, "get_context", campaign_id=campaign_id))["result"]
+
+
 async def test_cli_mcp_and_sdk_share_durable_commands(
     research: ResearchFixture, tmp_path: Path
 ) -> None:

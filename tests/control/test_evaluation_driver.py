@@ -12,22 +12,17 @@ from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.commands import PauseCampaign, SubmitTrial
 from research_swarm.control.models import SearchConfiguration
 from research_swarm.control.queries import RecordQuery
-from research_swarm.control.search_models import RespondToProposal
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
 from research_swarm.orchestration.evaluation import EvaluationDriver
 from research_swarm.orchestration.scoped import ScopedWorkerDriver
-from research_swarm.orchestration.search import SearchDriver
 from research_swarm.runtime import write_private
-from research_swarm.search.greedy import GreedyConfiguration
 from tests.api.test_cli_mcp import cli
 from tests.control.test_confirmation import create_plan, options, setup_plan
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.orchestration.test_http_delivery import serving
-from tests.search.test_proposals import PROPOSAL_LIMITS, proposer
-from tests.search.test_search_admission import changed_source
 from tests.workers.test_scoped_driver import enrollment
 
 
@@ -89,7 +84,7 @@ def test_missing_campaign_is_not_reported_as_an_idle_scan(pipeline: Pipeline) ->
 
 @pytest.mark.parametrize(
     "pipeline",
-    [{"limits": PROPOSAL_LIMITS, "source_learning_rate": 0.0}],
+    [{"source_learning_rate": 0.0}],
     indirect=True,
 )
 async def test_http_control_and_distinct_evaluator_complete_an_independent_research_cycle(
@@ -124,44 +119,6 @@ async def test_http_control_and_distinct_evaluator_complete_an_independent_resea
             controller.get("campaign", pipeline.campaign["id"])["data"]["incumbent_candidate_id"]
             is None
         )
-        agent_identity, agent, _ = proposer(pipeline)
-        operator_token = pipeline.runtime.credentials.issue(
-            pipeline.runtime.principal(),
-            pipeline.runtime.principal(),
-        ).token
-        with ResearchClient.connect(url, operator_token) as operator:
-            search = SearchDriver(
-                operator,
-                pipeline.campaign["id"],
-                GreedyConfiguration(
-                    proposer_id=agent_identity.id,
-                    baseline_trial_id=pipeline.trial["id"],
-                ),
-            )
-            request = search.advance()
-            assert request.state == "awaiting_proposal"
-            agent.command(
-                "search.respond",
-                RespondToProposal(
-                    request_id=request.evidence_ids[0],
-                    outcome="candidate",
-                    source_artifact=changed_source(pipeline, tmp_path),
-                    hypothesis="Train a nonzero optimizer with independent evaluation control",
-                ),
-                idempotency_key="independent-cycle-response",
-            )
-            assert search.advance().state == "awaiting_execution"
-            assert (await ScopedWorkerDriver(connected).run(once=True)).observation_count == 1
-            assert len(driver.advance().actions) == 1
-            assert (await ScopedWorkerDriver(connected).run(once=True)).observation_count == 1
-            assert len(driver.advance().actions) == 1
-            progressed = search.advance()
-            assert progressed.state == "awaiting_proposal"
-            assert (
-                operator.get("campaign", pipeline.campaign["id"])["data"]["incumbent_revision"] == 2
-            )
-            assert len(operator.list(RecordQuery(kind="attempt"))["items"]) == 4
-            assert len(operator.list(RecordQuery(kind="observation_consumption"))["items"]) == 1
 
 
 @pytest.mark.parametrize(

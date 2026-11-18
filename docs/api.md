@@ -51,7 +51,6 @@ bodies are rejected. The command body limit is 1 MiB.
 | Route | Result |
 |---|---|
 | `GET /v1/records/{kind}/{id}` | One authorized public research record |
-| `POST /v1/proposal/get` | Assigned proposal and optional immutable response under `proposal.respond` |
 | `POST /v1/query` | Up to 100 summarized records and an opaque next cursor |
 | `GET /v1/campaigns` | Workspace-scoped campaign list; `limit` (1–100) and opaque `cursor` |
 | `GET /v1/campaigns/{id}/snapshot` | Read-only bounded campaign evidence; no report or event writes |

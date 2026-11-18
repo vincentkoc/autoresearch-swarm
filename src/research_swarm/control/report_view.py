@@ -661,23 +661,30 @@ def render_report_html(
             f"<span class=number>{point.value:.6g}</span></div>"
             for point in reversed(run.points)
         )
-        proposals, proposal_scope = _page(research, "proposals")
-        proposal_rows = "".join(
-            f"<li><code>{_e(row.get('id', 'unknown'))}</code> · "
-            f"{_e(row.get('state', 'unknown'))}</li>"
-            for row in proposals
-        )
+        proposal_details = ""
+        activity_title = "All captured trials"
+        if "proposals" in research:
+            # Archived controller reports may include their original proposal history.
+            proposals, proposal_scope = _page(research, "proposals")
+            proposal_rows = "".join(
+                f"<li><code>{_e(row.get('id', 'unknown'))}</code> · "
+                f"{_e(row.get('state', 'unknown'))}</li>"
+                for row in proposals
+            )
+            proposal_details = (
+                f"<h3>Proposal actions</h3><small>{_e(proposal_scope)}; "
+                f"states only, timestamps unavailable.</small><ul>{proposal_rows}</ul>"
+            )
+            activity_title += " &amp; proposal actions"
         activity.append(
             f"<div data-run='{index}'"
             + (" hidden>" if index else ">")
             + f"{observations}<details class=scope>"
-            "<summary>All captured trials &amp; proposal actions</summary>"
+            f"<summary>{activity_title}</summary>"
             f"<p class=muted>Chronological commit times, not causal agent attribution.</p>"
             f"<h3>All captured trials</h3><small>{_e(trial_scope)}</small>"
             "<table><thead><tr><th>Trial</th><th>Execution</th><th>Evaluation</th></tr></thead>"
-            f"<tbody>{trial_rows}</tbody></table><h3>Proposal actions</h3>"
-            f"<small>{_e(proposal_scope)}; states only, timestamps unavailable.</small>"
-            f"<ul>{proposal_rows}</ul></details></div>"
+            f"<tbody>{trial_rows}</tbody></table>{proposal_details}</details></div>"
         )
     script_hash = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
     selectors = "".join(

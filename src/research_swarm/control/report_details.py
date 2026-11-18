@@ -330,9 +330,7 @@ def research_details(
     candidates = projection.page("candidate", candidate, pinned=pinned)
     trials = projection.page("trial", trial, pinned=tuple(dict.fromkeys(pinned_trials)))
     attempts = projection.page("attempt", attempt)
-    proposals = projection.page("proposal_request", summarize)
     promotions = projection.page("promotion", selection.project, pinned=pinned_promotions)
-    population = projection.page("population_member", summarize)
     reservations = projection.reservations()
     resource_counts = transaction.connection.execute(
         "SELECT kind,state,COUNT(*) AS count FROM records WHERE workspace_id=? AND campaign_id=? "
@@ -353,16 +351,6 @@ def research_details(
             questions.append(
                 {
                     "question": "Which declared evaluation requirements remain unsatisfied?",
-                    "evidence": reference(item),
-                }
-            )
-    for item in proposals["items"]:
-        if item["state"] in {"pending", "responded"}:
-            questions.append(
-                {
-                    "question": (
-                        "Does this assigned proposal require a response or admission decision?"
-                    ),
                     "evidence": reference(item),
                 }
             )
@@ -418,9 +406,7 @@ def research_details(
         "candidates": candidates,
         "trials": trials,
         "attempts": attempts,
-        "proposals": proposals,
         "promotions": promotions,
-        "population": population,
         "confirmed_cohorts": confirmed_cohorts(promotions),
         "resource_disposition": {
             "basis": "Controller-recorded custody; an omitted row is not proof of closure",
@@ -430,7 +416,7 @@ def research_details(
         "open_questions": {
             "basis": "Recorded unresolved conditions, not scientific interpretations",
             "items": questions,
-            "complete": all(page["complete"] for page in (trials, attempts, proposals)),
+            "complete": all(page["complete"] for page in (trials, attempts)),
         },
         "next_actions": {
             "basis": (

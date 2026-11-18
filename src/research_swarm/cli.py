@@ -135,7 +135,6 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--primary-metric")
     run.add_argument("--seed", type=int, default=0)
     run.add_argument("--max-trials", type=int, default=10)
-    run.add_argument("--search-policy", choices=("external", "greedy"), default="external")
     run.add_argument("--cpu-slots", type=int, default=1)
     run.add_argument("--machine-registry", type=Path)
     run.add_argument("--registration", type=Path, help="Private registered execution environment")
@@ -185,21 +184,6 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--source-revision")
         item.add_argument("--capture-timeout-seconds", type=float, default=30)
         item.add_argument("--key", required=True)
-    search = commands.add_parser("search", help="Plan or advance a bounded research loop")
-    search_actions = search.add_subparsers(dest="search_action", required=True)
-    for action in ("plan", "advance"):
-        item = search_actions.add_parser(action)
-        item.add_argument("campaign_id")
-        item.add_argument("--proposer")
-        item.add_argument("--baseline-trial")
-        item.add_argument("--first-seed", type=int)
-        item.add_argument("--instructions")
-        if action == "advance":
-            item.add_argument("--max-steps", type=int, default=32)
-            item.add_argument(
-                "--watch", action="store_true", help="Continue until stopped or a policy boundary"
-            )
-            item.add_argument("--poll-seconds", type=float, default=1.0)
     evaluation = commands.add_parser("evaluation", help="Advance independent evaluation control")
     evaluations = evaluation.add_subparsers(dest="evaluation_action", required=True)
     advance = evaluations.add_parser("advance")
@@ -209,10 +193,6 @@ def parser() -> argparse.ArgumentParser:
     advance.add_argument("--continuation-file", type=Path)
     advance.add_argument("--max-pages", type=int, default=4)
     advance.add_argument("--page-size", type=int, default=50)
-    proposal = commands.add_parser("proposal")
-    proposal_actions = proposal.add_subparsers(dest="proposal_action", required=True)
-    proposal_get = proposal_actions.add_parser("get", help="Read one assigned research request")
-    proposal_get.add_argument("request_id")
     get = commands.add_parser("get")
     get.add_argument("kind")
     get.add_argument("identifier")
@@ -328,7 +308,6 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
             primary_metric=args.primary_metric,
             seed=args.seed,
             max_trials=args.max_trials,
-            search_policy=args.search_policy,
             parallelism=args.cpu_slots,
             input_artifacts=_request(args.inputs_file) if args.inputs_file else {},
         )
@@ -343,45 +322,6 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 registration=read_registration(args.registration) if args.registration else None,
             )
         ).model_dump(mode="json")
-    if args.action == "search":
-        from research_swarm.orchestration.search import SearchDriver
-        from research_swarm.search.greedy import GreedyConfiguration
-        from research_swarm.search.portfolio import PortfolioDriverConfiguration
-
-        policy = client.get("campaign", args.campaign_id)["data"]["contract"]["search"]["policy"]
-        config: GreedyConfiguration | PortfolioDriverConfiguration
-        if policy == "portfolio":
-            if any(
-                value is not None for value in (args.proposer, args.first_seed, args.instructions)
-            ):
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID,
-                    "Portfolio proposer, seed, and instructions belong to its sealed themes",
-                )
-            config = PortfolioDriverConfiguration(baseline_trial_id=args.baseline_trial)
-        else:
-            if args.proposer is None:
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID, "Greedy search requires --proposer"
-                )
-            config = GreedyConfiguration(
-                proposer_id=args.proposer,
-                baseline_trial_id=args.baseline_trial,
-                first_seed=args.first_seed if args.first_seed is not None else 0,
-                **({"instructions": args.instructions} if args.instructions is not None else {}),
-            )
-        driver = SearchDriver(client, args.campaign_id, config)
-        if args.search_action == "plan":
-            return driver.plan().model_dump(mode="json")
-        if args.watch:
-            result = asyncio.run(
-                driver.run_async(
-                    asyncio.Event(), poll_seconds=args.poll_seconds, max_steps=args.max_steps
-                )
-            )
-        else:
-            result = driver.advance(max_steps=args.max_steps)
-        return result.model_dump(mode="json")
     if args.action == "evaluation":
         from research_swarm.orchestration.evaluation import EvaluationCursor, EvaluationDriver
 
@@ -407,10 +347,6 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 )
                 .model_dump(mode="json")
             )
-    if args.action == "proposal":
-        from research_swarm.control.search_models import ProposalRead
-
-        return client.proposal_get(ProposalRead(request_id=args.request_id))
     if args.action == "worker":
         if args.worker_action == "provision":
             from research_swarm.workers.remote_enrollment import WorkerDescription, provision_worker

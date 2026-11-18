@@ -11,13 +11,17 @@
   and `campaign.close_resources`. New swarm campaigns persist the selected trial
   and its score as the loop runs. Historical completion reports remain readable.
 
+- Retire the serial greedy and portfolio controller planners, their search and
+  population commands, and assigned proposal reads. Run campaigns with
+  `research swarm run`. Set `max_workers: 1` and `top_k: 1` for sequential
+  selection within a fixed trial budget. Existing report snapshots remain readable.
+
 - Run the GitHub CI workflow on manual dispatch. Pull requests use the local merge gate.
 
 - **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
   subsystem: the 13 `learning.*` commands, their scopes, record kinds and MCP tools,
   and the `learning_cycle` and `cpu_policy_learning` examples. No real research run
-  used it. Ordinary proposals, trial submission, search and the planner comparison in
-  `examples/policy_benchmark` are unchanged.
+  used it.
 
 - Contain unexpected local failures to one attempt in `ScopedWorkerDriver`. The
   driver keeps heartbeats and sibling work running, reports `EXECUTION_UNKNOWN` and
