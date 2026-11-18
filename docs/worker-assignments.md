@@ -202,3 +202,12 @@ the hard deadline. Cancellation and native closure are recorded in the worker jo
 Deployments that used calibrated enrollment or signed time require a fresh controller
 state directory and fresh worker state directories. Preserve the existing database
 and journals with their original software version for historical inspection.
+
+## Signing providers
+
+Assignment codecs define the canonical bytes and bind them to the authority and
+key identifier. The default Ed25519 provider uses native `cryptography`.
+Pass `crypto_provider=` to `ResearchService` or an assignment codec to use a
+different synchronous provider. Public keys are 32 bytes and signatures are 64
+bytes. Verification returns a boolean. Invalid output or provider failure raises
+`CryptoProviderError` and stops the operation.

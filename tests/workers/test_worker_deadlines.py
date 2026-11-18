@@ -99,7 +99,7 @@ def test_launch_cap_is_rechecked_after_held_callback_independently_of_hard_cap(
 def test_lock_wait_consumes_the_local_launch_deadline(tmp_path, monkeypatch, phase):
     from research_swarm.domain.types import new_id
     from research_swarm.workers.contracts import NativeIdentity
-    from tests.workers.test_worker_journal import dispatch
+    from tests.worker_support import dispatch
 
     verified, invocation = dispatch(tmp_path)
     journal = WorkerJournal(tmp_path / "journal.sqlite")
