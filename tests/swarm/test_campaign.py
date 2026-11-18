@@ -67,6 +67,8 @@ os.execv(sys.executable, [sys.executable, workload])
         (selected,) = conn.execute("SELECT selected_trial_id FROM swarm_campaigns").fetchone()
         assert selected == winner["result"]["attempt"]["trial"]["trial_id"]
         events = conn.execute("SELECT count(*) FROM swarm_events").fetchone()
+        # Queues written before explicit evaluation modes still resume as direct-metric smoke runs.
+        conn.execute("UPDATE swarm_campaigns SET spec=json_remove(spec,'$.evaluation_mode')")
     replay = subprocess.run(args, capture_output=True, text=True, timeout=30, env=env, check=True)
     assert json.loads(replay.stdout) == summary
     with sqlite3.connect(db) as conn:

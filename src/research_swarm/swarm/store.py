@@ -162,7 +162,15 @@ class SQLiteStore:
             )
             if insert.rowcount:
                 _event(db, spec.campaign_id, "created")
-            elif _json(asdict(CampaignSpec(**_spec(db, spec.campaign_id)))) != encoded:
+                return
+            saved = _spec(db, spec.campaign_id)
+            if "evaluation_mode" not in saved:
+                # Earlier queues recorded the policy and panel names instead of the mode.
+                panels = ("panel_policy", "search_panel", "selection_panel", "confirmation_panel")
+                saved["evaluation_mode"] = (
+                    "calibrated" if any(saved.get(p) for p in panels) else "smoke"
+                )
+            if _json(asdict(CampaignSpec(**saved))) != encoded:
                 raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
 
     def submit(self, trial: Trial) -> bool:
