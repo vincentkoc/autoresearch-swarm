@@ -161,12 +161,6 @@ class R2BlobStore:
             )
         return StoredBlob(reference=upload.reference(), generation=upload.id)
 
-    @contextmanager
-    def upload_guard(self, workspace_id: str, upload_id: str) -> Iterator[None]:
-        self._workspace(workspace_id)
-        with self.local.upload_guard(workspace_id, upload_id):
-            yield
-
     def begin(self, upload: UploadSpec) -> int:
         blob = self._upload(upload)
         with self._operation(upload.workspace_id, blob):

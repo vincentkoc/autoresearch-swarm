@@ -18,7 +18,7 @@ from research_swarm.control.report_plot import (
     project_hill_climb,
 )
 from research_swarm.domain.experiments import MetricDefinition
-from research_swarm.state.database import JsonObject
+from research_swarm.domain.types import JsonObject
 
 _STYLE = """
 :root{color-scheme:light;--paper:#fafaf8;--ink:#21272a;--muted:#7e8588;--line:#e9eae8;

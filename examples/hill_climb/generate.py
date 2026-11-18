@@ -8,7 +8,7 @@ from research_swarm.api.campaign_ui import campaign_shell
 from research_swarm.control.report_plot import render_hill_climb_svg
 from research_swarm.control.report_view import render_report_html
 from research_swarm.domain.experiments import MetricDefinition
-from research_swarm.state.database import JsonObject
+from research_swarm.domain.types import JsonObject
 
 
 def synthetic_run(name: str, scores: list[float], interval: float) -> JsonObject:

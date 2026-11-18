@@ -1,1 +1,1 @@
-"""Transport-independent research commands and aggregate records."""
+"""Offline campaign report and experiment graph renderers."""

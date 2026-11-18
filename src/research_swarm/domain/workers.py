@@ -5,22 +5,12 @@ from pydantic import Field
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.experiments import ResourceRequirements
 from research_swarm.domain.types import (
-    ID,
     ByteCount,
     Digest,
     Name,
-    Revision,
     StringSet,
     VersionedRecord,
 )
-
-
-class WorkerBinding(VersionedRecord):
-    workspace_id: ID
-    controller_id: ID
-    worker_id: ID
-    worker_session_id: ID
-    control_epoch: Revision
 
 
 class EngineCapabilities(VersionedRecord):

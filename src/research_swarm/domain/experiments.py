@@ -1,26 +1,18 @@
-"""Immutable research payloads and their separately issued dispatch authority."""
+"""Stage, resource and metric contracts for registered projects."""
 
 from __future__ import annotations
 
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, model_validator
 
-from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.types import (
-    ID,
-    Amount,
     ByteCount,
-    Digest,
-    Dimension,
     Milliseconds,
     Name,
-    Revision,
     StringSet,
-    Timestamp,
     VersionedRecord,
-    new_id,
 )
 
 
@@ -41,12 +33,6 @@ class Metric(VersionedRecord):
     value: float = Field(strict=True)
     unit: Name
     direction: Direction
-
-
-class SourceRef(VersionedRecord):
-    artifact_id: ID
-    tree_digest: Digest
-    base_revision: str | None = None
 
 
 class ResourceRequirements(VersionedRecord):
@@ -95,68 +81,3 @@ def validate_stage_graph(stages: tuple[StageSpec, ...]) -> None:
             raise ValueError("Stage graph contains a cycle")
         complete.update(ready)
         remaining.difference_update(ready)
-
-
-class ExperimentSpec(VersionedRecord):
-    workspace_id: ID
-    project_id: ID
-    campaign_id: ID
-    candidate_id: ID
-    trial_id: ID = Field(default_factory=new_id)
-    source: SourceRef
-    protocol_digest: Digest
-    comparison_class: Name
-    environment_digest: Digest
-    evaluator_contract_digest: Digest
-    data_manifest_digest: Digest
-    metrics: tuple[MetricDefinition, ...] = Field(min_length=1)
-    stages: tuple[StageSpec, ...] = Field(min_length=1)
-    seed: int = Field(strict=True, ge=0, le=9_007_199_254_740_991)
-    initialization_digest: Digest | None = None
-    policy_version: Name
-    mutation_allow: tuple[str, ...] = ()
-    mutation_deny: tuple[str, ...] = ()
-    maximum_cost: dict[Dimension, Amount] = Field(default_factory=dict)
-    extensions: dict[str, JsonValue] = Field(default_factory=dict)
-    spec_digest: Digest | None = None
-
-    def payload(self) -> dict[str, JsonValue]:
-        return self.model_dump(mode="json", exclude={"spec_digest"}, warnings=False)
-
-    def sealed(self) -> ExperimentSpec:
-        validated = ExperimentSpec.model_validate(self)
-        validated.validate_graph()
-        digest = record_digest("research.experiment", validated.payload())
-        if self.spec_digest is not None and digest != self.spec_digest:
-            raise ValueError("Experiment specification digest mismatch")
-        return validated.model_copy(update={"spec_digest": digest})
-
-    def verify(self) -> None:
-        if self.spec_digest is None:
-            raise ValueError("Experiment specification is not sealed")
-        self.sealed()
-
-    def validate_graph(self) -> None:
-        validate_stage_graph(self.stages)
-        if len({metric.name for metric in self.metrics}) != len(self.metrics):
-            raise ValueError("Duplicate metric name")
-
-
-class DispatchEnvelope(VersionedRecord):
-    id: ID = Field(default_factory=new_id)
-    workspace_id: ID
-    controller_id: ID
-    campaign_id: ID
-    trial_id: ID
-    job_id: ID
-    attempt_id: ID
-    worker_id: ID
-    worker_session_id: ID
-    spec_digest: Digest
-    control_epoch: Revision
-    fencing_generation: Revision
-    reservation_ids: tuple[ID, ...]
-    stage_id: Name
-    expires_at: Timestamp
-    hard_deadline_at: Timestamp
-    launch_permit_digest: Digest

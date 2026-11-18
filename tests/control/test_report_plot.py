@@ -195,7 +195,7 @@ def test_offline_cli_exports_without_opening_runtime_and_never_overwrites(
     def forbidden(*args: Any, **kwargs: Any) -> None:
         pytest.fail("Offline plot must not open runtime")
 
-    monkeypatch.setattr("research_swarm.cli._client", forbidden)
+    monkeypatch.setattr("research_swarm.cli._read_client", forbidden)
     source, compare, output = (
         tmp_path / "report.json",
         tmp_path / "compare.json",
@@ -228,7 +228,7 @@ def test_offline_cli_exports_without_opening_runtime_and_never_overwrites(
     assert main(arguments) == 2
     assert output.read_bytes() == original
     capsys.readouterr()
-    assert main([*arguments, "--compare-report", "not-an-offline-source"]) == 2
+    assert main([*arguments, "--campaign", "live-source"]) == 2
 
 
 def test_capture_horizon_idle_tail_event_ties_and_optional_labels() -> None:

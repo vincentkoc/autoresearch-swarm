@@ -142,6 +142,10 @@ def _deadline(db: sqlite3.Connection, campaign_id: str, max_hours: float | None)
     return float(created_at) + max_hours * 3600
 
 
+class LegacyDatabaseError(ValueError):
+    """The selected file belongs to the retired controller."""
+
+
 class SQLiteStore:
     """Campaign-local queues with atomic claim, cost reservation and attempt completion."""
 
@@ -153,7 +157,7 @@ class SQLiteStore:
                 "AND name IN ('workspaces', 'records')"
             ).fetchone()
             if legacy:
-                raise ValueError(
+                raise LegacyDatabaseError(
                     "Legacy control database. Use its original release to read it "
                     "and a fresh database path for this campaign."
                 )

@@ -22,7 +22,7 @@ from research_swarm.engines.models import EngineDescriptor
 from research_swarm.engines.probe import InterpreterIdentity, observe_engine
 from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.workload import absolute_path
-from research_swarm.runtime import private_state_directory, read_private, write_private
+from research_swarm.state.private_files import private_state_directory, read_private, write_private
 
 
 class ExecutionPolicy(VersionedRecord):

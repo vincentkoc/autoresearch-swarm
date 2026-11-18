@@ -4,11 +4,8 @@ This ordinary project trains a two-parameter linear model for 48 gradient update
 It uses the installed research package and standard Python arithmetic. No GPU,
 dataset download or model-provider account is needed.
 
-From a checkout with reactive support installed:
-
-~~~sh
-uv run research run examples/reactive_cpu --key reactive-cpu --max-trials 1
-~~~
+From the repository root, follow the [registered CPU campaign recipe](../../docs/reactive.md#launch-the-reactive-cpu-example)
+to run this manifest and retain its stage reports for inspection.
 
 The protected manifest defines four stages:
 

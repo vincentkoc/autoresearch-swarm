@@ -9,9 +9,7 @@ from contextlib import redirect_stdout
 import pytest
 
 from research_swarm.cli import main
-from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
-from research_swarm.runtime import LocalRuntime
 from tests.projects.test_manifest import project as project
 
 
@@ -32,47 +30,17 @@ def test_committed_unicode_command_replays_as_exact_utf8_json(project, tmp_path)
         manifest.read_text(encoding="utf-8").replace("CPU research example", title),
         encoding="utf-8",
     )
-    runtime = LocalRuntime.open(tmp_path / "runtime")
-    client = ResearchClient(LocalTransport(runtime))
-    acknowledged = client.register_project(project, idempotency_key="source")
-    payload = {
-        "source_artifact": acknowledged["result"]["project_revision"]["data"]["source_artifact"]
-    }
-    result = ascii_process(
-        [
-            "-m",
-            "research_swarm.cli",
-            "--state-dir",
-            str(runtime.root),
-            "command",
-            "project.register",
-            "--key",
-            "source",
-        ],
-        payload,
-    )
+    arguments = ["project", "register", str(project), "--db", str(tmp_path / "swarm.sqlite")]
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(arguments) == 0
+    result = ascii_process(["-m", "research_swarm.cli", *arguments], {})
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
-    assert result.stdout == canonical_bytes(acknowledged) + b"\n"
-    assert strict_json_loads(result.stdout)["result"]["project"]["data"]["name"] == title
+    assert result.stdout == output.getvalue().encode("utf-8")
+    registered = strict_json_loads(result.stdout)
+    assert registered["manifest"]["manifest"]["project"]["name"] == title
+    assert result.stdout == canonical_bytes(registered) + b"\n"
     assert result.stderr == b""
-    capture = io.StringIO()
-    with redirect_stdout(capture):
-        assert (
-            main(
-                [
-                    "--state-dir",
-                    str(runtime.root),
-                    "get",
-                    "project",
-                    acknowledged["result"]["project"]["id"],
-                ]
-            )
-            == 0
-        )
-    assert (
-        capture.getvalue()
-        == canonical_bytes(acknowledged["result"]["project"]).decode("utf-8") + "\n"
-    )
 
 
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])

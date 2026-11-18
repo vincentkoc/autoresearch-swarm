@@ -1,10 +1,10 @@
-# Implementation and qualification
+# Historical implementation and qualification
 
-This is the completion ledger for the design contract. Pending means unproven,
-not implicitly supported.
-
-Linux and macOS are the supported runtimes. Historical Windows results below apply to
-their recorded revisions.
+This page preserves the earlier controller's implementation matrix, contract
+scenarios and qualification results. Read each result at its recorded revision.
+The historical entries cover controller imports, signed assignments and
+`ExperimentSpec`/`RunResult`. For current Linux and macOS campaigns, see the
+[swarm design](design.md) and [native launch guide](workload-protocol.md).
 
 The [native clock and cleanup qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41284221451)
 passed all nine Linux/macOS/Windows and Python 3.11–3.13 cells at
@@ -38,7 +38,7 @@ restart. It also qualifies clock discontinuity during a pending wait and explici
 errored-Workflow recovery through one durably reserved successor. Original rejected
 commands, timer thresholds and research effects survive these delivery transitions.
 
-## Implementation coverage
+## Historical implementation coverage
 
 The greedy/portfolio controller, proposal inbox and planner benchmark entries below
 record earlier qualifications. Current campaigns use the swarm loop. Its serial,
@@ -117,7 +117,7 @@ and reopening the completed queue.
 | Optional UI | Pending | Pending | Browser workflow pending |
 | Rust interoperability | Pending | Pending | Component gate remains explicit |
 
-## Contract scenarios
+## Historical contract scenarios
 
 The suite covers schemas, artifacts, source, manifests, budgets, native supervision,
 journals, resources, workloads, controller commands, evaluation, selection, and
