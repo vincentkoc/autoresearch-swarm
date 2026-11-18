@@ -187,6 +187,8 @@ class WorkerLoop:
                         not math.isfinite(value) for value in result.metrics.values()
                     ):
                         raise ValueError("invalid backend outcome or metric")
+                    if result.status == "ok" and spec.metric not in result.metrics:
+                        raise ValueError(f"missing objective metric: {spec.metric}")
                     if (
                         result.peak_vram_mib is not None
                         and not 0 <= result.peak_vram_mib < math.inf
@@ -202,14 +204,20 @@ class WorkerLoop:
                         attempt=attempt, status="lost", error="backend cancelled", cost=cost
                     )
                 except Exception as exc:
-                    if cost is None:
+                    error = f"{type(exc).__name__}: {exc}"
+                    if cost is None or result is None:
                         cost = self.meter.charge(spec, attempt, time.monotonic() - started, 0, 0)
-                    result = Result(
-                        attempt=attempt,
-                        status="failed",
-                        error=f"{type(exc).__name__}: {exc}",
-                        cost=cost,
-                    )
+                        result = Result(attempt=attempt, status="failed", error=error, cost=cost)
+                    else:
+                        # Invalid measurements do not erase validated usage or command logs.
+                        result = replace(
+                            result,
+                            status="failed",
+                            error=error,
+                            cost=cost,
+                            metrics={},
+                            peak_vram_mib=None,
+                        )
                 finally:
                     pulse.cancel()
         except* _ExpiredAttempt:

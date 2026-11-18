@@ -122,6 +122,30 @@ async def test_budget_gates_dispatch_then_settles_measured_usage(tmp_path: Path)
     assert observed == [r.attempt for r in store.results(spec.campaign_id)]
 
 
+async def test_bad_metrics_still_spend_tokens_and_block_the_next_dispatch(tmp_path: Path) -> None:
+    (tmp_path / "task.py").write_text(
+        "import os\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['SWARM_USAGE']).write_text('{\"input_tokens\": 100}')\n"
+        "Path(os.environ['SWARM_METRICS']).write_text('{}')\n"
+    )
+    spec = replace(
+        _campaign(tmp_path),
+        max_cost=1.0,
+        estimated_input_tokens=100,
+        price_per_million_input_tokens=10_000,
+    )
+    db = tmp_path / "queue.db"
+    store = SQLiteStore(db)
+    store.create_campaign(spec)
+    for name in ("invalid", "next"):
+        store.submit(_trial(spec, name))
+    assert await WorkerLoop(store, LocalBackend(1), "first").run_once(spec)
+    assert not await WorkerLoop(SQLiteStore(db), LocalBackend(1), "next").run_once(spec)
+    (failed,) = store.results(spec.campaign_id)
+    assert (failed.status, failed.input_tokens, failed.cost) == ("failed", 100, 1.0)
+
+
 async def test_resident_worker_survives_command_failure_and_timeout(tmp_path: Path) -> None:
     (tmp_path / "task.py").write_text(
         "import json, os, sys, time\n"
@@ -183,12 +207,17 @@ async def test_remote_startup_is_budgeted_and_has_its_own_time_allowance(tmp_pat
     assert observation.cost >= 0.12
 
 
-async def test_backend_cancellation_and_invalid_metrics_remain_attempt_data(tmp_path: Path) -> None:
+@pytest.mark.parametrize("metrics", [{"loss": math.nan}, {}])
+async def test_backend_cancellation_and_invalid_metrics_remain_attempt_data(
+    tmp_path: Path, metrics: dict[str, float]
+) -> None:
     class InterruptedBackend(_TokenBackend):
         async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
             if attempt.number == 1:
                 raise asyncio.CancelledError
-            return Result(attempt=attempt, status="ok", metrics={"loss": math.nan}, input_tokens=20)
+            return Result(
+                attempt=attempt, status="ok", metrics=metrics, input_tokens=20, logs=("finished",)
+            )
 
     store = SQLiteStore(tmp_path / "queue.db")
     spec = replace(_campaign(tmp_path), price_per_million_input_tokens=10_000)
@@ -205,7 +234,9 @@ async def test_backend_cancellation_and_invalid_metrics_remain_attempt_data(tmp_
     lost, failed = store.results(spec.campaign_id)
     assert seen == [lost.attempt, failed.attempt]
     assert lost.status == "lost"
-    assert (failed.status, failed.cost) == ("failed", 0.2)
+    assert (failed.status, failed.cost, failed.input_tokens) == ("failed", 0.2, 20)
+    assert failed.logs == ("finished",)
+    assert failed.metrics == {}
 
 
 async def test_stale_heartbeat_cancels_execution_without_a_second_report(tmp_path: Path) -> None:
