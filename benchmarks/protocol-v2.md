@@ -61,3 +61,34 @@ Also report raw search curves, final search scores, confirmed recipes, failed
 attempts, elapsed time and model tokens where available. A scorer failure
 that leaves a required score unavailable makes the comparison incomplete.
 Keep confirmation observations out of subsequent proposals and tuning.
+
+## Recorded comparison
+
+All 324 search attempts returned scores. The swarm beat both baselines on
+mean confirmed program pass rate and MLP accuracy. On nanoGPT its mean
+confirmed loss was higher than both baselines. The portfolio therefore
+missed the registered three-workload acceptance criterion.
+
+| Mean confirmed score across three search seeds | Swarm | Random | Greedy |
+| --- | ---: | ---: | ---: |
+| Program pass rate, higher is better | 1.000000 | 0.715278 | 0.194444 |
+| MLP accuracy, higher is better | 0.819010 | 0.817708 | 0.795573 |
+| nanoGPT validation loss, lower is better | 1.984402 | 1.695129 | 1.746237 |
+
+The program tied random on two seeds. The MLP's mean advantage over random
+was 0.001302, and random won on two of its three seeds. These summaries
+use the confirmed score of the selected recipe, including the reference
+when the nominee failed selection or confirmation.
+
+The run used Python 3.12, Torch 2.15.0 on CPU, and local Ollama with
+`qwen2.5-coder:0.5b`. Each workload recorded 18 calibration, 108 search
+and 54 selection looks. Program and nanoGPT recorded ten confirmation
+looks each, and MLP recorded nine. Selection and confirmation exceeded
+their warning thresholds on all three workloads.
+
+Each JSON line below represents one workload, seed and policy. It includes
+all 12 raw `search_scores`, their running-best `curve`, the selected recipe,
+its `confirm` score, decision reason, failed attempts, seconds and token
+counts. The raw scores and confirmations come from the recorded studies.
+
+[All 27 arm records](results/v2-cpu-small.jsonl) · [Frozen policy](https://github.com/vincentkoc/autoresearch-swarm/commit/a4a86f50cd5d1acf46772135d64f04262a9820b1) · [Evaluator](https://github.com/vincentkoc/autoresearch-swarm/commit/a8b8b56d1d9334b996ddc2d5ac2441db93c4ea59) · [Original protocol](https://github.com/vincentkoc/autoresearch-swarm/commit/12c9e90ef806069531ac55aac1f36d51268f9950)

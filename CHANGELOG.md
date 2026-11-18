@@ -54,6 +54,8 @@
 
 - Add a preregistered second benchmark protocol with fresh data streams,
   larger model search spaces, and paired scores read from the held-out study.
+  Publish all 27 arms. The frozen portfolio beat both baselines on the program
+  and MLP tasks and had higher nanoGPT loss than both baselines.
 
 - Share sidebar width, collapse and section-height resizing across campaign and
   inventory views; retain widths when switching views and support keyboard dividers.
