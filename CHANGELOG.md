@@ -31,6 +31,10 @@
 - Share sidebar width, collapse and section-height resizing across campaign and
   inventory views; retain widths when switching views and support keyboard dividers.
 
+- Add a resident swarm worker that heartbeats, retries lost trials and records
+  attempt failures. Dispatch reserves estimated cost and reports charges from
+  elapsed compute time and measured input and output tokens.
+
 - Add a layout selector for connected clusters, category groups and a symmetric
   ring plus a broad spread-out force view, retaining filters, selection and recorded ancestry across layout changes.
 
