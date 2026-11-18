@@ -10,7 +10,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from benchmarks.suite import PANEL_SEEDS, Candidate
+from benchmarks.suite import PANEL_SEEDS, Candidate, panel_size
 
 MLP_SPACE = {
     "width": ("8", "16", "32", "64"),
@@ -72,7 +72,8 @@ def _points(panel: str, count: int, device: str) -> tuple[Tensor, Tensor]:
 def mlp_accuracy(
     candidate: Candidate, seed: int, panel: str, device: str, size: str, fidelity: float
 ) -> float:
-    steps, count = (24, 256) if size == "small" else (192, 4096)
+    steps = 24 if size == "small" else 192
+    count = panel_size("mlp", size, "train")
     torch.manual_seed(seed)
     width = int(candidate["width"])
     activation = {"relu": nn.ReLU, "gelu": nn.GELU, "tanh": nn.Tanh}[candidate["activation"]]
@@ -86,7 +87,7 @@ def mlp_accuracy(
         torch.autograd.backward(F.cross_entropy(model(x[indices]), y[indices]))
         optimizer.step()
     with torch.inference_mode():
-        x, y = _points(panel, count, device)
+        x, y = _points(panel, panel_size("mlp", size, panel), device)
         return float((model(x).argmax(dim=-1) == y).float().mean().item())
 
 
@@ -139,7 +140,7 @@ def nanogpt_loss(
     torch.manual_seed(seed)
     model = TinyGPT(context, width).to(device)
     optimizer, schedule = _training_code(candidate)(model)
-    train = _sequences("train", 8 * batch_size, context, device)
+    train = _sequences("train", panel_size("nanogpt", size, "train"), context, device)
     generator = torch.Generator().manual_seed(seed)
     for step in range(math.ceil(steps * fidelity)):
         indices = torch.randint(len(train), (batch_size,), generator=generator).to(device)
@@ -149,5 +150,5 @@ def nanogpt_loss(
         torch.autograd.backward(_next_token_loss(model, train[indices]))
         optimizer.step()
     with torch.inference_mode():
-        validation = _sequences(panel, 2 * batch_size, context, device)
+        validation = _sequences(panel, panel_size("nanogpt", size, panel), context, device)
         return float(_next_token_loss(model, validation).item())

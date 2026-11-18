@@ -51,3 +51,26 @@ another proposer. It receives the task, trial history and a seeded RNG, and
 returns one candidate dictionary. For a campaign worker, use
 `python -m benchmarks.trial TASK`. It reads `SWARM_TRIAL`, evaluates the
 candidate's `params`, and writes one numeric metric to `SWARM_METRICS`.
+
+## Calibration and held-out decisions
+
+The CLI calibrates three fixed recipes on three seeds before its first search
+trial. It fits target score against proxy score across recipe means. The
+report includes the fitted slope, pooled within-recipe seed noise and measured
+trials per second. A flat proxy produces a null slope. Calibration uses
+separate examples and counts 18 measurements outside each arm's search budget.
+
+Each arm nominates its best search candidate. The study compares this recipe
+with the baseline on selection cases using paired seeds. An improvement must
+exceed the estimated noise threshold. Then the study checks the candidate
+and baseline on confirmation cases at the same fixed seed. A positive
+held-out gain promotes the candidate. The JSON reports each arm's decision
+and selected recipe. Proposers receive search history only.
+
+The CLI stores the study in `.research/benchmarks/`. Use `--study FILE` to
+choose its location. Reuse the file across arms and repeats so confirmation
+scores and exposure counts survive restarts. A scorer failure consumes the
+reserved look. A changed split, scorer revision or decision rule needs a new
+calibration. Programmatic campaigns can call `benchmarks.study.run_campaign`
+with a shared study. For swarm YAML, set
+`panel_policy: benchmarks.study:worker_policy` with the benchmark trial command.
