@@ -158,12 +158,23 @@ class TextRewrite:
         if k <= 0 or not parents:
             return []
         end = asyncio.get_running_loop().time() + timeout
-        jobs = []
-        for i in range(min(k, self.concurrency)):
+        # Reserve this batch before starting providers. Otherwise a fast
+        # sibling can free its slot while the same batch is still being built.
+        reserved = 0
+        for _ in range(min(k, self.concurrency)):
             if not self._slots.acquire(blocking=False):
                 break
-            self._sequence += 1
-            jobs.append(self._start(spec, parents[i % len(parents)], self._sequence, timeout))
+            reserved += 1
+        jobs = []
+        unstarted = reserved
+        try:
+            for i in range(reserved):
+                unstarted -= 1  # _start owns this slot, including thread-start failure
+                self._sequence += 1
+                jobs.append(self._start(spec, parents[i % len(parents)], self._sequence, timeout))
+        finally:
+            for _ in range(unstarted):
+                self._slots.release()
         if not jobs:
             return []
         done, pending = await asyncio.wait(

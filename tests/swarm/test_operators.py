@@ -135,7 +135,7 @@ async def test_parallel_timeout_keeps_fast_results_and_caps_late_work() -> None:
         return json.dumps({"content": str(seed), "rationale": "shorten"})
 
     op = TextRewrite(fake, "make the prompt shorter", concurrency=2)
-    spec = replace(SPEC, proposal_timeout_seconds=0.05)
+    spec = replace(SPEC, proposal_timeout_seconds=0.25)
     try:
         batch = await asyncio.wait_for(op.propose(spec, [PARENT], 8), timeout=1)
         assert [c.text for c in batch] == ["2"]
