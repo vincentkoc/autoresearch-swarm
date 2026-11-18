@@ -184,6 +184,22 @@ async def test_resident_worker_survives_command_failure_and_timeout(tmp_path: Pa
     assert {r.attempt.worker_id for r in results.values()} == {"resident"}
 
 
+async def test_worker_watchdog_persists_its_timeout(tmp_path: Path) -> None:
+    spec = replace(_campaign(tmp_path), trial_timeout_seconds=0.04, price_per_hour=3600)
+    store = SQLiteStore(tmp_path / "queue.db")
+    store.create_campaign(spec)
+    store.submit(_trial(spec, "stalled"))
+    backend = _TokenBackend()  # Waits for release without imposing a deadline of its own.
+    worker = WorkerLoop(store, backend, "resident", heartbeat_seconds=0.01)
+
+    assert await asyncio.wait_for(worker.run_once(spec), timeout=5)
+    (result,) = store.results(spec.campaign_id)
+    assert backend.started.is_set()
+    assert result.status == "failed"
+    assert result.error == "worker watchdog timed out after 0.05 seconds"
+    assert result.cost > 0
+
+
 async def test_remote_startup_is_budgeted_and_has_its_own_time_allowance(tmp_path: Path) -> None:
     class DelayedBackend(_TokenBackend):
         startup_timeout_seconds = 1.0
