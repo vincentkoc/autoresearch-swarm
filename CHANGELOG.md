@@ -15,6 +15,11 @@
   `LOCAL_FAILURE` findings, fences admission, and retries the exact attempt on the
   same worker. Authority loss still stops the driver.
 
+- Check that drained workers retain their identity and advance their heartbeat
+  when resumed, including on runners where several heartbeat intervals elapse.
+  The cancellation test observes the next driver's heartbeat directly while
+  the worker is drained.
+
 - Remove the unused `evidence_receipt` helper and `DeadlinePolicy` model, and the
   disabled Windows CI jobs. Windows runtime code stays; qualification remains paused.
 
