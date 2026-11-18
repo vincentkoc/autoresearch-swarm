@@ -75,14 +75,14 @@ listing also accepts a legacy worker's workspace `read` scope; reading its own
 request to the authenticated worker principal and current session. These
 exceptions do not authorize other worker query kinds.
 Generic record, context, and event endpoints still require `read`.
-See [scoped worker discovery](worker-assignments.md#scoped-discovery-and-recovery).
+See [scoped worker discovery](https://github.com/vincentkoc/autoresearch-swarm/blob/bd82513af7ee34919a8b49658d4e7bb4cb7060c4/docs/worker-assignments.md#scoped-discovery-and-recovery).
 
 `POST /v1/worker/input` returns an assigned input's `ArtifactRef` and
 `POST /v1/worker/input/content` streams its verified bytes. Both accept
 `WorkerArtifactRead`, require `worker.inputs`, and remain read-only requests.
 Authorization binds the exact active assignment and is rechecked when retaining
 the storage generation. Generic artifact endpoints still require workspace read
-authority. See [attempt-bound inputs](worker-assignments.md#attempt-bound-inputs).
+authority. See [attempt-bound inputs](https://github.com/vincentkoc/autoresearch-swarm/blob/bd82513af7ee34919a8b49658d4e7bb4cb7060c4/docs/worker-assignments.md#attempt-bound-inputs).
 
 Event streams recheck credentials between polling batches. Disconnecting does
 not delete events or acknowledge notifications. Logical stream retention and the

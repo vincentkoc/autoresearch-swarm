@@ -10,7 +10,6 @@ class or mandatory provider SDK.
 | `BlobStore` | Artifact bytes, generations and retirement | [Storage contract](../src/research_swarm/storage/base.py) |
 | `Ed25519Provider` | Synchronous signing and signature verification | [Cryptography contract](../src/research_swarm/crypto.py) |
 | `ExecutionBoundary` | Qualified authority and time for one operation | [Boundary contract](../src/research_swarm/state/boundaries.py) |
-| `DeliveryClient` | Deliver saved actions and waits to the authority | [Delivery contract](../src/research_swarm/orchestration/async_delivery.py), [minimal client example](../tests/orchestration/test_async_delivery.py) |
 
 The local implementations ship with the Python package.
 
@@ -26,9 +25,8 @@ The local implementations ship with the Python package.
    requests cannot select another provider account or secret.
 7. Run shared conformance tests, then qualify the actual provider runtime.
 
-The callback-only store and asynchronous client tests above provide small working
-implementations for extension authors. Use them to check a custom implementation
-against the shared command and delivery behavior.
+The callback-only store test shows how the command kernel uses a custom
+store. Use it to check transaction and replay behavior in a new adapter.
 
 Research repositories use manifests and commands. They do not implement these
 infrastructure ports. See [project adoption](../docs/project-adoption.md).

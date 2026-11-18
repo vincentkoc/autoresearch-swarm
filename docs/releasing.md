@@ -100,3 +100,15 @@ does not overwrite assets or skip existing PyPI files to hide partial success.
 
 Hardware and hosted-service qualification are separate from package release.
 Keep the limitations in [implementation status](implementation.md) visible.
+
+## Check the installed package
+
+The packaging test builds a wheel, installs it in a fresh environment and
+checks the CPU workload through the installed CLI. Run it from the checkout.
+
+~~~sh
+RESEARCH_PACKAGE_TESTS=1 uv run pytest -q tests/integration/test_packaged_release.py
+~~~
+
+The benchmark harness and its YAML examples run from a source checkout.
+Hardware execution and provider operation each require their own qualification.
