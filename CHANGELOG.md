@@ -54,6 +54,9 @@
   The cancellation test observes the next driver's heartbeat directly while
   the worker is drained.
 
+- Consolidate canonical serialization tests around the frozen cross-language corpus
+  and remove obsolete signed-time conformance fixtures.
+
 - Remove the unused `evidence_receipt` helper and `DeadlinePolicy` model, and the
   disabled Windows CI jobs. Windows runtime code stays; qualification remains paused.
 
