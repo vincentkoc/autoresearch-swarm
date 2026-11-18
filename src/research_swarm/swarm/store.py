@@ -17,7 +17,7 @@ from uuid import uuid4
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS swarm_projects (project_id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS swarm_projects (project_id TEXT PRIMARY KEY, snapshot TEXT);
 CREATE TABLE IF NOT EXISTS swarm_campaigns (
     campaign_id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES swarm_projects,
@@ -158,6 +158,9 @@ class SQLiteStore:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(_SCHEMA)
         with self._connection(write=True) as db:
+            project_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_projects)")}
+            if "snapshot" not in project_columns:
+                db.execute("ALTER TABLE swarm_projects ADD COLUMN snapshot TEXT")
             columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_campaigns)")}
             if "ranking" not in columns:
                 db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
@@ -176,6 +179,14 @@ class SQLiteStore:
                 db.execute("BEGIN IMMEDIATE")
             yield db
 
+    def register_project(self, project_id: str, snapshot: dict[str, Any]) -> None:
+        with self._connection(write=True) as db:
+            db.execute(
+                "INSERT INTO swarm_projects(project_id,snapshot) VALUES(?,?) "
+                "ON CONFLICT(project_id) DO UPDATE SET snapshot=excluded.snapshot",
+                (project_id, _json(snapshot)),
+            )
+
     def create_campaign(self, spec: CampaignSpec) -> None:
         if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
             raise ValueError("max_hours must be finite and non-negative")
@@ -185,7 +196,9 @@ class SQLiteStore:
         if spec.max_cost is not None:
             _cost(spec.max_cost)
         with self._connection(write=True) as db:
-            db.execute("INSERT OR IGNORE INTO swarm_projects VALUES(?)", (spec.project_id,))
+            db.execute(
+                "INSERT OR IGNORE INTO swarm_projects(project_id) VALUES(?)", (spec.project_id,)
+            )
             insert = db.execute(
                 "INSERT INTO swarm_campaigns(campaign_id,project_id,spec) "
                 "VALUES(?,?,?) ON CONFLICT(campaign_id) DO NOTHING",

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Use `--db` with local project capture, registration, and artifact upload or
+  download to keep project snapshots and artifact bytes beside a swarm campaign.
+
 - Remove the unused settlement-evidence verifier and its reservation lookup index
   from new control databases.
 
