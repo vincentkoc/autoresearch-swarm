@@ -73,14 +73,16 @@ def parser() -> argparse.ArgumentParser:
         source = plot.add_mutually_exclusive_group(required=True)
         source.add_argument("--report-id", help="Existing immutable report ID")
         source.add_argument("--file", type=Path, help="Offline report record or snapshot JSON")
+        source.add_argument("--db", type=Path, help="Local swarm campaign database")
+        plot.add_argument("--campaign", help="Campaign ID to read from --db")
         plot.add_argument(
             "--compare-report", action="append", default=[], help="Comparable report ID"
         )
         plot.add_argument("--compare-file", action="append", type=Path, default=[])
-        plot.add_argument("--comparison-digest", required=True)
-        plot.add_argument("--metric", required=True)
-        plot.add_argument("--unit", required=True)
-        plot.add_argument("--direction", choices=("minimize", "maximize"), required=True)
+        plot.add_argument("--comparison-digest")
+        plot.add_argument("--metric")
+        plot.add_argument("--unit")
+        plot.add_argument("--direction", choices=("minimize", "maximize"))
         plot.add_argument(
             "--output", type=Path, required=True, help="New SVG/HTML path; never overwrite"
         )
@@ -209,6 +211,7 @@ def parser() -> argparse.ArgumentParser:
     context.add_argument("--limit", type=int, default=10)
     budget = commands.add_parser("budget")
     budget.add_argument("campaign_id")
+    budget.add_argument("--db", type=Path, help="Read measured campaign cost from SQLite")
     events = commands.add_parser("events")
     events.add_argument("--after", type=int, default=0)
     events.add_argument("--limit", type=int, default=100)
@@ -483,8 +486,41 @@ def main(argv: list[str] | None = None) -> int:
                 raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, str(error)) from error
             _emit_json(result)
             return code
+        if args.action in {"report", "budget"} and args.db:
+            from research_swarm.swarm.report import capture as capture_campaign
+            from research_swarm.swarm.report import read_meter
+
+            if args.controller or args.token_file or args.state_dir:
+                raise ValueError("Choose a local campaign database with --db")
+            if args.action == "budget":
+                _emit_json(read_meter(args.db, args.campaign_id))
+                return 0
+            if not args.campaign or args.compare_file or args.compare_report:
+                raise ValueError("Select one campaign with --db and --campaign")
+            snapshot = capture_campaign(args.db, args.campaign)
+            objective = snapshot["research"]["objective"]["primary_metric"]
+            selectors = {
+                "metric": objective["name"],
+                "unit": objective["unit"],
+                "direction": objective["direction"],
+                "comparison_digest": snapshot["comparison_digest"],
+            }
+            for name, recorded in selectors.items():
+                requested = getattr(args, name)
+                if requested is not None and requested != recorded:
+                    raise ValueError(f"{name} does not match the recorded campaign")
+                setattr(args, name, recorded)
+            _emit_json(_plot_reports([snapshot], args))
+            return 0
         if args.action == "report":
             from research_swarm.control.report_plot import MAX_RUNS
+
+            if args.campaign or not all(
+                (args.metric, args.unit, args.direction, args.comparison_digest)
+            ):
+                raise ValueError(
+                    "Archived reports require a metric, unit, direction and comparison digest"
+                )
 
             if args.file is not None:
                 if args.compare_report or args.controller or args.state_dir or args.token_file:

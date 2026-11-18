@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Render local hill-climb reports from campaign SQLite state with `report view`
+  or `report plot --db DB --campaign ID`. Read measured cost and active dispatch
+  estimates with `budget ID --db DB`.
+
 - Use `--db` with local project capture, registration, and artifact upload or
   download to keep project snapshots and artifact bytes beside a swarm campaign.
 

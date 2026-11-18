@@ -212,6 +212,9 @@ def _page(research: JsonObject, name: str) -> tuple[list[JsonObject], str]:
 
 
 def _leaders(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> tuple[set[str], str]:
+    selection = snapshot.get("recorded_selection")
+    if snapshot.get("schema_version") == "swarm-campaign-1" and selection:
+        return {selection["candidate_id"]}, "Recorded campaign selection"
     incumbent = snapshot.get("incumbent") or {}
     captured_metric = (snapshot["research"].get("objective") or {}).get("primary_metric") or {}
     if (
@@ -506,7 +509,12 @@ def _hill_climb(run: PlotRun, metric: MetricDefinition) -> str:
         "<div class=time-evidence>"
         "<p>Dots: chronological evaluation receipts. Steps: running best observed for this "
         "campaign only, not a confirmed winner or parent relationship.</p>"
-        "<p>Last best held to capture time; idle tail is not a new observation.</p>"
+        + (
+            "<p>Dotted line: recorded selection score at each selection event.</p>"
+            if run.selections
+            else ""
+        )
+        + "<p>Last best held to capture time; idle tail is not a new observation.</p>"
         f"<p>{_e(baseline)}</p><p>{status}: {run.included}/{run.total} receipts captured; "
         f"{len(run.points)} plotted. Excluded: {run.ineligible} ineligible, "
         f"{run.nonmatching} other cohort/metric, {run.untimed} missing/invalid timing.</p>"
@@ -563,6 +571,25 @@ def render_report_html(
             f"<td class=number>{_e(item.get('uncertain', 'unknown'))}</td></tr>"
             for item in snapshot.get("budget", [])
         )
+        selection = snapshot.get("recorded_selection")
+        selection_html = ""
+        if selection:
+            selection_html = (
+                f"<p>Selected trial <code>{_e(selection['trial_id'])}</code> · "
+                f"score {_e(selection.get('score'))} · "
+                f"replicates {_e(selection.get('replicates'))} · "
+                f"recorded {_e(selection.get('recorded_at'))}</p>"
+            )
+        meter = snapshot.get("meter")
+        accounting = (
+            f"<p>Measured cost: {_e(meter['measured_cost'])}. Additional active estimate: "
+            f"{_e(meter['pending_estimate'])}. "
+            f"Trials: {_e(meter['trials'])}/{_e(meter['max_trials'])}.</p>"
+            if meter
+            else "<h3>Budget ledger</h3><table><thead><tr><th>Unit</th><th>Used</th><th>Held</th>"
+            f"<th>Uncertain</th></tr></thead><tbody>{budget}</tbody></table>"
+            + ("<p class=muted>No captured budget ledger.</p>" if not budget else "")
+        )
         about.append(
             f"<div class=run data-run='{index}'"
             + (" hidden>" if index else ">")
@@ -575,10 +602,7 @@ def render_report_html(
             f"{len(workers) if workers else 'unavailable'} distinct historical IDs; "
             "not live concurrency.</p>"
             f"<details><summary>Budget &amp; capture details</summary>"
-            f"<small>Attempts: {_e(attempt_scope)}</small><h3>Budget ledger</h3>"
-            "<table><thead><tr><th>Unit</th><th>Used</th><th>Held</th><th>Uncertain</th></tr></thead>"
-            f"<tbody>{budget}</tbody></table>"
-            + ("<p class=muted>No captured budget ledger.</p>" if not budget else "")
+            f"<small>Attempts: {_e(attempt_scope)}</small>{accounting}{selection_html}"
             + "<details><summary>Capture provenance</summary>"
             f"<p class=muted>Captured {_e(run.captured_at)} · revision {run.revision} · "
             f"event {run.evidence_through}</p></details></details></div>"
