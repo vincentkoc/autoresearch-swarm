@@ -25,11 +25,6 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
-from research_swarm.control.completion_models import (
-    CaptureCampaignObligations,
-    CloseCampaignResources,
-    CompleteScientificCampaign,
-)
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.import_models import ImportHistoricalEvidence
@@ -297,27 +292,6 @@ COMMANDS = {
         "campaign.manage",
         True,
         "Complete settled research and atomically record its final human and agent report.",
-    ),
-    "campaign.capture_obligations": CommandDefinition(
-        CaptureCampaignObligations,
-        "capture_campaign_obligations",
-        "campaign.manage",
-        True,
-        "Capture a bounded immutable review of current unresolved work and accounting.",
-    ),
-    "campaign.complete_scientific": CommandDefinition(
-        CompleteScientificCampaign,
-        "complete_campaign_scientific",
-        "campaign.manage",
-        True,
-        "Freeze scientific conclusions after obligation review; retain unknown custody.",
-    ),
-    "campaign.close_resources": CommandDefinition(
-        CloseCampaignResources,
-        "close_campaign_resources",
-        "campaign.manage",
-        True,
-        "Close proven settled resources and funding after separate scientific completion.",
     ),
     "report.create": CommandDefinition(
         ReportCampaign,
