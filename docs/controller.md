@@ -36,7 +36,7 @@ rejection is raised to the caller only after its acknowledgment commits.
 
 `StoreIdentity` identifies the actual transaction authority. Services sharing a
 ledger compare that identity rather than inventing filesystem paths for hosted
-stores. Access to native connections requires the SQLite adapter.
+stores. The native SQLite adapter can copy a consistent database image. This copies database rows only. Artifacts stored outside SQLite need their own copy.
 
 The command, replay, bootstrap, record, snapshot, event and notification paths use
 these callbacks. Credentials, campaign queries and scoped worker and proposer reads use the same boundary.

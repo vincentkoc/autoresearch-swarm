@@ -680,3 +680,11 @@ class Database:
             )
 
         self.store.write(acknowledge)
+
+    def backup(self, destination: Path) -> None:
+        if self._native_store is None:
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE,
+                "Filesystem backup requires the native SQLite adapter",
+            )
+        self._native_store.backup(destination)
