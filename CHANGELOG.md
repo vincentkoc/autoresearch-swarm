@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Install the optional `skypilot` extra to provide `uvx` for the isolated SkyPilot CLI.
+
 - Run the GitHub CI workflow on manual dispatch. Pull requests use the local merge gate.
 
 - **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
