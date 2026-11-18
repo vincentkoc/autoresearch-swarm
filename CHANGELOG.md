@@ -77,6 +77,9 @@
   and MLP tasks and had higher nanoGPT loss than both baselines. Run the
   hosted benchmark workflow only by explicit dispatch.
 
+- Replace the controller design manual with the swarm loop contract, operator
+  and campaign guides, and an executable panel-aware CPU campaign example.
+
 - Share sidebar width, collapse and section-height resizing across campaign and
   inventory views; retain widths when switching views and support keyboard dividers.
 

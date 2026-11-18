@@ -1,0 +1,21 @@
+campaign_id: program-normalization
+metric: pass_rate
+direction: maximize
+task_dir: ..
+command: [python, -m, benchmarks.trial, program]
+max_trials: 3
+max_workers: 2
+seed: 11
+search_panel: search
+selection_panel: selection
+confirmation_panel: confirmation
+panel_policy: benchmarks.study:worker_policy
+candidates:
+  - candidate_id: original
+    params: {line1: identity, line2: identity, line3: identity, line4: identity}
+  - candidate_id: partial
+    parents: [original]
+    params: {line1: lower, line2: strip, line3: identity, line4: identity}
+  - candidate_id: normalized
+    parents: [partial]
+    params: {line1: lower, line2: hyphenate, line3: trim-hyphens, line4: identity}

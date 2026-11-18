@@ -1,17 +1,10 @@
 # Project instructions
 
-Read the relevant design and tests before changing a public contract.
-
-- Keep domain records independent of transports, provider SDKs, and project model code.
-- Use immutable source/spec identities and separate per-attempt dispatch authority.
-- Keep state, events, budget entries, and outbox effects in one transaction.
-- Requeue lost attempts after heartbeat expiry. Accept one terminal result per trial ID and ignore late results from superseded attempts.
-- Keep training measurements separate from authenticated evaluator receipts.
-- Do not hide failed attempts or silently change comparison semantics.
-- Do not add vendor integrations as mandatory core dependencies.
-- Ordinary research repositories use manifests and commands, not platform subclasses.
-- Run targeted tests, Ruff, and type checking for changed code.
-- Use real subprocess tests for supervision and independent connections for database races.
-- Never claim hardware/provider qualification from mocked execution.
-- Keep public fixtures synthetic. Do not include personal paths, private data, or credentials.
-- Add user-visible changes to CHANGELOG.md with their implementation.
+Read the [design](docs/design.md) and the tests for the contract you change.
+Keep dispatch, retries and selection in code. Keep model logic in the workload.
+Record failed attempts. Preserve trial identity and reject stale results.
+Calibrate panel studies before search. Keep held-out measurements out of proposal history.
+Use synthetic public fixtures and optional dependencies for framework integrations.
+Test subprocess behavior with real children and queue races with independent connections.
+Run scoped pytest, Ruff and mypy. Record user-visible changes in CHANGELOG.md.
+Label the platform, workload and evidence behind qualification claims.

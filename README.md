@@ -1,84 +1,65 @@
 # Autoresearch Swarm
 
-Run reproducible research loops through an API, CLI or coding agent. Propose a
-change, execute it in isolation, evaluate it, then keep or reject it using recorded
-evidence. Multiple agents and workers can explore candidates concurrently.
-
-The default runtime uses Python, asyncio, SQLite and local artifact storage.
-Remote workers extend the same contracts. A UI is optional.
+Run a bounded search over prompts, programs or training recipes. A Python
+coordinator fills worker slots, records each attempt in SQLite and selects
+candidates using the campaign's metric. A panel policy measures whether a
+search improvement holds on independent examples.
 
 Inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch).
-The platform implementation is original and MIT-licensed. Upstream source is not
-bundled or relicensed.
+The implementation is original and MIT-licensed.
 
 ## Start locally
 
-From this checkout, with Python 3.11 or newer and [uv](https://docs.astral.sh/uv/):
+From a source checkout with uv and Python 3.11 or newer, run the program
+campaign on CPU.
 
 ~~~sh
-uv sync --group dev
-uv run research init
-uv run research run examples/cpu_bigram
+uv sync --locked --group dev
+uv run --no-sync python -m research_swarm swarm run benchmarks/program.yaml --db .research/program.sqlite
 ~~~
 
-The CPU example trains a small model and evaluates it independently. See
-[local runs](docs/local-runs.md) for budgets, resumption and campaign reports.
-Open the [campaign view](docs/campaign-view.md) to inspect experiments, lineage,
-leaderboards and activity, either from an offline export or the existing API server.
+The campaign calibrates its scorer, evaluates three recipes and reports its
+selected trial. Repeat the command to resume from the same queue.
 
-Expose the same control surface to an agent:
+[Run a campaign](docs/run-a-campaign.md) · [Operator guide](docs/operator-guide.md) · [Design](docs/design.md)
 
-~~~sh
-uv run research capabilities
-uv run research mcp
-~~~
+## Benchmarks
 
-Agents can propose candidates, submit trials, inspect results and request promotion.
-The engine owns execution state, budgets and evaluator authority.
-Start with [agent control](docs/agent-control.md), the [Python SDK](docs/sdk.md)
-or the [HTTP API](docs/api.md).
+| Workload | Measurement |
+| --- | --- |
+| Program optimization | Fraction of fixed unit tests passed |
+| MLP sweep | Classification accuracy on held-out synthetic points |
+| Causal language model | Next-token validation loss after a training-code edit |
 
-## Interactive views
+Each workload has random and greedy baselines at the same trial budget.
+Run the training tasks on CPU or MPS with the small profile. The full
+profile supports a configured CUDA device. Program and training-code
+proposers can call local Ollama.
 
-The [campaign workspace](docs/campaign-view.md) combines hill-climb history,
-lineage, leaderboards and activity. The [experiment inventory](docs/experiment-graph.md)
-adds four graph layouts: **Connected clusters** (default), **Spread-out force**,
-**Category groups**, and **Symmetric ring**. Both views share resizable sidebars
-and section dividers, keyboard controls, and locally saved panel sizes.
+[Benchmark commands and comparison protocol](benchmarks/README.md)
 
-![Symmetric ring layout with synthetic experiment data](docs/images/symmetric-ring.png)
+## Project and operator references
 
-*Example: the optional symmetric ring layout with 600 synthetic records and 2,028
-links across six research areas. [Generate and explore this sample](examples/graph_inventory).
-Position shows layout only—not experiment quality, similarity or execution order.*
+| Task | Reference |
+| --- | --- |
+| Write a campaign and interpret selection | [Run a campaign](docs/run-a-campaign.md) |
+| Inspect attempts, budgets and panel exposures | [Operator guide](docs/operator-guide.md) |
+| Extend a proposer, backend or evaluator | [Swarm design](docs/design.md) |
+| Adopt a manifest-based research project | [Project adoption](docs/project-adoption.md) · [Manifest](docs/project-manifests.md) · [Workload protocol](docs/workload-protocol.md) |
+| Configure a native training environment | [Engine profiles](docs/engines.md) · [MLX workload](docs/mlx-workload.md) |
+| Inspect controller records | [HTTP API](docs/api.md) · [Qualification history](docs/implementation.md) |
+| Publish a release | [Release guide](docs/releasing.md) |
 
-## Examples
+## Explore recorded experiments
 
-| Example | Purpose |
-|---|---|
-| [CPU bigram](examples/cpu_bigram) | A small training and evaluation loop. |
-| [Reactive CPU](examples/reactive_cpu) | Training-time decisions, a fixed-control baseline and recorded-schedule replay. |
-| [Synthetic pose](examples/synthetic_pose/README.md) | Adopt an ordinary research repository and replay archived receipts. |
-| [MLX workload](docs/mlx-workload.md) | Native Apple Metal training with the reference scorer. |
-| [Pinned upstream workload](docs/upstream.md) | Preserve the original fixed-budget experiment contract. |
+The controller campaign workspace displays score history, lineage and
+activity. The experiment inventory lays out explicit parent links and
+supports pan, zoom and pinning. The example below contains 600 synthetic
+records across six research areas.
 
-Examples distinguish integration checks from measured scientific improvement.
-[Qualification status](docs/implementation.md) records the tested platforms,
-workloads and provider runtimes. Native CUDA parity requires separate
-qualification.
+![Symmetric ring layout of synthetic experiment records](docs/images/symmetric-ring.png)
 
-## Guides
-
-| Task | Guide |
-|---|---|
-| Add a research repository | [Project adoption](docs/project-adoption.md), [manifest](docs/project-manifests.md), [workload protocol](docs/workload-protocol.md) |
-| Control a research loop | [Campaigns](docs/campaigns.md), [evaluation and promotion](docs/evaluation.md) |
-| Intervene during training | [Reactive controls and agent interfaces](docs/reactive.md) |
-| Register compute | [Remote workers](docs/remote-workers.md), [engine profiles](docs/engines.md), [worker control](docs/worker-control.md) |
-| Change infrastructure | [R2](docs/r2.md) |
-| Inspect research evidence | [Artifacts and source](docs/artifacts-and-source.md), [historical import](docs/historical-evidence.md) |
-| Extend the platform | [Adapter contracts](adapters/README.md), [design contract](docs/design.md), [protocol conformance](docs/protocol-conformance.md) |
-| Prepare a release | [Release previews and PyPI publishing](docs/releasing.md) |
+[Campaign workspace](docs/campaign-view.md) · [Experiment inventory](docs/experiment-graph.md) · [Generate the sample](examples/graph_inventory)
 
 ## Development
 
@@ -89,4 +70,4 @@ uv run mypy src
 uv run pytest
 ~~~
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, scoped testing and review.
+[Contributing](CONTRIBUTING.md)
