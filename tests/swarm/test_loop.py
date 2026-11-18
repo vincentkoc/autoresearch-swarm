@@ -17,6 +17,7 @@ def campaign(**changes: object) -> CampaignSpec:
     return replace(
         CampaignSpec(
             campaign_id="refill",
+            evaluation_mode="smoke",
             metric="score",
             direction="maximize",
             max_workers=2,
@@ -104,6 +105,37 @@ async def test_idle_proposer_timeout_and_no_affordable_claim_finish(tmp_path: Pa
     assert denied.reason == "dispatch_unavailable" and denied.selected is None
 
 
+@pytest.mark.asyncio
+async def test_restores_pending_trials_before_first_ask(tmp_path: Path) -> None:
+    store, backend = SQLiteStore(tmp_path / "queue"), Backend()
+    spec = campaign(max_trials=2)
+    restored = Trial(
+        trial_id="pending",
+        campaign_id=spec.campaign_id,
+        candidate=Candidate(candidate_id="fast"),
+        seed=11,
+        fidelity=1,
+    )
+    store.create_campaign(spec)
+    store.submit(restored)
+
+    class Resumable(Producer):
+        def restore_trials(self, trials: Sequence[Trial]) -> None:
+            assert list(trials) == [restored]
+            self.reserved = trials[0].seed
+
+        async def ask(
+            self, spec: CampaignSpec, archive: Sequence[Result], k: int
+        ) -> Sequence[Candidate]:
+            return [Candidate(candidate_id="replicate", seed=self.reserved + 1)]
+
+    result = await SwarmLoop(
+        spec, store, backend, WorkerLoop(store, backend, "worker"), proposer=Resumable()
+    ).run()
+    assert result.attempts == 2
+    assert [t.seed for t in store.trials(spec.campaign_id)] == [11, 12]
+
+
 def test_population_ranks_means_at_comparable_fidelity_by_family() -> None:
     spec = campaign(top_k=2, min_replicates=2)
     pop = Population(spec, min_replicates=2)
@@ -151,7 +183,9 @@ async def test_calibrate_and_hold_out_decision_before_persisting_winner(tmp_path
             return Decision()
 
     spec = campaign(
-        candidates=(Candidate(candidate_id="fast", params={"x": 1}),), search_panel="search"
+        candidates=(Candidate(candidate_id="fast", params={"x": 1}),),
+        search_panel="search",
+        evaluation_mode="calibrated",
     )
     store, backend = SQLiteStore(tmp_path / "queue"), Backend()
     summary = await SwarmLoop(
@@ -159,6 +193,17 @@ async def test_calibrate_and_hold_out_decision_before_persisting_winner(tmp_path
     ).run()
     assert events == ["calibrated", "search", "consider"] and summary.attempts == 1
     assert summary.selected is None and store.incumbent(spec.campaign_id) is None
+
+
+@pytest.mark.asyncio
+async def test_calibrated_mode_requires_policy_before_admitting_trials(tmp_path: Path) -> None:
+    store, backend = SQLiteStore(tmp_path / "queue"), Backend()
+    worker = WorkerLoop(store, backend, "worker")
+    with pytest.raises(ValueError, match="panel_policy"):
+        await SwarmLoop(campaign(evaluation_mode="calibrated"), store, backend, worker).run()
+    with pytest.raises(ValueError, match="cannot declare"):
+        await SwarmLoop(campaign(selection_panel="held-out"), store, backend, worker).run()
+    assert store.trials("refill") == []
 
 
 @pytest.mark.asyncio

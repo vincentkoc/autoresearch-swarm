@@ -93,6 +93,7 @@ class SeedProposer:
 @dataclass(frozen=True)
 class RunSummary:
     campaign_id: str
+    evaluation_mode: str
     reason: str
     trials: int
     attempts: int
@@ -201,14 +202,21 @@ class SwarmLoop:
 
     async def run(self) -> RunSummary:
         s = self.spec
+        if s.evaluation_mode == "calibrated" and self.panels is None:
+            raise ValueError("Configure a panel_policy or explicitly set evaluation_mode: smoke")
+        if s.evaluation_mode == "smoke" and (
+            self.panels is not None
+            or any((s.search_panel, s.selection_panel, s.confirmation_panel))
+        ):
+            raise ValueError(
+                "Smoke campaigns use direct metrics and cannot declare evaluation panels"
+            )
         self.store.create_campaign(s)
         previous = self.store.trials(s.campaign_id)
         seen = {trial.trial_id for trial in previous}
         proposer = self.proposer or SeedProposer(s, previous)
         if self.panels is not None:
             self.panels.calibrate()
-        elif any((s.search_panel, s.selection_panel, s.confirmation_panel)):
-            raise ValueError("A campaign with panels requires a calibrated panel policy")
         cursor = len(self.population.archive)
         recorded = self.store.results(s.campaign_id, after=cursor)
         incumbent = self.store.incumbent(s.campaign_id)
@@ -224,6 +232,9 @@ class SwarmLoop:
                 self.incumbent = Ranked(result, score, incumbent[2])
         if recorded:
             self._select()
+        restore = getattr(proposer, "restore_trials", None)
+        if restore is not None:
+            restore(previous)
         cursor += len(recorded)
         pending: set[asyncio.Task[bool]] = set()
         no_claim = False
@@ -284,6 +295,7 @@ class SwarmLoop:
         archive = self.population.archive
         return RunSummary(
             s.campaign_id,
+            s.evaluation_mode,
             reason,
             len(seen),
             len(archive),
