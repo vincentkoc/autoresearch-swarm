@@ -33,7 +33,8 @@
 
 - Persist swarm campaigns and their trial queues in SQLite. Workers claim and
   reserve cost atomically. Expired attempts retain their costs and observations
-  when the queue makes the trial available for retry.
+  when the queue makes the trial available for retry. By default a failed or
+  lost attempt can retry once. Set `max_attempts: 1` to run each trial once.
 
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.

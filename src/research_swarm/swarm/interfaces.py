@@ -48,7 +48,7 @@ class CampaignSpec:
     top_k: int = 1
     min_delta: float = 0.0
     target: float | None = None
-    max_attempts: int = 1
+    max_attempts: int = 2
     trial_timeout_seconds: float = 300.0
     proposal_timeout_seconds: float = 10.0
     max_cost: float | None = None

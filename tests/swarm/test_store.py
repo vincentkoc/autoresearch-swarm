@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import os
+import signal
 import sqlite3
+import subprocess
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -19,7 +24,6 @@ def spec(**changes: object) -> CampaignSpec:
         command=("task",),
         max_workers=8,
         max_trials=16,
-        max_attempts=2,
     )
     return replace(base, **changes)
 
@@ -101,6 +105,45 @@ def test_atomic_cost_reservations_and_candidate_specific_estimates(tmp_path: Pat
     assert queue.report(Result(attempt=claims[0], status="ok", cost=1.0))
     next_attempt = claim(9)
     assert next_attempt is not None and next_attempt.trial == trial(1)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="uses POSIX SIGKILL")
+@pytest.mark.parametrize("limit", [None, 1])
+def test_worker_sigkill_retries_by_default_and_honors_explicit_one(
+    tmp_path: Path, limit: int | None
+) -> None:
+    path = tmp_path / "queue.db"
+    store = SQLiteStore(path)
+    campaign = spec() if limit is None else spec(max_attempts=limit)
+    store.create_campaign(campaign)
+    submitted = trial(1)
+    store.submit(submitted)
+    program = """
+import os, signal, sys
+from pathlib import Path
+from research_swarm.swarm.store import SQLiteStore
+store = SQLiteStore(Path(sys.argv[1]))
+attempt = store.claim("test", "doomed")
+assert attempt is not None and store.heartbeat(attempt.attempt_id)
+os.kill(os.getpid(), signal.SIGKILL)
+"""
+    killed = subprocess.run(
+        [sys.executable, "-c", program, str(path)], capture_output=True, text=True, timeout=20
+    )
+    assert killed.returncode == -signal.SIGKILL, killed.stderr
+    assert store.requeue_expired("test", time.time() + 1) == 1
+    (lost,) = store.results("test")
+    assert lost.status == "lost" and lost.attempt.trial == submitted
+    retry = store.claim("test", "replacement")
+    if limit is None:
+        assert retry is not None and retry.number == 2 and retry.trial == submitted
+        success = Result(attempt=retry, status="ok", metrics={"loss": 0.25})
+        assert store.report(success) and not store.report(success)
+        assert store.results("test") == [lost, success]
+    else:
+        assert retry is None and store.results("test") == [lost]
+    assert not store.report(Result(attempt=lost.attempt, status="ok", metrics={"loss": 0}))
+    assert store.outstanding("test") == 0
 
 
 def test_decimal_dispatch_exactly_at_budget(tmp_path: Path) -> None:
