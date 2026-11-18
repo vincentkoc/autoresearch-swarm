@@ -38,6 +38,9 @@
   policy, budget, review and transport stops. Async cancellation now drains the
   current bounded search pass before releasing the client.
 
+- Generate swarm candidates with parameter mutation, optional Optuna sampling,
+  crossover, ensemble growth, seed replication and deadline-bounded local Ollama edits.
+
 - Define the campaign, candidate, trial, attempt and result records and plugin
   protocols for capacity-driven research campaigns.
 
