@@ -9,9 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from filelock import FileLock
-
-from research_swarm.swarm.data_stage import Stage, read_stage, stage_path
+from research_swarm.swarm.data_stage import Stage, read_stage, revision_lock, stage_path
 
 
 def register(commands: argparse._SubParsersAction[Any]) -> None:
@@ -56,7 +54,7 @@ def _mounted(data: Path) -> bool:
 
 
 def _remove_stage(path: Path, expected: Stage) -> str:
-    with FileLock(path.with_name(f".{path.name}.lock")):
+    with revision_lock(path):
         pending = path.with_name(f".gc.{path.name}.json")
         if not path.exists() and not pending.exists():
             return "absent"

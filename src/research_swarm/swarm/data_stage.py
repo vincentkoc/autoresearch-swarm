@@ -7,13 +7,16 @@ A revision names a fixed snapshot. Choose a new revision to publish changed inpu
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
 import re
 import subprocess
 import tempfile
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -135,13 +138,40 @@ def prepare(
     return _publish(source, stage_path(volume, campaign, revision), threads)
 
 
+@contextmanager
+def revision_lock(stage: Path, *, shared: bool = False) -> Iterator[None]:
+    """Protect a revision during worker copies or collection."""
+    with FileLock(stage.with_name(f".{stage.name}.lock")) as gate:
+        marker = stage / "stage.json"
+        if os.name != "posix" or not marker.is_file():
+            yield
+            return
+
+        import fcntl
+
+        fd = os.open(marker, (os.O_RDONLY if shared else os.O_RDWR) | os.O_NOFOLLOW)
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
+            except OSError as error:
+                if error.errno not in {errno.ENOSYS, errno.EOPNOTSUPP}:
+                    raise
+                # Filesystems without native flock keep the exclusive gate.
+            else:
+                if shared:
+                    gate.release()  # Other workers can now copy the same snapshot.
+            yield
+        finally:
+            os.close(fd)
+
+
 def hydrate(volume: Path, nvme: Path, campaign: str, revision: str, *, threads: int = 16) -> Path:
     """Copy and verify the snapshot once on this host, before a worker starts."""
     staged = stage_path(volume, campaign, revision)
     target = stage_path(nvme, campaign, revision)
     if staged == target:
         raise ValueError("the staging volume and worker cache overlap")
-    with FileLock(staged.with_name(f".{staged.name}.lock")):
+    with revision_lock(staged, shared=True):
         _publish(staged / "data", target, threads, expected=read_stage(staged))
     return target / "data"
 
