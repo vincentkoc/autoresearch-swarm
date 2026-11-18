@@ -143,18 +143,34 @@ def test_racing_decisions_share_one_confirmation_and_result(tmp_path):
 
 def test_failed_confirmation_remains_consumed(tmp_path):
     def fail(key, role, members, seed):
-        if role == "confirmation":
+        if role == "confirmation" and key == "two":
             raise TimeoutError
         return measure(key, role, members, seed)
 
     first = study(tmp_path, fail)
     first.calibrate()
-    with pytest.raises(TimeoutError):
-        first.consider("two", "base")
+    rejected = first.consider("two", "base")
+    assert not rejected.promoted and "TimeoutError" in rejected.error
     reopened = study(tmp_path, fail)
-    with pytest.raises(RuntimeError, match="consumed"):
-        reopened.consider("two", "base")
+    assert reopened.consider("two", "base") == rejected
     assert reopened.look_counts()["confirmation"] == 1
+    assert reopened.consider("one", "base").promoted
+
+
+def test_restart_after_exit_cannot_repeat_an_unfinished_confirmation(tmp_path):
+    def crash(key, role, members, seed):
+        if role == "confirmation":
+            raise SystemExit
+        return measure(key, role, members, seed)
+
+    interrupted = study(tmp_path, crash)
+    interrupted.calibrate()
+    with pytest.raises(SystemExit):
+        interrupted.consider("two", "base")
+    resumed = study(tmp_path, measure)
+    refused = resumed.consider("two", "base")
+    assert not refused.promoted and "consumed" in refused.error
+    assert resumed.look_counts()["confirmation"] == 1
 
 
 def test_benchmark_entry_point_calibrates_shares_holdouts_and_resumes(tmp_path):

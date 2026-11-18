@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import random
 import re
@@ -9,6 +10,7 @@ import statistics
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal
 
 Candidate = dict[str, str]
@@ -23,6 +25,22 @@ PANEL_SEEDS = {
     "calibration_proxy": 401,
     "calibration_target": 503,
 }
+
+
+def registered_seed(label: str) -> int:
+    digest = hashlib.sha256(f"ars-bench-v2/{label}".encode()).digest()
+    return int.from_bytes(digest[:4], "big")
+
+
+def panel_seed(protocol: str, panel: str) -> int:
+    return PANEL_SEEDS[panel] if protocol == "v1" else registered_seed(f"data/{panel}")
+
+
+def comparison_seeds(protocol: str, *, calibration: bool = False) -> tuple[int, ...]:
+    if protocol == "v1":
+        return (11, 23, 47)
+    label = "calibration-seed" if calibration else "search-seed"
+    return tuple(registered_seed(f"{label}/{i}") for i in range(3))
 
 
 def panel_size(name: str, size: str, role: str) -> int:
@@ -47,6 +65,7 @@ class Task:
     evaluate: Score
     device: str
     size: str
+    protocol: str = "v1"
 
     @property
     def initial(self) -> Candidate:
@@ -73,9 +92,9 @@ class Task:
 
     def members(self, panel: str) -> tuple[str, ...]:
         # Each row is identified by its generating stream and offset within it.
+        stream = panel_seed(self.protocol, panel)
         return tuple(
-            f"{self.name}/{PANEL_SEEDS[panel]}/{i}"
-            for i in range(panel_size(self.name, self.size, panel))
+            f"{self.name}/{stream}/{i}" for i in range(panel_size(self.name, self.size, panel))
         )
 
 
@@ -154,9 +173,17 @@ PROGRAM_SPACE: dict[str, tuple[str, ...]] = {f"line{i}": OPS for i in range(1, 5
 
 
 def _slug_score(
-    candidate: Candidate, seed: int, panel: str, device: str, size: str, fidelity: float
+    candidate: Candidate,
+    seed: int,
+    panel: str,
+    device: str,
+    size: str,
+    fidelity: float,
+    *,
+    protocol: str = "v1",
 ) -> float:
-    rng = random.Random(PANEL_SEEDS[panel])
+    stream = panel_seed(protocol, panel)
+    rng = random.Random(stream)
     operations: dict[str, Callable[[str], str]] = {
         "identity": lambda s: s,
         "strip": str.strip,
@@ -168,7 +195,7 @@ def _slug_score(
     for index in range(math.ceil(fidelity * panel_size("program", size, panel))):
         words = rng.sample(("Elm", "ash", "OAK", "gingko", "FIR", "Birch"), k=2)
         # The unique suffix identifies a fixed case across all runs of this panel.
-        suffix = f"{PANEL_SEEDS[panel]}x{index}"
+        suffix = f"{stream}x{index}"
         raw = rng.choice(("", " ", "__", "-")) + words[0]
         raw += rng.choice((" ", "__", " - ", "-")) + words[1] + "-" + suffix
         value = raw + rng.choice(("", " ", "  ", "_"))
@@ -179,7 +206,9 @@ def _slug_score(
     return statistics.mean(scores)
 
 
-def get_task(name: str, device: str = "cpu", size: str = "small") -> Task:
+def get_task(name: str, device: str = "cpu", size: str = "small", *, protocol: str = "v1") -> Task:
+    if protocol not in ("v1", "v2"):
+        raise ValueError("unknown benchmark protocol")
     if size not in ("small", "full") or device not in ("cpu", "mps", "cuda"):
         raise ValueError("unknown size or device")
     if name == "program":
@@ -192,11 +221,19 @@ def get_task(name: str, device: str = "cpu", size: str = "small") -> Task:
             "pass_rate",
             "maximize",
             PROGRAM_SPACE,
-            _slug_score,
+            partial(_slug_score, protocol=protocol),
             device,
             size,
+            protocol,
         )
-    from benchmarks.training import MLP_SPACE, TRAINING_SPACE, mlp_accuracy, nanogpt_loss
+    from benchmarks.training import (
+        MLP_SPACE,
+        MLP_V2,
+        TRAINING_SPACE,
+        TRAINING_V2,
+        mlp_accuracy,
+        nanogpt_loss,
+    )
 
     if name == "mlp":
         return Task(
@@ -204,10 +241,11 @@ def get_task(name: str, device: str = "cpu", size: str = "small") -> Task:
             "Classify synthetic points by quadrant parity.",
             "accuracy",
             "maximize",
-            MLP_SPACE,
-            mlp_accuracy,
+            MLP_SPACE if protocol == "v1" else MLP_V2,
+            partial(mlp_accuracy, protocol=protocol),
             device,
             size,
+            protocol,
         )
     if name == "nanogpt":
         return Task(
@@ -216,9 +254,10 @@ def get_task(name: str, device: str = "cpu", size: str = "small") -> Task:
             "loop to minimize next-token validation loss.",
             "val_loss",
             "minimize",
-            TRAINING_SPACE,
-            nanogpt_loss,
+            TRAINING_SPACE if protocol == "v1" else TRAINING_V2,
+            partial(nanogpt_loss, protocol=protocol),
             device,
             size,
+            protocol,
         )
     raise ValueError(f"unknown task {name!r}")

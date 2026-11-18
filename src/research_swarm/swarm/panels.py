@@ -67,6 +67,11 @@ class Decision:
     reason: str
     selection_gain: float | None = None
     confirmation_gain: float | None = None
+    error: str | None = None
+
+
+class PanelEvaluationError(ValueError):
+    """A reserved panel look failed to produce a usable score."""
 
 
 class PanelStudy:
@@ -179,9 +184,12 @@ class PanelStudy:
 
     def _measure(self, role: Role, key: str, seed: int) -> float:
         look_id = self._reserve(role, key, seed)
-        score = float(self.evaluate(key, role, self.panels.members(role), seed))
+        try:
+            score = float(self.evaluate(key, role, self.panels.members(role), seed))
+        except Exception as exc:
+            raise PanelEvaluationError(f"{role}: {type(exc).__name__}: {exc}") from exc
         if not math.isfinite(score):
-            raise ValueError(f"non-finite {role} score")
+            raise PanelEvaluationError(f"non-finite {role} score")
         with self._db() as db:
             db.execute("UPDATE panel_looks SET score = ? WHERE id = ?", (score, look_id))
         return score
@@ -237,6 +245,15 @@ class PanelStudy:
         self._calibration()
         return self._measure("search", candidate_key, seed)
 
+    def confirmed_score(self, key: str) -> float | None:
+        """Read a previously measured score without opening the confirmation panel."""
+        with self._db() as db:
+            row = db.execute(
+                "SELECT score FROM panel_looks WHERE role = 'confirmation' AND candidate = ?",
+                (key,),
+            ).fetchone()
+        return float(row[0]) if row is not None and row[0] is not None else None
+
     def _confirmed(self, key: str) -> float:
         with self._db() as db:
             row = db.execute(
@@ -246,7 +263,7 @@ class PanelStudy:
         if row is None:
             return self._measure("confirmation", key, self.seeds[0])
         if row[0] is None:
-            raise RuntimeError("confirmation look consumed without a result")
+            raise PanelEvaluationError("confirmation look consumed without a result")
         return float(row[0])
 
     def consider(self, challenger_key: str, incumbent_key: str | None) -> Decision:
@@ -259,27 +276,29 @@ class PanelStudy:
             previous = self._state(decision_key)
             if previous is not None:
                 return Decision(**json.loads(previous))
-            if challenger_key == reference:
-                self._confirmed(reference)
-                result = Decision(incumbent_key is None, "reference")
-            else:
-                gains = [
-                    sign
-                    * (
-                        self._measure("selection", challenger_key, seed)
-                        - self._measure("selection", reference, seed)
-                    )
-                    for seed in self.seeds
-                ]
-                selection_gain = statistics.mean(gains)
-                threshold = max(
-                    self.min_gain,
-                    self.noise_multiplier * calibration.seed_noise * math.sqrt(2 / len(gains)),
-                )
-                if selection_gain <= threshold:
-                    result = Decision(False, "selection", selection_gain)
+            try:
+                if challenger_key == reference:
+                    self._confirmed(reference)
+                    result = Decision(incumbent_key is None, "reference")
                 else:
-                    gain = sign * (self._confirmed(challenger_key) - self._confirmed(reference))
-                    result = Decision(gain > self.min_gain, "confirmation", selection_gain, gain)
+                    result = self._compare(challenger_key, reference, sign, calibration)
+            except PanelEvaluationError as exc:
+                result = Decision(False, "evaluation_failed", error=str(exc))
             self._put(decision_key, result)
             return result
+
+    def _compare(self, key: str, reference: str, sign: int, calibration: Calibration) -> Decision:
+        gains = [
+            sign
+            * (self._measure("selection", key, seed) - self._measure("selection", reference, seed))
+            for seed in self.seeds
+        ]
+        selection_gain = statistics.mean(gains)
+        threshold = max(
+            self.min_gain,
+            self.noise_multiplier * calibration.seed_noise * math.sqrt(2 / len(gains)),
+        )
+        if selection_gain <= threshold:
+            return Decision(False, "selection", selection_gain)
+        gain = sign * (self._confirmed(key) - self._confirmed(reference))
+        return Decision(gain > self.min_gain, "confirmation", selection_gain, gain)
