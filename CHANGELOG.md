@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Serve authenticated campaign reads from SQLite with `serve --db`, inspect
+  a selected database with `mcp --db`, or query it through `CampaignReader`.
+
 - **Breaking:** Retire parent-funded child campaigns and their allocation commands.
   Run each campaign with its own dispatch budget. Finish or inspect existing
   delegated workspaces with their original release and start new runs in fresh state.

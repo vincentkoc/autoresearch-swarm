@@ -50,7 +50,9 @@ def parser() -> argparse.ArgumentParser:
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
-    commands.add_parser("mcp", help="Expose typed agent tools over stdio")
+    serve.add_argument("--db", type=Path, help="Local swarm campaign database")
+    mcp = commands.add_parser("mcp", help="Expose typed agent tools over stdio")
+    mcp.add_argument("--db", type=Path, help="Local swarm campaign database")
     reactive = commands.add_parser(
         "reactive", help="Operate one explicitly granted local decision session"
     )
@@ -430,6 +432,26 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = files.download(args.identifier, args.destination).model_dump(mode="json")
             _emit_json(result)
+            return 0
+        if args.action in {"serve", "mcp"} and args.db:
+            from research_swarm.api.campaign import campaign_app, campaign_tools
+            from research_swarm.swarm.reader import CampaignReader
+
+            if args.controller or args.state_dir:
+                raise ValueError("Choose a local database with --db")
+            reader = CampaignReader(args.db)
+            if args.action == "mcp":
+                if args.token_file:
+                    raise ValueError("Local campaign MCP reads the selected database directly")
+                campaign_tools(reader).run(transport="stdio")
+            else:
+                import uvicorn
+
+                if not args.token_file:
+                    raise ValueError("Campaign HTTP reads require --token-file")
+                path = args.token_file.expanduser().absolute()
+                token = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
+                uvicorn.run(campaign_app(reader, token), host=args.host, port=args.port)
             return 0
         if args.action == "campaign" and args.campaign_action == "gc":
             from research_swarm.runtime import default_state_directory
