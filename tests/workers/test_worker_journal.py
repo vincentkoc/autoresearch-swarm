@@ -155,10 +155,10 @@ def test_reconciliation_does_not_abort_a_live_supervisor_behind_its_barrier(
     original = journal.authorize_release
     completed = []
 
-    def paused_release(attempt_id: str, supervisor_id: str) -> bool:
+    def paused_release(attempt_id: str, supervisor_id: str, launch_deadline_ns: int) -> bool:
         held.set()
         assert resume.wait(5)
-        return original(attempt_id, supervisor_id)
+        return original(attempt_id, supervisor_id, launch_deadline_ns)
 
     monkeypatch.setattr(journal, "authorize_release", paused_release)
     runner = threading.Thread(

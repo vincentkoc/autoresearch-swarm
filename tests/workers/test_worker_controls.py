@@ -22,7 +22,7 @@ from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.worker_support import dispatch
 from tests.workers.test_supervision import require_closed
-from tests.workers.test_timed_execution import native_worker
+from tests.workers.test_worker_deadlines import inline_supervisor, native_worker
 from tests.workers.test_worker_lifecycle import cancel
 
 
@@ -226,11 +226,17 @@ def test_control_during_native_barrier_prevents_project_release(
     held, resume = threading.Event(), threading.Event()
     original = journal.authorize_release
 
-    def paused(attempt_id: str, supervisor_id: str) -> bool:
-        result = original(attempt_id, supervisor_id) if already_authorized else None
+    def paused(attempt_id: str, supervisor_id: str, launch_deadline_ns: int) -> bool:
+        result = (
+            original(attempt_id, supervisor_id, launch_deadline_ns) if already_authorized else None
+        )
         held.set()
         assert resume.wait(5)
-        return result if result is not None else original(attempt_id, supervisor_id)
+        return (
+            result
+            if result is not None
+            else original(attempt_id, supervisor_id, launch_deadline_ns)
+        )
 
     monkeypatch.setattr(journal, "authorize_release", paused)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -352,7 +358,7 @@ def test_cancellation_during_preparation_preserves_dispatch_and_releases_unstart
     assert pipeline.worker.resources.availability() == {"cpu": 1}
 
 
-def test_calibrated_native_release_honors_control_after_origin_authorization(
+def test_native_release_honors_control_after_authorization(
     pipeline: Pipeline,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -360,7 +366,8 @@ def test_calibrated_native_release_honors_control_after_origin_authorization(
     worker, _ = native_worker(pipeline, tmp_path)
     attempt = worker.claim(pipeline.ready())
     entered, release = threading.Event(), threading.Event()
-    original = worker.journal.authorize_timed_release
+    monkeypatch.setattr("research_swarm.workers.local.spawn_supervisor", inline_supervisor)
+    original = worker.journal.authorize_release
 
     def paused(*args: Any, **kwargs: Any) -> Any:
         result = original(*args, **kwargs)
@@ -369,7 +376,7 @@ def test_calibrated_native_release_honors_control_after_origin_authorization(
         assert release.wait(5)
         return result
 
-    monkeypatch.setattr(worker.journal, "authorize_timed_release", paused)
+    monkeypatch.setattr(worker.journal, "authorize_release", paused)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         task = pool.submit(worker.execute, attempt["id"])
         try:

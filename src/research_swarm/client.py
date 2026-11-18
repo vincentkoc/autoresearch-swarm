@@ -33,7 +33,6 @@ from research_swarm.domain.acknowledgments import (
 )
 from research_swarm.domain.artifacts import ArtifactRecord
 from research_swarm.domain.canonical import record_digest, strict_json_loads
-from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.endpoints import controller_url as controller_url
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
@@ -117,10 +116,6 @@ class LocalTransport:
 
     def query(self, operation: str, payload: JsonObject) -> JsonObject:
         context = self._context()
-        if operation == "worker.clock":
-            return self.runtime.service.worker_clock(
-                context, ClockChallenge.model_validate(payload)
-            ).model_dump(mode="json")
         if operation == "worker.output":
             return self.runtime.service.worker_outputs.status(
                 context, WorkerUploadTarget.model_validate(payload)
@@ -321,7 +316,6 @@ class HTTPTransport:
             "worker.list",
             "worker.input",
             "worker.output",
-            "worker.clock",
         }:
             return self._request("POST", "/v1/" + operation.replace(".", "/"), json=payload)
         if operation == "capabilities":
@@ -542,11 +536,6 @@ class ResearchClient:
     def worker_get(self, request: WorkerRead) -> JsonObject:
         return self.transport.query("worker.get", request.model_dump(mode="json"))
 
-    def worker_clock(self, request: ClockChallenge) -> SignedClockReply:
-        return SignedClockReply.model_validate(
-            self.transport.query("worker.clock", request.model_dump(mode="json"))
-        )
-
     def worker_list(self, request: WorkerQuery) -> JsonObject:
         return self.transport.query("worker.list", request.model_dump(mode="json"))
 
@@ -711,9 +700,6 @@ class AsyncResearchClient:
 
     async def worker_get(self, request: WorkerRead) -> JsonObject:
         return await asyncio.to_thread(self.client.worker_get, request)
-
-    async def worker_clock(self, request: ClockChallenge) -> SignedClockReply:
-        return await asyncio.to_thread(self.client.worker_clock, request)
 
     async def worker_list(self, request: WorkerQuery) -> JsonObject:
         return await asyncio.to_thread(self.client.worker_list, request)

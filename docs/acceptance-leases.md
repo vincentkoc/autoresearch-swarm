@@ -91,16 +91,9 @@ release the controller's unsettled budget or make its attempt successful.
 
 ## Clocks and upgrades
 
-Calibrated workers use the same controller continuous-clock epoch and policy as
-their signed assignment. Loss of that epoch or policy makes ordinary acceptance
-unqualified. The original evidence remains reconcilable. Reopening within the
-same qualified controller process preserves its clock; a new process cannot
-invent continuity with the old epoch.
-
-Compatibility workers retain `local-utc-v1`: controller UTC, never a worker-supplied
-timestamp. A time earlier than the lease's last recorded observation makes the
-lease unqualified. This profile does not prove wall-clock continuity during an
-unobserved interval. Native elapsed time and resource supervision remain separate.
+The controller uses UTC to check an acceptance lease. A time earlier than the
+last recorded observation makes the lease unqualified. The worker supervisor
+enforces execution deadlines against its local monotonic clock.
 
 SQLite schema 3 adds the lease query index and prevents old binaries from opening
 the upgraded store. Stop old controllers before upgrading; changing a schema

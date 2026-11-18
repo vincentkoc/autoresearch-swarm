@@ -74,24 +74,8 @@ access and check that blob I/O stays outside SQL callbacks.
 
 ## Controller time
 
-`AuthorityTimeProvider` supplies fresh synchronous observations for a verified
-workspace, controller epoch and signing-key identity. `ResearchService` passes it
-to worker control and checks that it belongs to the same state authority. The
-provider does not sign grants, authorize workers or accept transport-supplied time.
-Worker control checks signing authority first and samples time inside the protected
-claim, input-acquisition and acceptance decisions.
-
-`LocalRuntime` installs `NativeAuthorityTimeProvider`. It normalizes the native
-store identity at construction and reuses the process registry across runtime
-reopens. Clock construction stays lazy for installations using only local UTC.
-The original epoch, policy freeze, discontinuity latch and fork refusal remain in
-force. A new process cannot recover qualified time merely by loading an old epoch.
-
-Generic services must explicitly supply a provider to enroll calibrated workers.
-They do not discover a database filesystem path or substitute wall time when a
-provider is absent. Callback-only tests cover probes, claims, input authorization
-and acceptance with an injected clock. A hosted clock still needs its own qualified
-profile and continuity contract; the native clock profile is not a cloud capability.
+The controller issues UTC expiry timestamps. At execution the worker converts them
+to local monotonic deadlines and supervises the child process group.
 
 ## Portable worker evidence
 

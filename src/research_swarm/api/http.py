@@ -20,7 +20,6 @@ from research_swarm.control.worker_artifacts import WorkerArtifactRead, WorkerAr
 from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
-from research_swarm.domain.clocks import ClockChallenge, SignedClockReply
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.domain.evidence import ArtifactRef
@@ -337,13 +336,6 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         parsed = WorkerRead.model_validate(await read_json(request))
         return await asyncio.to_thread(workers.get, context, parsed)
 
-    @app.post("/v1/worker/clock", response_model=SignedClockReply)
-    async def worker_clock(
-        request: Request, context: Annotated[CommandContext, Depends(worker_context)]
-    ) -> SignedClockReply:
-        parsed = ClockChallenge.model_validate(await read_json(request))
-        return await asyncio.to_thread(service.worker_clock, context, parsed)
-
     @app.post("/v1/worker/list")
     async def worker_list(
         request: Request, context: Annotated[CommandContext, Depends(worker_context)]
@@ -538,7 +530,6 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
             components[name] = openapi_references(schema)
     for path, model in (
         ("/v1/proposal/get", ProposalRead),
-        ("/v1/worker/clock", ClockChallenge),
         ("/v1/worker/get", WorkerRead),
         ("/v1/worker/list", WorkerQuery),
         ("/v1/worker/input", WorkerArtifactRead),

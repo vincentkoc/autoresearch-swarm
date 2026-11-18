@@ -73,15 +73,9 @@ Campaign context reads its evidence and event watermark in one transaction.
 listing also accepts a legacy worker's workspace `read` scope; reading its own
 `worker_cache` observation requires `worker.publish`. Every variant binds the
 request to the authenticated worker principal and current session. These
-exceptions do not authorize other worker query kinds or clock sampling.
+exceptions do not authorize other worker query kinds.
 Generic record, context, and event endpoints still require `read`.
 See [scoped worker discovery](worker-assignments.md#scoped-discovery-and-recovery).
-
-`POST /v1/worker/clock` accepts `ClockChallenge` and returns `SignedClockReply`
-under `worker.query`. It is available only for an active worker enrolled with
-`clock_mode="bounded-continuous-v1"`. Sampling and assignment issuance share a
-process-owned clock epoch; this endpoint does not itself grant remote execution.
-See [controller time admission](worker-assignments.md#controller-time-admission).
 
 `POST /v1/worker/input` returns an assigned input's `ArtifactRef` and
 `POST /v1/worker/input/content` streams its verified bytes. Both accept

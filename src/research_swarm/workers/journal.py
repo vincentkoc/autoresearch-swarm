@@ -15,7 +15,7 @@ from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.identity import connect_existing, initialize_identity
 from research_swarm.workers import control_inbox
 from research_swarm.workers.authority import VerifiedDispatch
-from research_swarm.workers.clock_signatures import VerifiedAssignmentTime
+from research_swarm.workers.clocks import native_clock
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, NativeOutcome
 from research_swarm.workers.journal_records import (
     JournalEntry as JournalEntry,
@@ -28,7 +28,6 @@ from research_swarm.workers.journal_records import (
 )
 from research_swarm.workers.prepared import PreparedExecution
 from research_swarm.workers.signatures import VerifiedAssignment
-from research_swarm.workers.timed_launch import LiveTimingOrigin, VerifiedTiming
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS attempts (
@@ -48,6 +47,12 @@ CREATE TABLE IF NOT EXISTS journal_events (
 );
 PRAGMA user_version=1;
 """
+
+
+def _expired(entry: JournalEntry, launch_deadline_ns: int | None = None) -> bool:
+    if launch_deadline_ns is not None:
+        return native_clock().continuous_ns() >= launch_deadline_ns
+    return min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
 
 
 class WorkerJournal:
@@ -133,14 +138,12 @@ class WorkerJournal:
 
     def receive(
         self,
-        verified: VerifiedDispatch | VerifiedAssignment | VerifiedAssignmentTime,
+        verified: VerifiedDispatch | VerifiedAssignment,
         command: NativeCommand,
         *,
         prepared: PreparedExecution | None = None,
         require_preparation: bool = False,
     ) -> JournalEntry:
-        assignment_time = verified.grant if isinstance(verified, VerifiedAssignmentTime) else None
-        verified = verified.assignment if isinstance(verified, VerifiedAssignmentTime) else verified
         signed = verified.assignment if isinstance(verified, VerifiedAssignment) else None
         verified = verified.dispatch if isinstance(verified, VerifiedAssignment) else verified
         verified.spec.verify()
@@ -162,8 +165,6 @@ class WorkerJournal:
             prepared=prepared,
             preparation_required=require_preparation,
             signed_assignment=signed,
-            clock_mode="bounded-continuous-v1" if assignment_time is not None else "local-utc-v1",
-            assignment_time=assignment_time,
         )
         digest = record_digest(
             "research.worker-input",
@@ -174,14 +175,6 @@ class WorkerJournal:
                 **({"prepared": prepared.model_dump(mode="json")} if prepared is not None else {}),
                 **({"preparation_required": True} if require_preparation else {}),
                 **({"signed_assignment": signed.model_dump(mode="json")} if signed else {}),
-                **(
-                    {
-                        "clock_mode": entry.clock_mode,
-                        "assignment_time": assignment_time.model_dump(mode="json"),
-                    }
-                    if assignment_time is not None
-                    else {}
-                ),
             },
         )
         with self._transaction() as connection:
@@ -293,18 +286,13 @@ class WorkerJournal:
 
         return self._change(attempt_id, "local.cancellation_requested", cancel)
 
-    def claim_launch(self, attempt_id: str, supervisor_id: str) -> JournalEntry:
+    def claim_launch(
+        self, attempt_id: str, supervisor_id: str, launch_deadline_ns: int | None = None
+    ) -> JournalEntry:
         def claim(entry: JournalEntry) -> JournalEntry:
             if entry.state != JournalState.RECEIVED:
                 raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Attempt cannot be launched again")
-            if entry.clock_mode != "local-utc-v1":
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE, "Calibrated launch requires a live origin"
-                )
-            if (
-                entry.cancel_requested
-                or min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
-            ):
+            if entry.cancel_requested or _expired(entry, launch_deadline_ns):
                 return entry.model_copy(
                     update={
                         "state": JournalState.NOT_STARTED,
@@ -320,141 +308,6 @@ class WorkerJournal:
             )
 
         return self._change(attempt_id, "launch.claimed", claim)
-
-    def bind_timing(self, attempt_id: str, verified: VerifiedTiming) -> JournalEntry:
-        """Persist conservative evidence; this does not authorize a native launch."""
-
-        def bind(entry: JournalEntry) -> JournalEntry:
-            if (
-                entry.clock_mode != "bounded-continuous-v1"
-                or entry.assignment_time != verified.timed.grant
-                or entry.signed_assignment != verified.timed.assignment.assignment
-            ):
-                raise ResearchError(
-                    ErrorCode.STALE_FENCE, "Clock evidence belongs to another grant"
-                )
-            if entry.timing == verified.evidence:
-                return entry
-            if entry.state != JournalState.RECEIVED or entry.cancel_requested:
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Attempt cannot accept clock evidence"
-                )
-            if entry.preparation_required and entry.prepared is None:
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Workload preparation is incomplete"
-                )
-            if entry.timing is not None:
-                old, new = entry.timing.caps.caps(), verified.evidence.caps.caps()
-                if old.intersect(new) != new:
-                    raise ResearchError(
-                        ErrorCode.STALE_FENCE, "Clock refresh cannot extend allowance"
-                    )
-            return entry.model_copy(update={"timing": verified.evidence})
-
-        return self._change(attempt_id, "clock.bound", bind)
-
-    @staticmethod
-    def _timed_authority(entry: JournalEntry, origin: LiveTimingOrigin) -> None:
-        if (
-            entry.clock_mode != "bounded-continuous-v1"
-            or entry.timing is None
-            or entry.assignment_time != origin.verified.timed.grant
-            or entry.signed_assignment != origin.verified.timed.assignment.assignment
-        ):
-            raise ResearchError(ErrorCode.STALE_FENCE, "Live clock differs from journal admission")
-        origin.check(entry.timing)
-
-    def claim_timed_launch(
-        self,
-        attempt_id: str,
-        supervisor_id: str,
-        origin: LiveTimingOrigin,
-    ) -> JournalEntry:
-        def claim(entry: JournalEntry) -> JournalEntry:
-            if entry.state != JournalState.RECEIVED:
-                raise ResearchError(ErrorCode.EXECUTION_UNKNOWN, "Attempt cannot be launched again")
-            self._timed_authority(entry, origin)
-            if entry.cancel_requested:
-                return entry.model_copy(
-                    update={
-                        "state": JournalState.NOT_STARTED,
-                        "finding": "Cancelled before timed launch",
-                    }
-                )
-            if entry.preparation_required and entry.prepared is None:
-                raise ResearchError(
-                    ErrorCode.INVALID_TRANSITION, "Required preparation is incomplete"
-                )
-            return entry.model_copy(
-                update={"state": JournalState.LAUNCHING, "supervisor_id": supervisor_id}
-            )
-
-        return self._change(attempt_id, "launch.claimed", claim)
-
-    def authorize_timed_release(
-        self,
-        attempt_id: str,
-        supervisor_id: str,
-        origin: LiveTimingOrigin,
-    ) -> JournalEntry:
-        def authorize(entry: JournalEntry) -> JournalEntry:
-            self._owner(entry, supervisor_id)
-            if entry.state != JournalState.HELD:
-                raise ResearchError(ErrorCode.INVALID_TRANSITION, "Process is not held")
-            self._timed_authority(entry, origin)
-            if entry.cancel_requested:
-                return entry
-            return entry.model_copy(
-                update={"state": JournalState.RELEASING, "release_requested_at": utc_now()}
-            )
-
-        return self._change(attempt_id, "release.authorized", authorize)
-
-    def abort_unstarted_claim(
-        self,
-        attempt_id: str,
-        supervisor_id: str,
-        *,
-        timing_digest: str,
-    ) -> JournalEntry:
-        """Called only by the owning supervisor before attempting native process creation."""
-
-        def abort(entry: JournalEntry) -> JournalEntry:
-            if (
-                entry.clock_mode != "bounded-continuous-v1"
-                or entry.timing is None
-                or entry.timing.digest != timing_digest
-            ):
-                raise ResearchError(
-                    ErrorCode.STALE_FENCE, "Unstarted observation has another clock grant"
-                )
-            if (
-                entry.state == JournalState.RECEIVED
-                and entry.supervisor_id is None
-                and entry.native is None
-            ):
-                return entry.model_copy(
-                    update={
-                        "state": JournalState.NOT_STARTED,
-                        "supervisor_id": supervisor_id,
-                        "finding": "Owning supervisor observed no native process creation",
-                    }
-                )
-            self._owner(entry, supervisor_id)
-            if entry.state == JournalState.NOT_STARTED and entry.native is None:
-                return entry
-            if entry.state != JournalState.LAUNCHING or entry.native is not None:
-                raise ResearchError(
-                    ErrorCode.EXECUTION_UNKNOWN, "Native absence is not established"
-                )
-            return entry.model_copy(
-                update={
-                    "state": JournalState.NOT_STARTED,
-                    "finding": "Owning supervisor observed no native process creation",
-                }
-            )
-
-        return self._change(attempt_id, "launch.aborted_unstarted", abort)
 
     def bind_prepared(self, attempt_id: str, prepared: PreparedExecution) -> JournalEntry:
         prepared = PreparedExecution.model_validate(prepared)
@@ -480,13 +333,7 @@ class WorkerJournal:
         """Cancellation and expiry can close an unreleased grant even if preparation is damaged."""
 
         def settle(entry: JournalEntry) -> JournalEntry:
-            if entry.state == JournalState.RECEIVED and (
-                entry.cancel_requested
-                or (
-                    entry.clock_mode == "local-utc-v1"
-                    and min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
-                )
-            ):
+            if entry.state == JournalState.RECEIVED and (entry.cancel_requested or _expired(entry)):
                 return entry.model_copy(
                     update={
                         "state": JournalState.NOT_STARTED,
@@ -513,19 +360,14 @@ class WorkerJournal:
 
         return self._change(attempt_id, "process.held", record)
 
-    def authorize_release(self, attempt_id: str, supervisor_id: str) -> bool:
+    def authorize_release(
+        self, attempt_id: str, supervisor_id: str, launch_deadline_ns: int | None = None
+    ) -> bool:
         def authorize(entry: JournalEntry) -> JournalEntry:
             self._owner(entry, supervisor_id)
             if entry.state != JournalState.HELD:
                 raise ResearchError(ErrorCode.INVALID_TRANSITION, "Process is not held")
-            if entry.clock_mode != "local-utc-v1":
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE, "Calibrated release requires a live origin"
-                )
-            if (
-                entry.cancel_requested
-                or min(entry.dispatch.expires_at, entry.dispatch.hard_deadline_at) <= utc_now()
-            ):
+            if entry.cancel_requested or _expired(entry, launch_deadline_ns):
                 return entry
             return entry.model_copy(
                 update={"state": JournalState.RELEASING, "release_requested_at": utc_now()}

@@ -6,7 +6,6 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from research_swarm.domain.clocks import ClockMode
 from research_swarm.domain.types import ID, Digest, Revision, Timestamp, VersionedRecord
 from research_swarm.domain.workers import WorkerBinding
 
@@ -16,7 +15,7 @@ class AcceptanceLease(VersionedRecord):
     binding: WorkerBinding
     dispatch_digest: Digest
     policy_version: Literal["native-window-v1", "legacy-unqualified-v1"]
-    clock_mode: ClockMode
+    clock_mode: Literal["local-utc-v1"] = "local-utc-v1"
     clock_epoch: ID | None = None
     clock_policy_digest: Digest | None = None
     issued_at: Timestamp | None = None
@@ -36,10 +35,6 @@ class AcceptanceLease(VersionedRecord):
             assert self.expires_at is not None and self.renew_until is not None
             if not self.issued_at <= self.observed_at < self.expires_at <= self.renew_until:
                 raise ValueError("Acceptance lease time bounds are inconsistent")
-            if self.clock_mode == "bounded-continuous-v1" and (
-                self.clock_epoch is None or self.clock_policy_digest is None
-            ):
-                raise ValueError("Calibrated acceptance requires its issuing clock identity")
         elif any(value is not None for value in times):
             raise ValueError("Legacy attempts cannot acquire invented historical lease times")
         return self

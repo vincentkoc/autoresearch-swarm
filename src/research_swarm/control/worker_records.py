@@ -7,7 +7,6 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from research_swarm.domain.assignments import AssignmentAuthority, SignedAssignment
-from research_swarm.domain.clocks import AuthorityClockAdmission, ClockMode, SignedAssignmentTime
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.experiments import DispatchEnvelope
 from research_swarm.domain.types import ID, Digest, Name, Timestamp, VersionedRecord, utc_now
@@ -22,10 +21,7 @@ class WorkerData(VersionedRecord):
     max_concurrency: int
     assignment_authority: AssignmentAuthority | None = None
     project_ids: tuple[ID, ...] | None = None
-    clock_mode: ClockMode = "local-utc-v1"
-    clock_admission: AuthorityClockAdmission | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
+    clock_mode: Literal["local-utc-v1"] = "local-utc-v1"
     environment_contracts: tuple[Digest, ...] | None = Field(
         default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
     )
@@ -33,10 +29,6 @@ class WorkerData(VersionedRecord):
 
     @model_validator(mode="after")
     def matching_authority(self) -> WorkerData:
-        if self.clock_admission is not None and self.clock_mode != "bounded-continuous-v1":
-            raise ValueError("Authority clock admission requires calibrated time")
-        if self.clock_mode == "bounded-continuous-v1" and self.assignment_authority is None:
-            raise ValueError("Calibrated workers require signed assignment authority")
         if (
             self.assignment_authority is not None
             and self.assignment_authority.binding != self.binding
@@ -53,7 +45,7 @@ class AttemptData(VersionedRecord):
     source_tree_digest: Digest
     evaluation_request_id: ID | None = None
     signed_assignment: SignedAssignment | None = None
-    assignment_time: SignedAssignmentTime | None = None
+    assignment_time: None = None
     outcome_artifact: ArtifactRef | None = None
     report_artifact: ArtifactRef | None = None
     result_digest: Digest | None = None

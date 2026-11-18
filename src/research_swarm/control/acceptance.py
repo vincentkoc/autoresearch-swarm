@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from research_swarm.control.acceptance_models import AcceptanceLease, ExpireAcceptance, LeaseRenewal
 from research_swarm.control.models import TrialData
-from research_swarm.control.time_authority import AuthorityTime
 from research_swarm.control.worker_records import AttemptData, WorkerData
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
@@ -52,9 +50,6 @@ def lease_row(transaction: Transaction, attempt_id: str) -> JsonObject:
         binding=binding,
         dispatch_digest=dispatch_digest(attempt),
         policy_version="legacy-unqualified-v1",
-        clock_mode="bounded-continuous-v1"
-        if attempt.assignment_time is not None
-        else "local-utc-v1",
         disposition="No acceptance lease was issued by the legacy controller",
     )
     return {
@@ -90,24 +85,8 @@ def save_lease(
 
 
 class AcceptanceControl:
-    def __init__(
-        self,
-        database: Database,
-        calibrated_time: Callable[[WorkerData], AuthorityTime] | None = None,
-    ) -> None:
-        self.database, self.calibrated_time = database, calibrated_time
-
-    def time(self, worker: WorkerData) -> tuple[str, str | None, str | None]:
-        if worker.clock_mode == "local-utc-v1":
-            return utc_now(), None, None
-        if self.calibrated_time is None:
-            raise ResearchError(ErrorCode.STALE_FENCE, "Calibrated acceptance clock is unavailable")
-        current = self.calibrated_time(worker)
-        return (
-            current.datetime.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            current.epoch,
-            current.policy.digest,
-        )
+    def __init__(self, database: Database) -> None:
+        self.database = database
 
     def issue(
         self,
@@ -115,7 +94,6 @@ class AcceptanceControl:
         row: JsonObject,
         worker: WorkerData,
         now: str,
-        clock: AuthorityTime | None,
     ) -> JsonObject:
         attempt = AttemptData.model_validate(row["data"])
         data = AcceptanceLease(
@@ -123,9 +101,6 @@ class AcceptanceControl:
             binding=worker.binding,
             dispatch_digest=dispatch_digest(attempt),
             policy_version="native-window-v1",
-            clock_mode=worker.clock_mode,
-            clock_epoch=clock.epoch if clock else None,
-            clock_policy_digest=clock.policy.digest if clock else None,
             issued_at=now,
             observed_at=now,
             expires_at=after(attempt.dispatch.hard_deadline_at, PUBLICATION_GRACE_MS),
@@ -146,19 +121,8 @@ class AcceptanceControl:
         lease = AcceptanceLease.model_validate(row["data"])
         if row["state"] != "active":
             return row["state"], None
-        try:
-            now, epoch, policy = self.time(worker)
-        except ResearchError as error:
-            if error.code not in {ErrorCode.STALE_FENCE, ErrorCode.CAPABILITY_UNAVAILABLE}:
-                raise
-            return "unqualified", None
-        if (
-            lease.clock_mode != worker.clock_mode
-            or lease.clock_epoch != epoch
-            or lease.clock_policy_digest != policy
-            or lease.observed_at is None
-            or now < lease.observed_at
-        ):
+        now = utc_now()
+        if lease.observed_at is None or now < lease.observed_at:
             return "unqualified", now
         if lease.expires_at is None or now >= lease.expires_at:
             return "expired", now

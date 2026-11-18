@@ -82,7 +82,7 @@ def test_parallel_description_and_provisioning_reuse_one_scoped_identity(
     assert pipeline.runtime.credentials.resolve(bundle.token).scopes == WORKER_SCOPES
     assert bundle.token not in repr(bundle)
     assert bundle.token not in repr(provisioning(pipeline, descriptions[0]))
-    assert bundle.worker.clock_mode == "bounded-continuous-v1"
+    assert bundle.worker.clock_mode == "local-utc-v1"
     with pipeline.runtime.database.connect() as connection:
         assert (
             connection.execute(
@@ -132,7 +132,7 @@ def test_connected_http_worker_executes_and_resumes_without_local_controller_aut
             completed = worker.execute(attempt["id"])
             assert completed["state"] == "succeeded"
             native = worker.journal.get(attempt["id"])
-            assert native.timing is not None and native.outcome is not None
+            assert native.outcome is not None
         first = installation(tmp_path)
         assert first.initialized and bundle.token not in repr(first)
         with connect_worker(tmp_path / "remote") as resumed:

@@ -80,7 +80,6 @@ from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSes
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.artifacts import ReaderSessionTarget
 from research_swarm.domain.backup import RegisterBackupCustody, SealWorkspace
-from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.event_recovery import (
     AdvanceEventFloor,
@@ -697,7 +696,6 @@ def capabilities() -> JsonObject:
             "operations": {
                 "worker.get": WorkerRead.model_json_schema(),
                 "worker.list": WorkerQuery.model_json_schema(),
-                "worker.clock": ClockChallenge.model_json_schema(),
             },
         },
         "worker_inputs": {
@@ -710,12 +708,6 @@ def capabilities() -> JsonObject:
             "publication_scope": "worker.publish",
         },
         "execution": "registered_worker_required",
-        "clock": {
-            "default_mode": "local-utc-v1",
-            "calibrated_mode": "bounded-continuous-v1",
-            "time_evidence": "signed_process_epoch",
-            "calibrated_execution": "live_origin_required",
-        },
         "evaluation": "authenticated_receipts",
         "drivers": {
             "local": "explicit_worker",

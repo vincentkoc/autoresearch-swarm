@@ -16,7 +16,6 @@ from research_swarm.client import LocalTransport, ResearchClient, controller_url
 from research_swarm.control.worker_queries import WorkerRead
 from research_swarm.control.workers import EnrollWorker, WorkerData
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
-from research_swarm.domain.clocks import AuthorityClockAdmission
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import ID, Digest, Name, VersionedRecord, new_id
@@ -30,7 +29,6 @@ from research_swarm.runtime import (
     write_private,
 )
 from research_swarm.state.identity import read_identity
-from research_swarm.workers.clocks import NATIVE_CLOCK_PROFILES, native_clock
 from research_swarm.workers.local import LocalWorker
 from research_swarm.workers.local_enrollment import cpu_profile
 
@@ -44,10 +42,7 @@ SecretRecord = TypeVar("SecretRecord", bound=VersionedRecord)
 class WorkerDescription(VersionedRecord):
     worker_id: ID
     profile: EngineCapabilities
-    clock_profile: Name
-    clock_admission: AuthorityClockAdmission | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
+    clock_profile: Name | None = None
     environment_contracts: tuple[Digest, ...] | None = Field(
         default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
     )
@@ -59,10 +54,8 @@ class WorkerDescription(VersionedRecord):
     @model_validator(mode="after")
     def supported(self) -> Self:
         legacy = self.environment_contracts is None
-        if self.clock_profile not in NATIVE_CLOCK_PROFILES or (
-            legacy and (self.profile.name != "python-cpu" or self.profile.backend != "python")
-        ):
-            raise ValueError("Remote enrollment requires a supported CPU and native clock profile")
+        if legacy and (self.profile.name != "python-cpu" or self.profile.backend != "python"):
+            raise ValueError("Remote enrollment requires a supported CPU profile")
         if not legacy:
             definition = engine_definition(self.profile.name)
             if self.profile.backend != definition.framework or self.profile.accelerator_count != (
@@ -98,12 +91,10 @@ class RemoteWorkerBundle(VersionedRecord):
             or self.worker.profiles != (self.description.profile,)
             or self.worker.max_concurrency != self.description.max_concurrency
             or self.worker.environment_contracts != self.description.environment_contracts
-            or self.worker.clock_admission != self.description.clock_admission
             or self.worker.assignment_authority is None
             or not self.worker.project_ids
-            or self.worker.clock_mode != "bounded-continuous-v1"
         ):
-            raise ValueError("Remote bundle differs from its scoped calibrated worker")
+            raise ValueError("Remote bundle differs from its scoped worker")
         if self.replaces is not None and (
             self.replaces.worker_id != self.worker.binding.worker_id
             or self.replaces.workspace_id != self.worker.binding.workspace_id
@@ -218,13 +209,9 @@ def _write_installation(root: Path, state: WorkerInstallation) -> None:
 
 def _verify_machine(state: WorkerInstallation) -> None:
     description = state.description
-    if (
-        state.registration is None
-        and description.profile
-        != cpu_profile(
-            cpu_slots=description.profile.cpu_slots, fallback_identity=description.worker_id
-        )
-    ) or description.clock_profile != native_clock().profile:
+    if state.registration is None and description.profile != cpu_profile(
+        cpu_slots=description.profile.cpu_slots, fallback_identity=description.worker_id
+    ):
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Enrolled machine profile changed")
     if description.profile.cpu_slots > (os.cpu_count() or 1):
         raise ResearchError(ErrorCode.RESOURCE_UNAVAILABLE, "Enrolled CPU capacity is unavailable")
@@ -236,7 +223,6 @@ def describe_worker(
     cpu_slots: int = 1,
     machine_registry: Path | None = None,
     registration: EnvironmentRegistration | None = None,
-    clock_admission: AuthorityClockAdmission | None = None,
 ) -> WorkerDescription:
     """Persist a machine request before emitting its non-secret provisioning description."""
     if type(cpu_slots) is not int or not 1 <= cpu_slots <= (os.cpu_count() or 1):
@@ -245,8 +231,6 @@ def describe_worker(
         raise ResearchError(
             ErrorCode.CAPABILITY_UNAVAILABLE, "CPU capacity differs from registration"
         )
-    if clock_admission is not None:
-        clock_admission = AuthorityClockAdmission.model_validate(clock_admission)
     root = root.expanduser().absolute()
     registry = (
         (
@@ -263,7 +247,6 @@ def describe_worker(
                 state.machine_registry != str(registry)
                 or state.description.profile.cpu_slots != cpu_slots
                 or state.registration != registration
-                or state.description.clock_admission != clock_admission
             ):
                 raise ResearchError(
                     ErrorCode.IDEMPOTENCY_CONFLICT, "Worker description inputs changed"
@@ -281,8 +264,6 @@ def describe_worker(
                 profile=registration.profile
                 if registration
                 else cpu_profile(cpu_slots=cpu_slots, fallback_identity=identifier),
-                clock_profile=native_clock().profile,
-                clock_admission=clock_admission,
                 environment_contracts=registration.environment_contracts if registration else None,
             ),
             machine_registry=str(registry),
@@ -371,8 +352,6 @@ def provision_worker(
                 max_concurrency=description.max_concurrency,
                 environment_contracts=description.environment_contracts,
                 project_ids=projects,
-                clock_mode="bounded-continuous-v1",
-                clock_admission=description.clock_admission,
             ),
             idempotency_key="remote-enrollment:" + description.worker_id,
         )["result"]

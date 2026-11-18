@@ -11,7 +11,7 @@ from research_swarm.workers.journal import JournalEntry, JournalState, WorkerJou
 from tests.control.test_confirmation import create_plan, exposure_budget, options, setup_plan
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
-from tests.workers.test_timed_execution import native_worker
+from tests.workers.test_worker_deadlines import inline_supervisor, native_worker
 
 
 @pytest.mark.parametrize("pipeline", [options()], indirect=True)
@@ -41,7 +41,7 @@ def test_unreleased_scoring_requires_closure_before_refunding_exposure(
         if row["dimension"] == "attempts"
     )
     assert exposure_budget(pipeline)["uncertain"] == "1"
-    authorize = WorkerJournal.authorize_timed_release
+    authorize = WorkerJournal.authorize_release
 
     def lost(self: WorkerJournal, *args: Any) -> Any:
         authorize(self, *args)
@@ -67,14 +67,14 @@ def test_unreleased_scoring_requires_closure_before_refunding_exposure(
         return publish(unknown)
 
     with monkeypatch.context() as patch:
-        patch.setattr(WorkerJournal, "authorize_timed_release", lost)
+        patch.setattr("research_swarm.workers.local.spawn_supervisor", inline_supervisor)
+        patch.setattr(WorkerJournal, "authorize_release", lost)
         if withhold_closure:
             patch.setattr(worker, "_publish", partial)
         result = worker.execute(attempt["id"])
     entry = worker.journal.get(attempt["id"])
     assert entry.outcome is not None and entry.outcome.released_at is None
     assert entry.outcome.closure.scope_closed and entry.outcome.reason == "supervisor_error"
-    assert "OSError" in entry.finding
     if withhold_closure:
         budget = exposure_budget(pipeline)
         assert budget["consumed"] == "0" and budget["uncertain"] == "1"

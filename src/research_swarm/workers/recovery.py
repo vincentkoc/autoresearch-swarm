@@ -23,14 +23,13 @@ from research_swarm.domain.canonical import (
     strict_json_loads,
 )
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.types import ID, Digest, VersionedRecord, new_id
+from research_swarm.domain.types import ID, Digest, VersionedRecord, new_id, utc_now
 from research_swarm.runtime import private_state_directory, read_private, write_private
-from research_swarm.workers.clock_signatures import ClockVerifier
 from research_swarm.workers.journal import JournalEntry, JournalState, WorkerJournal
 from research_swarm.workers.remote_enrollment import RemoteWorkerBundle, _installation
 from research_swarm.workers.resources import MachineResources
+from research_swarm.workers.signatures import AssignmentVerifier
 from research_swarm.workers.supervisor import reconcile_outcome
-from research_swarm.workers.timed_launch import verify_timing
 
 MAX_JOURNAL_BYTES = 1024 * 1024
 MAX_INTENT_BYTES = 2 * MAX_JOURNAL_BYTES
@@ -70,22 +69,14 @@ def _authenticate(entry: JournalEntry, bundle: RemoteWorkerBundle) -> None:
     if (
         authority is None
         or entry.signed_assignment is None
-        or entry.assignment_time is None
-        or entry.clock_mode != bundle.worker.clock_mode
         or entry.spec.project_id not in (bundle.worker.project_ids or ())
         or entry.signed_assignment.payload.profile not in bundle.worker.profiles
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Original signed authority is unavailable")
     # Historical verification is deliberately discarded; no launch token is retained.
-    ClockVerifier(authority).binding(entry.assignment_time, entry.signed_assignment)
-    if entry.timing is not None:
-        verify_timing(
-            entry.timing,
-            authority,
-            entry.assignment_time,
-            entry.signed_assignment,
-            clock_admission=bundle.worker.clock_admission,
-        )
+    AssignmentVerifier(authority).verify(
+        entry.signed_assignment, authority_now=utc_now(), allow_expired_observation=True
+    )
 
 
 def _historical(
@@ -111,11 +102,7 @@ def _historical(
         )
     )
     attempt = AttemptData.model_validate(row["data"])
-    if (
-        attempt.dispatch != entry.dispatch
-        or attempt.signed_assignment != entry.signed_assignment
-        or attempt.assignment_time != entry.assignment_time
-    ):
+    if attempt.dispatch != entry.dispatch or attempt.signed_assignment != entry.signed_assignment:
         raise ResearchError(ErrorCode.STALE_FENCE, "Original attempt authority differs")
     return attempt
 

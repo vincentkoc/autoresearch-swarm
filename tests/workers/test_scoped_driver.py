@@ -590,13 +590,12 @@ async def test_recovered_unknown_blocks_new_admission_despite_spare_capacity(
     ):
         worker = connected.worker
         row = worker.claim(pipeline.ready())
-        entry = worker._prepare(
+        worker._prepare(
             AttemptData.model_validate(row["data"]),
             TrialData.model_validate(pipeline.trial["data"]),
         )
-        origin = worker._timed_origin(entry)
         identifier = new_id()
-        worker.journal.claim_timed_launch(row["id"], identifier, origin)
+        worker.journal.claim_launch(row["id"], identifier)
         worker.journal.unknown(row["id"], identifier, "Synthetic lost native creation observation")
         result = await ScopedWorkerDriver(connected).run(once=True)
         assert result.state == "blocked" and result.observation_count == 1
@@ -641,10 +640,9 @@ async def test_unknown_observed_during_http_wait_prevents_a_subsequent_native_la
             trial = TrialData.model_validate(
                 worker._get("trial", attempt.dispatch.trial_id)["data"]
             )
-            entry = worker._prepare(attempt, trial)
-            origin = worker._timed_origin(entry)
+            worker._prepare(attempt, trial)
             supervisor = new_id()
-            worker.journal.claim_timed_launch(identifier, supervisor, origin)
+            worker.journal.claim_launch(identifier, supervisor)
             assert control_waiting.wait(5)
             worker.journal.unknown(
                 identifier, supervisor, "Synthetic unknown during remote scheduling"

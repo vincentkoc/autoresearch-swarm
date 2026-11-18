@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import monotonic_ns
 from typing import Final, Literal
 
 from pydantic import Field, model_validator
@@ -13,12 +14,14 @@ from research_swarm.domain.clocks import ClockMilliseconds
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import ID, VersionedRecord
+from research_swarm.domain.types import ID, VersionedRecord, new_id
 from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
 
 CACHE_HINT_TTL_MS: Final = 60_000
+# Monotonic observations from a previous process cannot be compared on reopen.
+_CACHE_CLOCK_EPOCH = new_id()
 
 
 class AdvertiseWorkerCache(VersionedRecord):
@@ -103,13 +106,12 @@ class WorkerLocality:
                 raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Cache hint clock is absent")
             for reference in request.references:
                 ArtifactCatalog.available(transaction, reference)
-            observed = self.workers.observation_time(worker)
             data = WorkerCacheState(
                 binding=worker.binding,
                 observation=CacheObservation(
                     advertisement=request,
-                    clock_epoch=observed.epoch,
-                    observed_ms=observed.milliseconds,
+                    clock_epoch=_CACHE_CLOCK_EPOCH,
+                    observed_ms=monotonic_ns() // 1_000_000,
                 ),
             ).model_dump(mode="json")
             if previous["revision"] == 0:
@@ -153,9 +155,9 @@ class WorkerLocality:
             observation = state.observation
             if observation is None:
                 return ()
-            now = self.workers.observation_time(worker)
-            if now.epoch != observation.clock_epoch or not (
-                0 <= now.milliseconds - observation.observed_ms < observation.ttl_ms
+            now_ms = monotonic_ns() // 1_000_000
+            if observation.clock_epoch != _CACHE_CLOCK_EPOCH or not (
+                0 <= now_ms - observation.observed_ms < observation.ttl_ms
             ):
                 return ()
             available = []

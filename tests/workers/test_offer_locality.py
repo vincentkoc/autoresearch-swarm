@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import shutil
 from contextlib import ExitStack
-from dataclasses import replace
 
 import pytest
 
@@ -86,9 +85,10 @@ def test_locality_reorders_only_the_eligible_page_and_preserves_fifo_cursor(
     middle, source = variant(pipeline, tmp_path, 1)
     last, _ = variant(pipeline, tmp_path, 2)
     worker = pipeline.worker.worker
-    control = pipeline.runtime.service.workers
-    now = control.observation_time(worker)
-    monkeypatch.setattr(control, "observation_time", lambda worker: now)
+    now = 1_000_000
+    monkeypatch.setattr(
+        "research_swarm.control.worker_locality.monotonic_ns", lambda: now * 1_000_000
+    )
     baseline = [pipeline.trial["id"], middle["id"], last["id"]]
     before = pipeline.client.budget(pipeline.campaign["id"])
     with ExitStack() as stack:
@@ -116,7 +116,7 @@ def test_locality_reorders_only_the_eligible_page_and_preserves_fifo_cursor(
         assert trial_order(only_oldest) == baseline[:1]
         other_client, other, _ = scoped_worker(pipeline)
         assert trial_order(other_client.worker_list(query(other))) == baseline
-        now = replace(now, milliseconds=now.milliseconds + 60_000)
+        now += 60_000
         assert trial_order(client.worker_list(query(worker))) == baseline
     assert pipeline.client.budget(pipeline.campaign["id"]) == before
 

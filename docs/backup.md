@@ -241,7 +241,7 @@ corrected authority.
 The `recovering` gate admits a narrow subset of the existing worker API. The
 original worker principal can upload a journal of at most 1 MiB for an attempt in
 the restoration's frozen unresolved-attempt inventory. The journal must retain
-its original dispatch, signed assignment, clock evidence, experiment and native
+its original dispatch, signed assignment, experiment and native
 command. Reports, named outputs and log uploads remain unavailable. Invalid
 unpublished journals can be aborted through `worker.abort_upload`, including after
 the attempt settles. Storage quota remains reserved until physical cleanup ends.
