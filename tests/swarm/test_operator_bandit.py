@@ -95,6 +95,15 @@ async def test_silent_local_model_keeps_fast_sibling_and_does_not_hold_loop():
     assert model.timeouts == 1
 
 
+async def test_custom_operators_control_exhaustion_even_with_a_declared_grid():
+    operator = Offer("constant")
+    spec = replace(SPEC, search_space={"new": ["constant", "next"]})
+    policy = BanditProposer(spec, {operator.name: operator})
+    (first,) = await policy.ask(spec, (), 1)
+    assert first.params == {"new": "constant"}
+    assert await policy.ask(spec, (), 1) == []
+
+
 def test_installed_bandit_runs_and_resumes_without_repeating_recipes(tmp_path):
     command = (
         "import json, os; from pathlib import Path; "
@@ -107,13 +116,13 @@ def test_installed_bandit_runs_and_resumes_without_repeating_recipes(tmp_path):
         "metric": "score",
         "direction": "maximize",
         "evaluation_mode": "smoke",
-        "max_trials": 3,
+        "max_trials": 10,
         "max_workers": 1,
         "command": [sys.executable, "-c", command],
-        "search_space": {"x": [0, 1], "y": [0, 1]},
+        "search_space": {"x": [0, 1, 2], "y": [0, 1, 2]},
         "candidates": [
-            {"candidate_id": "low", "params": {"x": 0, "y": 0}},
-            {"candidate_id": "high", "params": {"x": 1, "y": 1}},
+            {"candidate_id": "low", "params": {"x": 0, "y": 0}, "text": "starter"},
+            {"candidate_id": "high", "params": {"x": 1, "y": 1}, "text": "starter"},
         ],
         "proposer": "research_swarm.swarm.operators.bandit:BanditProposer",
     }
@@ -126,10 +135,14 @@ def test_installed_bandit_runs_and_resumes_without_repeating_recipes(tmp_path):
         )
         for _ in range(2)
     ]
-    assert first["trials"] == first["attempts"] == 3 and first["failed"] == 0
-    assert first["selected"]["score"] == 2
+    assert first["trials"] == first["attempts"] == 9 and first["failed"] == 0
+    assert first["selected"]["score"] == 4
     assert resumed["attempts"] == first["attempts"] and resumed["selected"] == first["selected"]
     with sqlite3.connect(tmp_path / "swarm.sqlite") as db:
         recipes = [json.loads(row[0]) for row in db.execute("SELECT payload FROM swarm_candidates")]
-    assert sorted(c["operator"] for c in recipes) == ["param-mutate", "seed", "seed"]
-    assert len({tuple(c["params"].values()) for c in recipes}) == 3
+    assert sum(c["operator"] == "seed" for c in recipes) == 2
+    assert any(c["operator"] == "grid" for c in recipes)
+    assert all(c["text"] == "starter" for c in recipes)
+    assert {(c["params"]["x"], c["params"]["y"]) for c in recipes} == {
+        (x, y) for x in range(3) for y in range(3)
+    }

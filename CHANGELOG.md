@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep finite parameter campaigns running when both default bandit operators propose
+  previously tried recipes. The next available grid recipe fills the open slot.
+
 - Set `proposer: research_swarm.swarm.operators.bandit:BanditProposer` to allocate
   trials between parameter mutation and crossover by observed gain per cost.
   Custom proposer factories can supply other operators. The bandit restores pending
