@@ -4,6 +4,10 @@
 
 - Install the optional `skypilot` extra to provide `uvx` for the isolated SkyPilot CLI.
 
+- **Breaking:** Retire `campaign.capture_obligations`, `campaign.complete_scientific`
+  and `campaign.close_resources`. New swarm campaigns persist the selected trial
+  and its score as the loop runs. Historical completion reports remain readable.
+
 - Run the GitHub CI workflow on manual dispatch. Pull requests use the local merge gate.
 
 - **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
