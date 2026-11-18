@@ -335,7 +335,7 @@ also verify its actual deployment and current recovery admission. The route stil
 binds the original worker session, credential, attempt, installation and destination,
 and cannot authorize execution. Installing and reopening such proofs is supported.
 Hosted targets issue them through the private `Bootstrap.checkpoint_route` RPC
-described in [hosted authority](hosted-authority.md); hosted journal delivery still
+described in hosted authority; hosted journal delivery still
 requires its separate runtime implementation.
 
 The original enrollment URL, token, driver identity and pending recovery intent

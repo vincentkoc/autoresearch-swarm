@@ -81,9 +81,7 @@ guard. Successful publication remains acknowledged if subsequent cleanup fails.
 The complete hosted service remains unqualified until hosted time, key custody
 and artifact operations have qualified provider implementations. Real local
 training/evaluation and late-result reconciliation tests forbid native connection
-access and check that blob I/O stays outside SQL callbacks. The
-[Cloudflare runtime fixture](../adapters/cloudflare/README.md) runs the shared command
-kernel and schema migrations through its actual SQL adapter.
+access and check that blob I/O stays outside SQL callbacks.
 
 ## Controller time
 

@@ -142,6 +142,11 @@
 - Add versioned training-time reactive contracts with declared numeric controls,
   diagnostic visibility, policy identity, bounded decisions and separate application receipts.
 
+- **Breaking:** Remove the unqualified Cloudflare hosted adapter (`adapters/cloudflare`,
+  its workerd tests and CI jobs), `orchestration.cloudflare`, the `AsyncR2Transport`
+  port and hosted activation proofs. It was never deployed. Native R2 artifact storage
+  through the optional `s3` extra is unchanged.
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance

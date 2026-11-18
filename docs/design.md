@@ -1473,13 +1473,16 @@ Use bounded histories and deliberate workflow versioning. Replay representative 
 
 ### 16.5 Cloudflare driver
 
+> Removed: the Cloudflare adapter is no longer part of the repository. This
+> section records the original design intent only.
+
 Implementation qualification update: both the hybrid delivery profile and fixed
 authoritative Durable Object profiles have local runtime proof. The latter use
 an explicitly admitted native clock witness; Workers timers do not supply
 authority time. Recovery activation, clock management, original CPU evidence
 reconciliation, timer rotation/restart and errored-Workflow recovery passed in
 local workerd at `1eab4e7d6ea784dfc6b5bed1080673e0bec45ffb`. See the
-[qualification receipts and profile limits](hosted-authority.md).
+qualification receipts and profile limits.
 
 No production Cloudflare deployment has been performed. Protected key custody,
 service routing and deployed recovery still require qualification. The original
@@ -1503,7 +1506,7 @@ profile-bound; an existing deployment does not silently gain later capabilities.
 The hybrid implementation and the locally qualified authoritative implementation
 do not satisfy the deployed exit criteria. No UTC fallback is permitted, and this
 status update does not authorize a hosted deployment. See the
-[hybrid boundary and gateway](cloudflare.md) for its separate execution path.
+hybrid boundary and gateway for its separate execution path.
 
 Keep all campaigns that share a resource under one compatible reservation authority. Do not split a shared device's lease and budget across unrelated objects without a new coordination design.
 

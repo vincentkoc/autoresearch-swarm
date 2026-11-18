@@ -7,7 +7,7 @@ on:
         description: Qualification surface
         type: choice
         default: all
-        options: [all, native, windows, workerd, clocks]
+        options: [all, native, windows, clocks]
 
 permissions:
   contents: read
@@ -18,7 +18,6 @@ concurrency:
 
 jobs:
   native:
-    if: inputs.surface != 'workerd'
     strategy:
       fail-fast: false
       matrix:
@@ -55,131 +54,21 @@ jobs:
           tests/workers/test_witness_launcher.py
           tests/workers/test_witness_time.py tests/api/test_command_boundaries.py tests/api/test_query_boundaries.py
           tests/workers/test_worker_query_boundaries.py
-          tests/adapters/cloudflare/test_cloudflare_exclusive.py tests/api/test_cli_fixture_io.py
-          tests/state/test_existing_state.py tests/adapters/cloudflare/hosted/test_hosted_router.py tests/adapters/cloudflare/hosted/test_hosted_artifacts.py
-          tests/adapters/cloudflare/hosted/test_hosted_http.py tests/adapters/cloudflare/hosted/test_http_binding.py tests/adapters/cloudflare/hosted/test_witness_binding.py
-          tests/workers/test_clock_admission.py tests/projects/test_source_bytes.py tests/adapters/cloudflare/hosted/test_hosted_research.py
-          tests/adapters/cloudflare/hosted/test_hosted_worker_inputs.py
-          tests/adapters/cloudflare/hosted/test_hosted_worker_outputs.py
-          tests/adapters/cloudflare/hosted/test_hosted_result_publication.py tests/adapters/cloudflare/hosted/test_publication_diagnostic.py
-          tests/adapters/cloudflare/hosted/test_hosted_reconciliation.py
+          tests/api/test_cli_fixture_io.py
+          tests/state/test_existing_state.py
+          tests/workers/test_clock_admission.py tests/projects/test_source_bytes.py
           tests/control/test_observation_bytes.py
           tests/control/test_evaluation_preparation.py
-          tests/adapters/cloudflare/hosted/test_hosted_evaluations.py
-          tests/adapters/cloudflare/hosted/test_hosted_lifecycle.py
-          tests/adapters/cloudflare/hosted/test_hosted_scientific.py
-          tests/adapters/cloudflare/hosted/test_hosted_orchestration.py tests/orchestration/test_turn_preparation.py
-          tests/adapters/cloudflare/hosted/test_hosted_timers.py tests/orchestration/test_orchestration_waits.py
+          tests/orchestration/test_turn_preparation.py
+          tests/orchestration/test_orchestration_waits.py
           tests/orchestration/test_delivery_registration.py
           tests/orchestration/test_async_delivery.py
-          tests/adapters/cloudflare/test_cloudflare_bridge.py
           tests/orchestration/test_async_successor.py
-          tests/adapters/cloudflare/hosted/test_hosted_delivery.py
           tests/orchestration/test_transfer_preparation.py tests/orchestration/test_orchestration_transfer.py
           tests/orchestration/test_transfer_limits.py
           tests/state/test_snapshot_limits.py tests/state/test_event_recovery.py
           tests/state/test_snapshot_time.py
-          tests/adapters/cloudflare/hosted/test_hosted_transfers.py
-          tests/adapters/cloudflare/hosted/test_hosted_transfer_evidence.py
-          tests/adapters/cloudflare/hosted/test_hosted_startup.py
-          tests/adapters/cloudflare/test_cloudflare_deployment.py
           tests/workers/test_credential_installation.py
-          tests/adapters/cloudflare/test_cloudflare_provisioning.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_images.py tests/adapters/cloudflare/recovery/test_checkpoint_cut.py tests/adapters/cloudflare/recovery/test_checkpoint_schema.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_capture.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_capture_sizes.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_fingerprint.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_import.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_wire.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_source.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_source_research.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_target.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_elections.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_anchor.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_election.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_request.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_admission.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_admission_research.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_turns.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_artifacts.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_artifact_export.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_routes.py
-          tests/adapters/cloudflare/hosted/test_hosted_recovery.py
-          tests/adapters/cloudflare/hosted/test_hosted_recovery_execution.py
-          tests/adapters/cloudflare/recovery/test_recovery_verification.py
-          tests/adapters/cloudflare/recovery/test_recovery_runtime.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_runtime.py
-          tests/adapters/cloudflare/hosted/test_hosted_activation_proofs.py
-          tests/adapters/cloudflare/hosted/test_hosted_activation_cut.py
-          tests/adapters/cloudflare/hosted/test_hosted_activation_history.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_activation.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_activation_research.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_activation_closure.py
-          tests/adapters/cloudflare/recovery/test_runtime_qualification_history.py
-          tests/adapters/cloudflare/recovery/test_checkpoint_requalification.py
-          tests/adapters/cloudflare/recovery/test_provider_management.py
-          tests/adapters/cloudflare/recovery/test_provider_management_research.py
-          tests/adapters/cloudflare/recovery/test_recovery_elections.py
-          tests/adapters/cloudflare/recovery/test_logical_recovery_routes.py
-          tests/adapters/cloudflare/recovery/test_logical_route_installation.py
-          tests/adapters/cloudflare/recovery/test_recovery_routes.py
-          tests/adapters/cloudflare/recovery/test_inactive_transform.py
-          tests/adapters/cloudflare/test_cloudflare_runtime.py
-          tests/adapters/cloudflare/hosted/test_production_delivery.py
-          tests/adapters/cloudflare/test_cloudflare_store_open.py
-          tests/adapters/cloudflare/test_cloudflare_build.py
           tests/api/test_cli_encoding.py tests/integration/test_agent_research_cycle.py
           tests/workers/test_supervision.py
           tests/workers/test_scoped_driver.py::test_independent_worker_process_restart_recovers_the_original_running_native_scope
-  workerd:
-    if: inputs.surface == 'all' || inputs.surface == 'workerd'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      WRANGLER_SEND_METRICS: "false"
-      RESEARCH_CLOUDFLARE_TESTS: "1"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "22"
-      - run: uv sync --locked --group dev --python 3.12
-      - run: >-
-          node --test adapters/cloudflare/tests/http_io.test.mjs adapters/cloudflare/tests/witness_io.test.mjs
-          adapters/cloudflare/tests/production_operator_fixture.test.mjs
-          adapters/cloudflare/tests/production_checkpoint_fixture.test.mjs
-      - run: uv sync --directory adapters/cloudflare --locked --python 3.12
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-        working-directory: adapters/cloudflare
-      - run: npm run build
-        working-directory: adapters/cloudflare
-      - run: npm run build:production
-        working-directory: adapters/cloudflare
-      - run: npm run check:hybrid && npm run test:hybrid
-        working-directory: adapters/cloudflare
-      - run: .venv/bin/uv run --frozen pywrangler sync
-        working-directory: adapters/cloudflare
-      - run: git diff --exit-code -- adapters/cloudflare/pylock.toml
-      - run: >-
-          uv run --no-sync pytest -q tests/adapters/cloudflare/test_cloudflare_native.py
-          tests/adapters/cloudflare/test_cloudflare_witness_ordering.py tests/adapters/cloudflare/test_cloudflare_router.py
-          tests/adapters/cloudflare/test_cloudflare_async_r2.py tests/adapters/cloudflare/test_cloudflare_artifacts.py
-          tests/adapters/cloudflare/test_cloudflare_result_publication.py
-          tests/adapters/cloudflare/test_cloudflare_evaluations.py
-          tests/adapters/cloudflare/test_cloudflare_orchestration.py
-          tests/adapters/cloudflare/test_cloudflare_hosted_workflow.py
-          tests/adapters/cloudflare/test_cloudflare_hybrid.py
-          tests/adapters/cloudflare/test_cloudflare_transfers.py
-          tests/adapters/cloudflare/test_cloudflare_startup.py
-          tests/adapters/cloudflare/test_cloudflare_production.py
-          tests/adapters/cloudflare/test_cloudflare_reconciliation.py
-          tests/adapters/cloudflare/test_cloudflare_checkpoint.py
-          tests/adapters/cloudflare/test_cloudflare_hosted_http.py tests/adapters/cloudflare/test_cloudflare_native_source.py
-          tests/adapters/cloudflare/test_cloudflare_research_admission.py --tb=short
