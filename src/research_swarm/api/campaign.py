@@ -11,12 +11,15 @@ from mcp.server.mcpserver import MCPServer
 from mcp_types import ToolAnnotations
 
 from research_swarm.api.campaign_ui import campaign_shell
+from research_swarm.api.worker import WorkerGrant, worker_router
 from research_swarm.control.report_view import render_report_html
 from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.swarm.reader import CampaignReader
 
 
-def campaign_app(reader: CampaignReader, token: str) -> FastAPI:
+def campaign_app(
+    reader: CampaignReader, token: str, *, worker: WorkerGrant | None = None
+) -> FastAPI:
     if not token or not token.isascii() or any(c.isspace() for c in token):
         raise ValueError("Choose a nonempty ASCII bearer token without whitespace")
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -86,6 +89,10 @@ def campaign_app(reader: CampaignReader, token: str) -> FastAPI:
     def events(after: int = 0, limit: int = 100, campaign_id: str | None = None) -> dict[str, Any]:
         return reader.events(after, limit, campaign_id)
 
+    if worker is not None:
+        if worker.token == token:
+            raise ValueError("Read and worker bearers must be distinct")
+        app.include_router(worker_router(reader.database, worker))
     return app
 
 

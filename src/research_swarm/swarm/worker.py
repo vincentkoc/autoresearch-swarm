@@ -11,7 +11,14 @@ from dataclasses import replace
 from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
-from research_swarm.swarm.interfaces import Attempt, Backend, CampaignSpec, Meter, Result, Store
+from research_swarm.swarm.interfaces import (
+    Attempt,
+    Backend,
+    CampaignSpec,
+    Meter,
+    Result,
+    WorkerQueue,
+)
 from research_swarm.swarm.meter import CostMeter
 from research_swarm.swarm.resources import Allocation, Demand, ResourcePool
 
@@ -25,7 +32,9 @@ class _ExpiredAttempt(Exception):
     pass
 
 
-def from_spec(spec: CampaignSpec, store: Store, backend: Backend) -> WorkerLoop:
+def from_spec(
+    spec: CampaignSpec, store: WorkerQueue, backend: Backend, *, worker_id: str | None = None
+) -> WorkerLoop:
     """Configure the worker from a YAML campaign's options.resources and options.demand."""
     options = getattr(spec, "options", {})
     capacities = options.get("resources")
@@ -40,13 +49,15 @@ def from_spec(spec: CampaignSpec, store: Store, backend: Backend) -> WorkerLoop:
         demand = Demand(**amounts) if amounts is not None else None
     except (TypeError, AttributeError) as exc:
         raise ValueError(f"invalid resource configuration: {exc}") from exc
-    return WorkerLoop(store, backend, f"worker-{uuid4().hex}", pool=pool, demand=demand)
+    return WorkerLoop(
+        store, backend, worker_id or f"worker-{uuid4().hex}", pool=pool, demand=demand
+    )
 
 
 class WorkerLoop:
     def __init__(
         self,
-        store: Store,
+        store: WorkerQueue,
         backend: Backend,
         worker_id: str,
         *,
