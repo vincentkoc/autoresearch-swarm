@@ -12,10 +12,10 @@ const profile=await mkdtemp(join(tmpdir(),'swarm-force-graph-'));
 let chrome,cdp,exited;
 const pending=new Map(),errors=[];
 let seq=0;
-async function wait(check,label) {
-  const deadline=Date.now()+15000;
+async function wait(check, label, milliseconds = 15_000, diagnostic = () => '') {
+  const deadline = Date.now() + milliseconds;
   while(Date.now()<deadline) {const result=await check();if(result)return result;await delay(80);}
-  throw new Error('Timeout: '+label);
+  throw new Error('Timeout: ' + label + diagnostic());
 }
 async function send(method,params={}) {
   const id=++seq;
@@ -69,7 +69,7 @@ try {
     if(chrome.exitCode!==null)throw new Error(stderr);
     try{return Number((await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0]);}
     catch(e){if(e.code!=='ENOENT')throw e;return false;}
-  },'Chrome startup');
+  }, 'Chrome startup', 30_000, () => stderr ? '\n' + stderr : '');
   const targets=await (await fetch('http://127.0.0.1:'+port+'/json/list')).json();
   cdp=new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl);
   await new Promise((r,j)=>{cdp.addEventListener('open',r,{once:true});cdp.addEventListener('error',j,{once:true});});

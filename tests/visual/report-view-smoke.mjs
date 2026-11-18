@@ -94,7 +94,7 @@ class CDP {
   }
 }
 
-async function waitUntil(check, label, milliseconds = 15_000) {
+async function waitUntil(check, label, milliseconds = 15_000, diagnostic = () => '') {
   const until = Date.now() + milliseconds;
   while (Date.now() < until) {
     signal.throwIfAborted();
@@ -102,7 +102,7 @@ async function waitUntil(check, label, milliseconds = 15_000) {
     if (value) return value;
     await delay(100, undefined, { signal });
   }
-  throw new Error(`${label} timed out`);
+  throw new Error(`${label} timed out${diagnostic()}`);
 }
 
 async function settle(cdp) {
@@ -277,7 +277,7 @@ async function main() {
         if (error.code !== 'ENOENT') throw error;
         return false;
       }
-    }, 'Chrome startup');
+    }, 'Chrome startup', 30_000, () => stderr ? '\n' + stderr : '');
     const response = await bounded(fetch(`http://127.0.0.1:${port}/json/list`, {
       signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
     }), 'Chrome target discovery');
