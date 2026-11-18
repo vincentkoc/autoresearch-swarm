@@ -14,12 +14,13 @@ def parse_task(argv: Sequence[str] | None = None) -> Task:
     parser.add_argument("task", choices=("program", "mlp", "nanogpt"))
     parser.add_argument("--device", choices=("cpu", "mps", "cuda"), default="cpu")
     parser.add_argument("--size", choices=("small", "full"), default="small")
+    parser.add_argument("--protocol", choices=("v1", "v2"), default="v1")
     args = parser.parse_args(argv)
     if args.task != "program":
         import torch
 
         torch.set_num_threads(1)
-    return get_task(args.task, device=args.device, size=args.size)
+    return get_task(args.task, device=args.device, size=args.size, protocol=args.protocol)
 
 
 def main() -> None:
