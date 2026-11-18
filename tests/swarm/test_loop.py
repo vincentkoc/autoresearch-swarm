@@ -15,6 +15,29 @@ from research_swarm.swarm.store import SQLiteStore
 from research_swarm.swarm.worker import WorkerLoop
 
 
+@pytest.mark.asyncio
+async def test_wall_time_drains_claimed_work_then_stops_proposing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = 1000.0
+    clock = SimpleNamespace(time=lambda: now)
+    monkeypatch.setattr("research_swarm.swarm.loop.time", clock)
+    monkeypatch.setattr("research_swarm.swarm.store.time", clock)
+
+    class CrossDeadline(Backend):
+        async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
+            nonlocal now
+            assert attempt.started_at == now
+            now += 3600
+            return Result(attempt=attempt, status="ok", metrics={"score": 2})
+
+    spec = campaign(max_hours=1, max_workers=1, search_space={"x": [1, 2, 3]})
+    store, backend = SQLiteStore(tmp_path / "queue"), CrossDeadline()
+    summary = await SwarmLoop(spec, store, backend, WorkerLoop(store, backend, "worker")).run()
+    assert summary.reason == "time_limit" and summary.trials == summary.attempts == 1
+    assert summary.selected and summary.selected.score == 2
+
+
 def campaign(**changes: object) -> CampaignSpec:
     return replace(
         CampaignSpec(
@@ -195,6 +218,23 @@ async def test_calibrate_and_hold_out_decision_before_persisting_winner(tmp_path
     ).run()
     assert events == ["calibrated", "search", "consider"] and summary.attempts == 1
     assert summary.selected is None and store.incumbent(spec.campaign_id) is None
+
+    events.clear()
+    expired = replace(spec, campaign_id="expired", max_hours=0)
+    store.create_campaign(expired)
+    store.submit(
+        Trial(
+            trial_id="waiting",
+            campaign_id="expired",
+            candidate=spec.candidates[0],
+            seed=0,
+            fidelity=1,
+        )
+    )
+    stopped = await SwarmLoop(
+        expired, store, backend, WorkerLoop(store, backend, "worker"), panels=Study()
+    ).run()
+    assert stopped.reason == "time_limit" and stopped.attempts == 0 and events == []
 
 
 @pytest.mark.asyncio

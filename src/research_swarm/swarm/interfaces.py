@@ -61,6 +61,7 @@ class CampaignSpec:
     trial_timeout_seconds: float = 300.0
     proposal_timeout_seconds: float = 10.0
     max_cost: float | None = None
+    max_hours: float | None = None
     price_per_hour: float = 0.0
     price_per_million_input_tokens: float = 0.0
     price_per_million_output_tokens: float = 0.0
@@ -170,6 +171,10 @@ class Meter(Protocol):
 
 class Store(Protocol):
     def create_campaign(self, spec: CampaignSpec) -> None: ...
+
+    def deadline(self, campaign_id: str) -> float | None:
+        """Return the UTC timestamp at which the campaign stops admitting attempts."""
+        ...
 
     def submit(self, trial: Trial) -> bool:
         """Insert once by trial id. A replay returns False."""

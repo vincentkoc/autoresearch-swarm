@@ -125,6 +125,16 @@ def _spec(db: sqlite3.Connection, campaign_id: str) -> dict[str, Any]:
     return spec
 
 
+def _deadline(db: sqlite3.Connection, campaign_id: str, max_hours: float | None) -> float | None:
+    if max_hours is None:
+        return None
+    created_at = db.execute(
+        "SELECT at FROM swarm_events WHERE campaign_id=? AND kind='created' ORDER BY id LIMIT 1",
+        (campaign_id,),
+    ).fetchone()[0]
+    return float(created_at) + max_hours * 3600
+
+
 class SQLiteStore:
     """Campaign-local queues with atomic claim, cost reservation and attempt completion."""
 
@@ -148,6 +158,8 @@ class SQLiteStore:
             yield db
 
     def create_campaign(self, spec: CampaignSpec) -> None:
+        if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
+            raise ValueError("max_hours must be finite and non-negative")
         encoded = _json(asdict(spec))
         if min(spec.max_trials, spec.max_workers, spec.max_attempts) < 1:
             raise ValueError("Trial, worker and attempt limits must be positive")
@@ -172,6 +184,10 @@ class SQLiteStore:
                 )
             if _json(asdict(CampaignSpec(**saved))) != encoded:
                 raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
+
+    def deadline(self, campaign_id: str) -> float | None:
+        with self._connection() as db:
+            return _deadline(db, campaign_id, _spec(db, campaign_id).get("max_hours"))
 
     def submit(self, trial: Trial) -> bool:
         # Seed and fidelity hints belong to the trial, not the candidate's identity.
@@ -215,6 +231,9 @@ class SQLiteStore:
     ) -> Attempt | None:
         with self._connection(write=True) as db:
             spec = _spec(db, campaign_id)
+            deadline = _deadline(db, campaign_id, spec.get("max_hours"))
+            if deadline is not None and time.time() >= deadline:
+                return None
             active = db.execute(
                 "SELECT count(*) FROM swarm_trials WHERE campaign_id=? AND status='running'",
                 (campaign_id,),
@@ -240,13 +259,15 @@ class SQLiteStore:
                     break
             else:
                 return None
+            now = time.time()
+            if deadline is not None and now >= deadline:
+                return None
             number = db.execute(
                 "UPDATE swarm_trials SET status='running', "
                 "attempt_count=attempt_count+1 WHERE trial_id=? AND status='queued' "
                 "RETURNING attempt_count",
                 (trial.trial_id,),
             ).fetchone()[0]
-            now = time.time()
             attempt = Attempt(
                 attempt_id=uuid4().hex,
                 trial=trial,

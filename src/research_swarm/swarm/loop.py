@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from itertools import chain, islice, product
@@ -234,13 +235,22 @@ class SwarmLoop:
                 "Smoke campaigns use direct metrics and cannot declare evaluation panels"
             )
         self.store.create_campaign(s)
+        deadline = self.store.deadline(s.campaign_id) if s.max_hours is not None else None
+
+        def remaining_seconds() -> float:
+            return math.inf if deadline is None else deadline - time.time()
+
         previous = self.store.trials(s.campaign_id)
         seen = {trial.trial_id for trial in previous}
         proposer = self.proposer or SeedProposer(s, previous)
-        if self.panels is not None:
-            await asyncio.to_thread(self.panels.calibrate)
         cursor = len(self.population.archive)
         recorded = self.store.results(s.campaign_id, after=cursor)
+        if self.panels is not None and (
+            remaining_seconds() > 0
+            or any(result.status == "ok" for result in recorded)
+            or self.store.queue_depth(s.campaign_id)[1] > 0
+        ):
+            await asyncio.to_thread(self.panels.calibrate)
         incumbent = self.store.incumbent(s.campaign_id)
         for result in recorded:
             self.population.add(result)
@@ -271,9 +281,11 @@ class SwarmLoop:
                 reason = "trial_limit" if len(seen) >= s.max_trials else "exhausted"
                 if self._at_target():
                     reason = "target"
-                elif room > 0:
+                elif room > 0 and remaining_seconds() > 0:
                     try:
-                        async with asyncio.timeout(s.proposal_timeout_seconds):
+                        async with asyncio.timeout(
+                            min(s.proposal_timeout_seconds, remaining_seconds())
+                        ):
                             batch = await proposer.ask(s, self.population.archive, room)
                     except TimeoutError:
                         batch = ()
@@ -281,6 +293,8 @@ class SwarmLoop:
                     if len(batch) > room:
                         raise ValueError("Proposer exceeded requested capacity")
                     for candidate in batch:
+                        if remaining_seconds() <= 0:
+                            break
                         trial = _trial(s, candidate)
                         if trial.trial_id in seen:
                             self.store.submit(trial)
@@ -289,7 +303,10 @@ class SwarmLoop:
                             queued += 1
                         seen.add(trial.trial_id)
 
-                if no_claim and queued and not pending and not running:
+                if remaining_seconds() <= 0:
+                    reason = "time_limit"
+                    slots = 0
+                elif no_claim and queued and not pending and not running:
                     reason = "dispatch_unavailable"
                     break
                 for _ in range(min(slots, queued)):
@@ -303,7 +320,7 @@ class SwarmLoop:
                     await asyncio.sleep(0.25)
                     await self._run_worker()
                     continue
-                if slots <= 0 and (queued or len(seen) < s.max_trials):
+                if reason != "time_limit" and slots <= 0 and (queued or len(seen) < s.max_trials):
                     reason = "dispatch_unavailable"
                 break
         finally:

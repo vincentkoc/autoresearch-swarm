@@ -41,6 +41,11 @@ causes the task to exit with an error. The other seven
 produce measurements. The JSON summary includes the winner, top three candidates
 and failed-attempt count. Repeat the command to resume the same campaign.
 
+Set `max_hours` to limit admissions from the moment the campaign is first created.
+Time between runs counts toward the limit. At the deadline the controller stops
+asking for candidates and workers stop claiming new attempts, including retries.
+Already claimed attempts can finish and contribute to the selected result.
+
 The task command runs relative to the YAML file's directory (or its `task_dir`).
 Read the trial and candidate parameters from the JSON file named by `SWARM_TRIAL`.
 Write a JSON object of finite numeric metrics to the file named by `SWARM_METRICS`.

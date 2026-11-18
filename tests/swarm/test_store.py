@@ -9,6 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -56,6 +57,34 @@ def test_independent_connections_claim_distinct_trials_and_respect_slots(tmp_pat
     assert len(queue.results("test")) == 8
     assert queue.outstanding("test") == 8
     assert claim(0) is not None
+
+
+def test_wall_time_expires_inside_claim_and_survives_reopen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = 1000.0
+    monkeypatch.setattr("research_swarm.swarm.store.time", SimpleNamespace(time=lambda: now))
+    path = tmp_path / "queue.db"
+    queue = SQLiteStore(path)
+    config = spec(max_hours=0.5)
+    queue.create_campaign(config)
+    for i in range(2):
+        queue.submit(trial(i))
+    first = queue.claim("test", "worker")
+    assert first and queue.report(Result(attempt=first, status="failed", error="retry"))
+
+    def estimate(trial: Trial) -> float:
+        nonlocal now
+        now += 1800.0
+        return 0.0
+
+    assert queue.claim("test", "late", reserve_cost=estimate) is None
+    resumed = SQLiteStore(path)
+    resumed.create_campaign(config)
+    assert resumed.deadline("test") == now
+    assert resumed.claim("test", "other") is None
+    assert resumed.queue_depth("test") == (2, 0)
+    assert len(resumed.results("test")) == 1
 
 
 def test_retry_fences_stale_reports_and_retains_attempt_order(tmp_path: Path) -> None:

@@ -35,6 +35,8 @@ def load_spec(path: Path) -> CampaignSpec:
     except (ValueError, TypeError) as exc:
         raise ValueError("Campaign values must be finite JSON data") from exc
     spec = TypeAdapter(CampaignSpec).validate_json(encoded, strict=True)
+    if spec.max_hours is not None and spec.max_hours < 0:
+        raise ValueError("max_hours must be non-negative")
     if (
         not spec.campaign_id.strip()
         or not spec.metric.strip()
