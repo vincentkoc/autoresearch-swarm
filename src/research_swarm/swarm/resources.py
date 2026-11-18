@@ -73,6 +73,13 @@ class ResourcePool:
         self._lock = Lock()
 
     def acquire(self, demand: Demand, *, max_fits: int = 1) -> Allocation | None:
+        allocation, _ = self.acquire_or_delay(demand, max_fits=max_fits)
+        return allocation
+
+    def acquire_or_delay(
+        self, demand: Demand, *, max_fits: int = 1
+    ) -> tuple[Allocation | None, float | None]:
+        """Try admission and return seconds until enough LLM tokens replenish, if known."""
         if type(max_fits) is not int or max_fits < 1:
             raise ValueError("max_fits must be a positive integer")
         with self._lock:
@@ -92,9 +99,15 @@ class ResourcePool:
                 available = self._token_limit - sum(
                     a.demand.llm_tokens * a.fits for _, a in self._tokens
                 )
+                if fits and available < demand.llm_tokens <= self._token_limit:
+                    needed = demand.llm_tokens - available
+                    for at, entry in self._tokens:
+                        needed -= entry.demand.llm_tokens * entry.fits
+                        if needed <= 0:
+                            return None, at + 60 - now
                 fits = min(fits, available // demand.llm_tokens)
             if fits == 0:
-                return None
+                return None, None
             device = None
             vram = 0
             if demand.gpu_profile is not None:
@@ -113,7 +126,7 @@ class ResourcePool:
                         # Prefer the largest batch, then the tightest fit.
                         placements.append((-count, capacity - used - count * peak, name, peak))
                 if not placements:
-                    return None
+                    return None, None
                 neg_count, _, device, peak = min(placements)
                 fits = -neg_count
                 vram = fits * peak
@@ -121,7 +134,7 @@ class ResourcePool:
             self._active.add(allocation)
             if self._token_limit is not None and demand.llm_tokens:
                 self._tokens.append((now, allocation))
-            return allocation
+            return allocation, None
 
     def release(
         self, allocation: Allocation, *, peak_vram_mib: int | None = None, dispatched: bool = True
