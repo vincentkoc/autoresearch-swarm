@@ -15,6 +15,11 @@
   `LOCAL_FAILURE` findings, fences admission, and retries the exact attempt on the
   same worker. Authority loss still stops the driver.
 
+- Check that drained workers retain their identity and advance their heartbeat
+  when resumed, including on runners where several heartbeat intervals elapse.
+  The cancellation test observes the next driver's heartbeat directly while
+  the worker is drained.
+
 - Remove the unused `evidence_receipt` helper and `DeadlinePolicy` model, and the
   disabled Windows CI jobs. Windows runtime code stays; qualification remains paused.
 
@@ -40,6 +45,10 @@
 
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.
+
+- Include pytest-xdist in the locked development environment for parallel local
+  contract runs. Give Chrome time to start cold in the real browser smoke tests
+  and report its launch errors.
 
 - Apply newly requested graph layouts while reduced motion or Pause is active,
   without accepting queued animation frames.

@@ -45,6 +45,17 @@ def session(connected: Any) -> WorkerControlSession:
     )
 
 
+def set_admission(pipeline: Pipeline, connected: Any, state: str, revision: int) -> dict[str, Any]:
+    return pipeline.client.command(
+        "worker.set_admission",
+        SetWorkerAdmission(
+            binding=connected.worker.worker.binding, admission=state, reason="Fixture drain"
+        ),
+        expected_revision=revision,
+        idempotency_key=new_id(),
+    )["result"]
+
+
 async def test_lost_heartbeat_reply_replays_before_admission_and_sequence_survives_restart(
     pipeline: Pipeline,
     tmp_path: Path,
@@ -239,23 +250,18 @@ async def test_drained_worker_stays_observable_and_resumes_without_new_identity(
     ):
         binding = connected.worker.worker.binding
 
-        def set_admission(state: str, revision: int) -> dict[str, Any]:
-            return pipeline.client.command(
-                "worker.set_admission",
-                SetWorkerAdmission(binding=binding, admission=state, reason="Fixture drain"),
-                expected_revision=revision,
-                idempotency_key=new_id(),
-            )["result"]
-
-        drained = set_admission("draining", 0)
+        drained = set_admission(pipeline, connected, "draining", 0)
         result = await ScopedWorkerDriver(connected).run(once=True)
         assert result.state == "idle" and result.observation_count == 0
-        assert presence(connected)["data"]["heartbeat_sequence"] == 1
-        set_admission("active", drained["revision"])
+        while_drained = presence(connected)["data"]
+        assert while_drained["binding"] == binding.model_dump(mode="json")
+        assert while_drained["heartbeat_sequence"] > 0
+        set_admission(pipeline, connected, "active", drained["revision"])
         resumed = await ScopedWorkerDriver(connected).run(once=True)
         assert resumed.state == "idle" and resumed.observation_count == 1
-        assert connected.worker.worker.binding == binding
-        assert presence(connected)["data"]["heartbeat_sequence"] == 2
+        while_active = presence(connected)["data"]
+        assert while_active["binding"] == while_drained["binding"]
+        assert while_active["heartbeat_sequence"] > while_drained["heartbeat_sequence"]
 
 
 async def test_cancelled_heartbeat_keeps_driver_and_single_writer_ownership_until_reply(
@@ -296,7 +302,14 @@ async def test_cancelled_heartbeat_keeps_driver_and_single_writer_ownership_unti
         with pytest.raises(asyncio.CancelledError):
             await task
         monkeypatch.setattr(connected.worker.client, "command", original)
-        assert (await ScopedWorkerDriver(connected).run(once=True)).observation_count == 1
+        previous = presence(connected)["data"]
+        set_admission(pipeline, connected, "draining", 0)
+        restarted = await ScopedWorkerDriver(connected).run(once=True)
+        assert restarted.state == "idle" and restarted.observation_count == 0
+        current = presence(connected)["data"]
+        assert current["binding"] == previous["binding"]
+        assert current["driver_instance_id"] != previous["driver_instance_id"]
+        assert current["heartbeat_sequence"] > previous["heartbeat_sequence"]
 
 
 async def test_control_page_exhaustion_blocks_launch_but_preserves_acknowledged_progress(
