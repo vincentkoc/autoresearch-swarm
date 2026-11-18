@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Set `proposer: research_swarm.swarm.operators.bandit:BanditProposer` to allocate
+  trials between parameter mutation and crossover by observed gain per cost.
+  Custom proposer factories can supply other operators. The bandit restores pending
+  recipes on resume and returns completed siblings when a model proposal times out.
+
 - Make the local SSH keeper test record its shutdown command with a native executable
   while checking activity locking, the idle deadline, and rejection of new work.
 
