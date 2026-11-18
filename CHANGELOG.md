@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run the GitHub CI workflow on manual dispatch. Pull requests use the local merge gate.
+
 - **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
   subsystem: the 13 `learning.*` commands, their scopes, record kinds and MCP tools,
   and the `learning_cycle` and `cpu_policy_learning` examples. No real research run
