@@ -48,7 +48,7 @@ class CampaignSpec:
     top_k: int = 1
     min_delta: float = 0.0
     target: float | None = None
-    max_attempts: int = 1
+    max_attempts: int = 2
     trial_timeout_seconds: float = 300.0
     proposal_timeout_seconds: float = 10.0
     max_cost: float | None = None
@@ -191,6 +191,10 @@ class Store(Protocol):
 
     def outstanding(self, campaign_id: str) -> int:
         """Count queued and running trials, including retries."""
+        ...
+
+    def queue_depth(self, campaign_id: str) -> tuple[int, int]:
+        """Return queued and running trial counts from the same snapshot."""
         ...
 
     def select(self, campaign_id: str, trial_id: str) -> None:
