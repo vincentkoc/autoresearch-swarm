@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import errno
 import faulthandler
 import json
 import os
@@ -53,14 +52,6 @@ def read_acknowledgment(path: Path) -> dict[str, str | int] | None:
         return value
     except FileNotFoundError:
         return None
-    except PermissionError as error:
-        # Atomic publication can briefly deny a Windows reader. The caller's
-        # original deadline and complete identity comparison still apply.
-        if getattr(error, "winerror", None) in {5, 32, 33} or (
-            sys.platform == "win32" and error.errno == errno.EACCES
-        ):
-            return None
-        raise
 
 
 @dataclass

@@ -2,7 +2,7 @@
 
 The release workflow builds one source distribution and a wheel from that source
 distribution. It verifies their contents, records SHA-256 checksums, and installs
-the same wheel on Linux, macOS and Windows. The Linux matrix also tests Python
+the same wheel on Linux and macOS. The Linux matrix also tests Python
 3.11, the minimum supported version.
 
 The installed package must run a native CPU experiment, expose its evidence over

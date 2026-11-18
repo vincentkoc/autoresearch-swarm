@@ -6,7 +6,6 @@ import hashlib
 import os
 import shutil
 import sqlite3
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -43,9 +42,6 @@ def base_environment() -> dict[str, str]:
     """Only operating-system necessities cross into a native workload by default."""
     allowed = {
         "PATH",
-        "SYSTEMROOT",
-        "WINDIR",
-        "COMSPEC",
         "TEMP",
         "TMP",
         "TMPDIR",
@@ -69,15 +65,9 @@ def _prepare(command: NativeCommand, environment: dict[str, str]) -> NativeChild
     if executable is None:
         raise FileNotFoundError("The execution profile cannot resolve the requested executable")
     command = command.model_copy(update={"argv": (executable, *command.argv[1:])})
-    if sys.platform == "win32":
-        from research_swarm.workers._windows import WindowsChild
+    from research_swarm.workers._posix import PosixChild
 
-        return WindowsChild(command, environment)
-    if os.name == "posix":
-        from research_swarm.workers._posix import PosixChild
-
-        return PosixChild(command, environment)
-    raise OSError("This operating system has no native process supervisor")
+    return PosixChild(command, environment)
 
 
 class _Capture:
@@ -288,7 +278,7 @@ def run_native(
             closure = ProcessClosure(
                 identity=child.identity,
                 scope_closed=False,
-                scope="windows_job" if sys.platform == "win32" else "posix_process_group",
+                scope="posix_process_group",
             )
 
         # Retain ownership through scope closure, exit readiness and pipe draining.
@@ -349,10 +339,9 @@ def run_native(
             stdout=stdout.finish(),
             stderr=stderr.finish(),
         )
-    if sys.platform != "win32" and os.name == "posix":
-        descriptor = os.open(output_dir, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+    descriptor = os.open(output_dir, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
     return outcome

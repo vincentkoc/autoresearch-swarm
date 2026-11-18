@@ -187,25 +187,3 @@ def test_export_requires_existing_parent_before_custody_creation(sealed_runtime,
         export_backup(runtime, context, tmp_path / "absent" / "bundle", backup_id=request.backup_id)
     assert not (tmp_path / "absent").exists()
     assert not (runtime.root / "backup-custody.json").exists()
-
-
-@pytest.mark.parametrize("succeeds", [True, False])
-def test_windows_private_replacement_requires_write_through_without_fallback(
-    tmp_path, monkeypatch, succeeds
-):
-    from research_swarm.state import windows_privacy
-
-    calls = []
-
-    def move(source, target, flags):
-        calls.append((source, target, flags))
-        return succeeds
-
-    monkeypatch.setattr(windows_privacy, "_api", lambda: {"MoveFileExW": move})
-    source, target = tmp_path / "staged", tmp_path / "published"
-    if succeeds:
-        windows_privacy.replace_write_through(source, target)
-    else:
-        with pytest.raises(OSError):
-            windows_privacy.replace_write_through(source, target)
-    assert calls == [(str(source), str(target), 0x1 | 0x8)]

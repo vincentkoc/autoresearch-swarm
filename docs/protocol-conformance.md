@@ -56,7 +56,7 @@ no Node dependency and the verifier uses no npm packages.
 RESEARCH_REQUIRE_NODE=1 uv run pytest -q tests/domain/test_cross_language.py
 ```
 
-The ordinary Linux, macOS, and Windows CI matrix installs Node 22 and requires this
+The ordinary Linux and macOS CI matrix installs Node 22 and requires this
 proof. Local Python-only development skips the JavaScript tests when Node is
 absent; that skip does not count as cross-language qualification.
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import time
@@ -159,7 +158,6 @@ def test_primary_exit_does_not_hide_a_surviving_child(tmp_path: Path) -> None:
     require_closed(int(marker.read_text()))
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX group escape behavior")
 def test_observed_group_escape_keeps_closure_unknown(tmp_path: Path) -> None:
     marker = tmp_path / "escaped.pid"
     child = "import time; time.sleep(60)"
@@ -223,7 +221,6 @@ def test_deadline_survives_a_blocked_release_callback(tmp_path: Path) -> None:
     assert not marker.exists()
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX executable paths and signal escalation")
 def test_cancellation_escalates_for_a_sigterm_ignoring_child(tmp_path: Path) -> None:
     marker = tmp_path / "ready"
     invocation = command(
@@ -239,7 +236,6 @@ def test_cancellation_escalates_for_a_sigterm_ignoring_child(tmp_path: Path) -> 
         NativeCommand.model_validate(invocation.model_copy(update={"grace_ms": 5000}))
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX executable file fixture")
 @pytest.mark.parametrize("executable", ["./program", "program"])
 def test_relative_executables_resolve_from_the_project(tmp_path: Path, executable: str) -> None:
     program = tmp_path / "program"

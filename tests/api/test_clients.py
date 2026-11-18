@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -29,9 +28,8 @@ def test_local_runtime_initializes_one_identity_under_contention(tmp_path: Path)
     assert len({runtime.principal().id for runtime in runtimes}) == 1
     with runtimes[0].database.connect() as connection:
         assert connection.execute("SELECT COUNT(*) FROM credentials").fetchone()[0] == 1
-    if sys.platform != "win32":
-        assert root.stat().st_mode & 0o077 == 0
-        assert (root / "operator.token").stat().st_mode & 0o077 == 0
+    assert root.stat().st_mode & 0o077 == 0
+    assert (root / "operator.token").stat().st_mode & 0o077 == 0
     assert len(read_private(root, "dispatch.key", limit=32)) == 32
 
 

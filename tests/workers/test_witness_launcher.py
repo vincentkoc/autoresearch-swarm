@@ -75,7 +75,6 @@ def test_invalid_inputs_refuse_before_server_creation(files, monkeypatch, change
     assert SEED.hex() not in str(refused.value)
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX mode refusal; Windows uses native ACL admission")
 def test_broad_secret_permissions_refuse_without_listener(files, monkeypatch):
     config_path, key_path, _, _ = files
     key_path.chmod(0o644)

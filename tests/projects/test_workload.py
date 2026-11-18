@@ -78,7 +78,6 @@ def test_missing_output_and_out_of_bounds_content_are_not_accepted(tmp_path: Pat
     assert output.digest == content_digest(b"weights") and output.size_bytes == 7
 
 
-@pytest.mark.skipif(os.name != "posix", reason="Symlink creation may require Windows privileges")
 def test_report_and_output_links_cannot_redirect_worker_reads(tmp_path: Path) -> None:
     request = context(tmp_path)
     target = tmp_path / "outside"
@@ -193,7 +192,6 @@ def test_uniform_logits_have_the_same_score_under_a_large_common_offset(
     assert report.measurements[0].value == pytest.approx(math.log2(len(alphabet)), abs=1e-10)
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO fixture")
 @pytest.mark.parametrize("kind", ["report", "output"])
 def test_fifo_report_or_output_cannot_block_verification(tmp_path: Path, kind: str) -> None:
     request = context(tmp_path)

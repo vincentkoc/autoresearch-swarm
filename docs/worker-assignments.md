@@ -201,9 +201,7 @@ Execution and cleanup use a suspend-inclusive elapsed clock. Linux uses
 the distinction in its [clock constants](https://docs.python.org/3.11/library/time.html#time.CLOCK_BOOTTIME).
 macOS uses `mach_continuous_time` and `mach_absolute_time` with integer timebase
 conversion, following [Apple's native declarations](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/mach_time.h).
-Windows uses [QueryPerformanceCounter](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps),
-which includes sleep, paired with [QueryUnbiasedInterruptTime](https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-queryunbiasedinterrupttime),
-which excludes it. Missing primitives are an explicit capability failure.
+Missing primitives are an explicit capability failure.
 
 The supervisor freezes its local UTC-to-elapsed conversion once and passes the
 absolute cap into native execution. Preparing a held process or delaying release

@@ -1,6 +1,10 @@
 """Local-first orchestration for reproducible, agent-controlled research."""
 
+import os
 from typing import TYPE_CHECKING
+
+if os.name != "posix":
+    raise ImportError("autoresearch-swarm requires a POSIX runtime (Linux or macOS)")
 
 if TYPE_CHECKING:
     from research_swarm.client import AsyncResearchClient as AsyncResearchClient

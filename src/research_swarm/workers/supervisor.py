@@ -41,12 +41,11 @@ def _save_outcome(root: Path, outcome: NativeOutcome) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(staged, destination)
-    if sys.platform != "win32":
-        descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def run_attempt(
@@ -215,17 +214,13 @@ def spawn_supervisor(
     ]
     if clock_stdin is not None:
         argv.append("--clock-channel")
-    creationflags = 0
-    if sys.platform == "win32":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
     return subprocess.Popen(
         argv,
         stdin=clock_stdin if clock_stdin is not None else subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         env=base_environment(),
-        start_new_session=sys.platform != "win32",
-        creationflags=creationflags,
+        start_new_session=True,
     )
 
 

@@ -91,8 +91,7 @@ backup-directory/
 ```
 
 The private directory contains credentials and signing keys. A principal with
-only `service.manage` cannot export it. Private file protections apply on POSIX
-and Windows. Verification rejects unexpected files, substituted paths, linked
+only `service.manage` cannot export it. Private file protections apply on POSIX. Verification rejects unexpected files, substituted paths, linked
 files, changed bytes, missing retained evidence and unsupported schemas. The
 profile bounds the database at 1 GiB and the inventory at 10,000 generations.
 
@@ -196,9 +195,7 @@ Do not copy or rewind source custody to recover a failed elected destination.
 An elected destination must resume with its original target key and claim.
 
 Private writes flush the staged file before atomic publication. POSIX also
-syncs the containing directory. Windows uses
-[`MoveFileExW` with replacement and write-through flags](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw)
-and propagates failure without a weaker fallback. These are native OS durability
+syncs the containing directory. These are native OS durability
 operations; process-interruption tests do not establish physical power-loss
 behavior on every filesystem or storage device.
 
@@ -494,9 +491,7 @@ pending dispatch/budget custody; and rejection of lost acknowledgments or change
 reservations. These qualify inactive import.
 Claim tests additionally cover competing independent openers, restart, lost
 publication replies, actual process exit after publication, missing/substituted
-custody and forged target proofs. Windows CI checks protected-file replacement;
-platform-independent unit tests verify the required Windows flags and refusal
-path without treating them as native qualification.
+custody and forged target proofs.
 Admission tests cover actual process exit within the transaction and after
 commit, concurrent replay, rollback of fences and pauses, native-proof mismatch,
 target/source-key rejection, preserved UNKNOWN custody, pending driver turns and

@@ -1135,12 +1135,9 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             assert (
                 workload.is_running() and workload.create_time() == workload_witness.created_at
             ), diagnostics("workload after driver exit")
-            if sys.platform == "win32":
-                current_start_token = f"native-created:{native_root.create_time().hex()}"
-            else:
-                from research_swarm.workers._posix import start_token
+            from research_swarm.workers._posix import start_token
 
-                current_start_token = start_token(native_root)
+            current_start_token = start_token(native_root)
             assert running.native.start_token == current_start_token
             if cancel_offline:
                 attempt = pipeline.client.get("attempt", running.dispatch.attempt_id)
@@ -1231,9 +1228,6 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
             closed = journal.get(running.dispatch.attempt_id)
             assert closed.state == JournalState.CLOSED and closed.native == running.native
             assert closed.outcome is not None and closed.outcome.closure.scope_closed
-            if sys.platform == "win32":
-                assert root_witness.report()["windows_exit_code"] != 259
-                assert workload_witness.report()["windows_exit_code"] != 259
             if cancel_offline:
                 assert closed.outcome.reason == "cancelled"
                 assert (
@@ -1249,9 +1243,6 @@ def test_independent_worker_process_restart_recovers_the_original_running_native
                 error.add_note(diagnostics("native process disappeared"))
             raise
         finally:
-            for retained in (workload_witness, root_witness):
-                if retained is not None:
-                    retained.close()
             if release is not None:
                 release.touch()
             for process, launcher, driver, witness, nonce in (

@@ -101,15 +101,10 @@ preserves the same workspace and controller across restarts.
 The directory contains the research database, artifact store, identity metadata,
 private operator credential, local dispatch key, and separate assignment signing
 key with a pinned public identity. POSIX state directories and private
-files require owner-only permission bits. Windows creates protected native DACLs
-for the executing user and SYSTEM, with propagating inheritance on directories.
+files require owner-only permission bits.
 Initialization rejects broad existing access rather than silently changing it.
 Use a state location whose parent namespace you trust. Same-user code and system
-administrators remain inside the local trust boundary. Native ACL verification
-does not make an arbitrary shared parent directory safe.
-
-Windows qualification uses the native security APIs described in Microsoft's
-[file security documentation](https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights).
+administrators remain inside the local trust boundary.
 
 A selected scoped token file is authoritative. An invalid or revoked token does
 not fall back to the operator credential.

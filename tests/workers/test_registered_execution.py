@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import venv
@@ -47,8 +46,8 @@ def registration(
     interpreter = Path(sys.executable)
     if isolated:
         environment = tmp_path / "python-environment"
-        venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(environment)
-        interpreter = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        venv.EnvBuilder(with_pip=False, symlinks=True).create(environment)
+        interpreter = environment / "bin/python"
     return register_environment(
         tmp_path / "environment-registration" / "engine.json",
         profile="python-cpu",

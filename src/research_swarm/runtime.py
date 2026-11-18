@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import secrets
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -188,25 +187,6 @@ class LocalRuntime:
                         raise ResearchError(
                             ErrorCode.AUTHORIZATION_DENIED, "Invalid local dispatch key"
                         )
-            if sys.platform == "win32":
-                from research_swarm.state.windows_privacy import verified_path
-
-                for name in ("research.sqlite", "research.sqlite-wal", "research.sqlite-shm"):
-                    path = root / name
-                    if path.exists():
-                        try:
-                            with verified_path(path, directory=False):
-                                pass
-                        except FileNotFoundError:
-                            if name == "research.sqlite":
-                                raise
-                        except ResearchError as error:
-                            raise ResearchError(
-                                error.code,
-                                error.message,
-                                retryable=error.retryable,
-                                details={**error.details, "state_file": name},
-                            ) from error
             if not (root / "research.sqlite").exists():
                 write_private(root / "research.sqlite", b"")
             database = Database(root / "research.sqlite")
