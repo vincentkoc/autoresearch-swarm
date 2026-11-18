@@ -28,6 +28,9 @@
   policy, budget, review and transport stops. Async cancellation now drains the
   current bounded search pass before releasing the client.
 
+- Define the campaign, candidate, trial, attempt and result records and plugin
+  protocols for capacity-driven research campaigns.
+
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.
 
