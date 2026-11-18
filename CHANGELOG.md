@@ -279,6 +279,9 @@
 
 - Return structured capability errors for unknown HTTP commands instead of uncertain-delivery advice.
 
+- Remove the unused controller test launcher and its self-tests. Keep real CLI
+  checks for UTF-8 output and clean errors when an archived report is malformed.
+
 - Check upload and read permissions before creating artifact uploads or reserving storage.
 
 - Add an ordinary CPU project that demonstrates pending-decision training,
