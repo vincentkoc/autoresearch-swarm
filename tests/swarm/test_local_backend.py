@@ -68,10 +68,14 @@ Path(os.environ['SWARM_USAGE']).write_text(json.dumps(usage))
 )
 async def test_invalid_metrics_are_failed_attempts(tmp_path: Path, output: str) -> None:
     spec = make_spec(
-        tmp_path, f"import os; open(os.environ['SWARM_METRICS'], 'w').write({output!r})"
+        tmp_path,
+        "import os; open(os.environ['SWARM_USAGE'], 'w').write("
+        '\'{"input_tokens": 100, "output_tokens": 7, "peak_vram_mib": 19}\'); '
+        f"open(os.environ['SWARM_METRICS'], 'w').write({output!r})",
     )
     result = await LocalBackend(1).execute(spec, make_attempt())
     assert result.status == "failed" and result.error and not result.metrics
+    assert (result.input_tokens, result.output_tokens, result.peak_vram_mib) == (100, 7, 19)
 
 
 @pytest.mark.parametrize("cancel", [True, False])

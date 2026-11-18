@@ -124,12 +124,16 @@ class LocalBackend:
                         raise ValueError(f"{field} must be a nonnegative integer")
                 if counters.get("peak_vram_mib", 0.0) < 0:
                     raise ValueError("peak_vram_mib must be nonnegative")
-            if error_message is None:
+        except (ValueError, OSError, OverflowError) as error:
+            return Result(attempt=attempt, status="failed", error=str(error), logs=logs)
+        if error_message is None:
+            try:
                 measurements = _numbers(metrics)
                 if spec.metric not in measurements:
                     raise ValueError(f"missing objective metric: {spec.metric}")
-        except (ValueError, OSError, OverflowError) as error:
-            return Result(attempt=attempt, status="failed", error=str(error), logs=logs)
+            except (ValueError, OSError, OverflowError) as error:
+                error_message = str(error)
+                measurements = {}
         return Result(
             attempt=attempt,
             status="failed" if error_message else "ok",
