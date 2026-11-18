@@ -79,6 +79,9 @@
   remains billable when a task returns invalid objective metrics. A worker reports
   the retry delay when a rolling LLM token quota temporarily prevents dispatch.
 
+- Dispatch tagged SkyPilot managed jobs across multiple locations. A lost spot
+  attempt requeues with on-demand placement inside the campaign retry budget.
+
 - Add a layout selector for connected clusters, category groups and a symmetric
   ring plus a broad spread-out force view, retaining filters, selection and recorded ancestry across layout changes.
 
