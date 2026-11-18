@@ -102,6 +102,23 @@ def test_yaml_rejects_unknown_fields_and_wrong_types(tmp_path: Path) -> None:
             load_spec(path)
 
 
+def test_default_worker_honors_permanent_token_denial(tmp_path: Path) -> None:
+    from research_swarm.swarm.command import run_campaign
+
+    data = yaml.safe_load((BIGRAM / "swarm.yaml").read_text())
+    data.update(
+        resource="llm",
+        estimated_input_tokens=11,
+        max_workers=1,
+        task_dir=str(BIGRAM),
+        options={"resources": {"llm": 1, "tokens_per_minute": 10}},
+    )
+    path = tmp_path / "quota.yaml"
+    path.write_text(yaml.safe_dump(data))
+    result, code = run_campaign(path, tmp_path / "quota.db")
+    assert code == 3 and result["reason"] == "dispatch_unavailable" and result["attempts"] == 0
+
+
 def test_cli_resumes_expired_campaign_without_claiming_queued_work(tmp_path: Path) -> None:
     data = yaml.safe_load((BIGRAM / "swarm.yaml").read_text())
     data.update(max_hours=1, max_workers=1, target=100, task_dir=str(BIGRAM))

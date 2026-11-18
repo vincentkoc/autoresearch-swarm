@@ -8,14 +8,13 @@ from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
 
 from research_swarm.swarm.backends.local import LocalBackend
 from research_swarm.swarm.interfaces import Backend, Worker
 from research_swarm.swarm.loop import SwarmLoop
 from research_swarm.swarm.spec import load_spec
 from research_swarm.swarm.store import SQLiteStore
-from research_swarm.swarm.worker import WorkerLoop
+from research_swarm.swarm.worker import from_spec
 
 
 def _factory(name: str) -> Callable[..., Any]:
@@ -46,7 +45,7 @@ def run_campaign(path: Path, database: Path) -> tuple[dict[str, Any], int]:
     if spec.worker:
         worker = _factory(spec.worker)(spec, store, backend)
     else:
-        worker = WorkerLoop(store, backend, f"local-{uuid4().hex}")
+        worker = from_spec(spec, store, backend)
     loop = SwarmLoop(
         spec,
         store,

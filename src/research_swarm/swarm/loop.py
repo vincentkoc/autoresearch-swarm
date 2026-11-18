@@ -307,8 +307,18 @@ class SwarmLoop:
                     reason = "time_limit"
                     slots = 0
                 elif no_claim and queued and not pending and not running:
-                    reason = "dispatch_unavailable"
-                    break
+                    retry_after = getattr(self.worker, "retry_after", None)
+                    delay = retry_after(s) if retry_after is not None else None
+                    if delay is None:
+                        reason = "dispatch_unavailable"
+                        break
+                    if not math.isfinite(delay) or delay < 0:
+                        raise ValueError(
+                            "Worker retry_after must return finite non-negative seconds"
+                        )
+                    await asyncio.sleep(min(delay, remaining_seconds()))
+                    no_claim = False
+                    continue
                 for _ in range(min(slots, queued)):
                     pending.add(asyncio.create_task(self._run_worker()))
                 if pending:

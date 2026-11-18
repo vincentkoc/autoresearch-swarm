@@ -131,6 +131,46 @@ async def test_idle_proposer_timeout_and_no_affordable_claim_finish(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("budget,expected_wait", [(None, 60), (5 / 3600, 5)])
+async def test_worker_retry_hint_waits_for_capacity_within_campaign_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, budget: float | None, expected_wait: int
+) -> None:
+    now = 1000.0
+    waits: list[float] = []
+    clock = SimpleNamespace(time=lambda: now)
+    monkeypatch.setattr("research_swarm.swarm.loop.time", clock)
+    monkeypatch.setattr("research_swarm.swarm.store.time", clock)
+
+    async def sleep(seconds: float) -> None:
+        nonlocal now
+        waits.append(seconds)
+        now += seconds
+
+    # Advance only the controller's retry wait; worker heartbeats use the real event loop.
+    controller_asyncio = SimpleNamespace(**vars(asyncio))
+    controller_asyncio.sleep = sleep
+    monkeypatch.setattr("research_swarm.swarm.loop.asyncio", controller_asyncio)
+    spec = campaign(max_hours=budget, max_trials=1, candidates=(Candidate(candidate_id="fast"),))
+    store, backend = SQLiteStore(tmp_path / "queue"), Backend()
+
+    class RateLimited(WorkerLoop):
+        def retry_after(self, spec: CampaignSpec) -> float | None:
+            return 1060 - now
+
+        async def run_once(self, spec: CampaignSpec, **kwargs: object) -> bool:
+            if now < 1060:
+                return False
+            return await super().run_once(spec)
+
+    summary = await SwarmLoop(spec, store, backend, RateLimited(store, backend, "worker")).run()
+    assert waits == [expected_wait]
+    if budget is None:
+        assert summary.attempts == 1 and summary.selected and summary.reason == "trial_limit"
+    else:
+        assert summary.attempts == 0 and summary.selected is None and summary.reason == "time_limit"
+
+
+@pytest.mark.asyncio
 async def test_restores_pending_trials_before_first_ask(tmp_path: Path) -> None:
     store, backend = SQLiteStore(tmp_path / "queue"), Backend()
     spec = campaign(max_trials=2)

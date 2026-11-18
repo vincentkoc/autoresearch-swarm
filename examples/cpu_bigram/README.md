@@ -62,3 +62,8 @@ settings belong in `options`. Campaigns default to calibrated evaluation and
 require a panel policy that calibrates before dispatch and checks a challenger
 before selection. This CPU benchmark explicitly uses `evaluation_mode: smoke`
 to test dispatch, crash isolation and ranking on its fixed metric.
+
+The default worker reads slot and token limits from `options.resources`. A worker
+can implement `retry_after(spec)` to return the seconds until capacity replenishes,
+or `None` for a permanent denial. The controller waits up to the campaign deadline
+before trying a queued trial again.

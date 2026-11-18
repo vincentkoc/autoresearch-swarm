@@ -49,8 +49,9 @@
 - Run a capacity-driven campaign from YAML with `research swarm run`. Completed
   attempts feed the proposer as slots free up. The population ranks successful
   candidates even when a sibling crashes and records each selection's score
-  and replicate count. Set `max_hours` to stop dispatch at a campaign deadline
-  that survives restarts.
+  and replicate count. Workers can defer queued trials until token capacity
+  replenishes. Set `max_hours` to stop dispatch at a campaign deadline that
+  survives restarts.
 
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.
