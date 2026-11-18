@@ -33,6 +33,9 @@
 
 - Run the GitHub CI workflow on manual dispatch. Pull requests use the local merge gate.
 
+- Require a PR description explaining which contracts need coverage when a
+  change adds more than 400 net lines of tests or test support.
+
 - **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
   subsystem: the 13 `learning.*` commands, their scopes, record kinds and MCP tools,
   and the `learning_cycle` and `cpu_policy_learning` examples. No real research run
