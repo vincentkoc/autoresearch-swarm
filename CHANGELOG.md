@@ -40,6 +40,7 @@
 
 - Generate swarm candidates with parameter mutation, optional Optuna sampling,
   crossover, ensemble growth, seed replication and deadline-bounded local Ollama edits.
+  Ensembles keep individual member recipes when replicated, promoted or resumed.
 
 - Define the campaign, candidate, trial, attempt and result records and plugin
   protocols for capacity-driven research campaigns.

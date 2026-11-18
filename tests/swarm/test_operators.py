@@ -4,7 +4,7 @@ import random
 import subprocess
 import sys
 import threading
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +63,24 @@ async def test_lineage_and_recipe_operators() -> None:
     seeds = await NewSeed(random.Random(12)).propose(SPEC, [PARENT], 5)
     assert len({c.seed for c in seeds} - {1}) == 5
     assert all(c.params == PARENT.params and c.fidelity == 0.25 for c in seeds)
+
+
+async def test_ensemble_add_preserves_members_across_reseeding_and_resume() -> None:
+    add = EnsembleAdd()
+    # A workload may use "members" as an ordinary hyperparameter.
+    a = replace(PARENT, params={"members": [1, 2]})
+    b, c, d = (replace(PARENT, candidate_id=name) for name in ("b", "c", "d"))
+    (pair,) = await add.propose(SPEC, [a, b], 1)
+    (replica,) = await NewSeed(random.Random(4)).propose(SPEC, [pair], 1)
+    (grown,) = await add.propose(SPEC, [replica, b, c, c], 3)
+    assert grown.params["members"] == [asdict(a), asdict(b), asdict(c)]
+    assert await add.propose(SPEC, [d, replica], 1) == []
+
+    # Read a nested recipe produced by the earlier implementation from saved JSON.
+    saved = json.loads(json.dumps({"members": [asdict(replica), asdict(c)]}))
+    (resumed,) = await add.propose(SPEC, [replace(grown, params=saved), a, d], 2)
+    assert [member["candidate_id"] for member in resumed.params["members"]] == ["a", "b", "c", "d"]
+    assert resumed.params["members"][0]["params"] == {"members": [1, 2]}
 
 
 async def test_optuna_updates_actual_trial_and_handles_retry() -> None:

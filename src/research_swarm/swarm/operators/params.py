@@ -156,6 +156,25 @@ class Crossover:
         return batch
 
 
+def _ensemble_members(params: Mapping[str, Any]) -> list[dict[str, Any]]:
+    members = params.get("members")
+    if not isinstance(members, list) or not all(
+        isinstance(member, dict)
+        and isinstance(member.get("candidate_id"), str)
+        and isinstance(member.get("params"), dict)
+        and isinstance(member.get("operator"), str)
+        for member in members
+    ):
+        return []
+
+    # Older runs could store a replicated or promoted ensemble as a nested member.
+    leaves: dict[str, dict[str, Any]] = {}
+    for member in members:
+        for leaf in _ensemble_members(member["params"]) or [member]:
+            leaves.setdefault(leaf["candidate_id"], leaf)
+    return list(leaves.values())
+
+
 class EnsembleAdd:
     """Expose the member recipes in SWARM_TRIAL for an ensemble-capable workload."""
 
@@ -168,15 +187,14 @@ class EnsembleAdd:
         if not parents:
             return batch
         anchor = parents[0]
-        members = (
-            list(anchor.params["members"]) if anchor.operator == self.name else [asdict(anchor)]
-        )
+        members = _ensemble_members(anchor.params) or [asdict(anchor)]
         existing = {member["candidate_id"] for member in members}
         for addition in parents[1:]:
             if len(batch) >= k:
                 break
-            if addition.candidate_id in existing or addition.operator == self.name:
+            if addition.candidate_id in existing or _ensemble_members(addition.params):
                 continue
+            existing.add(addition.candidate_id)
             batch.append(
                 child(
                     anchor,
