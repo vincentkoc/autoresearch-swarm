@@ -10,7 +10,6 @@ class or mandatory provider SDK.
 | `BlobStore` | Artifact bytes, generations and retirement | [Storage contract](../src/research_swarm/storage/base.py) |
 | `Ed25519Provider` | Synchronous signing and signature verification | [Cryptography contract](../src/research_swarm/crypto.py) |
 | `ExecutionBoundary` | Qualified authority and time for one operation | [Boundary contract](../src/research_swarm/state/boundaries.py) |
-| `DeliveryClient` | Deliver saved actions and waits to the authority | [Delivery contract](../src/research_swarm/orchestration/async_delivery.py), [minimal client example](../tests/orchestration/test_async_delivery.py) |
 
 The local implementations ship with the Python package.
 
