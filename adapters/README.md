@@ -25,9 +25,8 @@ The local implementations ship with the Python package.
    requests cannot select another provider account or secret.
 7. Run shared conformance tests, then qualify the actual provider runtime.
 
-The callback-only store and asynchronous client tests above provide small working
-implementations for extension authors. Use them to check a custom implementation
-against the shared command and delivery behavior.
+The callback-only store test shows how the command kernel uses a custom
+store. Use it to check transaction and replay behavior in a new adapter.
 
 Research repositories use manifests and commands. They do not implement these
 infrastructure ports. See [project adoption](../docs/project-adoption.md).
