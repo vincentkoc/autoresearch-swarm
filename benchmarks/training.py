@@ -83,7 +83,7 @@ def mlp_accuracy(
     for _ in range(math.ceil(steps * fidelity)):
         indices = torch.randint(count, (64,), generator=generator).to(device)
         optimizer.zero_grad()
-        F.cross_entropy(model(x[indices]), y[indices]).backward()
+        torch.autograd.backward(F.cross_entropy(model(x[indices]), y[indices]))
         optimizer.step()
     with torch.inference_mode():
         x, y = _points(panel, count, device)
@@ -146,7 +146,7 @@ def nanogpt_loss(
         for group in optimizer.param_groups:
             group["lr"] = schedule(step / steps)
         optimizer.zero_grad()
-        _next_token_loss(model, train[indices]).backward()
+        torch.autograd.backward(_next_token_loss(model, train[indices]))
         optimizer.step()
     with torch.inference_mode():
         validation = _sequences(panel, 2 * batch_size, context, device)

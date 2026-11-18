@@ -124,7 +124,7 @@ def run_search(task: Task, propose: Policy, *, budget: int, seed: int) -> list[T
 
 
 OPS = ("identity", "strip", "lower", "hyphenate", "trim-hyphens")
-PROGRAM_SPACE = {f"line{i}": OPS for i in range(1, 5)}
+PROGRAM_SPACE: dict[str, tuple[str, ...]] = {f"line{i}": OPS for i in range(1, 5)}
 
 
 def _slug_score(
