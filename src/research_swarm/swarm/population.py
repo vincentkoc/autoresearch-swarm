@@ -53,7 +53,7 @@ class Population:
             len(runs),
         )
 
-    def top(self, *, family: str | None = None) -> list[Ranked]:
+    def ranked(self, *, family: str | None = None) -> list[Ranked]:
         eligible = [
             key
             for key, runs in self._groups.items()
@@ -68,4 +68,7 @@ class Population:
         ranked.sort(
             key=lambda item: (sign * item.score, item.result.attempt.trial.candidate.candidate_id)
         )
-        return ranked[: self.spec.top_k]
+        return ranked
+
+    def top(self, *, family: str | None = None) -> list[Ranked]:
+        return self.ranked(family=family)[: self.spec.top_k]

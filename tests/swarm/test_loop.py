@@ -1,8 +1,10 @@
 import asyncio
 import json
+import threading
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -204,6 +206,91 @@ async def test_calibrated_mode_requires_policy_before_admitting_trials(tmp_path:
     with pytest.raises(ValueError, match="cannot declare"):
         await SwarmLoop(campaign(selection_panel="held-out"), store, backend, worker).run()
     assert store.trials("refill") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("custom", [False, True])
+async def test_rejected_leader_does_not_hide_valid_challenger(tmp_path: Path, custom: bool) -> None:
+    calls: list[int] = []
+
+    class Study:
+        def record_search(self, key: str, seed: int) -> None:
+            pass
+
+        def calibrate(self) -> None:
+            pass
+
+        def consider(self, key: str, previous: str | None) -> object:
+            score = json.loads(key)["params"]["score"]
+            calls.append(score)
+            return SimpleNamespace(promoted=score != 100)
+
+    class Scores(Backend):
+        async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
+            return Result(attempt=attempt, status="ok", metrics=attempt.trial.candidate.params)
+
+    store, backend = SQLiteStore(tmp_path / "queue"), Scores()
+    spec = campaign(
+        evaluation_mode="calibrated",
+        max_workers=1,
+        top_k=1,
+        candidates=tuple(
+            Candidate(candidate_id=str(score), params={"score": score}) for score in (0, 100, 10)
+        ),
+    )
+
+    def highest(archive: Sequence[Result]) -> Result:
+        return max(archive, key=lambda r: r.metrics["score"])
+
+    summary = await SwarmLoop(
+        spec,
+        store,
+        backend,
+        WorkerLoop(store, backend, "worker"),
+        panels=Study(),
+        selection=highest if custom else None,
+    ).run()
+    assert calls == [0, 100, 10]
+    assert summary.selected and summary.selected.score == 10
+
+
+@pytest.mark.asyncio
+async def test_slow_held_out_scoring_keeps_sibling_worker_heartbeating(tmp_path: Path) -> None:
+    evaluating, heartbeat = threading.Event(), threading.Event()
+
+    class Store(SQLiteStore):
+        def heartbeat(self, attempt_id: str, *, cost: float = 0) -> bool:
+            if evaluating.is_set():
+                heartbeat.set()
+            return super().heartbeat(attempt_id, cost=cost)
+
+    class Study:
+        def calibrate(self) -> None:
+            pass
+
+        def record_search(self, key: str, seed: int) -> None:
+            pass
+
+        def consider(self, key: str, previous: str | None) -> object:
+            evaluating.set()
+            assert heartbeat.wait(timeout=2), "panel evaluation stalled the worker heartbeat"
+            return SimpleNamespace(promoted=True)
+
+    class Scores(Backend):
+        async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
+            if attempt.trial.candidate.candidate_id == "slow":
+                while not heartbeat.is_set():
+                    await asyncio.sleep(0.005)
+            return Result(attempt=attempt, status="ok", metrics={"score": 1})
+
+    store, backend = Store(tmp_path / "queue"), Scores()
+    spec = campaign(
+        evaluation_mode="calibrated",
+        candidates=(Candidate(candidate_id="fast"), Candidate(candidate_id="slow")),
+    )
+    worker = WorkerLoop(store, backend, "worker", heartbeat_seconds=0.01, lost_after_seconds=1)
+    summary = await SwarmLoop(spec, store, backend, worker, panels=Study()).run()
+    assert summary.attempts == 2 and summary.lost == 0 and heartbeat.is_set()
 
 
 @pytest.mark.asyncio

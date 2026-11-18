@@ -124,65 +124,73 @@ class SwarmLoop:
         self.panels = panels
         self.population = Population(spec, min_replicates=spec.min_replicates)
         self.incumbent: Ranked | None = None
+        self._rejected: set[str] = set()
 
-    def _observe(self, proposer: Proposer, offset: int) -> int:
+    async def _observe(self, proposer: Proposer, offset: int) -> int:
         observations = self.store.results(self.spec.campaign_id, after=offset)
         for result in observations:
             self.population.add(result)
             proposer.tell(result)
             if result.status == "ok":
-                self._select()
+                await self._select()
         return offset + len(observations)
 
-    def _select(self) -> None:
-        if self.selection is None:
-            top = self.population.top()
-            if not top:
-                return
-            best = top[0]
-        else:
-            chosen = self.selection(self.population.archive)
-            if chosen is None:
-                return
-            result = chosen.result if isinstance(chosen, Ranked) else chosen
-            if result.status != "ok" or result not in self.population.archive:
-                raise ValueError("Selection policy must select a successful archived observation")
-            best = (
-                chosen
-                if isinstance(chosen, Ranked)
-                else Ranked(result, result.metrics[self.spec.metric], 1)
-            )
-            if not math.isfinite(best.score) or best.replicates < 1:
-                raise ValueError("Selection requires a finite score and positive replicate count")
-
-        previous = self.incumbent
-        changed_candidate = (
-            previous is None
-            or previous.result.attempt.trial.candidate != best.result.attempt.trial.candidate
+    def _eligible(self, result: Result) -> bool:
+        return (
+            not self._rejected
+            or candidate_key(result.attempt.trial.candidate) not in self._rejected
         )
-        if previous is not None:
+
+    def _nominate(self) -> Ranked | None:
+        if self.selection is None:
+            return next((r for r in self.population.ranked() if self._eligible(r.result)), None)
+        archive = tuple(r for r in self.population.archive if self._eligible(r))
+        if not archive:
+            return None
+        chosen = self.selection(archive)
+        if chosen is None:
+            return None
+        result = chosen.result if isinstance(chosen, Ranked) else chosen
+        if result.status != "ok" or result not in archive:
+            raise ValueError("Selection policy must select an eligible successful observation")
+        best = (
+            chosen
+            if isinstance(chosen, Ranked)
+            else Ranked(result, result.metrics[self.spec.metric], 1)
+        )
+        if not math.isfinite(best.score) or best.replicates < 1:
+            raise ValueError("Selection requires a finite score and positive replicate count")
+        return best
+
+    async def _select(self) -> None:
+        previous = self.incumbent
+        if previous and self.selection is None:
             prior = previous.result.attempt.trial
-            if self.selection is None:
-                previous = self.population.measure(prior.fidelity, prior.candidate.candidate_id)
-                if previous != self.incumbent:
-                    self._save(previous)
-            gain = best.score - previous.score
-            if self.spec.direction == "minimize":
-                gain = -gain
-            if (
-                self.selection is None
-                and changed_candidate
-                and self.spec.min_delta > 0
-                and previous.result.attempt.trial.fidelity == best.result.attempt.trial.fidelity
-                and gain < self.spec.min_delta
-            ):
-                return
-        if self.panels is not None and changed_candidate:
-            key = candidate_key(best.result.attempt.trial.candidate)
-            old_key = candidate_key(previous.result.attempt.trial.candidate) if previous else None
-            if not self.panels.consider(key, old_key).promoted:
-                return
-        self._save(best)
+            previous = self.population.measure(prior.fidelity, prior.candidate.candidate_id)
+            if previous != self.incumbent:
+                self._save(previous)
+        old_key = candidate_key(previous.result.attempt.trial.candidate) if previous else None
+        while (best := self._nominate()) is not None:
+            trial = best.result.attempt.trial
+            key = candidate_key(trial.candidate)
+            if previous and key != old_key and self.selection is None and self.spec.min_delta > 0:
+                gain = best.score - previous.score
+                if self.spec.direction == "minimize":
+                    gain = -gain
+                if (
+                    previous.result.attempt.trial.fidelity == trial.fidelity
+                    and gain < self.spec.min_delta
+                ):
+                    return
+            if self.panels is not None and key != old_key:
+                decision = await asyncio.to_thread(self.panels.consider, key, old_key)
+                if not decision.promoted:
+                    self._rejected.add(key)
+                    continue
+            self._save(best)
+            if key != old_key:
+                self._rejected.clear()
+            return
 
     def _save(self, best: Ranked) -> None:
         self.store.select(
@@ -216,7 +224,7 @@ class SwarmLoop:
         seen = {trial.trial_id for trial in previous}
         proposer = self.proposer or SeedProposer(s, previous)
         if self.panels is not None:
-            self.panels.calibrate()
+            await asyncio.to_thread(self.panels.calibrate)
         cursor = len(self.population.archive)
         recorded = self.store.results(s.campaign_id, after=cursor)
         incumbent = self.store.incumbent(s.campaign_id)
@@ -231,7 +239,7 @@ class SwarmLoop:
                 score = result.metrics[s.metric] if incumbent[1] is None else incumbent[1]
                 self.incumbent = Ranked(result, score, incumbent[2])
         if recorded:
-            self._select()
+            await self._select()
         restore = getattr(proposer, "restore_trials", None)
         if restore is not None:
             restore(previous)
@@ -240,7 +248,7 @@ class SwarmLoop:
         no_claim = False
         try:
             while True:
-                cursor = self._observe(proposer, cursor)
+                cursor = await self._observe(proposer, cursor)
                 queued, running = self.store.queue_depth(s.campaign_id)
                 slots = min(s.max_workers - len(pending), self.backend.free_slots(s))
                 room = min(
@@ -264,7 +272,9 @@ class SwarmLoop:
                             self.store.submit(trial)
                             continue
                         if self.panels is not None:
-                            self.panels.record_search(candidate_key(candidate), trial.seed)
+                            await asyncio.to_thread(
+                                self.panels.record_search, candidate_key(candidate), trial.seed
+                            )
                         if self.store.submit(trial):
                             queued += 1
                         seen.add(trial.trial_id)
@@ -291,7 +301,7 @@ class SwarmLoop:
                 task.cancel()
             await asyncio.gather(*pending, return_exceptions=True)
 
-        self._observe(proposer, cursor)
+        await self._observe(proposer, cursor)
         archive = self.population.archive
         return RunSummary(
             s.campaign_id,
