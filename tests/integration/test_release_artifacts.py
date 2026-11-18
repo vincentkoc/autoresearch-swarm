@@ -108,9 +108,9 @@ def test_invalid_prebuilt_inputs_never_choose_build(environment: dict[str, str])
         prebuilt_wheel(environment)
 
 
-def test_tampered_prebuilt_wheel_is_rejected(distributions: tuple[Path, dict]) -> None:
-    directory, _ = distributions
-    wheel = next(directory.glob("*.whl"))
+def test_tampered_prebuilt_wheel_is_rejected(tmp_path: Path) -> None:
+    wheel = tmp_path / "fixture.whl"
+    wheel.write_bytes(b"fixture")
     expected = digest(wheel)
     with wheel.open("ab") as stream:
         stream.write(b"changed")
@@ -231,8 +231,14 @@ def test_committed_source_batch_exceeds_pipe_capacity(tmp_path: Path) -> None:
         body: fixture_git(tmp_path, "hash-object", "-w", "--stdin", data=body).strip()
         for body in bodies
     }
+    # Reuse a pack for repeated reads of these two blobs in the fixture repo.
+    fixture_git(
+        tmp_path,
+        "pack-objects",
+        ".git/objects/pack/pack",
+        data=b"\n".join(objects.values()) + b"\n",
+    )
     # Both the requested object IDs and the returned blobs exceed 1 MiB.
-    # Shared Git blobs keep the fixture small without thousands of disk files.
     expected = {f"entry-{index:05d}": bodies[index % 2] for index in range(32_768)}
     entries = b"".join(
         b"100644 blob " + objects[body] + b"\t" + name.encode() + b"\n"
