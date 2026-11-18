@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Opening a legacy control database as a swarm campaign now reports how to
+  start in a fresh database path and preserves the existing state.
+
 - Install the optional `skypilot` extra to provide `uvx` for the isolated SkyPilot CLI.
 
 - **Breaking:** Retire `campaign.capture_obligations`, `campaign.complete_scientific`

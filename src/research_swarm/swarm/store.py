@@ -146,6 +146,15 @@ class SQLiteStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         with self._connection() as db:
+            legacy = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name IN ('workspaces', 'records')"
+            ).fetchone()
+            if legacy:
+                raise ValueError(
+                    "Legacy control database. Use its original release to read it "
+                    "and a fresh database path for this campaign."
+                )
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(_SCHEMA)
         with self._connection(write=True) as db:
