@@ -1,4 +1,4 @@
-"""List and collect prepared campaign datasets."""
+"""List and collect campaign-owned data and managed compute."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from research_swarm.swarm.backends.ec2_gc import EC2, CloudResource
+from research_swarm.swarm.backends.jobs import Inventory, Job
+from research_swarm.swarm.backends.skypilot import TERMINAL, SkyCLI
 from research_swarm.swarm.data_stage import Stage, read_stage, revision_lock, stage_path
 
 
@@ -24,6 +27,10 @@ def register(commands: argparse._SubParsersAction[Any]) -> None:
         "--keep", action="append", default=[], metavar="ID", help="Resource ID from listing"
     )
     gc.add_argument("--apply", action="store_true", help="Remove listed, eligible resources")
+    gc.add_argument("--sky", metavar="CLI", help="SkyPilot CLI used for this inventory")
+    gc.add_argument(
+        "--aws", default="aws", metavar="CLI", help="EC2 CLI for recorded AWS placements"
+    )
 
 
 @dataclass
@@ -115,10 +122,106 @@ def _stages(campaign: str, volumes: list[Path], keep: set[str], apply: bool) -> 
     return result
 
 
-def collect(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    entries = _stages(args.campaign_id, args.volume, set(args.keep), args.apply)
-    pending = any(entry.action not in {"listed", "kept", "removed", "absent"} for entry in entries)
+async def _cloud_resources(jobs: list[Job], campaign: str, ec2: EC2) -> list[CloudResource]:
+    resources = []
+    for region in sorted({region for job in jobs for region in job.aws_regions}):
+        for kind in ("instance", "volume"):
+            resources.extend(await ec2.find(campaign, jobs, region, kind))
+    return resources
+
+
+async def _collect_job(
+    job: Job,
+    children: list[CloudResource],
+    sky: SkyCLI,
+    ec2: EC2,
+    queue: list[dict[str, Any]],
+    keep: set[str],
+    apply: bool,
+    inventory: Inventory,
+) -> list[Entry]:
+    if apply:
+        fresh = await _cloud_resources([job], job.campaign, ec2)
+        if {c.id for c in children} - {c.id for c in fresh}:
+            return [Entry(f"sky:{job.name}", "managed-job", "", "changed", "inventory-changed")]
+        children = fresh
+    row = job.match(queue)
+    status = row["status"] if row else ("TERMINAL" if job.terminal else "UNRESOLVED")
+    parent = Entry(
+        f"sky:{job.name}", "managed-job", str(row["job_id"] if row else job.job_id or ""), status
+    )
+    entries = [parent, *(Entry(c.id, c.kind, c.region, c.state) for c in children)]
+    # Cancelling a job can remove its attached disks. Preserve the ownership group.
+    if any(item.id in keep for item in entries):
+        for item in entries:
+            item.action = "kept"
+        return entries
+    if not apply:
+        return entries
+    volumes = {c.id for c in children if c.kind == "volume"}
+    if any(not volumes.issuperset(c.delete_with_instance) for c in children):
+        parent.action = "foreign-dependent-volume"
+        return entries
+    if row and status not in TERMINAL:
+        if not await sky.cancel(job):
+            parent.action = "unresolved"
+            return entries
+        # The provider owns teardown until its managed job is terminal.
+        parent.action = "cancel-requested"
+        row = job.match(await sky.queue())
+        if row is None or row["status"] not in TERMINAL:
+            return entries
+        status = row["status"]
+    if status not in TERMINAL and status != "TERMINAL":
+        parent.action = "unresolved"
+        return entries
+    job.terminal = True
+    inventory.save(job)
+    parent.action = "terminal"
+    for child, entry in zip(children, entries[1:], strict=True):
+        try:
+            entry.action = await ec2.remove(child, keep)
+        except (OSError, ValueError, RuntimeError, TimeoutError) as error:
+            entry.action = f"error: {error}"
+    # Keep the ownership record for retry and later provider inventory.
+    return entries
+
+
+async def collect(args: argparse.Namespace, state: Path) -> tuple[dict[str, Any], int]:
+    keep = set(args.keep)
+    entries = _stages(args.campaign_id, args.volume, keep, args.apply)
+    inventory = Inventory(state)
+    jobs = inventory.jobs(args.campaign_id)
+    if jobs:
+        sky, ec2 = SkyCLI(args.sky), EC2(args.aws)
+        try:
+            queue = await sky.queue()
+            resources = await _cloud_resources(jobs, args.campaign_id, ec2)
+            for job in jobs:
+                try:
+                    entries.extend(
+                        await _collect_job(
+                            job,
+                            [c for c in resources if c.job.name == job.name],
+                            sky,
+                            ec2,
+                            queue,
+                            keep,
+                            args.apply,
+                            inventory,
+                        )
+                    )
+                except (OSError, ValueError, RuntimeError, TimeoutError) as error:
+                    entries.append(
+                        Entry(f"sky:{job.name}", "managed-job", "", "unknown", f"error: {error}")
+                    )
+        except (OSError, ValueError, RuntimeError, TimeoutError) as error:
+            entries.append(Entry("inventory", "provider", "", "unknown", f"error: {error}"))
+    pending = any(
+        e.action not in {"listed", "kept", "terminal", "removed", "absent", "absent-or-retagged"}
+        for e in entries
+    )
     return {
         "campaign": args.campaign_id,
-        "resources": [asdict(entry) for entry in entries],
+        "resources": [asdict(e) for e in entries],
     }, 3 if pending else 0
