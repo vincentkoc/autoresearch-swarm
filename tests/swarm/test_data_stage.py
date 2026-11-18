@@ -6,10 +6,45 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier, Event
 
 import pytest
 
+from research_swarm.swarm import campaign_gc, data_stage
 from research_swarm.swarm.data_stage import hydrate, mount_readonly, prepare, stage_path
+
+
+@pytest.mark.skipif(os.name != "posix", reason="worker shared volume read locks")
+def test_workers_copy_together_while_gc_waits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, volume = tmp_path / "source", tmp_path / "volume"
+    source.mkdir()
+    (source / "sample").write_bytes(b"42")
+    stage = prepare(source, volume, "demo", "v1")
+    path = stage_path(volume, "demo", "v1")
+    readers, release = Barrier(3), Event()
+    copy = data_stage._copy_tree
+
+    def gated_copy(source: Path, target: Path, threads: int) -> tuple[str, int, int]:
+        readers.wait(timeout=10)
+        assert release.wait(timeout=10)
+        return copy(source, target, threads)
+
+    monkeypatch.setattr(data_stage, "_copy_tree", gated_copy)
+    with ThreadPoolExecutor(max_workers=3) as clients:
+        copies = [
+            clients.submit(hydrate, volume, tmp_path / str(i), "demo", "v1") for i in range(2)
+        ]
+        try:
+            readers.wait(timeout=10)
+            collection = clients.submit(campaign_gc._remove_stage, path, stage)
+            with pytest.raises(TimeoutError):
+                collection.result(timeout=0.2)
+        finally:
+            release.set()
+        assert all((result.result() / "sample").read_bytes() == b"42" for result in copies)
+        assert collection.result(timeout=10) == "removed"
 
 
 def test_prepare_once_per_location_and_parallel_boot_copy(tmp_path: Path) -> None:

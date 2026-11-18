@@ -118,6 +118,10 @@
   Pass `report view --project-repository https://github.com/OWNER/REPO` to supply
   project attribution without modifying captured scientific evidence.
 
+- List and collect tagged dataset revisions with `research campaign gc`. Keep
+  selected revisions and active mounts, and resume an interrupted deletion.
+  Workers can copy the same revision concurrently while collection waits.
+
 - Keep campaign graph coordinates finite for extreme scores.
 
 - Rework the campaign view into a compact three-column workspace: narrow context

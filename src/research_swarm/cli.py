@@ -86,6 +86,9 @@ def parser() -> argparse.ArgumentParser:
                 "--project-repository", help="Optional HTTPS GitHub project repository for About"
             )
     commands.add_parser("capabilities")
+    from research_swarm.swarm.campaign_gc import register as register_campaign_gc
+
+    register_campaign_gc(commands)
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -486,6 +489,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     result: Any
     try:
+        if args.action == "campaign" and args.campaign_action == "gc":
+            from research_swarm.swarm.campaign_gc import collect
+
+            if args.controller or args.token_file:
+                raise ValueError("campaign gc operates on the local resource inventory")
+            result, code = collect(args)
+            _emit_json(result)
+            return code
         if args.action == "report":
             from research_swarm.control.report_plot import MAX_RUNS
 
