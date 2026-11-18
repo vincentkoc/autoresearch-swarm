@@ -18,7 +18,6 @@ from research_swarm.workers.remote_enrollment import WORKER_SCOPES
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.workers.test_worker_queries import claim, query, read, scoped_worker
-from tests.workers.test_worker_recovery import recoverable as recoverable
 from tests.workers.test_worker_sessions import advance_epoch
 
 
