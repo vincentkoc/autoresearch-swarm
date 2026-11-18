@@ -23,6 +23,9 @@
 - Remove the unused `evidence_receipt` helper and `DeadlinePolicy` model, and the
   disabled Windows CI jobs. Windows runtime code stays; qualification remains paused.
 
+- Add asynchronous successive halving, seed-aware promotion and diverse parent
+  selection for multi-fidelity swarm searches.
+
 - Keep continuous search watchers running across retryable controller query outages,
   with paced fresh-state reads. Preserve explicit stops for uncertain command delivery
   and non-retryable errors; expose the original retryability in one-shot results.
