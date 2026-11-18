@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Make the local SSH keeper test record its shutdown command with a native executable
+  while checking activity locking, the idle deadline, and rejection of new work.
+
 - Run captured native project stages as a swarm trial with
   `python -m research_swarm.swarm.native`. Use `--registration` for a registered
   interpreter and `--outputs` to keep per-attempt reports and reactive traces.
