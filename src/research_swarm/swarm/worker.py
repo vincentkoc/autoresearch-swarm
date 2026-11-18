@@ -176,10 +176,12 @@ class WorkerLoop:
             async with asyncio.TaskGroup() as group:
                 pulse = group.create_task(heartbeat())
                 cost: float | None = None
+                timeout_seconds = deadline + self.heartbeat_seconds
+                watchdog = asyncio.timeout(timeout_seconds)
                 try:
                     # Give the backend its deadline and time to return logs and usage
                     # from teardown. A backend that stalls also loses this attempt.
-                    async with asyncio.timeout(deadline + self.heartbeat_seconds):
+                    async with watchdog:
                         if before_execute is not None:
                             await before_execute(attempt)
                         result = await backend.execute(spec, attempt)
@@ -213,7 +215,10 @@ class WorkerLoop:
                         attempt=attempt, status="lost", error="backend cancelled", cost=cost
                     )
                 except Exception as exc:
-                    error = f"{type(exc).__name__}: {exc}"
+                    if isinstance(exc, TimeoutError) and watchdog.expired() and not exc.args:
+                        error = f"worker watchdog timed out after {timeout_seconds:g} seconds"
+                    else:
+                        error = f"{type(exc).__name__}: {exc}"
                     if cost is None or result is None:
                         cost = self.meter.charge(spec, attempt, time.monotonic() - started, 0, 0)
                         result = Result(attempt=attempt, status="failed", error=error, cost=cost)

@@ -73,6 +73,8 @@
 - Add atomic CPU and LLM slot admission and GPU packing based on observed per-fit
   VRAM, with a utilisation target and a batch size for multi-fit workloads.
 
+- Report the watchdog timeout duration when a swarm worker stops a stalled attempt.
+
 - Add a resident swarm worker that heartbeats, retries lost trials and records
   attempt failures. Dispatch reserves estimated cost and reports charges from
   elapsed compute time and measured input and output tokens. Validated usage
