@@ -30,7 +30,6 @@ def _campaign(directory: Path) -> CampaignSpec:
         max_workers=2,
         command=(sys.executable, "task.py"),
         task_dir=str(directory),
-        max_attempts=2,
         trial_timeout_seconds=10,
     )
 
