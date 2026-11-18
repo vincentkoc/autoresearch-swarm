@@ -9,6 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -56,6 +57,34 @@ def test_independent_connections_claim_distinct_trials_and_respect_slots(tmp_pat
     assert len(queue.results("test")) == 8
     assert queue.outstanding("test") == 8
     assert claim(0) is not None
+
+
+def test_wall_time_expires_inside_claim_and_survives_reopen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = 1000.0
+    monkeypatch.setattr("research_swarm.swarm.store.time", SimpleNamespace(time=lambda: now))
+    path = tmp_path / "queue.db"
+    queue = SQLiteStore(path)
+    config = spec(max_hours=0.5)
+    queue.create_campaign(config)
+    for i in range(2):
+        queue.submit(trial(i))
+    first = queue.claim("test", "worker")
+    assert first and queue.report(Result(attempt=first, status="failed", error="retry"))
+
+    def estimate(trial: Trial) -> float:
+        nonlocal now
+        now += 1800.0
+        return 0.0
+
+    assert queue.claim("test", "late", reserve_cost=estimate) is None
+    resumed = SQLiteStore(path)
+    resumed.create_campaign(config)
+    assert resumed.deadline("test") == now
+    assert resumed.claim("test", "other") is None
+    assert resumed.queue_depth("test") == (2, 0)
+    assert len(resumed.results("test")) == 1
 
 
 def test_retry_fences_stale_reports_and_retains_attempt_order(tmp_path: Path) -> None:
@@ -185,6 +214,43 @@ def test_campaign_isolation_resume_and_durable_selection(tmp_path: Path) -> None
         assert db.execute("SELECT count(*) FROM swarm_events WHERE kind='selected'").fetchone() == (
             1,
         )
+
+
+@pytest.mark.parametrize("first_score", [0.75, 0.85])
+def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
+    tmp_path: Path, first_score: float
+) -> None:
+    path = tmp_path / "history.db"
+    store = SQLiteStore(path)
+    store.create_campaign(spec())
+    for n in (1, 2):
+        store.submit(trial(n))
+        claim = store.claim("test", "local")
+        assert claim is not None
+        store.report(Result(attempt=claim, status="ok", metrics={"loss": 0.9}))
+    store.select("test", trial(1).trial_id, score=0.95)
+    with sqlite3.connect(path) as db:
+        # Earlier event rows contained only the identifiers and timestamp.
+        db.execute("ALTER TABLE swarm_events DROP COLUMN score")
+        db.execute("ALTER TABLE swarm_events DROP COLUMN replicates")
+
+    reopened = SQLiteStore(path)
+    reopened.select("test", trial(1).trial_id, score=0.95)
+    reopened.select("test", trial(1).trial_id, score=first_score, replicates=2)
+    reopened.select("test", trial(2).trial_id, score=0.65, replicates=3)
+    replay = SQLiteStore(path)
+    replay.select("test", trial(2).trial_id, score=0.65, replicates=3)
+    assert replay.incumbent("test") == (trial(2).trial_id, 0.65, 3)
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT trial_id,score,replicates FROM swarm_events "
+            "WHERE campaign_id=? AND kind='selected' ORDER BY id",
+            ("test",),
+        ).fetchall() == [
+            (trial(1).trial_id, None, None),
+            (trial(1).trial_id, first_score, 2),
+            (trial(2).trial_id, 0.65, 3),
+        ]
 
 
 def test_trial_and_candidate_identity_survive_replicates(tmp_path: Path) -> None:

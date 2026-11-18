@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS swarm_events (
     kind TEXT NOT NULL,
     at REAL NOT NULL,
     trial_id TEXT REFERENCES swarm_trials,
-    attempt_id TEXT REFERENCES swarm_attempts
+    attempt_id TEXT REFERENCES swarm_attempts,
+    score REAL,
+    replicates INTEGER
 );
 CREATE INDEX IF NOT EXISTS swarm_event_order ON swarm_events(campaign_id, kind, id);
 """
@@ -107,11 +109,14 @@ def _event(
     kind: str,
     trial_id: str | None = None,
     attempt_id: str | None = None,
+    *,
+    score: float | None = None,
+    replicates: int | None = None,
 ) -> None:
     db.execute(
-        "INSERT INTO swarm_events(campaign_id, kind, at, trial_id, attempt_id) "
-        "VALUES(?, ?, ?, ?, ?)",
-        (campaign_id, kind, time.time(), trial_id, attempt_id),
+        "INSERT INTO swarm_events(campaign_id, kind, at, trial_id, attempt_id, score, replicates) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?)",
+        (campaign_id, kind, time.time(), trial_id, attempt_id, score, replicates),
     )
 
 
@@ -125,6 +130,16 @@ def _spec(db: sqlite3.Connection, campaign_id: str) -> dict[str, Any]:
     return spec
 
 
+def _deadline(db: sqlite3.Connection, campaign_id: str, max_hours: float | None) -> float | None:
+    if max_hours is None:
+        return None
+    created_at = db.execute(
+        "SELECT at FROM swarm_events WHERE campaign_id=? AND kind='created' ORDER BY id LIMIT 1",
+        (campaign_id,),
+    ).fetchone()[0]
+    return float(created_at) + max_hours * 3600
+
+
 class SQLiteStore:
     """Campaign-local queues with atomic claim, cost reservation and attempt completion."""
 
@@ -133,6 +148,15 @@ class SQLiteStore:
         with self._connection() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(_SCHEMA)
+        with self._connection(write=True) as db:
+            columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_campaigns)")}
+            if "ranking" not in columns:
+                db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
+            event_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_events)")}
+            if "score" not in event_columns:
+                db.execute("ALTER TABLE swarm_events ADD COLUMN score REAL")
+            if "replicates" not in event_columns:
+                db.execute("ALTER TABLE swarm_events ADD COLUMN replicates INTEGER")
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -144,6 +168,8 @@ class SQLiteStore:
             yield db
 
     def create_campaign(self, spec: CampaignSpec) -> None:
+        if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
+            raise ValueError("max_hours must be finite and non-negative")
         encoded = _json(asdict(spec))
         if min(spec.max_trials, spec.max_workers, spec.max_attempts) < 1:
             raise ValueError("Trial, worker and attempt limits must be positive")
@@ -158,8 +184,20 @@ class SQLiteStore:
             )
             if insert.rowcount:
                 _event(db, spec.campaign_id, "created")
-            elif _json(_spec(db, spec.campaign_id)) != encoded:
+                return
+            saved = _spec(db, spec.campaign_id)
+            if "evaluation_mode" not in saved:
+                # Earlier queues recorded the policy and panel names instead of the mode.
+                panels = ("panel_policy", "search_panel", "selection_panel", "confirmation_panel")
+                saved["evaluation_mode"] = (
+                    "calibrated" if any(saved.get(p) for p in panels) else "smoke"
+                )
+            if _json(asdict(CampaignSpec(**saved))) != encoded:
                 raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
+
+    def deadline(self, campaign_id: str) -> float | None:
+        with self._connection() as db:
+            return _deadline(db, campaign_id, _spec(db, campaign_id).get("max_hours"))
 
     def submit(self, trial: Trial) -> bool:
         # Seed and fidelity hints belong to the trial, not the candidate's identity.
@@ -203,6 +241,9 @@ class SQLiteStore:
     ) -> Attempt | None:
         with self._connection(write=True) as db:
             spec = _spec(db, campaign_id)
+            deadline = _deadline(db, campaign_id, spec.get("max_hours"))
+            if deadline is not None and time.time() >= deadline:
+                return None
             active = db.execute(
                 "SELECT count(*) FROM swarm_trials WHERE campaign_id=? AND status='running'",
                 (campaign_id,),
@@ -228,13 +269,15 @@ class SQLiteStore:
                     break
             else:
                 return None
+            now = time.time()
+            if deadline is not None and now >= deadline:
+                return None
             number = db.execute(
                 "UPDATE swarm_trials SET status='running', "
                 "attempt_count=attempt_count+1 WHERE trial_id=? AND status='queued' "
                 "RETURNING attempt_count",
                 (trial.trial_id,),
             ).fetchone()[0]
-            now = time.time()
             attempt = Attempt(
                 attempt_id=uuid4().hex,
                 trial=trial,
@@ -341,7 +384,25 @@ class SQLiteStore:
     def outstanding(self, campaign_id: str) -> int:
         return sum(self.queue_depth(campaign_id))
 
-    def select(self, campaign_id: str, trial_id: str) -> None:
+    def incumbent(self, campaign_id: str) -> tuple[str, float | None, int] | None:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT selected_trial_id,ranking FROM swarm_campaigns WHERE campaign_id=?",
+                (campaign_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Unknown campaign {campaign_id}")
+            if row[0] is None:
+                return None
+            score, replicates = json.loads(row[1]) if row[1] else (None, 1)
+            return row[0], score, replicates
+
+    def select(
+        self, campaign_id: str, trial_id: str, *, score: float | None = None, replicates: int = 1
+    ) -> None:
+        if replicates < 1:
+            raise ValueError("A ranking requires at least one replicate")
+        ranking = _json([score, replicates])
         with self._connection(write=True) as db:
             if not db.execute(
                 "SELECT 1 FROM swarm_trials WHERE campaign_id=? AND trial_id=? AND status='ok'",
@@ -349,9 +410,9 @@ class SQLiteStore:
             ).fetchone():
                 raise ValueError("Selection requires a successful trial from this campaign")
             changed = db.execute(
-                "UPDATE swarm_campaigns SET selected_trial_id=? WHERE campaign_id=? "
-                "AND selected_trial_id IS NOT ?",
-                (trial_id, campaign_id, trial_id),
+                "UPDATE swarm_campaigns SET selected_trial_id=?,ranking=? WHERE campaign_id=? "
+                "AND (selected_trial_id IS NOT ? OR ranking IS NOT ?)",
+                (trial_id, ranking, campaign_id, trial_id, ranking),
             )
             if changed.rowcount:
-                _event(db, campaign_id, "selected", trial_id)
+                _event(db, campaign_id, "selected", trial_id, score=score, replicates=replicates)

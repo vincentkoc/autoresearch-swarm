@@ -38,6 +38,13 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--controller", help="Use an HTTP research controller")
     root.add_argument("--token-file", type=Path, help="Private credential file, never a raw token")
     commands = root.add_subparsers(dest="action", required=True)
+    swarm = commands.add_parser("swarm", help="Run a capacity-driven research campaign")
+    swarm_commands = swarm.add_subparsers(dest="swarm_action", required=True)
+    swarm_run = swarm_commands.add_parser("run", help="Run or resume a YAML campaign")
+    swarm_run.add_argument("spec", type=Path, help="Campaign YAML file")
+    swarm_run.add_argument(
+        "--db", type=Path, help="SQLite queue (default: swarm.sqlite beside spec)"
+    )
     initialize = commands.add_parser("init", help="Initialize private local state")
     initialize.add_argument("--storage-config", type=Path, help="Immutable storage JSON selection")
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
@@ -496,6 +503,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.controller or args.token_file:
                 raise ValueError("campaign gc operates on the local resource inventory")
             result, code = asyncio.run(collect(args, args.state_dir or default_state_directory()))
+            _emit_json(result)
+            return code
+        if args.action == "swarm":
+            from research_swarm.swarm.command import run_campaign
+
+            if args.controller or args.token_file or (args.db and args.state_dir):
+                raise ValueError("Choose a local swarm database with --db or --state-dir")
+            directory = args.state_dir or args.spec.parent
+            try:
+                result, code = run_campaign(args.spec, args.db or directory / "swarm.sqlite")
+            except ValueError as error:
+                raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, str(error)) from error
             _emit_json(result)
             return code
         if args.action == "report":

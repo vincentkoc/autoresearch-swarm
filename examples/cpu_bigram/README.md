@@ -27,3 +27,43 @@ not import or depend on the research engine. See
 reuses this dataset and scorer. See [the MLX workload guide](../../docs/mlx-workload.md)
 for its hash-locked environment, registered worker, explicit GPU timing, and
 separate comparison contract. The CPU path still needs no third-party packages.
+
+## Run a swarm campaign
+
+~~~sh
+uv run research swarm run examples/cpu_bigram/swarm.yaml --db run/swarm.sqlite
+~~~
+
+The YAML declares eight smoothing values, eight CPU slots and a validation metric
+to minimize. It sets `max_attempts: 1` to evaluate each value once. The default
+campaign allows one retry after a failed or lost attempt. One smoothing value
+causes the task to exit with an error. The other seven
+produce measurements. The JSON summary includes the winner, top three candidates
+and failed-attempt count. Repeat the command to resume the same campaign.
+
+Set `max_hours` to limit admissions from the moment the campaign is first created.
+Time between runs counts toward the limit. At the deadline the controller stops
+asking for candidates and workers stop claiming new attempts, including retries.
+Already claimed attempts can finish and contribute to the selected result.
+
+The task command runs relative to the YAML file's directory (or its `task_dir`).
+Read the trial and candidate parameters from the JSON file named by `SWARM_TRIAL`.
+Write a JSON object of finite numeric metrics to the file named by `SWARM_METRICS`.
+Use `candidates` for explicit recipes, or `search_space` for a Cartesian grid.
+The default ranking averages distinct seeds at the highest comparable fidelity.
+Use `min_replicates` and `min_delta` to set the evidence required to change the winner.
+
+Trusted Python plugins can supply `proposer`, `selection_policy`, `panel_policy`
+or `backend` as `module:factory`. Each factory receives the campaign spec. A
+`worker` factory additionally receives the store and backend. For a calibrated
+campaign its worker awaits `before_execute(attempt)` after each claim, including
+retries, immediately before the backend runs the task. Plugin-specific
+settings belong in `options`. Campaigns default to calibrated evaluation and
+require a panel policy that calibrates before dispatch and checks a challenger
+before selection. This CPU benchmark explicitly uses `evaluation_mode: smoke`
+to test dispatch, crash isolation and ranking on its fixed metric.
+
+The default worker reads slot and token limits from `options.resources`. A worker
+can implement `retry_after(spec)` to return the seconds until capacity replenishes,
+or `None` for a permanent denial. The controller waits up to the campaign deadline
+before trying a queued trial again.

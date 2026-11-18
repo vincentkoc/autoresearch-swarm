@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -43,15 +43,25 @@ class CampaignSpec:
     task_dir: str = "."
     resource: Resource = "cpu"
     candidates: tuple[Candidate, ...] = ()
+    search_space: dict[str, list[Any]] = field(default_factory=dict)
+    proposer: str | None = None
+    selection_policy: str | None = None
+    panel_policy: str | None = None
+    evaluation_mode: Literal["calibrated", "smoke"] = "calibrated"
+    backend: str | None = None
+    worker: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
     seed: int = 0
     fidelity: float = 1.0
     top_k: int = 1
+    min_replicates: int = 1
     min_delta: float = 0.0
     target: float | None = None
     max_attempts: int = 2
     trial_timeout_seconds: float = 300.0
     proposal_timeout_seconds: float = 10.0
     max_cost: float | None = None
+    max_hours: float | None = None
     price_per_hour: float = 0.0
     price_per_million_input_tokens: float = 0.0
     price_per_million_output_tokens: float = 0.0
@@ -126,8 +136,13 @@ class Backend(Protocol):
 
 
 class Worker(Protocol):
-    async def run_once(self, spec: CampaignSpec) -> bool:
-        """Claim, heartbeat and report one attempt. False means no claim."""
+    async def run_once(
+        self,
+        spec: CampaignSpec,
+        *,
+        before_execute: Callable[[Attempt], Awaitable[None]] | None = None,
+    ) -> bool:
+        """Claim, heartbeat, call before_execute for this dispatch, then execute and report."""
         ...
 
 
@@ -156,6 +171,10 @@ class Meter(Protocol):
 
 class Store(Protocol):
     def create_campaign(self, spec: CampaignSpec) -> None: ...
+
+    def deadline(self, campaign_id: str) -> float | None:
+        """Return the UTC timestamp at which the campaign stops admitting attempts."""
+        ...
 
     def submit(self, trial: Trial) -> bool:
         """Insert once by trial id. A replay returns False."""
@@ -197,6 +216,12 @@ class Store(Protocol):
         """Return queued and running trial counts from the same snapshot."""
         ...
 
-    def select(self, campaign_id: str, trial_id: str) -> None:
+    def select(
+        self, campaign_id: str, trial_id: str, *, score: float | None = None, replicates: int = 1
+    ) -> None:
         """Persist the selected successful trial."""
+        ...
+
+    def incumbent(self, campaign_id: str) -> tuple[str, float | None, int] | None:
+        """Return the selected trial id, policy score and replicate count."""
         ...
