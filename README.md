@@ -47,6 +47,7 @@ proposers can call local Ollama.
 | Extend a proposer, backend or evaluator | [Swarm design](docs/design.md) |
 | Adopt a manifest-based research project | [Project adoption](docs/project-adoption.md) · [Manifest](docs/project-manifests.md) · [Workload protocol](docs/workload-protocol.md) |
 | Configure a native training environment | [Engine profiles](docs/engines.md) · [MLX workload](docs/mlx-workload.md) |
+| Configure artifact storage | [R2 object storage](docs/r2.md) |
 | Inspect controller records | [HTTP API](docs/api.md) · [Qualification history](docs/implementation.md) |
 | Publish a release | [Release guide](docs/releasing.md) |
 

@@ -401,7 +401,7 @@ records. Older controller examples use project manifests, command APIs
 and evaluator receipts. Use the interface that produced the records when
 reading an existing campaign.
 
-The earlier controller design and operational guides remain available at
-the revision that describes those records.
+Choose the versioned reference for the campaign you are reading.
 
-[Controller documentation at the previous revision](https://github.com/vincentkoc/autoresearch-swarm/tree/b8b44174b925483c8b202163fef12b733517fa49/docs)
+- Before hosted adapter retirement, use the complete [controller documentation](https://github.com/vincentkoc/autoresearch-swarm/tree/b8b44174b925483c8b202163fef12b733517fa49/docs).
+- After hosted adapter retirement, use the [control CLI](https://github.com/vincentkoc/autoresearch-swarm/blob/b64212b0fea869e166cbd954bccb273ba65ade80/docs/agent-control.md) and [gateway actions](https://github.com/vincentkoc/autoresearch-swarm/blob/b64212b0fea869e166cbd954bccb273ba65ade80/docs/orchestration.md).
