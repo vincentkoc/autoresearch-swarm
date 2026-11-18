@@ -12,6 +12,7 @@ from typing import Protocol
 from uuid import NAMESPACE_URL, uuid5
 
 from research_swarm.swarm.interfaces import (
+    Attempt,
     Backend,
     CampaignSpec,
     Candidate,
@@ -208,6 +209,19 @@ class SwarmLoop:
             return self.incumbent.score <= self.spec.target
         return self.incumbent.score >= self.spec.target
 
+    async def _run_worker(self) -> bool:
+        panels = self.panels
+        if panels is None:
+            return await self.worker.run_once(self.spec)
+
+        async def record_search(attempt: Attempt) -> None:
+            trial = attempt.trial
+            await asyncio.to_thread(
+                panels.record_search, candidate_key(trial.candidate), trial.seed
+            )
+
+        return await self.worker.run_once(self.spec, before_execute=record_search)
+
     async def run(self) -> RunSummary:
         s = self.spec
         if s.evaluation_mode == "calibrated" and self.panels is None:
@@ -271,10 +285,6 @@ class SwarmLoop:
                         if trial.trial_id in seen:
                             self.store.submit(trial)
                             continue
-                        if self.panels is not None:
-                            await asyncio.to_thread(
-                                self.panels.record_search, candidate_key(candidate), trial.seed
-                            )
                         if self.store.submit(trial):
                             queued += 1
                         seen.add(trial.trial_id)
@@ -283,7 +293,7 @@ class SwarmLoop:
                     reason = "dispatch_unavailable"
                     break
                 for _ in range(min(slots, queued)):
-                    pending.add(asyncio.create_task(self.worker.run_once(s)))
+                    pending.add(asyncio.create_task(self._run_worker()))
                 if pending:
                     done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
                     no_claim = not any(await asyncio.gather(*done))
@@ -291,7 +301,7 @@ class SwarmLoop:
                 if running:
                     # Another worker may finish or expire. run_once also sweeps old heartbeats.
                     await asyncio.sleep(0.25)
-                    await self.worker.run_once(s)
+                    await self._run_worker()
                     continue
                 if slots <= 0 and (queued or len(seen) < s.max_trials):
                     reason = "dispatch_unavailable"

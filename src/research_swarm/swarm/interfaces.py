@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -135,8 +135,13 @@ class Backend(Protocol):
 
 
 class Worker(Protocol):
-    async def run_once(self, spec: CampaignSpec) -> bool:
-        """Claim, heartbeat and report one attempt. False means no claim."""
+    async def run_once(
+        self,
+        spec: CampaignSpec,
+        *,
+        before_execute: Callable[[Attempt], Awaitable[None]] | None = None,
+    ) -> bool:
+        """Claim, heartbeat, call before_execute for this dispatch, then execute and report."""
         ...
 
 

@@ -294,6 +294,56 @@ async def test_slow_held_out_scoring_keeps_sibling_worker_heartbeating(tmp_path:
 
 
 @pytest.mark.asyncio
+async def test_search_looks_count_restored_attempts_and_retries_but_not_denied_claims(
+    tmp_path: Path,
+) -> None:
+    looks: list[int] = []
+
+    class Study:
+        def calibrate(self) -> None:
+            pass
+
+        def record_search(self, key: str, seed: int) -> None:
+            looks.append(seed)
+
+        def consider(self, key: str, previous: str | None) -> object:
+            return SimpleNamespace(promoted=True)
+
+    class PreemptedOnce(Backend):
+        async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
+            # An exposure must have been recorded before this backend can read the panel.
+            assert looks == [11] * attempt.number
+            if attempt.number == 1:
+                return Result(attempt=attempt, status="lost")
+            return Result(attempt=attempt, status="ok", metrics={"score": 1})
+
+    store, backend = SQLiteStore(tmp_path / "queue"), PreemptedOnce()
+    spec = campaign(evaluation_mode="calibrated", max_trials=1, max_attempts=2)
+    store.create_campaign(spec)
+    store.submit(
+        Trial(
+            trial_id="restored",
+            campaign_id=spec.campaign_id,
+            candidate=Candidate(candidate_id="recipe"),
+            seed=11,
+            fidelity=1,
+        )
+    )
+    worker = WorkerLoop(store, backend, "worker")
+    result = await SwarmLoop(spec, store, backend, worker, panels=Study()).run()
+    assert result.attempts == 2 and result.lost == 1 and result.selected and looks == [11, 11]
+    denied = replace(
+        spec,
+        campaign_id="no-budget",
+        max_cost=0,
+        price_per_hour=1,
+        candidates=(Candidate(candidate_id="expensive"),),
+    )
+    result = await SwarmLoop(denied, store, backend, worker, panels=Study()).run()
+    assert result.attempts == 0 and looks == [11, 11]
+
+
+@pytest.mark.asyncio
 async def test_policy_score_drives_target_and_survives_resume(tmp_path: Path) -> None:
     class SeedScore(Backend):
         async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
