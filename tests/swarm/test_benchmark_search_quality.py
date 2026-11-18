@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
+import json
 import os
+import threading
+import time
 from pathlib import Path
 from statistics import fmean
+from unittest.mock import patch
 
+import httpx
 import pytest
 
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
@@ -74,26 +78,51 @@ def compare_seed(task, study, seed: int, model: str) -> dict[str, tuple[float, f
             return previous.params
 
         for arm, fn in [("swarm", propose), ("random", random_search), ("greedy", greedy_search)]:
-            run = run_campaign(task, study, fn, budget=12, seed=seed)
+            # Read token counts from successful HTTP responses without changing proposal inputs.
+            tokens = [0, 0]
+            lock = threading.Lock()
+            send = httpx.AsyncClient.send
+
+            async def metered_send(
+                client, request, *, original=send, counts=tokens, guard=lock, **kwargs
+            ):
+                response = await original(client, request, **kwargs)
+                if request.url.path == "/api/generate" and response.is_success:
+                    body = response.json()
+                    with guard:
+                        counts[0] += body.get("prompt_eval_count", 0)
+                        counts[1] += body.get("eval_count", 0)
+                return response
+
+            start = time.monotonic()
+            with patch.object(httpx.AsyncClient, "send", metered_send):
+                run = run_campaign(task, study, fn, budget=12, seed=seed)
+            elapsed = time.monotonic() - start
             assert len(run.trials) == 12
             failures = [(i, t.error) for i, t in enumerate(run.trials, 1) if t.error]
             curve = [t.best for t in run.trials]
             assert curve == sorted(curve, reverse=task.direction == "minimize")
             assert run.decision is not None
-            confirmed_gain = (
-                (run.decision.confirmation_gain or 0.0) if run.decision.promoted else 0.0
-            )
-            row[arm] = (curve[-1], confirmed_gain)
+            assert run.confirmed_score is not None
+            row[arm] = (curve[-1], run.confirmed_score)
             print(
-                task.name,
-                seed,
-                arm,
-                "curve",
-                curve,
-                "failures",
-                failures,
-                "held-out",
-                run.decision,
+                "arm",
+                json.dumps(
+                    {
+                        "task": task.name,
+                        "seed": seed,
+                        "policy": arm,
+                        "curve": curve,
+                        "failed_attempts": failures,
+                        "selected": run.selected,
+                        "confirm": run.confirmed_score,
+                        "decision": run.decision.reason,
+                        "seconds": elapsed,
+                        "input_tokens": tokens[0],
+                        "output_tokens": tokens[1],
+                    },
+                    sort_keys=True,
+                ),
                 flush=True,
             )
     return row
@@ -109,27 +138,18 @@ def test_equal_budget_search(name: str, tmp_path: Path) -> None:
 
     torch.set_num_threads(1)
     from benchmarks.study import open_study
-    from benchmarks.suite import get_task
+    from benchmarks.suite import comparison_seeds, get_task
 
     protocol = os.getenv("SWARM_BENCHMARK_PROTOCOL", "v2")
     task = get_task(name, device="cpu", size="small", protocol=protocol)
     study = open_study(task, tmp_path / "study.sqlite")
-    seeds = (
-        (11, 23, 47)
-        if protocol == "v1"
-        else tuple(
-            int.from_bytes(
-                hashlib.sha256(f"ars-bench-v2/search-seed/{i}".encode()).digest()[:4], "big"
-            )
-            for i in range(3)
-        )
-    )
+    seeds = comparison_seeds(protocol)
     rows = [compare_seed(task, study, seed, os.environ["SWARM_BENCHMARK_MODEL"]) for seed in seeds]
     sign = -1 if name == "nanogpt" else 1
     comparisons = {}
     for baseline in ("random", "greedy"):
         search = [sign * (row["swarm"][0] - row[baseline][0]) for row in rows]
-        confirmed = [row["swarm"][1] - row[baseline][1] for row in rows]
+        confirmed = [sign * (row["swarm"][1] - row[baseline][1]) for row in rows]
         print(name, baseline, "paired search", search, "paired confirmation", confirmed, flush=True)
         comparisons[baseline] = fmean(confirmed)
         if protocol == "v1":
