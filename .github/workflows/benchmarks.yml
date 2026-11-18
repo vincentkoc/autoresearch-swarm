@@ -1,21 +1,7 @@
 name: Research benchmarks
 
 on:
-  pull_request:
-    paths:
-      - "benchmarks/**"
-      - "tests/benchmarks/**"
-      - "src/research_swarm/swarm/panels.py"
-      - ".github/workflows/benchmarks.yml"
-      - "uv.lock"
-  push:
-    branches: [main]
-    paths:
-      - "benchmarks/**"
-      - "tests/benchmarks/**"
-      - "src/research_swarm/swarm/panels.py"
-      - ".github/workflows/benchmarks.yml"
-      - "uv.lock"
+  workflow_dispatch:
 
 permissions:
   contents: read

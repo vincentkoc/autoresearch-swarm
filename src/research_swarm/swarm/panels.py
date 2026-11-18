@@ -245,6 +245,15 @@ class PanelStudy:
         self._calibration()
         return self._measure("search", candidate_key, seed)
 
+    def confirmed_score(self, key: str) -> float | None:
+        """Read a previously measured score without opening the confirmation panel."""
+        with self._db() as db:
+            row = db.execute(
+                "SELECT score FROM panel_looks WHERE role = 'confirmation' AND candidate = ?",
+                (key,),
+            ).fetchone()
+        return float(row[0]) if row is not None and row[0] is not None else None
+
     def _confirmed(self, key: str) -> float:
         with self._db() as db:
             row = db.execute(

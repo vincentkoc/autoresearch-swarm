@@ -74,3 +74,10 @@ reserved look. A changed split, scorer revision or decision rule needs a new
 calibration. Programmatic campaigns can call `benchmarks.study.run_campaign`
 with a shared study. For swarm YAML, set
 `panel_policy: benchmarks.study:worker_policy` with the benchmark trial command.
+
+Use `--protocol v2` for the preregistered comparison with larger training
+spaces and fresh data streams. The default `v1` reproduces the original
+search space and seeds. Each protocol uses its own default study file.
+The `confirmed_score` field reads the selected recipe's stored measurement.
+
+[Confirmatory comparison protocol](protocol-v2.md)

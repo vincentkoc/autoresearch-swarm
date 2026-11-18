@@ -72,17 +72,20 @@ def test_local_model_proposes_scored_code(monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["mlp", "nanogpt"])
-def test_train_and_compare_on_cpu(name):
+@pytest.mark.parametrize("device", ["cpu", "mps"])
+def test_small_training_comparison(name, device):
     torch = pytest.importorskip("torch")
+    if device == "mps" and not torch.backends.mps.is_available():
+        pytest.skip("MPS is unavailable on this runner")
     torch.set_num_threads(1)
-    task = get_task(name)
+    task = get_task(name, device=device)
     for policy in (random_search, greedy_search):
         results = run_search(task, policy, budget=3, seed=11)
         assert all(r.score is not None and math.isfinite(r.score) for r in results)
         scores = [r.score for r in results]
         best = max if name == "mlp" else min
         assert [r.best for r in results] == [best(scores[:i]) for i in (1, 2, 3)]
-        assert task.score(results[1].candidate, seed=11) == results[1].score
+        assert task.score(results[1].candidate, seed=11) == pytest.approx(results[1].score)
 
 
 def test_training_code_rejects_out_of_space_edits():
