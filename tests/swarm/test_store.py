@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,6 +38,19 @@ def trial(n: int, *, campaign_id: str = "test") -> Trial:
         seed=2,
         fidelity=1.0,
     )
+
+
+def test_legacy_database_is_rejected_before_any_writes(tmp_path: Path) -> None:
+    path = tmp_path / "research.sqlite"
+    with closing(sqlite3.connect(path)) as legacy, legacy:
+        legacy.execute("CREATE TABLE workspaces(id TEXT PRIMARY KEY)")
+        legacy.execute("INSERT INTO workspaces VALUES ('archive')")
+        legacy.execute("PRAGMA user_version=4")
+    original = path.read_bytes()
+    with pytest.raises(ValueError, match="fresh database path"):
+        SQLiteStore(path)
+    assert path.read_bytes() == original
+    assert set(tmp_path.iterdir()) == {path}
 
 
 def test_independent_connections_claim_distinct_trials_and_respect_slots(tmp_path: Path) -> None:
