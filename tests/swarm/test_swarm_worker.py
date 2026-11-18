@@ -7,7 +7,7 @@ import signal
 import sys
 import tempfile
 import time
-from dataclasses import asdict, dataclass, replace
+from dataclasses import replace
 from multiprocessing.connection import Connection
 from pathlib import Path
 
@@ -287,13 +287,12 @@ async def test_worker_uses_measured_vram_for_packed_device_dispatch(tmp_path: Pa
         "Path(os.environ['SWARM_USAGE']).write_text(json.dumps({'peak_vram_mib': 20.4}))\n"
     )
 
-    @dataclass(frozen=True, kw_only=True)
-    class ConfiguredCampaign(CampaignSpec):
-        options: dict[str, object]
-
-    fields = asdict(replace(_campaign(tmp_path), resource="gpu", max_workers=3))
-    fields["options"] = {"resources": {"devices_mib": {"cuda:1": 60}, "target": 0.8}}
-    spec = ConfiguredCampaign(**fields)
+    spec = replace(
+        _campaign(tmp_path),
+        resource="gpu",
+        max_workers=3,
+        options={"resources": {"devices_mib": {"cuda:1": 60}, "target": 0.8}},
+    )
     store = SQLiteStore(tmp_path / "queue.db")
     store.create_campaign(spec)
     for name in ("calibration", "a", "b", "c"):

@@ -173,6 +173,9 @@
 - **Breaking:** Retire the controller promotion and evidence invalidation commands.
   The swarm loop records its selected trial, policy score and replicate count in SQLite.
 
+- Verify a score-only selection update against one migrated campaign history
+  and run the worker packing test with the public campaign specification.
+
 - Add a resident swarm worker that heartbeats, retries lost trials and records
   attempt failures. Dispatch reserves estimated cost and reports charges from
   elapsed compute time and measured input and output tokens. Validated usage
