@@ -1,0 +1,87 @@
+"""Read a campaign from YAML using the same record definitions as Python callers."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import fields, replace
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import TypeAdapter
+
+from research_swarm.swarm.interfaces import CampaignSpec, Candidate
+
+
+def _check_fields(value: Any, record: type[CampaignSpec] | type[Candidate]) -> None:
+    if not isinstance(value, dict):
+        raise ValueError(f"Expected a YAML mapping for {record.__name__}")
+    unknown = set(value).difference(f.name for f in fields(record))
+    if unknown:
+        raise ValueError(f"Unknown {record.__name__} field: {next(iter(unknown))}")
+
+
+def load_spec(path: Path) -> CampaignSpec:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid campaign YAML: {exc}") from exc
+    _check_fields(data, CampaignSpec)
+    if isinstance(data.get("candidates"), list):
+        for candidate in data["candidates"]:
+            _check_fields(candidate, Candidate)
+    try:
+        encoded = json.dumps(data, allow_nan=False)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Campaign values must be finite JSON data") from exc
+    spec = TypeAdapter(CampaignSpec).validate_json(encoded, strict=True)
+    if (
+        not spec.campaign_id.strip()
+        or not spec.metric.strip()
+        or not spec.command
+        or not spec.command[0]
+    ):
+        raise ValueError("Specify a campaign_id, metric and non-empty command")
+    if (
+        min(
+            spec.max_trials,
+            spec.max_workers,
+            spec.max_attempts,
+            spec.top_k,
+            spec.min_replicates,
+            spec.fidelity,
+            spec.trial_timeout_seconds,
+            spec.proposal_timeout_seconds,
+        )
+        <= 0
+    ):
+        raise ValueError("Limits, fidelity and timeouts must be positive")
+    if (
+        min(
+            spec.min_delta,
+            spec.price_per_hour,
+            spec.price_per_million_input_tokens,
+            spec.price_per_million_output_tokens,
+            spec.estimated_input_tokens,
+            spec.estimated_output_tokens,
+            spec.max_cost if spec.max_cost is not None else 0,
+        )
+        < 0
+    ):
+        raise ValueError("Improvement, costs and token counts must be non-negative")
+    if not (spec.candidates or spec.proposer or spec.search_space):
+        raise ValueError("Supply candidates, a search_space or a proposer")
+    if any(not values for values in spec.search_space.values()):
+        raise ValueError("Search space dimensions require at least one value")
+    recipes: dict[str, Candidate] = {}
+    for candidate in spec.candidates:
+        if not candidate.candidate_id or (
+            candidate.fidelity is not None and candidate.fidelity <= 0
+        ):
+            raise ValueError("Each candidate needs an id and positive fidelity")
+        normalized = replace(candidate, seed=None, fidelity=None)
+        if recipes.setdefault(candidate.candidate_id, normalized) != normalized:
+            raise ValueError(f"Conflicting candidate {candidate.candidate_id}")
+        if spec.search_space and candidate.candidate_id.startswith("grid-"):
+            raise ValueError("grid- ids are reserved when search_space is configured")
+    return replace(spec, task_dir=str((path.parent / spec.task_dir).resolve(strict=True)))

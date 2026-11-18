@@ -138,6 +138,7 @@ dependencies = [
     { name = "mcp" },
     { name = "psutil" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "rfc8785" },
     { name = "uvicorn" },
 ]
@@ -169,6 +170,7 @@ dev = [
     { name = "ruff" },
     { name = "temporalio" },
     { name = "types-psutil" },
+    { name = "types-pyyaml" },
 ]
 release = [
     { name = "build" },
@@ -188,6 +190,7 @@ requires-dist = [
     { name = "optuna", marker = "extra == 'optuna'", specifier = ">=4.0,<6" },
     { name = "psutil", specifier = ">=6,<8" },
     { name = "pydantic", specifier = ">=2.12,<3" },
+    { name = "pyyaml", specifier = ">=6,<7" },
     { name = "rfc8785", specifier = ">=0.1.4,<1" },
     { name = "temporalio", marker = "extra == 'temporal'", specifier = ">=1.35,<2" },
     { name = "torch", marker = "extra == 'torch'", specifier = ">=2.6" },
@@ -205,6 +208,7 @@ dev = [
     { name = "ruff", specifier = ">=0.11,<1" },
     { name = "temporalio", specifier = ">=1.35,<2" },
     { name = "types-psutil", specifier = ">=7.2.2.20260906" },
+    { name = "types-pyyaml", specifier = ">=6,<7" },
 ]
 release = [
     { name = "build", specifier = "==1.6.1" },
@@ -3092,6 +3096,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/97/0a/f48b9b0ab5ba8599fd117309e345152bf82c756c72be2ff0f635780c2792/types_psutil-7.2.2.20260906.tar.gz", hash = "sha256:93abf22cf9a62b915f724e433bde702995ac274865425fd4a76d1d9b5828da1a", size = 27396, upload-time = "2026-09-06T06:35:24.499Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/8d/81a86107486e1c23f5ca21bea1e9e5b18a50754242e7a0b82f41f9ae8384/types_psutil-7.2.2.20260906-py3-none-any.whl", hash = "sha256:db00baf7f96c3f63421c4d3d68d373923094a0dfddf13e922c5c5fbc42488159", size = 33383, upload-time = "2026-09-06T06:35:23.575Z" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20261113"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4d/8b/ba599d956693dbc98e170f32097128bdea0a17f9d42b0b490fa749c12b1a/types_pyyaml-6.0.12.20261113.tar.gz", hash = "sha256:0828be2580fd94151182364f4d0158e4de62fdbeeb8d4296f7f7d2b6c22bb640", size = 19017, upload-time = "2026-11-13T08:51:21.488Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/2e/36fc0941a40ef066dbc8abac41bbbefb41389f547c779aef832aea6b873d/types_pyyaml-6.0.12.20261113-py3-none-any.whl", hash = "sha256:3600749e613748afdc4327f0b17c3296cf880cdbc7335f320007abd9dd815f67", size = 21321, upload-time = "2026-11-13T08:51:20.417Z" },
 ]
 
 [[package]]
