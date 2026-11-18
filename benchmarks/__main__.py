@@ -4,9 +4,11 @@ import argparse
 import json
 import platform
 from dataclasses import asdict
+from pathlib import Path
 
 from benchmarks.ollama import OllamaPolicy
-from benchmarks.suite import Policy, get_task, greedy_search, random_search, run_search
+from benchmarks.study import open_study, run_campaign
+from benchmarks.suite import Policy, get_task, greedy_search, random_search
 
 
 def main() -> int:
@@ -21,6 +23,7 @@ def main() -> int:
     parser.add_argument("--size", choices=("small", "full"), default="small")
     parser.add_argument("--model", help="locally installed Ollama model for the llm strategy")
     parser.add_argument("--port", type=int, default=11434)
+    parser.add_argument("--study", type=Path, help="SQLite panel history for this workload")
     args = parser.parse_args()
     if args.budget < 1:
         parser.error("--budget must be positive")
@@ -54,10 +57,21 @@ def main() -> int:
         strategies = {args.strategy: strategies[args.strategy]}
 
     runs = {}
+    finalists = {}
+    path = (
+        args.study or Path(".research/benchmarks") / f"{args.task}-{args.device}-{args.size}.sqlite"
+    )
+    study = open_study(task, path)
+    calibration = study.calibrate()
     failed = False
     for name, propose in strategies.items():
-        trials = run_search(task, propose, budget=args.budget, seed=args.seed)
+        arm = run_campaign(task, study, propose, budget=args.budget, seed=args.seed)
+        trials = arm.trials
         runs[name] = [asdict(t) for t in trials]
+        finalists[name] = {
+            "selected": arm.selected,
+            "decision": asdict(arm.decision) if arm.decision else None,
+        }
         failed |= any(t.error is not None for t in trials)
     report = {
         "task": task.name,
@@ -69,6 +83,9 @@ def main() -> int:
         "panel": "search",
         "budget_per_strategy": args.budget,
         "runs": runs,
+        "calibration": asdict(calibration),
+        "panel_looks": study.look_counts(),
+        "finalists": finalists,
     }
     if model:
         report["ollama"] = {
