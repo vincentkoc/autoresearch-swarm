@@ -72,6 +72,8 @@ async def test_refill_on_first_completion_and_tell_lineage(tmp_path: Path) -> No
     trial = summary.selected.result.attempt.trial
     assert trial.seed == 17 and trial.fidelity == 2
     assert loop.population.lineage("child") == ("fast",)
+    assert await loop.run() == summary
+    assert sorted(producer.observed) == ["child", "fast", "slow"]
 
 
 @pytest.mark.asyncio

@@ -163,7 +163,8 @@ class SwarmLoop:
             prior = previous.result.attempt.trial
             if self.selection is None:
                 previous = self.population.measure(prior.fidelity, prior.candidate.candidate_id)
-                self.incumbent = previous
+                if previous != self.incumbent:
+                    self._save(previous)
             gain = best.score - previous.score
             if self.spec.direction == "minimize":
                 gain = -gain
@@ -180,6 +181,9 @@ class SwarmLoop:
             old_key = candidate_key(previous.result.attempt.trial.candidate) if previous else None
             if not self.panels.consider(key, old_key).promoted:
                 return
+        self._save(best)
+
+    def _save(self, best: Ranked) -> None:
         self.store.select(
             self.spec.campaign_id,
             best.result.attempt.trial.trial_id,
@@ -205,7 +209,8 @@ class SwarmLoop:
             self.panels.calibrate()
         elif any((s.search_panel, s.selection_panel, s.confirmation_panel)):
             raise ValueError("A campaign with panels requires a calibrated panel policy")
-        recorded = self.store.results(s.campaign_id)
+        cursor = len(self.population.archive)
+        recorded = self.store.results(s.campaign_id, after=cursor)
         incumbent = self.store.incumbent(s.campaign_id)
         for result in recorded:
             self.population.add(result)
@@ -219,7 +224,7 @@ class SwarmLoop:
                 self.incumbent = Ranked(result, score, incumbent[2])
         if recorded:
             self._select()
-        cursor = len(recorded)
+        cursor += len(recorded)
         pending: set[asyncio.Task[bool]] = set()
         no_claim = False
         try:
