@@ -230,10 +230,7 @@ def test_campaign_isolation_resume_and_durable_selection(tmp_path: Path) -> None
         )
 
 
-@pytest.mark.parametrize("first_score", [0.75, 0.85])
-def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
-    tmp_path: Path, first_score: float
-) -> None:
+def test_selection_events_preserve_policy_scores_and_legacy_unknowns(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     store = SQLiteStore(path)
     store.create_campaign(spec())
@@ -250,7 +247,8 @@ def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
 
     reopened = SQLiteStore(path)
     reopened.select("test", trial(1).trial_id, score=0.95)
-    reopened.select("test", trial(1).trial_id, score=first_score, replicates=2)
+    reopened.select("test", trial(1).trial_id, score=0.85, replicates=2)
+    reopened.select("test", trial(1).trial_id, score=0.75, replicates=2)
     reopened.select("test", trial(2).trial_id, score=0.65, replicates=3)
     replay = SQLiteStore(path)
     replay.select("test", trial(2).trial_id, score=0.65, replicates=3)
@@ -262,7 +260,8 @@ def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
             ("test",),
         ).fetchall() == [
             (trial(1).trial_id, None, None),
-            (trial(1).trial_id, first_score, 2),
+            (trial(1).trial_id, 0.85, 2),
+            (trial(1).trial_id, 0.75, 2),
             (trial(2).trial_id, 0.65, 3),
         ]
 
