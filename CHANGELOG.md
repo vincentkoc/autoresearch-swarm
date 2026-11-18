@@ -29,6 +29,10 @@
   reserve cost atomically. Expired attempts retain their costs and observations
   when the queue makes the trial available for retry.
 
+- Run a capacity-driven campaign from YAML with `research swarm run`. Completed
+  attempts feed the proposer as slots free up. The population ranks successful
+  candidates and records the selected trial even when a sibling crashes.
+
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.
 

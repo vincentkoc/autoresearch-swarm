@@ -43,9 +43,17 @@ class CampaignSpec:
     task_dir: str = "."
     resource: Resource = "cpu"
     candidates: tuple[Candidate, ...] = ()
+    search_space: dict[str, list[Any]] = field(default_factory=dict)
+    proposer: str | None = None
+    selection_policy: str | None = None
+    panel_policy: str | None = None
+    backend: str | None = None
+    worker: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
     seed: int = 0
     fidelity: float = 1.0
     top_k: int = 1
+    min_replicates: int = 1
     min_delta: float = 0.0
     target: float | None = None
     max_attempts: int = 1
@@ -197,6 +205,12 @@ class Store(Protocol):
         """Return queued and running trial counts from the same snapshot."""
         ...
 
-    def select(self, campaign_id: str, trial_id: str) -> None:
+    def select(
+        self, campaign_id: str, trial_id: str, *, score: float | None = None, replicates: int = 1
+    ) -> None:
         """Persist the selected successful trial."""
+        ...
+
+    def incumbent(self, campaign_id: str) -> tuple[str, float | None, int] | None:
+        """Return the selected trial id, policy score and replicate count."""
         ...
