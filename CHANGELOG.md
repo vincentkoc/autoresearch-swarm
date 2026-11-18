@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
+  subsystem: the 13 `learning.*` commands, their scopes, record kinds and MCP tools,
+  and the `learning_cycle` and `cpu_policy_learning` examples. No real research run
+  used it. Ordinary proposals, trial submission, search and the planner comparison in
+  `examples/policy_benchmark` are unchanged.
+
 - Contain unexpected local failures to one attempt in `ScopedWorkerDriver`. The
   driver keeps heartbeats and sibling work running, reports `EXECUTION_UNKNOWN` and
   `LOCAL_FAILURE` findings, fences admission, and retries the exact attempt on the

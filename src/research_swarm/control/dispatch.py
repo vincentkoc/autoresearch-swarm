@@ -8,12 +8,6 @@ from typing import Any
 from pydantic import ValidationError
 
 from research_swarm.control.acceptance_models import ExpireAcceptance
-from research_swarm.control.benchmark_assessment_models import AssessPolicyBenchmark
-from research_swarm.control.benchmark_execution_models import (
-    RequestBenchmarkProposal,
-    StartPolicyBenchmark,
-)
-from research_swarm.control.benchmark_models import FreezePolicyBenchmark
 from research_swarm.control.child_models import (
     CancelChildCampaign,
     CreateChildCampaign,
@@ -39,17 +33,6 @@ from research_swarm.control.completion_models import (
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.import_models import ImportHistoricalEvidence
-from research_swarm.control.learning_models import (
-    CommitPolicyDecision,
-    FreezeLearningPlan,
-    QualifyTrajectoryDataset,
-)
-from research_swarm.control.learning_training_models import (
-    AdmitPolicyTraining,
-    PreparePolicyInputs,
-    PublishPolicyTraining,
-    RegisterPolicyTrainingProfile,
-)
 from research_swarm.control.observation_models import (
     AbandonObservationSelection,
     ObserveTrial,
@@ -66,7 +49,6 @@ from research_swarm.control.orchestration_models import (
     RegisterDelivery,
     TransferOrchestration,
 )
-from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
 from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
@@ -137,113 +119,6 @@ COMMANDS = {
         True,
         "Retire archive membership while preserving source, evidence and change history.",
         additional_scopes=("read",),
-    ),
-    "learning.create_policy_binding": CommandDefinition(
-        CreatePolicyBinding,
-        "create_policy_binding",
-        "learning.manage",
-        False,
-        "Initialize a policy binding from the benchmark's frozen baseline.",
-        additional_scopes=("read",),
-    ),
-    "learning.adopt_policy": CommandDefinition(
-        AdoptPolicy,
-        "adopt_policy",
-        "learning.adopt",
-        True,
-        "Adopt a currently passing learned challenger with an exact policy-binding revision.",
-        additional_scopes=("read",),
-    ),
-    "learning.assess_benchmark": CommandDefinition(
-        AssessPolicyBenchmark,
-        "assess_policy_benchmark",
-        "learning.manage",
-        False,
-        "Qualify every fixed policy case and assess the complete paired reward panel.",
-        additional_scopes=("read",),
-    ),
-    "learning.request_benchmark_proposal": CommandDefinition(
-        RequestBenchmarkProposal,
-        "request_benchmark_proposal",
-        "learning.manage",
-        False,
-        "Issue the arm's reserved proposal and freeze its held-out policy plan atomically.",
-        additional_scopes=("search.manage", "read"),
-    ),
-    "learning.start_benchmark": CommandDefinition(
-        StartPolicyBenchmark,
-        "start_policy_benchmark",
-        "learning.manage",
-        False,
-        "Bind the checked policy and atomically start both fixed comparator arms for every seed.",
-        additional_scopes=(
-            "campaign.manage",
-            "candidate.propose",
-            "candidate.validate",
-            "trial.submit",
-            "read",
-        ),
-    ),
-    "learning.freeze_benchmark": CommandDefinition(
-        FreezePolicyBenchmark,
-        "freeze_policy_benchmark",
-        "learning.manage",
-        False,
-        "Freeze a fresh held-out seed panel and reserve one future policy-training admission.",
-        additional_scopes=("read",),
-    ),
-    "learning.publish_training": CommandDefinition(
-        PublishPolicyTraining,
-        "publish_policy_training",
-        "learning.manage",
-        False,
-        "Publish a checked checkpoint from an admitted training trial without adopting it.",
-        additional_scopes=("read",),
-    ),
-    "learning.register_training_profile": CommandDefinition(
-        RegisterPolicyTrainingProfile,
-        "register_policy_training_profile",
-        "learning.profile.manage",
-        False,
-        "Approve an exact project revision and protected checker for policy training.",
-        additional_scopes=("read",),
-    ),
-    "learning.admit_training": CommandDefinition(
-        AdmitPolicyTraining,
-        "admit_policy_training",
-        "learning.manage",
-        True,
-        "Admit ordinary training jobs from an approved profile and current qualified inputs.",
-        additional_scopes=("trial.submit", "read"),
-    ),
-    "learning.prepare_training_inputs": CommandDefinition(
-        PreparePolicyInputs,
-        "prepare_policy_inputs",
-        "learning.manage",
-        False,
-        "Publish canonical qualified data and behavior policy as immutable training inputs.",
-        additional_scopes=("artifact.upload", "read"),
-    ),
-    "learning.qualify_dataset": CommandDefinition(
-        QualifyTrajectoryDataset,
-        "qualify_trajectory_dataset",
-        "learning.manage",
-        False,
-        "Qualify each frozen development episode against admission, evaluation and settled cost.",
-    ),
-    "learning.freeze_plan": CommandDefinition(
-        FreezeLearningPlan,
-        "freeze_learning_plan",
-        "learning.manage",
-        False,
-        "Freeze all pending episodes, action sources, reward, splits and same-seed comparators.",
-    ),
-    "learning.commit_decision": CommandDefinition(
-        CommitPolicyDecision,
-        "commit_policy_decision",
-        "proposal.respond",
-        False,
-        "Sample one owned frozen episode once, before accepting its candidate response.",
     ),
     "artifact.reconcile_reader_session": CommandDefinition(
         ReaderSessionTarget,

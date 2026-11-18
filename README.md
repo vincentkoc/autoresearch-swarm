@@ -61,7 +61,6 @@ Position shows layout only—not experiment quality, similarity or execution ord
 | [Synthetic pose](examples/synthetic_pose/README.md) | Adopt an ordinary research repository and replay archived receipts. |
 | [MLX workload](docs/mlx-workload.md) | Native Apple Metal training with the reference scorer. |
 | [Pinned upstream workload](docs/upstream.md) | Preserve the original fixed-budget experiment contract. |
-| [Policy learning](examples/learning_cycle) | Train, evaluate and explicitly adopt a research policy. |
 
 Examples distinguish integration checks from measured scientific improvement.
 [Qualification status](docs/implementation.md) records the tested platforms,

@@ -22,27 +22,6 @@ from research_swarm.state.sql import SqlSession
 RecordKind = Literal[
     "population_member",
     "population_change",
-    "benchmark_execution",
-    "benchmark_case",
-    "benchmark_assessment",
-    "policy_binding",
-    "policy_binding_origin",
-    "policy_adoption",
-    "benchmark_proposal",
-    "benchmark_arm",
-    "benchmark_trial_slot",
-    "policy_benchmark",
-    "benchmark_plan",
-    "benchmark_training",
-    "benchmark_seed",
-    "learning_publication",
-    "learning_profile",
-    "learning_admission",
-    "learning_inputs",
-    "learning_dataset",
-    "learning_plan",
-    "learning_episode",
-    "learning_decision",
     "artifact_read_session",
     "workspace_gate",
     "workspace_seal",
@@ -135,27 +114,7 @@ def summarize(row: JsonObject) -> JsonObject:
         key: row[key] for key in ("id", "kind", "revision", "state", "campaign_id", "parent_id")
     }
     data = row["data"]
-    if row["kind"] in {
-        "learning_inputs",
-        "learning_profile",
-        "learning_admission",
-        "learning_publication",
-        "policy_benchmark",
-        "benchmark_plan",
-        "benchmark_training",
-        "benchmark_seed",
-        "benchmark_execution",
-        "benchmark_case",
-        "benchmark_assessment",
-        "policy_binding",
-        "policy_binding_origin",
-        "policy_adoption",
-        "benchmark_proposal",
-        "benchmark_arm",
-        "benchmark_trial_slot",
-    }:
-        result["data"] = data
-    elif row["kind"] == "report":
+    if row["kind"] == "report":
         snapshot = data["snapshot"]
         result["data"] = {
             "report_digest": data["report_digest"],
@@ -170,25 +129,9 @@ def summarize(row: JsonObject) -> JsonObject:
                 "required_scope": "read",
             },
         }
-    elif row["kind"] in {"population_member", "population_change"}:
-        result["data"] = data
-    elif row["kind"] == "learning_dataset":
-        result["data"] = {
-            "plan_id": data["plan_id"],
-            "plan_digest": data["plan_digest"],
-            "dataset_digest": record_digest("research.trajectory-dataset.v1", data["dataset"]),
-            "episode_count": len(data["dataset"]["trajectories"]),
-            "evidence_through": data["dataset"]["evidence_through"],
-        }
-    elif row["kind"] == "learning_plan":
-        result["data"] = {
-            "policy_digest": record_digest(
-                "research.categorical-policy.v1", data["request"]["policy"]
-            ),
-            "episode_count": len(data["episodes"]),
-            "evidence_through": data["evidence_through"],
-        }
-    elif row["kind"] in {"learning_episode", "learning_decision"} or row["kind"] in {
+    elif row["kind"] in {
+        "population_member",
+        "population_change",
         "acceptance_lease",
         "campaign_obligations",
         "scientific_completion",

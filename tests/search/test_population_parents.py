@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 
-from research_swarm.control.learning_models import FreezeLearningPlan, PlanEpisode
 from research_swarm.control.models import SearchConfiguration
 from research_swarm.control.population_models import PopulationParentRef
 from research_swarm.control.promotions import InvalidateEvidence
@@ -19,14 +18,10 @@ from research_swarm.control.validity import EvidenceReference
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.experiments import Direction
-from research_swarm.domain.learning import CategoricalPolicy, PolicyAction, RewardSpec
 from research_swarm.domain.types import new_id
 from tests.control.test_promotions import assess, second_evaluation
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
-from tests.learning.test_learning_control import Prepared
-from tests.learning.test_learning_datasets import finish_episode, qualify
 from tests.search.test_population import retain, retention, retire
 from tests.search.test_portfolio_control import THEMES, portfolio_options
 from tests.search.test_proposals import PROPOSAL_LIMITS, baseline, proposal_intent, proposer
@@ -212,61 +207,6 @@ def test_parent_or_comparator_changes_between_preflight_and_commit_preserve_resp
     assert pipeline.client.budget(pipeline.campaign["id"])["accounts"] == before["accounts"]
     assert pipeline.client.list(RecordQuery(kind="policy_transition"))["items"] == []
     assert len(pipeline.client.list(RecordQuery(kind="trial"))["items"]) == 2
-
-
-@pytest.mark.parametrize("pipeline", [EXTERNAL], indirect=True)
-def test_learning_from_an_archived_parent_retains_the_incumbent_reward_comparator(
-    pipeline: Pipeline,
-    tmp_path: Path,
-) -> None:
-    incumbent, member = setup_archive(pipeline, tmp_path)
-    actor, agent, token = proposer(pipeline)
-    request = pipeline.client.command(
-        "search.request_proposal",
-        selected_request(pipeline, actor, member, seed=7),
-        idempotency_key="learning-branch",
-        expected_revision=0,
-    )["result"]["request"]
-    artifacts = {
-        "fast": branch_source(pipeline, tmp_path, 0.6),
-        "slow": branch_source(pipeline, tmp_path, 0.05),
-    }
-    intent = FreezeLearningPlan(
-        plan_id=new_id(),
-        action_artifacts=artifacts,
-        policy=CategoricalPolicy(
-            actions=tuple(
-                PolicyAction(id=name, source_digest=ref.digest) for name, ref in artifacts.items()
-            ),
-            logits=(0.0, 0.0),
-        ),
-        reward_spec=RewardSpec(metric_name="val_bpb", direction=Direction.MINIMIZE, scale=5.0),
-        episodes=(PlanEpisode(request_id=request["id"], split="development"),),
-    )
-    prepared = Prepared(intent, agent, token, [request])
-    plan = prepared.freeze(pipeline.client)
-    episode = plan["data"]["episodes"][0]
-    assert episode["comparator_candidate_id"] == pipeline.trial["data"]["candidate_id"]
-    assert episode["comparator_evaluation_id"] == incumbent["id"]
-    admitted, _, _ = finish_episode(pipeline, prepared)
-    assert admitted["candidate"]["data"]["parent_ids"] == [member["id"]]
-    dataset = qualify(pipeline, prepared)
-    trajectory = dataset["data"]["dataset"]["trajectories"][0]
-    assert any(item["kind"] == "population_change" for item in trajectory["evidence"])
-    assert dataset["data"]["dataset"]["trajectories"]
-    pipeline.client.command(
-        "evidence.invalidate",
-        InvalidateEvidence(
-            target=EvidenceReference(
-                kind="evaluation_receipt", id=member["data"]["request"]["evaluation_id"]
-            ),
-            reason="Correct the observation that informed archive ancestry",
-        ),
-        idempotency_key="correct-learning-parent",
-    )
-    with pytest.raises(ResearchError):
-        qualify(pipeline, prepared, key="requalify-corrected-parent")
-    assert pipeline.client.get("learning_dataset", dataset["id"]) == dataset
 
 
 @pytest.mark.parametrize("pipeline", [EXTERNAL], indirect=True)
