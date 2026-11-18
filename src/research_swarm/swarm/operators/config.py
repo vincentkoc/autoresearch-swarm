@@ -41,6 +41,7 @@ class SearchOptions(BaseModel):
     fidelities: list[float] | None = None
     reduction: int = Field(default=3, ge=2)
     family_cap: int = Field(default=2, ge=1)
+    family_trial_limit: int | None = Field(default=None, ge=1)
     exploration: float = Field(default=0.5, ge=0)
     min_replicates: int = Field(default=2, ge=2)
     seed_std: float = Field(default=0.0, ge=0)
@@ -110,6 +111,7 @@ class SearchOptions(BaseModel):
             reduction=self.reduction,
             exploration=self.exploration,
             family_cap=self.family_cap,
+            family_trial_limit=self.family_trial_limit,
             selection=self.selection(spec) if self.replicate else None,
         )
 
