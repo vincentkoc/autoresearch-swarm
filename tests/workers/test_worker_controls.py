@@ -226,11 +226,17 @@ def test_control_during_native_barrier_prevents_project_release(
     held, resume = threading.Event(), threading.Event()
     original = journal.authorize_release
 
-    def paused(attempt_id: str, supervisor_id: str) -> bool:
-        result = original(attempt_id, supervisor_id) if already_authorized else None
+    def paused(attempt_id: str, supervisor_id: str, launch_deadline_ns: int) -> bool:
+        result = (
+            original(attempt_id, supervisor_id, launch_deadline_ns) if already_authorized else None
+        )
         held.set()
         assert resume.wait(5)
-        return result if result is not None else original(attempt_id, supervisor_id)
+        return (
+            result
+            if result is not None
+            else original(attempt_id, supervisor_id, launch_deadline_ns)
+        )
 
     monkeypatch.setattr(journal, "authorize_release", paused)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:

@@ -455,7 +455,8 @@ def test_held_but_unreleased_process_does_not_consume_a_launched_attempt(
         TrialData.model_validate(pipeline.trial["data"]),
     )
 
-    def refuse(attempt_id: str, supervisor_id: str) -> bool:
+    def refuse(attempt_id: str, supervisor_id: str, launch_deadline_ns: int) -> bool:
+        assert launch_deadline_ns > 0
         pipeline.worker.journal.request_cancel(attempt_id, 1)
         return False
 
