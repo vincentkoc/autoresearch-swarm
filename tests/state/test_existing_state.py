@@ -117,6 +117,19 @@ def test_existing_credentials_preserve_rows_and_resolve_current_authority(databa
     )
 
 
+def test_open_child_funding_requires_original_release(database, principal):
+    with database.connect() as connection:
+        connection.execute(
+            "INSERT INTO records(workspace_id,kind,id,revision,state,payload,"
+            "created_at,updated_at) "
+            "VALUES (?,'funding_projection',?,1,'open','{}','legacy','legacy')",
+            (principal.workspace_id, principal.workspace_id),
+        )
+    with pytest.raises(ResearchError, match="open child campaign funding") as error:
+        Database(database.path)
+    assert error.value.code == ErrorCode.SCHEMA_UNSUPPORTED
+
+
 @pytest.mark.parametrize("phase", ["sealed", "restoring", "recovering"])
 def test_inactive_legacy_workspace_cannot_reopen(database, principal, phase):
     with database.connect() as connection:

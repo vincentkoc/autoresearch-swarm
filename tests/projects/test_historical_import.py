@@ -89,7 +89,7 @@ def test_import_preserves_raw_bytes_missingness_and_no_current_authority(
     assert copied.read_bytes().startswith(b'{ "trial"') and copied.read_bytes().endswith(b"\n")
     assert pipeline.client.get("campaign", campaign["id"]) == campaign
     assert pipeline.client.budget(campaign["id"]) == budgets
-    for kind in ("attempt", "run_result", "evaluation_receipt", "funding_settlement"):
+    for kind in ("attempt", "run_result", "evaluation_receipt"):
         assert pipeline.client.list(RecordQuery(kind=kind))["items"] == []
     read_context = CommandContext(principal=pipeline.runtime.principal(), idempotency_key=new_id())
     artifact = pipeline.runtime.database.read_record(

@@ -8,7 +8,6 @@ from typing import Literal
 
 from pydantic import Field, ValidationError
 
-from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
 from research_swarm.control.obligations import operational_context
 from research_swarm.domain.budgets import BudgetAccount
@@ -27,10 +26,6 @@ RecordKind = Literal[
     "campaign_obligation_chunk",
     "scientific_completion",
     "campaign_resource_closure",
-    "campaign_funding",
-    "funding_projection",
-    "funding_change",
-    "funding_settlement",
     "project",
     "project_revision",
     "campaign",
@@ -127,29 +122,6 @@ def summarize(row: JsonObject) -> JsonObject:
             "ordinal": data["ordinal"],
             "entry_count": len(data["entries"]),
         }
-    elif row["kind"] == "campaign_funding":
-        result["data"] = {
-            key: data[key]
-            for key in (
-                "parent_campaign_id",
-                "child_campaign_id",
-                "root_campaign_id",
-                "depth",
-                "remaining_depth",
-            )
-        }
-        result["data"]["limits"] = data["limits"][:16]
-        result["data"]["dimension_count"] = len(data["limits"])
-    elif row["kind"] in {"funding_projection", "funding_settlement"}:
-        result["data"] = {
-            "funding_id": data["funding_id"],
-            "balances": dict(sorted(data["balances"].items())[:16]),
-            "dimension_count": len(data["balances"]),
-        }
-        if row["kind"] == "funding_settlement":
-            result["data"]["final_report_id"] = data["final_report_id"]
-    elif row["kind"] == "funding_change":
-        result["data"] = data
     elif row["kind"] == "attempt_submission":
         result["data"] = {
             key: data[key]
@@ -464,11 +436,9 @@ class ResearchQueries:
             ).fetchall()
             accounts = [BudgetAccount.model_validate_json(row["payload"]) for row in budgets]
             stopping_status = {"target_met": target_met(transaction, campaign_id, data)}
-            funding = funding_context(transaction, campaign_id)
             operational = operational_context(transaction, campaign_id)
             return {
                 "schema_version": "1.0",
-                **({"funding": funding} if funding is not None else {}),
                 **({"operational": operational} if operational is not None else {}),
                 "watermark": authority["watermark"],
                 "authority": {
@@ -485,11 +455,6 @@ class ResearchQueries:
                     "search": data.contract.search.model_dump(mode="json"),
                     "promotion": data.contract.promotion.model_dump(mode="json"),
                     "stopping": data.contract.stopping.model_dump(mode="json"),
-                    **(
-                        {"delegation": data.contract.delegation.model_dump(mode="json")}
-                        if data.contract.delegation is not None
-                        else {}
-                    ),
                 },
                 "counts": [dict(row) for row in counts],
                 "recent_evidence": evidence,

@@ -11,12 +11,6 @@ from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
-from research_swarm.control.child_models import (
-    CancelChildCampaign,
-    CreateChildCampaign,
-    SettleChildCampaign,
-)
-from research_swarm.control.children import ChildControl, charge_trial, validate_delegation
 from research_swarm.control.closure import ClosureControl
 from research_swarm.control.commands import (
     CampaignTarget,
@@ -62,6 +56,7 @@ from research_swarm.control.promotions import (
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
+from research_swarm.control.trial_allowance import charge_trial
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -178,7 +173,6 @@ class ResearchService:
         self.promotions = PromotionControl(database)
         self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
-        self.children = ChildControl(database, self._create_campaign, self._validate_contract)
         self.worker_lifecycle = WorkerLifecycle(database, self.acceptance)
 
     def reconcile_reader_session(
@@ -208,21 +202,6 @@ class ResearchService:
         self, context: CommandContext, intent: ImportHistoricalEvidence
     ) -> JsonObject:
         return self.historical_imports.record(context, intent)
-
-    def create_child_campaign(
-        self, context: CommandContext, request: CreateChildCampaign
-    ) -> JsonObject:
-        return self.children.create(context, request)
-
-    def settle_child_campaign(
-        self, context: CommandContext, request: SettleChildCampaign
-    ) -> JsonObject:
-        return self.children.settle(context, request)
-
-    def cancel_child_campaign(
-        self, context: CommandContext, request: CancelChildCampaign
-    ) -> JsonObject:
-        return self.children.cancel(context, request)
 
     def submit_attempt_evidence(
         self, context: CommandContext, request: PublishAttempt
@@ -425,9 +404,6 @@ class ResearchService:
     def _create_campaign(
         transaction: Transaction,
         request: CreateCampaign,
-        parent_campaign_id: str | None = None,
-        *,
-        identifier: str | None = None,
     ) -> JsonObject:
         project = ProjectData.model_validate(transaction.get("project", request.project_id)["data"])
         revision_id = request.project_revision_id or project.current_revision_id
@@ -468,17 +444,14 @@ class ResearchService:
             promotion=request.promotion,
             stopping=request.stopping,
             input_artifacts=request.input_artifacts,
-            delegation=request.delegation,
         )
-        identifier = identifier or new_id()
+        identifier = new_id()
         for reference in contract.input_artifacts.values():
             retain_source(transaction, reference, "campaign", identifier)
         row = transaction.insert(
             "campaign",
             identifier,
-            CampaignData(
-                name=request.name, contract=contract, parent_campaign_id=parent_campaign_id
-            ).model_dump(mode="json"),
+            CampaignData(name=request.name, contract=contract).model_dump(mode="json"),
             state=CampaignState.DRAFT,
             campaign_id=identifier,
         )
@@ -497,7 +470,6 @@ class ResearchService:
 
     @staticmethod
     def _validate_contract(transaction: Transaction, campaign: CampaignData) -> None:
-        validate_delegation(campaign)
         revision = ProjectRevisionData.model_validate(
             transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
         )
@@ -506,6 +478,11 @@ class ResearchService:
             ArtifactCatalog.available(transaction, reference)
         input_sources(revision.resolved, campaign.contract.input_artifacts)
         limits = {limit.dimension: limit for limit in campaign.contract.limits}
+        admissions = limits.get("trial_admissions")
+        if admissions and (admissions.kind != BudgetKind.CUMULATIVE or admissions.unit != "count"):
+            raise ResearchError(
+                ErrorCode.PROJECT_CONTRACT_INVALID, "Trial admissions require a cumulative count"
+            )
         promotion = campaign.contract.promotion
         if promotion.mode == "paired_confirmation":
             if promotion.version != "paired-sign-v1":

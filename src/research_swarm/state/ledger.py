@@ -5,10 +5,9 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from research_swarm.domain.budgets import BudgetAccount, BudgetEntry, BudgetLimit, Reservation
+from research_swarm.domain.budgets import BudgetAccount, BudgetLimit, Reservation
 from research_swarm.domain.canonical import record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.types import amount_difference, new_id
 from research_swarm.state.database import Transaction, encode
 
 
@@ -44,9 +43,7 @@ class BudgetLedger:
         return BudgetAccount.model_validate_json(row["payload"])
 
     @staticmethod
-    def _save(
-        transaction: Transaction, account: BudgetAccount, *, lineage: tuple[str, ...] = ()
-    ) -> None:
+    def _save(transaction: Transaction, account: BudgetAccount) -> None:
         account = BudgetAccount.model_validate(account.model_dump())
         transaction.connection.execute(
             "UPDATE budgets SET payload=? WHERE workspace_id=? AND campaign_id=? AND dimension=?",
@@ -57,10 +54,6 @@ class BudgetLedger:
                 account.dimension,
             ),
         )
-
-        from research_swarm.state.funding import FundingLedger
-
-        FundingLedger.propagate(transaction, account, lineage)
 
     @classmethod
     def reserve(
@@ -82,23 +75,10 @@ class BudgetLedger:
                     "Reservation owner already has another allocation",
                 )
             return previous
-        from research_swarm.state.funding import FundingLedger
-
-        FundingLedger.check_admission(transaction, campaign_id, tuple(amounts))
         reservation = Reservation(campaign_id=campaign_id, owner_id=owner_id, amounts=amounts)
         for dimension, amount in amounts.items():
             account = cls.account(transaction, campaign_id, dimension)
             cls._save(transaction, account.reserve(amount))
-            cls._entry(
-                transaction,
-                BudgetEntry(
-                    campaign_id=campaign_id,
-                    dimension=dimension,
-                    settlement_id=reservation.id,
-                    reserved_delta=amount,
-                    reason="reserve",
-                ),
-            )
         transaction.connection.execute(
             """INSERT INTO budget_reservations
             (workspace_id,id,campaign_id,owner_id,state,payload) VALUES (?,?,?,?,?,?)""",
@@ -120,21 +100,9 @@ class BudgetLedger:
             return reservation
         if state != "reserved":
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Reservation is already settled")
-        transition_id = new_id()
         for dimension, amount in reservation.amounts.items():
             account = cls.account(transaction, reservation.campaign_id, dimension)
             cls._save(transaction, account.mark_uncertain(amount))
-            cls._entry(
-                transaction,
-                BudgetEntry(
-                    campaign_id=reservation.campaign_id,
-                    dimension=dimension,
-                    settlement_id=transition_id,
-                    reserved_delta=-amount,
-                    uncertain_delta=amount,
-                    reason="execution_unknown",
-                ),
-            )
         updated = reservation.model_copy(update={"uncertain": True})
         transaction.connection.execute(
             "UPDATE budget_reservations SET state='uncertain',payload=? "
@@ -178,19 +146,6 @@ class BudgetLedger:
             consumed = actual[dimension]
             updated = account.settle(reserved, consumed, from_uncertain=state == "uncertain")
             cls._save(transaction, updated)
-            cls._entry(
-                transaction,
-                BudgetEntry(
-                    campaign_id=reservation.campaign_id,
-                    dimension=dimension,
-                    settlement_id=settlement_id,
-                    consumed_delta=consumed,
-                    reserved_delta=-reserved if state == "reserved" else Decimal(0),
-                    uncertain_delta=-reserved if state == "uncertain" else Decimal(0),
-                    released_delta=max(Decimal(0), amount_difference(reserved, consumed)),
-                    reason="settle",
-                ),
-            )
         transaction.connection.execute(
             "UPDATE budget_reservations SET state='settled' WHERE workspace_id=? AND id=?",
             (transaction.workspace_id, reservation_id),
@@ -211,18 +166,3 @@ class BudgetLedger:
         if row is None:
             raise ResearchError(ErrorCode.NOT_FOUND, "Budget reservation not found")
         return Reservation.model_validate_json(row["payload"]), row["state"]
-
-    @staticmethod
-    def _entry(transaction: Transaction, entry: BudgetEntry) -> None:
-        transaction.connection.execute(
-            """INSERT INTO budget_entries
-            (workspace_id,id,campaign_id,dimension,settlement_id,payload) VALUES (?,?,?,?,?,?)""",
-            (
-                transaction.workspace_id,
-                entry.id,
-                entry.campaign_id,
-                entry.dimension,
-                entry.settlement_id,
-                encode(entry.model_dump(mode="json")),
-            ),
-        )

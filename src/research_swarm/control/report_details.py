@@ -158,7 +158,7 @@ class DetailProjection:
             "items": items,
             "owner_detail_queries": [
                 {"kind": kind, "campaign_id": self.campaign_id}
-                for kind in ("attempt", "confirmation_plan", "campaign_funding")
+                for kind in ("attempt", "confirmation_plan")
             ],
         }
 

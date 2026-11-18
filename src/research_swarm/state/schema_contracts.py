@@ -83,11 +83,6 @@ TABLES = (
         "workspace_id settlement_id request_digest response",
         ("workspace_id", "settlement_id"),
     ),
-    (
-        "budget_entries",
-        "workspace_id id campaign_id dimension settlement_id payload",
-        ("workspace_id", "id"),
-    ),
 )
 
 INDEXES = {

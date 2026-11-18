@@ -6,7 +6,6 @@ from pydantic import Field
 
 from research_swarm.control.comparisons import eligible_evaluation
 from research_swarm.control.evaluations import EvaluationAuthorization
-from research_swarm.control.funding_views import funding_context
 from research_swarm.control.models import CampaignData
 from research_swarm.control.obligations import operational_context
 from research_swarm.control.queries import summarize
@@ -348,32 +347,6 @@ def markdown(snapshot: JsonObject) -> str:
                 "",
             ]
         )
-    if funding := snapshot.get("funding"):
-        lines.extend(
-            [
-                "## Campaign funding",
-                "",
-                (
-                    "Budget totals already include descendant consumption; "
-                    "do not add child totals again."
-                ),
-                "",
-            ]
-        )
-        if incoming := funding["incoming"]:
-            lines.extend(
-                [
-                    f"Parent: `{incoming['parent_campaign_id']}`. Allocation: {incoming['state']}.",
-                    "",
-                ]
-            )
-        lines.extend(
-            [
-                f"Direct children: {funding['child_count']}. "
-                f"Open allocations: {funding['open_child_count']}.",
-                "",
-            ]
-        )
     if details := snapshot.get("research"):
         lines.extend(detail_markdown(details))
     return "\n".join(lines)
@@ -515,12 +488,9 @@ def capture_snapshot(
         ),
         "detail_query": {"kind": "evaluation_receipt", "campaign_id": campaign_row["id"]},
     }
-    funding = funding_context(transaction, campaign_row["id"])
     operational = operational_context(transaction, campaign_row["id"])
     if operational is not None:
         snapshot["operational"] = operational
-    if funding is not None:
-        snapshot["funding"] = funding
     snapshot["observed_cohorts"] = observed_cohorts(
         evaluations, complete=snapshot["evaluation_window"]["complete"]
     )
