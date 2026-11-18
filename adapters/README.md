@@ -12,8 +12,7 @@ class or mandatory provider SDK.
 | `ExecutionBoundary` | Qualified authority and time for one operation | [Boundary contract](../src/research_swarm/state/boundaries.py) |
 | `DeliveryClient` | Deliver saved actions and waits to the authority | [Delivery contract](../src/research_swarm/orchestration/async_delivery.py), [minimal client example](../tests/orchestration/test_async_delivery.py) |
 
-The local implementations ship with the Python package. Temporal delivery lives
-in `research_swarm.orchestration`.
+The local implementations ship with the Python package.
 
 ## Contract
 

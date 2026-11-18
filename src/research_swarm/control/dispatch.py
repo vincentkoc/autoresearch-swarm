@@ -720,6 +720,5 @@ def capabilities() -> JsonObject:
         "drivers": {
             "local": "explicit_worker",
             "remote": "scoped_http_worker",
-            "temporal": "pending",
         },
     }

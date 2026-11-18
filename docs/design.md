@@ -1411,6 +1411,9 @@ These commands share the same idempotency and error model as the research API. P
 
 ## 16. Local, Temporal, and Cloudflare adapters
 
+> Removed: the Temporal and Cloudflare adapters are no longer part of the
+> repository. This section records the original design intent only.
+
 ### 16.1 Shared guarantees
 
 Every conforming deployment provides:

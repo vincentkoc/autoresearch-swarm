@@ -5,7 +5,7 @@ change, execute it in isolation, evaluate it, then keep or reject it using recor
 evidence. Multiple agents and workers can explore candidates concurrently.
 
 The default runtime uses Python, asyncio, SQLite and local artifact storage.
-Temporal and remote workers extend the same contracts. A UI is optional.
+Remote workers extend the same contracts. A UI is optional.
 
 Inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch).
 The platform implementation is original and MIT-licensed. Upstream source is not
@@ -75,7 +75,7 @@ qualification.
 | Control a research loop | [Campaigns](docs/campaigns.md), [evaluation and promotion](docs/evaluation.md) |
 | Intervene during training | [Reactive controls and agent interfaces](docs/reactive.md) |
 | Register compute | [Remote workers](docs/remote-workers.md), [engine profiles](docs/engines.md), [worker control](docs/worker-control.md) |
-| Change infrastructure | [Orchestration](docs/orchestration.md), [Temporal](docs/temporal.md), [R2](docs/r2.md) |
+| Change infrastructure | [Orchestration](docs/orchestration.md), [R2](docs/r2.md) |
 | Preserve and recover evidence | [Artifacts and source](docs/artifacts-and-source.md), [historical import](docs/historical-evidence.md), [backup](docs/backup.md) |
 | Extend the platform | [Adapter contracts](adapters/README.md), [design contract](docs/design.md), [protocol conformance](docs/protocol-conformance.md) |
 | Prepare a release | [Release previews and PyPI publishing](docs/releasing.md) |
