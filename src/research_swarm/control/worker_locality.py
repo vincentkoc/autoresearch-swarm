@@ -10,11 +10,10 @@ from pydantic import Field, model_validator
 from research_swarm.control.job_inputs import resolved_job_inputs
 from research_swarm.control.models import JobData, TrialData
 from research_swarm.control.workers import WorkerControl, WorkerData, worker_authority
-from research_swarm.domain.clocks import ClockMilliseconds
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import ID, VersionedRecord, new_id
+from research_swarm.domain.types import ID, Milliseconds, VersionedRecord, new_id
 from research_swarm.domain.workers import WorkerBinding
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
@@ -44,7 +43,7 @@ class CacheObservation(VersionedRecord):
     advertisement: AdvertiseWorkerCache
     trust: Literal["worker_reported"] = "worker_reported"
     clock_epoch: ID
-    observed_ms: ClockMilliseconds
+    observed_ms: Milliseconds = Field(le=2**53 - 1)
     ttl_ms: Literal[60_000] = CACHE_HINT_TTL_MS
 
 

@@ -184,121 +184,12 @@ The CLI returns exit code 3 for blocked/disconnected drain results and code 2 fo
 command errors. Persistent mode requires explicit stop; it does not install a
 background service.
 
-## Recover original evidence without execution authority
+## Handle worker loss
 
-An old worker can submit its original native journal after its controller epoch
-changes. Recovery uses the initialized installation, original credential, signing
-key, journal identity, and machine registry identity:
-
-~~~sh
-research worker recover --worker-dir ./worker-state --attempt ATTEMPT_UUID
-~~~
-
-The command takes one explicit attempt. It holds the same driver and attempt
-locks as normal execution. It does not import a replacement bundle, initialize
-missing databases, verify an interpreter, sample a new clock, claim work, launch
-a process, or send cancellation. Existing driver command intents are not replayed.
-A missing original installation or changed custody identity requires repair.
-
-Recovery first authenticates the original assignment and frozen timing, then
-observes a durable native outcome. Proven closure releases the original machine
-reservation before contacting the controller. A missing receipt or a running
-supervisor retains capacity. Controller acceptance cannot stand in for local
-native closure. Missing project files, logs, reports, and registered interpreters
-do not prevent journal-only delivery.
-
-The command freezes its bounded journal and delivery keys in a separate private
-recovery intent. Lost acknowledgments replay those exact bytes. If the supervisor
-closes while an older observation is awaiting delivery, recovery finishes that
-original submission first. Run the same command again to submit the newer closure.
-Submission is always quarantined; an operator chooses explicit reconciliation.
-It never creates scientific success, evaluator receipts, or a promoted candidate.
-
-The JSON result separates `native_state`, `custody_state`, `delivery_state`,
-`submitted_native_state`, and `submission_id`. A completed delivery recommends
-`operator_reconcile` when it contains the latest closure, or `observe_native`
-when more observation is needed. Transport uncertainty recommends `retry_delivery`;
-revoked or unavailable historical authority recommends `repair_authority`.
-A durably rejected command returns `review_rejection` and its command ID. Its
-original key remains rejected even after conditions change; this command does not
-automatically rotate it. An operator must resolve the cause and arrange a separate
-explicit evidence submission. Do not delete custody or pending intents to retry.
-
-`controller_terminal` reports a concurrent accepted or `closed_unaccepted`
-disposition separately and does not borrow its native proof. Exit code 3 means
-delivery is pending or blocked; successful quarantine or a recognized terminal
-controller disposition returns 0.
-
-The Python equivalent uses the same path and returns the same typed report:
-
-~~~python
-from pathlib import Path
-from research_swarm.workers.recovery import recover_worker_attempt
-
-report = recover_worker_attempt(Path("worker-state"), attempt_id)
-~~~
-
-## Provision and install a replacement session
-
-First fence the exact original session through [`worker.fence`](worker-control.md#explicit-worker-fencing-and-session-replacement).
-Keep its fence ID and the returned worker revision. Replacement provisioning
-requires local operator `worker.manage`, `auth.manage`, and `read` authority.
-Reuse the original public description; this flow preserves capabilities and
-project scope.
-
-~~~sh
-research --state-dir ./controller-state worker provision-replacement \
-  --description ./worker-description.json \
-  --fence FENCE_UUID --revision FENCED_WORKER_REVISION \
-  --reason "Replace the original session" \
-  --url https://controller.example \
-  --bundle ./private-bundles/replacement.json
-~~~
-
-The operator stores one private provisioning record per worker and fence. Fresh
-principal, session, credential, token, command key, exact replacement request,
-and export destination are persisted before delivery. Retrying the same command
-replays that intent after lost acknowledgments. Changed inputs or destinations
-are conflicts. Revoked credentials, later fencing, and changed authority block
-export; they never trigger silent credential rotation.
-
-Transfer the private bundle to the original machine through an authorized
-channel. The platform does not send it to another host. Install into a separate,
-non-nested directory:
-
-~~~sh
-research worker install-replacement \
-  --original-worker-dir ./worker-state \
-  --worker-dir ./worker-state-next \
-  --bundle ./replacement.json
-~~~
-
-Installation verifies the original installation, journal and registry identities,
-then authenticates the new session and its own `worker_replacement` receipt.
-That receipt must identify the original binding. The worker receives only its
-own replacement receipt through the scoped query API.
-
-The new installation copies the original public description and exact private
-environment registration. It preserves the machine registry path and identity,
-creates a separate journal, and does not copy heartbeat, driver-command, or
-recovery state. A pending installation already pins the original registry, so a
-missing or swapped registry cannot be recreated empty during first connection.
-Interrupted initialization resumes its existing journal. Installation does not
-launch a workload or environment probe. The original installation remains the
-source for late evidence recovery.
-
-The replacement remains draining. Activate it explicitly with
-`worker.set_admission`, using its new binding and current admission revision,
-then start it with `research worker start --worker-dir ./worker-state-next`.
-Outstanding original attempts continue to occupy controller concurrency and
-native capacity until their respective closure requirements are met. A different
-controller's native registry ownership requires separate explicit migration;
-this flow does not transfer that ownership.
-
-The Python entry points are `provision_replacement` and `install_replacement`
-in `research_swarm.workers.remote_replacement`. Provisioning returns a private bundle;
-installation returns public worker identity; CLI
-output contains public identity only. Protect returned bundle objects as credentials.
+The swarm queue records the last heartbeat for each attempt. When it expires,
+the store records the lost attempt and makes the trial available for another
+claim, up to the campaign's attempt limit. A duplicate report or a report
+from a lost attempt leaves the trial result intact.
 
 ## Evidence and limits
 

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal, get_args
+from typing import Literal
 
 from pydantic import ValidationError
 
 from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
-from research_swarm.control.backup import BackupControl
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
 from research_swarm.control.child_models import (
@@ -41,7 +40,6 @@ from research_swarm.control.confirmation import (
     ConfirmationControl,
     CreateConfirmationPlan,
 )
-from research_swarm.control.delivery_registration import register_delivery
 from research_swarm.control.evaluations import (
     AuthorizeEvaluation,
     CompleteEvaluation,
@@ -65,19 +63,6 @@ from research_swarm.control.observation_models import (
     ResolveTrialObservation,
     SelectTrialObservation,
 )
-from research_swarm.control.orchestration import OrchestrationControl
-from research_swarm.control.orchestration_models import (
-    AcknowledgeDriverStart,
-    BindOrchestration,
-    CloseDriveTurn,
-    DriveTurnTarget,
-    FenceOrchestration,
-    PrepareDriveTurn,
-    RegisterDelivery,
-    TransferOrchestration,
-)
-from research_swarm.control.orchestration_transfer import OrchestrationTransferControl
-from research_swarm.control.orchestration_waits import OrchestrationWaitControl
 from research_swarm.control.population import PopulationControl
 from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.preflight import verified_source
@@ -88,7 +73,6 @@ from research_swarm.control.promotions import (
     PromotionControl,
 )
 from research_swarm.control.proposals import ProposalControl
-from research_swarm.control.queries import RecordKind
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
@@ -102,11 +86,6 @@ from research_swarm.control.search_models import (
 )
 from research_swarm.control.search_observations import ObservationControl
 from research_swarm.control.search_selection import SelectionControl
-from research_swarm.control.wait_models import (
-    AcknowledgeWakeup,
-    OrchestrationWaitTarget,
-    RecordOrchestrationWait,
-)
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -123,16 +102,9 @@ from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSes
 from research_swarm.control.workers import ClaimJob, EnrollWorker, WorkerControl
 from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.artifacts import ArtifactRetention, ReaderSessionTarget
-from research_swarm.domain.backup import RegisterBackupCustody, SealWorkspace
 from research_swarm.domain.budgets import BudgetKind
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.event_recovery import (
-    AdvanceEventFloor,
-    CollectExpiredSnapshots,
-    CreateRecoverySnapshot,
-    RecoverySnapshotTarget,
-)
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.experiments import ExperimentSpec, SourceRef
 from research_swarm.domain.identity import CommandContext
@@ -143,7 +115,6 @@ from research_swarm.projects.manifest import ResolvedProject, resolve_project
 from research_swarm.projects.source import SourceManifest
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
 from research_swarm.state.database import Database, JsonObject, Transaction
-from research_swarm.state.event_recovery import EventRecovery
 from research_swarm.state.ledger import BudgetLedger
 
 
@@ -197,9 +168,7 @@ class ResearchService:
         if database.authority_identity != artifacts.database.authority_identity:
             raise ValueError("Research and artifact catalogs must share a transaction authority")
         self.database = database
-        self.backups = BackupControl(database)
         self.crypto_provider = resolve_crypto(crypto_provider)
-        self.event_recovery = EventRecovery(database, get_args(RecordKind))
         self.artifacts = artifacts
         self.worker_outputs = WorkerOutputs(
             database, artifacts, crypto_provider=self.crypto_provider
@@ -246,27 +215,12 @@ class ResearchService:
         self.campaigns = CampaignControl(database)
         self.scientific_completion = ScientificCompletionControl(database)
         self.children = ChildControl(database, self._create_campaign, self._validate_contract)
-        self.orchestration = OrchestrationControl(
-            database, self._dispatch_drive, crypto_provider=self.crypto_provider
-        )
-        self.orchestration_waits = OrchestrationWaitControl(database)
-        self.orchestration_transfer = OrchestrationTransferControl(database, artifacts)
         self.worker_lifecycle = WorkerLifecycle(database, self.acceptance)
-
-    def seal_workspace(self, context: CommandContext, request: SealWorkspace) -> JsonObject:
-        return self.backups.seal(context, request)
 
     def reconcile_reader_session(
         self, context: CommandContext, request: ReaderSessionTarget
     ) -> JsonObject:
-        return self.artifacts.reconcile_reader_session(
-            context, request.session_id, crypto_provider=self.crypto_provider
-        )
-
-    def register_backup_custody(
-        self, context: CommandContext, request: RegisterBackupCustody
-    ) -> JsonObject:
-        return self.backups.register_custody(context, request)
+        return self.artifacts.reconcile_reader_session(context, request.session_id)
 
     def expire_acceptance(self, context: CommandContext, request: ExpireAcceptance) -> JsonObject:
         return self.acceptance.expire(context, request)
@@ -290,79 +244,6 @@ class ResearchService:
         self, context: CommandContext, intent: ImportHistoricalEvidence
     ) -> JsonObject:
         return self.historical_imports.record(context, intent)
-
-    def create_recovery_snapshot(
-        self, context: CommandContext, intent: CreateRecoverySnapshot
-    ) -> JsonObject:
-        return self.event_recovery.create(context, intent)
-
-    def release_recovery_snapshot(
-        self, context: CommandContext, intent: RecoverySnapshotTarget
-    ) -> JsonObject:
-        return self.event_recovery.release(context, intent)
-
-    def advance_event_floor(self, context: CommandContext, intent: AdvanceEventFloor) -> JsonObject:
-        return self.event_recovery.advance_floor(context, intent)
-
-    def close_drive_turn(self, context: CommandContext, intent: CloseDriveTurn) -> JsonObject:
-        return self.orchestration.close(context, intent)
-
-    def transfer_orchestration(
-        self, context: CommandContext, intent: TransferOrchestration
-    ) -> JsonObject:
-        return self.orchestration_transfer.transfer(context, intent)
-
-    def acknowledge_driver_start(
-        self, context: CommandContext, intent: AcknowledgeDriverStart
-    ) -> JsonObject:
-        return self.orchestration_transfer.acknowledge_start(context, intent)
-
-    def collect_expired_snapshots(
-        self, context: CommandContext, intent: CollectExpiredSnapshots
-    ) -> JsonObject:
-        return self.event_recovery.collect(context, intent)
-
-    def _dispatch_drive(
-        self, context: CommandContext, operation: str, payload: JsonObject
-    ) -> JsonObject:
-        from research_swarm.control.dispatch import dispatch_command
-
-        return dispatch_command(self, context, operation, payload)
-
-    def bind_orchestration(self, context: CommandContext, intent: BindOrchestration) -> JsonObject:
-        return self.orchestration.bind(context, intent)
-
-    def register_delivery(self, context: CommandContext, intent: RegisterDelivery) -> JsonObject:
-        return register_delivery(self.database, context, intent)
-
-    def record_orchestration_wait(
-        self, context: CommandContext, intent: RecordOrchestrationWait
-    ) -> JsonObject:
-        return self.orchestration_waits.record(context, intent)
-
-    def reconcile_orchestration_wait(
-        self, context: CommandContext, intent: OrchestrationWaitTarget
-    ) -> JsonObject:
-        return self.orchestration_waits.reconcile(context, intent)
-
-    def acknowledge_orchestration_wakeup(
-        self, context: CommandContext, intent: AcknowledgeWakeup
-    ) -> JsonObject:
-        return self.orchestration_waits.acknowledge(context, intent)
-
-    def prepare_drive_turn(self, context: CommandContext, intent: PrepareDriveTurn) -> JsonObject:
-        return self.orchestration.prepare(context, intent)
-
-    def execute_drive_turn(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
-        return self.orchestration.execute(context, intent)
-
-    def reconcile_drive_turn(self, context: CommandContext, intent: DriveTurnTarget) -> JsonObject:
-        return self.orchestration.reconcile(context, intent)
-
-    def fence_orchestration(
-        self, context: CommandContext, intent: FenceOrchestration
-    ) -> JsonObject:
-        return self.orchestration.fence(context, intent)
 
     def create_child_campaign(
         self, context: CommandContext, request: CreateChildCampaign

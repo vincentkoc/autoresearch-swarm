@@ -12,7 +12,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from research_swarm.crypto import Ed25519Provider
 from research_swarm.domain.artifacts import (
     ArtifactRecord,
     ArtifactRetention,
@@ -143,6 +142,22 @@ class ArtifactCatalog:
         return updated
 
 
+def _reader_references(transaction: Transaction, session_id: str) -> tuple[JsonObject, ...]:
+    rows = transaction.connection.execute(
+        "SELECT id FROM records WHERE workspace_id=? AND kind='artifact_reference' "
+        "AND state='retained' AND json_extract(payload,'$.reader_session_id')=? ORDER BY id",
+        (transaction.workspace_id, session_id),
+    ).fetchall()
+    references = tuple(transaction.get("artifact_reference", row["id"]) for row in rows)
+    for reference in references:
+        retention = reference["data"]["retention"]
+        if retention["owner_kind"] != "artifact_read" or retention["purpose"] != "read":
+            raise ResearchError(
+                ErrorCode.ARTIFACT_UNVERIFIED, "Reader session has a non-reader reference"
+            )
+    return references
+
+
 class ArtifactService:
     def __init__(
         self,
@@ -177,31 +192,8 @@ class ArtifactService:
         return upload
 
     @staticmethod
-    def _internal(
-        context: CommandContext,
-        key: str,
-        operation: str,
-        payload: JsonObject,
-        *,
-        cleanup_pin_id: str | None = None,
-    ) -> CommandContext:
-        return artifact_context(context, key, operation, payload, cleanup_pin_id=cleanup_pin_id)
-
-    @staticmethod
     def _blob(record: ArtifactRecord) -> StoredBlob:
         return StoredBlob(reference=record.reference, generation=record.storage_generation)
-
-    def _storage_authority(self, context: CommandContext, upload_id: str) -> None:
-        from research_swarm.state.drive_guard import require_storage_authority
-        from research_swarm.state.workspace_gate import require_workspace_mutation
-
-        def read(connection: SqlSession) -> None:
-            require_workspace_mutation(
-                connection, context.principal.workspace_id, "artifact.storage"
-            )
-            require_storage_authority(Transaction(connection, context), upload_id)
-
-        self.database.store.read(read)
 
     def create_upload_in(self, transaction: Transaction, request: BeginUpload) -> JsonObject:
         """Create quota-accounted upload state inside the caller's authorized transaction."""
@@ -256,7 +248,6 @@ class ArtifactService:
         with self.store.upload_guard(context.principal.workspace_id, response["result"]["id"]):
             row = self.database.read_record(context, "upload", response["result"]["id"])
             if row["state"] == "pending":
-                self._storage_authority(context, response["result"]["id"])
                 self.store.begin(self._upload_owner(context, row))
         return response
 
@@ -276,7 +267,6 @@ class ArtifactService:
         upload = self._upload_owner(context, row)
         if row["state"] != "pending":
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload is not pending")
-        self._storage_authority(context, upload_id)
         return self.store.append(upload, offset, content)
 
     def upload_status(self, context: CommandContext, upload_id: str) -> JsonObject:
@@ -285,8 +275,6 @@ class ArtifactService:
         with self.store.upload_guard(context.principal.workspace_id, upload_id):
             row = self.database.read_record(context, "upload", upload_id)
             upload = self._upload_owner(context, row)
-            if row["state"] == "pending":
-                self._storage_authority(context, upload_id)
             progress = self.store.progress(upload) if row["state"] == "pending" else None
             return {**row, "transfer": progress.model_dump(mode="json") if progress else None}
 
@@ -371,7 +359,6 @@ class ArtifactService:
                 return previous
             raise ResearchError(ErrorCode.INVALID_TRANSITION, "Upload was aborted")
         if row["state"] == "pending":
-            self._storage_authority(context, upload_id)
             blob = self.store.finalize(upload)
         else:
             blob = StoredBlob(reference=upload.reference(), generation=upload.id)
@@ -415,12 +402,7 @@ class ArtifactService:
         self, context: CommandContext, upload_id: str, before: str, after: str
     ) -> None:
         self.database.execute(
-            self._internal(
-                context,
-                f"upload-{after}:{upload_id}",
-                "artifact.finish_upload",
-                {"upload_id": upload_id, "state": after},
-            ),
+            artifact_context(context, f"upload-{after}:{upload_id}"),
             "artifact.finish_upload",
             {"upload_id": upload_id, "state": after},
             "artifact.upload",
@@ -517,7 +499,7 @@ class ArtifactService:
 
             finished = {"upload_id": upload_id, "state": "aborted"}
             self.database.execute(
-                self._internal(context, completion_key, completion_operation, finished),
+                artifact_context(context, completion_key),
                 completion_operation,
                 finished,
                 scope,
@@ -570,9 +552,7 @@ class ArtifactService:
         key, request = self.prepare_inline_upload(
             context, content, purpose=purpose, media_type=media_type, max_bytes=max_bytes
         )
-        begin = self._internal(
-            context, "inline-begin:" + key, "artifact.begin_upload", request.model_dump(mode="json")
-        )
+        begin = artifact_context(context, "inline-begin:" + key)
         upload = self.begin_upload(
             begin,
             request,
@@ -591,9 +571,7 @@ class ArtifactService:
                         current["state"] == "pending" and current["transfer"]["published"]
                     ):
                         raise
-        finish = self._internal(
-            context, "inline-finish:" + key, "artifact.finalize_upload", {"upload_id": upload["id"]}
-        )
+        finish = artifact_context(context, "inline-finish:" + key)
         row = self.finalize_upload(finish, upload["id"])["result"]
         return ArtifactRecord.model_validate(row["data"]).reference
 
@@ -672,12 +650,7 @@ class ArtifactService:
             return {"retention": retained, "artifact": record.model_dump(mode="json")}
 
         response = self.database.execute(
-            self._internal(
-                context,
-                "pin:" + pin_id,
-                "artifact.pin",
-                {"reference": reference.model_dump(mode="json")},
-            ),
+            artifact_context(context, "pin:" + pin_id),
             "artifact.pin",
             {"reference": reference.model_dump(mode="json")},
             scope,
@@ -689,13 +662,7 @@ class ArtifactService:
             yield record
         finally:
             self.database.execute(
-                self._internal(
-                    context,
-                    "unpin:" + pin_id,
-                    "artifact.unpin",
-                    {"reference_id": response["result"]["retention"]["id"]},
-                    cleanup_pin_id=pin_id,
-                ),
+                artifact_context(context, "unpin:" + pin_id),
                 "artifact.unpin",
                 {"reference_id": response["result"]["retention"]["id"]},
                 scope,
@@ -710,38 +677,26 @@ class ArtifactService:
         self,
         context: CommandContext,
         session_id: str,
-        *,
-        crypto_provider: Ed25519Provider | None = None,
     ) -> JsonObject:
         return self.database.with_preflight(
             context,
             "artifact.reconcile_reader_session",
             {"session_id": session_id},
             "artifact.admin",
-            lambda: self._reconcile_reader_session(
-                context, session_id, crypto_provider=crypto_provider
-            ),
+            lambda: self._reconcile_reader_session(context, session_id),
         )
 
     def _reconcile_reader_session(
         self,
         context: CommandContext,
         session_id: str,
-        *,
-        crypto_provider: Ed25519Provider | None = None,
     ) -> JsonObject:
-        from research_swarm.control.recovery_readers import recovery_reader_context
-        from research_swarm.state.recovery_readers import reader_references
-
         context.principal.require("artifact.admin")
         payload = {"session_id": session_id}
         session = self.database.read_record(context, "artifact_read_session", session_id)
         owner = decode_owner(session["data"])
         if session["state"] != "closed":
             require_owner_closed(self.reader_ownership, owner)
-        context = recovery_reader_context(
-            self.database, context, session, crypto_provider=crypto_provider
-        )
 
         def reconcile(transaction: Transaction) -> JsonObject:
             row = transaction.get("artifact_read_session", session_id)
@@ -751,7 +706,7 @@ class ArtifactService:
                 return row
             if row["revision"] != session["revision"] or session["state"] != "active":
                 raise ResearchError(ErrorCode.REVISION_CONFLICT, "Reader session changed")
-            for reference in reader_references(transaction, session_id):
+            for reference in _reader_references(transaction, session_id):
                 retention = ArtifactRetention.model_validate(reference["data"]["retention"])
                 ArtifactCatalog.release(
                     transaction,
@@ -894,12 +849,7 @@ class ArtifactService:
             return updated
 
         self.database.execute(
-            self._internal(
-                context,
-                "finish-delete:" + str(record.deletion_id),
-                "artifact.finish_deletion",
-                {"record": record.model_dump(mode="json")},
-            ),
+            artifact_context(context, "finish-delete:" + str(record.deletion_id)),
             "artifact.finish_deletion",
             {"record": record.model_dump(mode="json")},
             "artifact.delete",

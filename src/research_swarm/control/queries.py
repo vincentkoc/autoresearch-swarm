@@ -23,35 +23,12 @@ RecordKind = Literal[
     "population_member",
     "population_change",
     "artifact_read_session",
-    "workspace_gate",
-    "workspace_seal",
-    "backup_custody",
-    "recovery_admission",
-    "logical_recovery_election",
-    "worker_recovery_route",
-    "recovery_activation",
-    "restoration",
     "acceptance_lease",
     "imported_evidence",
     "campaign_obligations",
     "campaign_obligation_chunk",
     "scientific_completion",
     "campaign_resource_closure",
-    "orchestration_checkpoint",
-    "orchestration_checkpoint_chunk",
-    "orchestration_transfer",
-    "orchestration_binding_history",
-    "orchestration_start",
-    "orchestration_start_ack",
-    "orchestration_wait",
-    "wait_readiness",
-    "wakeup_delivery",
-    "wakeup_acknowledgment",
-    "orchestration_binding",
-    "delivery_registration",
-    "drive_turn",
-    "drive_receipt",
-    "drive_closure",
     "campaign_funding",
     "funding_projection",
     "funding_change",
@@ -136,16 +113,6 @@ def summarize(row: JsonObject) -> JsonObject:
         "campaign_obligations",
         "scientific_completion",
         "campaign_resource_closure",
-        "orchestration_checkpoint",
-        "orchestration_transfer",
-        "orchestration_start",
-        "orchestration_start_ack",
-        "orchestration_binding",
-        "delivery_registration",
-        "orchestration_wait",
-        "wait_readiness",
-        "wakeup_delivery",
-        "wakeup_acknowledgment",
     }:
         result["data"] = data
     elif row["kind"] == "imported_evidence":
@@ -171,28 +138,6 @@ def summarize(row: JsonObject) -> JsonObject:
             "ordinal": data["ordinal"],
             "entry_count": len(data["entries"]),
         }
-    elif row["kind"] == "orchestration_checkpoint_chunk":
-        result["data"] = {
-            "checkpoint_id": data["checkpoint_id"],
-            "ordinal": data["ordinal"],
-            "entry_count": len(data["entries"]),
-        }
-    elif row["kind"] == "drive_turn":
-        result["data"] = {
-            key: data[key]
-            for key in (
-                "campaign_id",
-                "epoch",
-                "ordinal",
-                "route",
-                "actor_id",
-                "configuration_digest",
-                "planning_watermark",
-            )
-        }
-        result["data"]["operation"] = data["action"]["operation"]
-    elif row["kind"] in {"drive_receipt", "drive_closure"}:
-        result["data"] = data
     elif row["kind"] == "campaign_funding":
         result["data"] = {
             key: data[key]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import sqlite3
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -93,7 +93,7 @@ class SQLiteStore:
         with self.connect() as session:
             connection = session.connection
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, SCHEMA_VERSION):
+            if version not in (0, 1, 2, 3, SCHEMA_VERSION):
                 raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported database schema")
             enable_wal(connection, timeout_ms=busy_timeout_ms)
             connection.execute("PRAGMA synchronous=FULL")
@@ -132,9 +132,3 @@ class SQLiteStore:
 
     def write(self, callback: Callable[[SqlSession], T]) -> T:
         return self._run(callback, write=True)
-
-    def backup(self, destination: Path) -> None:
-        if destination.exists():
-            raise FileExistsError(destination)
-        with self.connect() as source, closing(sqlite3.connect(destination)) as target, target:
-            source.connection.backup(target)

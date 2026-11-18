@@ -19,7 +19,6 @@ from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.domain.types import ID, Name, Revision, VersionedRecord
 
 MAX_TOOL_BYTES = 128 * 1024
@@ -200,16 +199,6 @@ def make_mcp(
     def get_events(after: Revision = 0, limit: EventLimit = 50) -> ToolCall:
         """Read a bounded event page strictly after the supplied workspace cursor."""
         return tool_result(lambda: client.events(after=after, limit=limit))
-
-    @server.tool(name="research_snapshot_page", annotations=read_only, structured_output=True)
-    def snapshot_page(request: RecoveryPage) -> ToolCall:
-        """Read bounded manifest entries from this reader's immutable recovery snapshot."""
-        return tool_result(lambda: client.snapshot_page(request))
-
-    @server.tool(name="research_snapshot_item", annotations=read_only, structured_output=True)
-    def snapshot_item(request: RecoveryItem) -> ToolCall:
-        """Read at most 64 KiB of frozen canonical JSON as base64, with its content digest."""
-        return tool_result(lambda: client.snapshot_item(request))
 
     if authorize_local_capture is not None:
 

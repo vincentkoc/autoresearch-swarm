@@ -7,12 +7,6 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import model_validator
 
-from research_swarm.control.recovery_operations import (
-    MAX_JOURNAL_BYTES,
-    recovery_context,
-    require_journal_upload,
-    require_raw_operation,
-)
 from research_swarm.control.worker_artifacts import WorkerAttemptTarget
 from research_swarm.control.worker_records import WorkerData
 from research_swarm.control.worker_sessions import historical_attempt_owner
@@ -24,7 +18,6 @@ from research_swarm.domain.artifacts import (
     StoredBlob,
     UploadSpec,
 )
-from research_swarm.domain.canonical import content_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, artifact_context
@@ -37,7 +30,7 @@ from research_swarm.state.sql import SqlSession
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from research_swarm.workers.journal_records import JournalEntry
+    pass
 
 OutputRole = Literal["journal", "report", "stdout", "stderr", "output"]
 
@@ -165,80 +158,6 @@ class WorkerOutputs:
         self.database, self.artifacts = database, artifacts
         self.crypto_provider = crypto_provider
 
-    def _recovery_context(
-        self,
-        context: CommandContext,
-        operation: str,
-        request: WorkerUploadTarget,
-        payload: JsonObject | None = None,
-    ) -> CommandContext:
-        context = recovery_context(
-            self.database,
-            context,
-            operation,
-            request.model_dump(mode="json") if payload is None else payload,
-            attempt_id=request.attempt_id,
-            upload_id=request.upload_id,
-            crypto_provider=self.crypto_provider,
-        )
-
-        def read(connection: SqlSession) -> None:
-            _, data, _, upload, _ = owned_upload(Transaction(connection, context), request)
-            require_journal_upload(context, data.role, data.output_name, upload.size_bytes)
-
-        self.database.store.read(read)
-        return context
-
-    def _validate_journal(
-        self, context: CommandContext, request: WorkerUploadTarget, blob: StoredBlob
-    ) -> JournalEntry | None:
-        if context._recovery_operation is None:
-            return None
-        with self.artifacts.store.reader(context.principal.workspace_id, blob) as stream:
-            raw = stream.read(MAX_JOURNAL_BYTES + 1)
-        journal = self._parse_journal(raw)
-
-        self.database.store.read(
-            lambda connection: self._verify_journal_in(
-                Transaction(connection, context), request, blob, journal
-            )
-        )
-        return journal
-
-    @staticmethod
-    def _parse_journal(raw: bytes) -> JournalEntry:
-        """Decode bounded immutable bytes; native grant verification is separate."""
-        from research_swarm.workers.journal_records import JournalEntry
-
-        try:
-            if len(raw) > MAX_JOURNAL_BYTES:
-                raise ValueError("Recovery journal exceeds its byte limit")
-            return JournalEntry.model_validate(strict_json_loads(raw))
-        except ValueError as error:
-            raise ResearchError(
-                ErrorCode.ARTIFACT_UNVERIFIED, "Recovery journal is invalid"
-            ) from error
-
-    def _verify_journal_in(
-        self,
-        transaction: Transaction,
-        request: WorkerUploadTarget,
-        blob: StoredBlob,
-        journal: JournalEntry,
-    ) -> None:
-        from research_swarm.control.observations import PublishAttempt, validate_native_grant
-
-        worker, _ = historical_attempt_owner(
-            transaction, request.worker_id, request.session_id, request.attempt_id
-        )
-        validate_native_grant(
-            transaction,
-            PublishAttempt(attempt_id=request.attempt_id, journal_artifact=blob.reference),
-            journal,
-            worker,
-            crypto_provider=self.crypto_provider,
-        )
-
     def _check_owner(self, context: CommandContext, request: WorkerUploadTarget) -> None:
         # Check immutable ownership before creating a lock for a supplied identifier.
         # Current enrollment and mutable state are checked again inside the guard.
@@ -271,17 +190,6 @@ class WorkerOutputs:
         )
 
     def _begin(self, context: CommandContext, request: BeginWorkerUpload) -> JsonObject:
-        context = recovery_context(
-            self.database,
-            context,
-            "worker.begin_upload",
-            request.model_dump(mode="json"),
-            attempt_id=request.attempt_id,
-            crypto_provider=self.crypto_provider,
-        )
-        require_journal_upload(
-            context, request.role, request.output_name, request.content.size_bytes
-        )
 
         return self.database.execute(
             context,
@@ -292,9 +200,6 @@ class WorkerOutputs:
         )
 
     def _begin_in(self, transaction: Transaction, request: BeginWorkerUpload) -> JsonObject:
-        require_journal_upload(
-            transaction.context, request.role, request.output_name, request.content.size_bytes
-        )
         worker, attempt = historical_attempt_owner(
             transaction, request.worker_id, request.session_id, request.attempt_id
         )
@@ -339,11 +244,6 @@ class WorkerOutputs:
             return data, row, upload
 
         data, row, upload = self.database.store.read(read)
-        if row["state"] == "pending":
-            context = self._recovery_context(context, "worker.output", request)
-            require_raw_operation(
-                self.database, context, "worker.output", request.model_dump(mode="json")
-            )
         progress = self.artifacts.store.progress(upload) if row["state"] == "pending" else None
         return {
             **row,
@@ -358,13 +258,6 @@ class WorkerOutputs:
         request = WorkerUploadTarget.model_validate(request)
         self._check_owner(context, request)
         with self.artifacts.store.upload_guard(context.principal.workspace_id, request.upload_id):
-            payload = {
-                **request.model_dump(mode="json"),
-                "offset": offset,
-                "content_digest": content_digest(content),
-            }
-            context = self._recovery_context(context, "worker.upload_part", request, payload)
-            require_raw_operation(self.database, context, "worker.upload_part", payload)
             return self._append(context, request, offset, content)
 
     def _append(
@@ -398,7 +291,6 @@ class WorkerOutputs:
             )
             if previous is not None:
                 return previous
-            context = self._recovery_context(context, "worker.finalize_upload", request)
             return self._finalize(context, request)
 
     def _finalize(self, context: CommandContext, request: WorkerUploadTarget) -> JsonObject:
@@ -415,22 +307,17 @@ class WorkerOutputs:
             return row, upload
 
         row, upload = self.database.store.read(read)
-        require_raw_operation(self.database, context, "worker.finalize_upload", payload)
         if row["state"] == "pending":
             self.artifacts.store.begin(upload)
             blob = self.artifacts.store.finalize(upload)
         else:
             blob = StoredBlob(reference=upload.reference(), generation=upload.id)
-        journal = (
-            self._validate_journal(context, request, blob) if row["state"] == "pending" else None
-        )
-
         response = self.database.execute(
             context,
             "worker.finalize_upload",
             payload,
             "worker.outputs",
-            lambda transaction: self._finalize_in(transaction, request, blob, journal=journal),
+            lambda transaction: self._finalize_in(transaction, request, blob),
         )
         # Publication is already committed. Cleanup remains quota-accounted and
         # explicitly recoverable; its failure cannot replace the accepted acknowledgment.
@@ -445,21 +332,11 @@ class WorkerOutputs:
         transaction: Transaction,
         request: WorkerUploadTarget,
         blob: StoredBlob,
-        *,
-        journal: JournalEntry | None = None,
     ) -> JsonObject:
         """Commit verified bytes and provenance together; callers own byte preflight."""
         receipt, data, row, upload, attempt = owned_upload(transaction, request)
         if blob != StoredBlob(reference=upload.reference(), generation=upload.id):
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Verified upload generation differs")
-        if (
-            transaction.context._recovery_operation is not None
-            and row["state"] == "pending"
-            and journal is None
-        ):
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Recovery journal proof is absent")
-        if journal is not None:
-            self._verify_journal_in(transaction, request, blob, journal)
         if data.artifact is None:
             require_pending(attempt)
         result = self.artifacts.publish_upload_in(transaction, upload.id, blob)
@@ -506,9 +383,6 @@ class WorkerOutputs:
             )
             if previous is not None:
                 return previous
-
-            context = self._recovery_context(context, "worker.cleanup_upload", request)
-            require_raw_operation(self.database, context, "worker.cleanup_upload", payload)
 
             def read(connection: SqlSession) -> tuple[JsonObject, UploadSpec]:
                 _, _, row, upload, _ = owned_upload(Transaction(connection, context), request)
@@ -571,10 +445,6 @@ class WorkerOutputs:
 
                 if self.database.store.read(completed):
                     return previous
-            context = self._recovery_context(context, "worker.abort_upload", request)
-            require_raw_operation(
-                self.database, context, "worker.abort_upload", request.model_dump(mode="json")
-            )
             return self.artifacts.abort_authorized(
                 context,
                 request.upload_id,
@@ -672,12 +542,7 @@ class WorkerOutputs:
                 return result
 
             self.database.execute(
-                artifact_context(
-                    context,
-                    "worker-cleanup:" + upload.id,
-                    "worker.finish_upload_cleanup",
-                    {"upload_id": upload.id},
-                ),
+                artifact_context(context, "worker-cleanup:" + upload.id),
                 "worker.finish_upload_cleanup",
                 {"upload_id": upload.id},
                 "worker.outputs",

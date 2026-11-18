@@ -15,7 +15,6 @@ from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.runtime import LocalRuntime, read_private
 
 
@@ -87,47 +86,6 @@ def parser() -> argparse.ArgumentParser:
                 "--project-repository", help="Optional HTTPS GitHub project repository for About"
             )
     commands.add_parser("capabilities")
-    backup = commands.add_parser("backup", help="Export and verify a sealed native checkpoint")
-    backups = backup.add_subparsers(dest="backup_action", required=True)
-    export = backups.add_parser("export", help="Export an already sealed filesystem workspace")
-    export.add_argument("path", type=Path)
-    export.add_argument("--backup-id", required=True)
-    verify = backups.add_parser(
-        "verify", help="Verify a private checkpoint without opening a runtime"
-    )
-    verify.add_argument("path", type=Path)
-    verify.add_argument("--digest", help="Expected manifest digest from trusted custody")
-    restore = backups.add_parser(
-        "restore", help="Restore a verified checkpoint into an inactive epoch"
-    )
-    restore.add_argument("path", type=Path)
-    restore.add_argument("--destination", type=Path, required=True)
-    restore.add_argument(
-        "--restore-id", required=True, help="Stable UUID for interruption recovery"
-    )
-    restore.add_argument("--digest", help="Expected manifest digest from trusted custody")
-    claim_request = backups.add_parser(
-        "request-claim", help="Prove possession of one completed inactive restore"
-    )
-    claim_request.add_argument("path", type=Path)
-    claim_request.add_argument("--destination", type=Path, required=True)
-    claim_request.add_argument("--restore-id", required=True)
-    claim_request.add_argument("--digest", help="Expected manifest digest from trusted custody")
-    claim = backups.add_parser("claim", help="Irreversibly elect one target at the original source")
-    claim.add_argument("path", type=Path)
-    claim.add_argument("--request-file", type=Path, required=True)
-    admit = backups.add_parser("admit", help="Admit the elected inactive target into recovery")
-    admit.add_argument("path", type=Path)
-    admit.add_argument("--claim-file", type=Path, required=True)
-    route = backups.add_parser("route", help="Sign one original worker's recovery destination")
-    route.add_argument(
-        "--file", type=Path, required=True, help="Public recovery route request JSON"
-    )
-    activate = backups.add_parser("activate", help="Activate a fully reconciled native target")
-    activate.add_argument("--file", type=Path, required=True, help="Activation request JSON")
-    activate.add_argument(
-        "--revision", type=int, required=True, help="Current workspace gate revision"
-    )
     engine = commands.add_parser("engine", help="Inspect and register local execution environments")
     engines = engine.add_subparsers(dest="engine_action", required=True)
     engines.add_parser("list")
@@ -192,21 +150,6 @@ def parser() -> argparse.ArgumentParser:
     provision.add_argument("--project", action="append", required=True)
     provision.add_argument("--bundle", type=Path, required=True)
     provision.add_argument("--name", default="Remote CPU worker")
-    replacement = worker_actions.add_parser(
-        "provision-replacement", help="Provision a fenced worker replacement"
-    )
-    replacement.add_argument("--description", type=Path, required=True)
-    replacement.add_argument("--fence", required=True)
-    replacement.add_argument("--revision", type=int, required=True)
-    replacement.add_argument("--reason", required=True)
-    replacement.add_argument("--url", required=True)
-    replacement.add_argument("--bundle", type=Path, required=True)
-    install = worker_actions.add_parser(
-        "install-replacement", help="Install a replacement beside original custody"
-    )
-    install.add_argument("--original-worker-dir", type=Path, required=True)
-    install.add_argument("--worker-dir", type=Path, required=True)
-    install.add_argument("--bundle", type=Path, required=True)
     connect = worker_actions.add_parser(
         "connect", help="Import or verify a pinned worker connection"
     )
@@ -218,26 +161,6 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--once", action="store_true", help="Drain available work and exit")
     start.add_argument("--poll-ms", type=int, default=500)
     start.add_argument("--maximum-backoff-ms", type=int, default=15000)
-    recover = worker_actions.add_parser("recover", help="Quarantine one original native journal")
-    recover.add_argument("--worker-dir", type=Path, required=True)
-    recover.add_argument("--attempt", required=True)
-    recover.add_argument(
-        "--route-id",
-        help="Explicit installed recovery route; otherwise use the original controller",
-    )
-    install_route = worker_actions.add_parser(
-        "install-recovery-route", help="Bind an elected target to original worker custody"
-    )
-    install_route.add_argument("--worker-dir", type=Path, required=True)
-    install_route.add_argument(
-        "--file", type=Path, required=True, help="Target-signed public route JSON"
-    )
-    install_route.add_argument(
-        "--source-pin",
-        type=Path,
-        required=True,
-        help="Independently trusted source custody pin JSON",
-    )
     command = commands.add_parser("command", help="Send a typed domain command")
     command.add_argument("operation")
     command.add_argument("--file", type=Path, help="JSON request file, otherwise read stdin")
@@ -297,17 +220,6 @@ def parser() -> argparse.ArgumentParser:
     events = commands.add_parser("events")
     events.add_argument("--after", type=int, default=0)
     events.add_argument("--limit", type=int, default=100)
-    snapshot = commands.add_parser("snapshot")
-    snapshot_actions = snapshot.add_subparsers(dest="snapshot_action", required=True)
-    snapshot_page = snapshot_actions.add_parser("page")
-    snapshot_page.add_argument("snapshot_id")
-    snapshot_page.add_argument("--limit", type=int, default=50)
-    snapshot_page.add_argument("--cursor")
-    snapshot_item = snapshot_actions.add_parser("item")
-    snapshot_item.add_argument("snapshot_id")
-    snapshot_item.add_argument("ordinal", type=int)
-    snapshot_item.add_argument("--offset", type=int, default=0)
-    snapshot_item.add_argument("--limit", type=int, default=64 * 1024)
     artifact = commands.add_parser("artifact")
     artifact_actions = artifact.add_subparsers(dest="artifact_action", required=True)
     upload = artifact_actions.add_parser("upload")
@@ -490,20 +402,6 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
 
         return client.proposal_get(ProposalRead(request_id=args.request_id))
     if args.action == "worker":
-        if args.worker_action == "provision-replacement":
-            from research_swarm.workers.remote_enrollment import WorkerDescription
-            from research_swarm.workers.remote_replacement import provision_replacement
-
-            bundle = provision_replacement(
-                client,
-                WorkerDescription.model_validate(_request(args.description)),
-                fence_id=args.fence,
-                expected_revision=args.revision,
-                reason=args.reason,
-                url=args.url,
-                destination=args.bundle,
-            )
-            return {"state": "provisioned", "worker": bundle.worker.model_dump(mode="json")}
         if args.worker_action == "provision":
             from research_swarm.workers.remote_enrollment import WorkerDescription, provision_worker
 
@@ -577,23 +475,6 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
         return client.budget(args.campaign_id)
     if args.action == "events":
         return client.events(after=args.after, limit=args.limit)
-    if args.action == "snapshot":
-        if args.snapshot_action == "page":
-            return client.snapshot_page(
-                RecoveryPage(
-                    snapshot_id=args.snapshot_id,
-                    limit=args.limit,
-                    cursor=args.cursor,
-                )
-            )
-        return client.snapshot_item(
-            RecoveryItem(
-                snapshot_id=args.snapshot_id,
-                ordinal=args.ordinal,
-                offset=args.offset,
-                limit=args.limit,
-            )
-        )
     if args.action == "artifact":
         if args.artifact_action == "upload":
             return client.upload_file(args.path, idempotency_key=args.key).model_dump(mode="json")
@@ -644,147 +525,6 @@ def main(argv: list[str] | None = None) -> int:
             elif args.reactive_action == "export":
                 arguments = {"after": args.after, "limit": args.limit, "max_bytes": args.max_bytes}
             _emit_json(decisions.dispatch(args.reactive_action, arguments))
-            return 0
-        if args.action == "backup":
-            if args.controller:
-                raise ValueError("Native backup operations cannot use a remote controller")
-            from research_swarm.checkpoints.backup import export_backup, verify_backup
-            from research_swarm.domain.identity import CommandContext
-
-            if args.backup_action == "activate":
-                if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
-                    raise ResearchError(
-                        ErrorCode.PROJECT_CONTRACT_INVALID,
-                        "Activation requires the explicit restored target state",
-                    )
-                from research_swarm.checkpoints.activation import activate_recovery
-                from research_swarm.domain.backup import ActivateRecovery
-
-                activation_request = ActivateRecovery.model_validate(_request(args.file))
-                runtime = LocalRuntime.open(args.state_dir)
-                result = activate_recovery(
-                    runtime,
-                    CommandContext(
-                        principal=runtime.principal(args.token_file),
-                        idempotency_key="recovery-activation:" + activation_request.restore_id,
-                        expected_revision=args.revision,
-                    ),
-                    activation_request,
-                )
-                _emit_json(result)
-                return 0
-            if args.backup_action == "route":
-                if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
-                    raise ResearchError(
-                        ErrorCode.PROJECT_CONTRACT_INVALID,
-                        "Recovery route requires the explicit restored target state",
-                    )
-                from research_swarm.checkpoints.routes import issue_recovery_route
-                from research_swarm.domain.recovery_routes import RecoveryRouteRequest
-
-                request = RecoveryRouteRequest.model_validate(_request(args.file))
-                runtime = LocalRuntime.open(args.state_dir)
-                route = issue_recovery_route(
-                    runtime,
-                    CommandContext(
-                        principal=runtime.principal(args.token_file),
-                        idempotency_key="recovery-route:" + request.route_id,
-                    ),
-                    request,
-                )
-                _emit_json(route.model_dump(mode="json"))
-                return 0
-            if args.backup_action == "admit":
-                if args.state_dir is None or not (args.state_dir / "restore.json").is_file():
-                    raise ResearchError(
-                        ErrorCode.PROJECT_CONTRACT_INVALID,
-                        "Recovery admission requires the explicit restored target state",
-                    )
-                from research_swarm.checkpoints.admission import admit_recovery
-                from research_swarm.domain.backup import SignedRestoreClaim
-
-                elected = SignedRestoreClaim.model_validate(_request(args.claim_file))
-                runtime = LocalRuntime.open(args.state_dir)
-                admitted = admit_recovery(
-                    runtime,
-                    CommandContext(
-                        principal=runtime.principal(args.token_file),
-                        idempotency_key="native-recovery:" + elected.claim.request.restore_id,
-                    ),
-                    args.path,
-                    elected,
-                )
-                _emit_json(admitted)
-                return 0
-            if args.backup_action == "request-claim":
-                if args.state_dir or args.token_file:
-                    raise ValueError("Restore claim requests use their explicit destination")
-                from research_swarm.checkpoints.claims import request_restore_claim
-
-                proof = request_restore_claim(
-                    args.path,
-                    args.destination,
-                    restore_id=args.restore_id,
-                    expected_digest=args.digest,
-                )
-                _emit_json(proof.model_dump(mode="json"))
-                return 0
-            if args.backup_action == "claim":
-                if args.state_dir is None or not (args.state_dir / "identity.json").is_file():
-                    raise ResearchError(
-                        ErrorCode.PROJECT_CONTRACT_INVALID,
-                        "Restore claims require the explicit existing source state",
-                    )
-                from research_swarm.checkpoints.claims import claim_restore
-                from research_swarm.domain.backup import SignedRestoreRequest
-
-                proof = SignedRestoreRequest.model_validate(_request(args.request_file))
-                runtime = LocalRuntime.open(args.state_dir)
-                claimed = claim_restore(
-                    runtime,
-                    CommandContext(
-                        principal=runtime.principal(args.token_file),
-                        idempotency_key="restore-claim:" + proof.request.restore_id,
-                    ),
-                    args.path,
-                    proof,
-                )
-                _emit_json(claimed.model_dump(mode="json"))
-                return 0
-            if args.backup_action == "restore":
-                if args.state_dir or args.token_file:
-                    raise ValueError("Inactive restore uses its explicit destination")
-                from research_swarm.checkpoints.restore import restore_inactive
-
-                receipt = restore_inactive(
-                    args.path,
-                    args.destination,
-                    restore_id=args.restore_id,
-                    expected_digest=args.digest,
-                )
-                _emit_json(receipt.model_dump(mode="json"))
-                return 0
-            if args.backup_action == "export":
-                runtime = LocalRuntime.open(args.state_dir)
-                manifest = export_backup(
-                    runtime,
-                    CommandContext(
-                        principal=runtime.principal(args.token_file),
-                        idempotency_key="backup-export:" + args.backup_id,
-                    ),
-                    args.path,
-                    backup_id=args.backup_id,
-                )
-            else:
-                if args.state_dir or args.token_file:
-                    raise ValueError("Backup verification does not open controller state")
-                manifest = verify_backup(args.path, expected_digest=args.digest).manifest
-            _emit_json(
-                {
-                    "manifest_digest": manifest.digest,
-                    "manifest": manifest.model_dump(mode="json"),
-                }
-            )
             return 0
         if args.action == "engine":
             if args.controller or args.token_file or args.state_dir:
@@ -837,51 +577,11 @@ def main(argv: list[str] | None = None) -> int:
             "describe",
             "connect",
             "start",
-            "recover",
-            "install-replacement",
-            "install-recovery-route",
         }:
             from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
 
             if args.controller or args.token_file or args.state_dir:
                 raise ValueError("Worker installation uses --worker-dir and its provisioned bundle")
-            if args.worker_action == "install-replacement":
-                from research_swarm.workers.remote_replacement import install_replacement
-
-                worker = install_replacement(args.original_worker_dir, args.worker_dir, args.bundle)
-                _emit_json({"state": "installed", "worker": worker.model_dump(mode="json")})
-                return 0
-            if args.worker_action == "recover":
-                from research_swarm.workers.recovery import recover_worker_attempt
-
-                report = recover_worker_attempt(
-                    args.worker_dir, args.attempt, route_id=args.route_id
-                )
-                _emit_json(report.model_dump(mode="json"))
-                return 0 if report.delivery_state in {"quarantined", "controller_terminal"} else 3
-            if args.worker_action == "install-recovery-route":
-                from research_swarm.domain.backup import BackupCustodyPin
-                from research_swarm.domain.recovery_routes import SignedWorkerRecoveryRoute
-                from research_swarm.workers.recovery_routes import (
-                    MAX_ROUTE_BYTES,
-                    install_recovery_route,
-                )
-
-                installed = install_recovery_route(
-                    args.worker_dir,
-                    SignedWorkerRecoveryRoute.model_validate(
-                        _request(args.file, limit=MAX_ROUTE_BYTES)
-                    ),
-                    BackupCustodyPin.model_validate(_request(args.source_pin)),
-                )
-                _emit_json(
-                    {
-                        "state": "installed",
-                        "route_id": installed.signed.route.route_id,
-                        "route_digest": installed.signed.digest,
-                    }
-                )
-                return 0
             if args.worker_action == "describe":
                 from research_swarm.engines.registration import read_registration
 

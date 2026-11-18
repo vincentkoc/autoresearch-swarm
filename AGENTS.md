@@ -5,7 +5,7 @@ Read the relevant design and tests before changing a public contract.
 - Keep domain records independent of transports, provider SDKs, and project model code.
 - Use immutable source/spec identities and separate per-attempt dispatch authority.
 - Keep state, events, budget entries, and outbox effects in one transaction.
-- Never treat lease expiry as proof of process termination.
+- Requeue lost attempts after heartbeat expiry. Accept one terminal result per trial ID and ignore late results from superseded attempts.
 - Keep training measurements separate from authenticated evaluator receipts.
 - Do not hide failed attempts or silently change comparison semantics.
 - Do not add vendor integrations as mandatory core dependencies.

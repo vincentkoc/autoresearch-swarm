@@ -75,8 +75,8 @@ qualification.
 | Control a research loop | [Campaigns](docs/campaigns.md), [evaluation and promotion](docs/evaluation.md) |
 | Intervene during training | [Reactive controls and agent interfaces](docs/reactive.md) |
 | Register compute | [Remote workers](docs/remote-workers.md), [engine profiles](docs/engines.md), [worker control](docs/worker-control.md) |
-| Change infrastructure | [Orchestration](docs/orchestration.md), [R2](docs/r2.md) |
-| Preserve and recover evidence | [Artifacts and source](docs/artifacts-and-source.md), [historical import](docs/historical-evidence.md), [backup](docs/backup.md) |
+| Change infrastructure | [R2](docs/r2.md) |
+| Inspect research evidence | [Artifacts and source](docs/artifacts-and-source.md), [historical import](docs/historical-evidence.md) |
 | Extend the platform | [Adapter contracts](adapters/README.md), [design contract](docs/design.md), [protocol conformance](docs/protocol-conformance.md) |
 | Prepare a release | [Release previews and PyPI publishing](docs/releasing.md) |
 

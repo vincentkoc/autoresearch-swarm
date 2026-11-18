@@ -23,11 +23,11 @@ def event_page(
     if after < row["event_floor"] - 1:
         raise ResearchError(
             ErrorCode.EVENT_CURSOR_EXPIRED,
-            "Event history no longer covers this cursor; recover a frozen snapshot",
+            "Event history no longer covers this cursor. Resume at the event floor.",
             details={
                 "event_floor": row["event_floor"],
                 "watermark": row["watermark"],
-                "recovery_command": "stream.create_snapshot",
+                "resume_after": row["event_floor"] - 1,
             },
         )
     if after > row["watermark"]:

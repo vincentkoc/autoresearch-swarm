@@ -50,8 +50,8 @@ def test_current_research_schema_admits_without_writes(database):
 @pytest.mark.parametrize(
     "damage",
     [
-        "DROP TABLE recovery_items",
-        "ALTER TABLE recovery_snapshots DROP COLUMN expired_at",
+        "DROP TABLE budgets",
+        "ALTER TABLE budget_reservations DROP COLUMN state",
         "DROP INDEX acceptance_leases",
         "ALTER TABLE commands RENAME COLUMN idempotency_key TO old_key",
     ],
@@ -115,3 +115,24 @@ def test_existing_credentials_preserve_rows_and_resolve_current_authority(databa
         )
         == rows_before
     )
+
+
+@pytest.mark.parametrize("phase", ["sealed", "restoring", "recovering"])
+def test_inactive_legacy_workspace_cannot_reopen(database, principal, phase):
+    with database.connect() as connection:
+        connection.execute(
+            "INSERT INTO records(workspace_id,kind,id,revision,state,payload,"
+            "created_at,updated_at) "
+            "VALUES (?,'workspace_gate',?,1,?,'{}','legacy','legacy')",
+            (principal.workspace_id, principal.workspace_id, phase),
+        )
+        connection.execute("PRAGMA user_version=3")
+    with pytest.raises(ResearchError) as refused:
+        Database(database.path)
+    assert refused.value.code == ErrorCode.SCHEMA_UNSUPPORTED
+    with database.connect() as connection:
+        assert connection.execute("PRAGMA user_version").one()[0] == 3
+        assert (
+            connection.execute("SELECT state FROM records WHERE kind='workspace_gate'").one()[0]
+            == phase
+        )
