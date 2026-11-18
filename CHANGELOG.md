@@ -116,6 +116,9 @@
 
 - Report the watchdog timeout duration when a swarm worker stops a stalled attempt.
 
+- **Breaking:** Retire `research evaluation advance` and its evaluator-token option.
+  Run stage commands with `research swarm run` and publish measurements through `SWARM_METRICS`.
+
 - Add a resident swarm worker that heartbeats, retries lost trials and records
   attempt failures. Dispatch reserves estimated cost and reports charges from
   elapsed compute time and measured input and output tokens. Validated usage

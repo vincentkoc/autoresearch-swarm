@@ -43,8 +43,7 @@ from research_swarm.workers.journal import JournalState
 from tests.api.test_cli_mcp import cli
 from tests.control.test_campaign_completion import complete
 from tests.control.test_confirmation import create_plan, options, setup_plan
-from tests.control.test_evaluation_driver import role
-from tests.integration.test_local_pipeline import Pipeline
+from tests.integration.test_local_pipeline import Pipeline, role
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.orchestration.test_http_delivery import serving
 from tests.support import LIMITS
