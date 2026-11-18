@@ -101,19 +101,26 @@ async def test_budget_gates_dispatch_then_settles_measured_usage(tmp_path: Path)
     backend = _TokenBackend()
     first = WorkerLoop(store, backend, "one", pool=pool)
     second = WorkerLoop(SQLiteStore(db), backend, "two", pool=pool)
-    running = asyncio.create_task(first.run_once(spec))
+    observed: list[Attempt] = []
+
+    async def observe(attempt: Attempt) -> None:
+        observed.append(attempt)
+
+    running = asyncio.create_task(first.run_once(spec, before_execute=observe))
     await asyncio.wait_for(backend.started.wait(), timeout=5)
     try:
-        assert not await second.run_once(spec)
+        assert not await second.run_once(spec, before_execute=observe)
         assert backend.calls == 1
+        assert len(observed) == 1
     finally:
         backend.release.set()
         await running
-    assert await second.run_once(spec)
+    assert await second.run_once(spec, before_execute=observe)
     assert [r.cost for r in store.results(spec.campaign_id)] == [0.2, 0.2]
     # A fresh pool has capacity, but the remaining 0.85 cannot cover the estimate.
-    assert not await WorkerLoop(store, backend, "three").run_once(spec)
+    assert not await WorkerLoop(store, backend, "three").run_once(spec, before_execute=observe)
     assert backend.calls == 2
+    assert observed == [r.attempt for r in store.results(spec.campaign_id)]
 
 
 async def test_resident_worker_survives_command_failure_and_timeout(tmp_path: Path) -> None:
@@ -189,9 +196,15 @@ async def test_backend_cancellation_and_invalid_metrics_remain_attempt_data(tmp_
     store.create_campaign(spec)
     store.submit(_trial(spec, "one"))
     worker = WorkerLoop(store, InterruptedBackend(), "resident")
-    assert await worker.run_once(spec)
-    assert await worker.run_once(spec)
+    seen: list[Attempt] = []
+
+    async def observe(attempt: Attempt) -> None:
+        seen.append(attempt)
+
+    assert await worker.run_once(spec, before_execute=observe)
+    assert await worker.run_once(spec, before_execute=observe)
     lost, failed = store.results(spec.campaign_id)
+    assert seen == [lost.attempt, failed.attempt]
     assert lost.status == "lost"
     assert (failed.status, failed.cost) == ("failed", 0.2)
 

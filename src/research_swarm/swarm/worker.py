@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import math
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Protocol, runtime_checkable
 from uuid import uuid4
@@ -79,7 +80,12 @@ class WorkerLoop:
             )
         return Demand(cpu=1)
 
-    async def run_once(self, spec: CampaignSpec) -> bool:
+    async def run_once(
+        self,
+        spec: CampaignSpec,
+        *,
+        before_execute: Callable[[Attempt], Awaitable[None]] | None = None,
+    ) -> bool:
         """Reclaim expired work and dispatch at most one attempt. False means no claim."""
         self.store.requeue_expired(spec.campaign_id, time.time() - self.lost_after_seconds)
         backend = self.backend
@@ -113,7 +119,12 @@ class WorkerLoop:
             started = time.monotonic()
             try:
                 result = await self._supervise(
-                    spec, attempt, backend, started, dispatch_spec.trial_timeout_seconds
+                    spec,
+                    attempt,
+                    backend,
+                    started,
+                    dispatch_spec.trial_timeout_seconds,
+                    before_execute,
                 )
             except asyncio.CancelledError:
                 # The backend has unwound and stopped its command group.
@@ -142,6 +153,7 @@ class WorkerLoop:
         backend: Backend,
         started: float,
         deadline: float,
+        before_execute: Callable[[Attempt], Awaitable[None]] | None,
     ) -> Result | None:
         async def heartbeat() -> None:
             while True:
@@ -159,6 +171,8 @@ class WorkerLoop:
                     # Give the backend its deadline and time to return logs and usage
                     # from teardown. A backend that stalls also loses this attempt.
                     async with asyncio.timeout(deadline + self.heartbeat_seconds):
+                        if before_execute is not None:
+                            await before_execute(attempt)
                         result = await backend.execute(spec, attempt)
                     if result.attempt != attempt:
                         raise ValueError("backend returned a result for a different claim")
