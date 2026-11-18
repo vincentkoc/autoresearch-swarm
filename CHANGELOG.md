@@ -71,6 +71,9 @@
   causal ancestry inspection. Source references stay non-causal; inventory size
   does not expand the bounded report measurement window.
 
+- Run swarm trials in bounded local subprocess slots with CPU, MPS, and CUDA
+  device selection. Timeout and cancellation clean up the attempt's process group.
+
 - Add Hill climb / Graph tabs within the resizable campaign workspace. Hill climb
   retains chronological receipts and a separate running best per selected comparable
   campaign. Graph arrows use explicit parent IDs only, fade older generations and
