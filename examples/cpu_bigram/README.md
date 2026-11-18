@@ -35,7 +35,9 @@ uv run research swarm run examples/cpu_bigram/swarm.yaml --db run/swarm.sqlite
 ~~~
 
 The YAML declares eight smoothing values, eight CPU slots and a validation metric
-to minimize. One value causes the task to exit with an error. The other seven
+to minimize. It sets `max_attempts: 1` to evaluate each value once. The default
+campaign allows one retry after a failed or lost attempt. One smoothing value
+causes the task to exit with an error. The other seven
 produce measurements. The JSON summary includes the winner, top three candidates
 and failed-attempt count. Repeat the command to resume the same campaign.
 

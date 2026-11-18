@@ -318,7 +318,7 @@ async def test_search_looks_count_restored_attempts_and_retries_but_not_denied_c
             return Result(attempt=attempt, status="ok", metrics={"score": 1})
 
     store, backend = SQLiteStore(tmp_path / "queue"), PreemptedOnce()
-    spec = campaign(evaluation_mode="calibrated", max_trials=1, max_attempts=2)
+    spec = campaign(evaluation_mode="calibrated", max_trials=1)
     store.create_campaign(spec)
     store.submit(
         Trial(

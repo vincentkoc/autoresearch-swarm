@@ -5,6 +5,7 @@ direction: minimize
 command: [python, swarm_trial.py]
 max_trials: 8
 max_workers: 8
+max_attempts: 1
 top_k: 3
 # The invalid smoothing value exercises failure isolation in the eight-slot run.
 search_space:
