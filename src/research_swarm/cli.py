@@ -628,7 +628,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.controller or args.token_file or (args.db and args.state_dir):
                 raise ValueError("Choose a local swarm database with --db or --state-dir")
             directory = args.state_dir or args.spec.parent
-            result, code = run_campaign(args.spec, args.db or directory / "swarm.sqlite")
+            try:
+                result, code = run_campaign(args.spec, args.db or directory / "swarm.sqlite")
+            except ValueError as error:
+                raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, str(error)) from error
             _emit_json(result)
             return code
         if args.action == "report":

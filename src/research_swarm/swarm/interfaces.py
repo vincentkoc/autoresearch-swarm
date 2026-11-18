@@ -47,6 +47,7 @@ class CampaignSpec:
     proposer: str | None = None
     selection_policy: str | None = None
     panel_policy: str | None = None
+    evaluation_mode: Literal["calibrated", "smoke"] = "calibrated"
     backend: str | None = None
     worker: str | None = None
     options: dict[str, Any] = field(default_factory=dict)

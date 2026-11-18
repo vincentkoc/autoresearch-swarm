@@ -49,5 +49,7 @@ Use `min_replicates` and `min_delta` to set the evidence required to change the 
 Trusted Python plugins can supply `proposer`, `selection_policy`, `panel_policy`
 or `backend` as `module:factory`. Each factory receives the campaign spec. A
 `worker` factory additionally receives the store and backend. Plugin-specific
-settings belong in `options`. Declaring evaluation panels requires a panel policy
-that calibrates before dispatch and checks a challenger before selection.
+settings belong in `options`. Campaigns default to calibrated evaluation and
+require a panel policy that calibrates before dispatch and checks a challenger
+before selection. This CPU benchmark explicitly uses `evaluation_mode: smoke`
+to test dispatch, crash isolation and ranking on its fixed metric.

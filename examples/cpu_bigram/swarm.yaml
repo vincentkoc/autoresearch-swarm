@@ -1,4 +1,5 @@
 campaign_id: cpu-bigram-smoothing
+evaluation_mode: smoke
 metric: bits_per_byte
 direction: minimize
 command: [python, swarm_trial.py]

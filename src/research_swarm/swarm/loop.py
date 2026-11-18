@@ -93,6 +93,7 @@ class SeedProposer:
 @dataclass(frozen=True)
 class RunSummary:
     campaign_id: str
+    evaluation_mode: str
     reason: str
     trials: int
     attempts: int
@@ -163,7 +164,8 @@ class SwarmLoop:
             prior = previous.result.attempt.trial
             if self.selection is None:
                 previous = self.population.measure(prior.fidelity, prior.candidate.candidate_id)
-                self.incumbent = previous
+                if previous != self.incumbent:
+                    self._save(previous)
             gain = best.score - previous.score
             if self.spec.direction == "minimize":
                 gain = -gain
@@ -180,6 +182,9 @@ class SwarmLoop:
             old_key = candidate_key(previous.result.attempt.trial.candidate) if previous else None
             if not self.panels.consider(key, old_key).promoted:
                 return
+        self._save(best)
+
+    def _save(self, best: Ranked) -> None:
         self.store.select(
             self.spec.campaign_id,
             best.result.attempt.trial.trial_id,
@@ -197,15 +202,23 @@ class SwarmLoop:
 
     async def run(self) -> RunSummary:
         s = self.spec
+        if s.evaluation_mode == "calibrated" and self.panels is None:
+            raise ValueError("Configure a panel_policy or explicitly set evaluation_mode: smoke")
+        if s.evaluation_mode == "smoke" and (
+            self.panels is not None
+            or any((s.search_panel, s.selection_panel, s.confirmation_panel))
+        ):
+            raise ValueError(
+                "Smoke campaigns use direct metrics and cannot declare evaluation panels"
+            )
         self.store.create_campaign(s)
         previous = self.store.trials(s.campaign_id)
         seen = {trial.trial_id for trial in previous}
         proposer = self.proposer or SeedProposer(s, previous)
         if self.panels is not None:
             self.panels.calibrate()
-        elif any((s.search_panel, s.selection_panel, s.confirmation_panel)):
-            raise ValueError("A campaign with panels requires a calibrated panel policy")
-        recorded = self.store.results(s.campaign_id)
+        cursor = len(self.population.archive)
+        recorded = self.store.results(s.campaign_id, after=cursor)
         incumbent = self.store.incumbent(s.campaign_id)
         for result in recorded:
             self.population.add(result)
@@ -219,7 +232,10 @@ class SwarmLoop:
                 self.incumbent = Ranked(result, score, incumbent[2])
         if recorded:
             self._select()
-        cursor = len(recorded)
+        restore = getattr(proposer, "restore_trials", None)
+        if restore is not None:
+            restore(previous)
+        cursor += len(recorded)
         pending: set[asyncio.Task[bool]] = set()
         no_claim = False
         try:
@@ -279,6 +295,7 @@ class SwarmLoop:
         archive = self.population.archive
         return RunSummary(
             s.campaign_id,
+            s.evaluation_mode,
             reason,
             len(seen),
             len(archive),
