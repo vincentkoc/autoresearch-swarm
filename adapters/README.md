@@ -8,14 +8,12 @@ class or mandatory provider SDK.
 |---|---|---|
 | `StateStore`, `SqlSession` | Synchronous snapshots and atomic SQL transactions | [SQL contracts](../src/research_swarm/state/sql.py), [callback-only example](../tests/state/test_state_store.py) |
 | `BlobStore` | Artifact bytes, generations and retirement | [Storage contract](../src/research_swarm/storage/base.py) |
-| `AsyncR2Transport` | Bounded asynchronous object-storage I/O | [Transport contract](../src/research_swarm/storage/async_r2.py) |
 | `Ed25519Provider` | Synchronous signing and signature verification | [Cryptography contract](../src/research_swarm/crypto.py) |
 | `ExecutionBoundary` | Qualified authority and time for one operation | [Boundary contract](../src/research_swarm/state/boundaries.py) |
 | `DeliveryClient` | Deliver saved actions and waits to the authority | [Delivery contract](../src/research_swarm/orchestration/async_delivery.py), [minimal client example](../tests/orchestration/test_async_delivery.py) |
 
 The local implementations ship with the Python package. Temporal delivery lives
-in `research_swarm.orchestration`. The [Cloudflare adapter](cloudflare/README.md)
-has a separate provider build and dependency environment.
+in `research_swarm.orchestration`.
 
 ## Contract
 

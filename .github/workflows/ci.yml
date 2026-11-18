@@ -59,27 +59,6 @@ jobs:
           node-version: "22"
       - run: uv sync --locked --extra s3 --group dev --python 3.12
       - run: uv run --no-sync pytest -q tests/storage/test_r2_storage.py tests/storage/test_r2_transport.py tests/storage/test_r2_runtime.py
-      - run: RESEARCH_CLOUDFLARE_TESTS=1 uv run --no-sync pytest -q tests/adapters/cloudflare/test_cloudflare_r2.py
-
-  cloudflare-contracts:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: adapters/cloudflare
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "22"
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run build
-      - run: npm run check:hybrid
-      - run: npm run test:crypto
-      - run: node --test tests/http_io.test.mjs tests/witness_io.test.mjs
-      - run: npm run test:hybrid
 
   contracts:
     strategy:

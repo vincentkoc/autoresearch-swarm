@@ -721,6 +721,5 @@ def capabilities() -> JsonObject:
             "local": "explicit_worker",
             "remote": "scoped_http_worker",
             "temporal": "pending",
-            "cloudflare": "pending",
         },
     }
