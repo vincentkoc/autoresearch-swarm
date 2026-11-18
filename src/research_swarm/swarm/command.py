@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from research_swarm.swarm.backends.local import LocalBackend
-from research_swarm.swarm.interfaces import Backend, Worker
+from research_swarm.swarm.interfaces import Backend, CampaignSpec, Worker
 from research_swarm.swarm.loop import SwarmLoop
 from research_swarm.swarm.spec import load_spec
 from research_swarm.swarm.store import SQLiteStore
@@ -30,17 +30,19 @@ def _factory(name: str) -> Callable[..., Any]:
     return cast(Callable[..., Any], implementation)
 
 
+def campaign_backend(spec: CampaignSpec) -> Backend:
+    if spec.backend:
+        return cast(Backend, _factory(spec.backend)(spec))
+    if spec.resource == "gpu":
+        raise ValueError("Configure a device-aware backend for GPU campaigns")
+    return LocalBackend(spec.max_workers)
+
+
 def run_campaign(path: Path, database: Path) -> tuple[dict[str, Any], int]:
     spec = load_spec(path)
     database.parent.mkdir(parents=True, exist_ok=True)
     store = SQLiteStore(database)
-    backend: Backend
-    if spec.backend:
-        backend = _factory(spec.backend)(spec)
-    elif spec.resource == "gpu":
-        raise ValueError("Configure a device-aware backend for GPU campaigns")
-    else:
-        backend = LocalBackend(spec.max_workers)
+    backend = campaign_backend(spec)
     worker: Worker
     if spec.worker:
         worker = _factory(spec.worker)(spec, store, backend)

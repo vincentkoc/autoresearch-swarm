@@ -45,12 +45,21 @@ def parser() -> argparse.ArgumentParser:
     swarm_run.add_argument(
         "--db", type=Path, help="SQLite queue (default: swarm.sqlite beside spec)"
     )
+    remote_worker = swarm_commands.add_parser(
+        "worker", help="Run a locally configured workload for an HTTP campaign"
+    )
+    remote_worker.add_argument("spec", type=Path)
+    remote_worker.add_argument("--worker-id", required=True)
+    remote_worker.add_argument("--once", action="store_true", help="Attempt one claim and exit")
     initialize = commands.add_parser("init", help="Initialize private local state")
     initialize.add_argument("--storage-config", type=Path, help="Immutable storage JSON selection")
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--db", type=Path, help="Local swarm campaign database")
+    serve.add_argument("--worker-campaign", help="Campaign served to the enrolled worker")
+    serve.add_argument("--worker-id", help="Identity recorded on this worker's claims")
+    serve.add_argument("--worker-token-file", type=Path, help="Private worker bearer file")
     mcp = commands.add_parser("mcp", help="Expose typed agent tools over stdio")
     mcp.add_argument("--db", type=Path, help="Local swarm campaign database")
     reactive = commands.add_parser(
@@ -433,6 +442,13 @@ def main(argv: list[str] | None = None) -> int:
                 result = files.download(args.identifier, args.destination).model_dump(mode="json")
             _emit_json(result)
             return 0
+        if args.action == "serve":
+            worker_options = (args.worker_campaign, args.worker_id, args.worker_token_file)
+            if any(worker_options) and not (args.db and all(worker_options)):
+                raise ValueError(
+                    "Worker HTTP requires --db, --worker-campaign, --worker-id "
+                    "and --worker-token-file"
+                )
         if args.action in {"serve", "mcp"} and args.db:
             from research_swarm.api.campaign import campaign_app, campaign_tools
             from research_swarm.swarm.reader import CampaignReader
@@ -451,7 +467,16 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError("Campaign HTTP reads require --token-file")
                 path = args.token_file.expanduser().absolute()
                 token = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
-                uvicorn.run(campaign_app(reader, token), host=args.host, port=args.port)
+                grant = None
+                if args.worker_token_file:
+                    from research_swarm.api.worker import WorkerGrant
+
+                    path = args.worker_token_file.expanduser().absolute()
+                    secret = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
+                    grant = WorkerGrant(args.worker_campaign, args.worker_id, secret)
+                uvicorn.run(
+                    campaign_app(reader, token, worker=grant), host=args.host, port=args.port
+                )
             return 0
         if args.action == "campaign" and args.campaign_action == "gc":
             from research_swarm.runtime import default_state_directory
@@ -462,6 +487,23 @@ def main(argv: list[str] | None = None) -> int:
             result, code = asyncio.run(collect(args, args.state_dir or default_state_directory()))
             _emit_json(result)
             return code
+        if args.action == "swarm" and args.swarm_action == "worker":
+            from research_swarm.swarm.http_worker import run_worker
+
+            if args.state_dir or not args.controller or not args.token_file:
+                raise ValueError("Remote worker requires --controller and --token-file")
+            path = args.token_file.expanduser().absolute()
+            secret = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
+            try:
+                ran = asyncio.run(
+                    run_worker(args.spec, args.controller, secret, args.worker_id, once=args.once)
+                )
+            except httpx.HTTPStatusError as error:
+                raise ValueError(
+                    f"Worker request returned HTTP {error.response.status_code}"
+                ) from error
+            _emit_json({"worker_id": args.worker_id, "ran": ran})
+            return 0
         if args.action == "swarm":
             from research_swarm.swarm.command import run_campaign
 

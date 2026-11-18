@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Serve a campaign worker with a separate private bearer and a fixed campaign
+  and worker identity. Claimed attempts can heartbeat, publish observations,
+  and upload immutable artifacts through the same SQLite queue.
+
 - Serve authenticated campaign reads from SQLite with `serve --db`, inspect
   a selected database with `mcp --db`, or query it through `CampaignReader`.
 

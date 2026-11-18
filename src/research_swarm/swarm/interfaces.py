@@ -169,17 +169,7 @@ class Meter(Protocol):
     ) -> float: ...
 
 
-class Store(Protocol):
-    def create_campaign(self, spec: CampaignSpec) -> None: ...
-
-    def deadline(self, campaign_id: str) -> float | None:
-        """Return the UTC timestamp at which the campaign stops admitting attempts."""
-        ...
-
-    def submit(self, trial: Trial) -> bool:
-        """Insert once by trial id. A replay returns False."""
-        ...
-
+class WorkerQueue(Protocol):
     def claim(
         self,
         campaign_id: str,
@@ -200,6 +190,18 @@ class Store(Protocol):
 
     def requeue_expired(self, campaign_id: str, before: float) -> int:
         """Record active attempts last seen before this UTC timestamp as lost."""
+        ...
+
+
+class Store(WorkerQueue, Protocol):
+    def create_campaign(self, spec: CampaignSpec) -> None: ...
+
+    def deadline(self, campaign_id: str) -> float | None:
+        """Return the UTC timestamp at which the campaign stops admitting attempts."""
+        ...
+
+    def submit(self, trial: Trial) -> bool:
+        """Insert once by trial id. A replay returns False."""
         ...
 
     def trials(self, campaign_id: str) -> Sequence[Trial]: ...
