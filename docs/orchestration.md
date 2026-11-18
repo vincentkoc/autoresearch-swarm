@@ -8,15 +8,13 @@ an accepted reply is lost. Use a durable turn as the retry boundary instead.
 The current implementation supplies initial ownership, one saved command per
 turn, transaction-time fencing, acknowledgment recovery, and durable waits with
 destination-bound wakeups. A paused campaign can transfer to fresh driver
-principals through a verified same-workspace checkpoint. The optional
-[Temporal adapter](temporal.md) delivers these saved intents using real Workflows
-and Activities. An adapter label alone is descriptive metadata, not qualification.
+principals through a verified same-workspace checkpoint. An adapter label alone
+is descriptive metadata, not qualification.
 
 ## Local delivery by default
 
-`LocalDeliveryDriver` runs the same API delivery kernel used by the Temporal
-Activities. It needs asyncio, the ordinary research clients, and one small private
-checkpoint directory. Importing or running it does not load the Temporal SDK.
+`LocalDeliveryDriver` runs the API delivery kernel. It needs asyncio, the ordinary
+research clients, and one small private checkpoint directory.
 
 ```python
 import asyncio

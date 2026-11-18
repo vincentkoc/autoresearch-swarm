@@ -157,6 +157,10 @@
   port and hosted activation proofs. It was never deployed. Native R2 artifact storage
   through the optional `s3` extra is unchanged.
 
+- **Breaking:** Remove the optional Temporal adapter, the `temporal` extra and its
+  saved-history fixtures and CI job. Local delivery is unchanged and never loaded
+  the Temporal SDK.
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance
