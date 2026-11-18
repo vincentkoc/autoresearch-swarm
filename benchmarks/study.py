@@ -64,6 +64,9 @@ def run_campaign(task: Task, study: PanelStudy, proposer: Policy, *, budget: int
     )
     if not any(trial.score is not None for trial in trials):
         return Arm(trials, None, None)
+    baseline = study.consider(recipe_key(task.initial), None)
+    if not baseline.promoted:
+        return Arm(trials, baseline, None)
     challenger = incumbent(task, trials)
     decision = study.consider(recipe_key(challenger), None)
     return Arm(trials, decision, challenger if decision.promoted else task.initial)

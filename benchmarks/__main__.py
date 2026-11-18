@@ -72,7 +72,9 @@ def main() -> int:
             "selected": arm.selected,
             "decision": asdict(arm.decision) if arm.decision else None,
         }
-        failed |= any(t.error is not None for t in trials)
+        failed |= any(t.error is not None for t in trials) or bool(
+            arm.decision and arm.decision.error
+        )
     report = {
         "task": task.name,
         "metric": task.metric,
