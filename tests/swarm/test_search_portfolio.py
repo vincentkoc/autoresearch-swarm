@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 from dataclasses import replace
 from typing import Any
@@ -99,6 +100,95 @@ async def test_mix_of_timeout_and_fast_operators_returns_inside_loop_deadline() 
         batch = await policy.ask(spec, [], 3)
     assert [c.params["width"] for c in batch] == [1, 2]
     assert model.timeouts == 1
+
+
+async def test_model_repairs_a_terminal_workload_failure_without_a_scored_parent() -> None:
+    seed = Candidate(candidate_id="broken", text="sum()")
+    spec = CampaignSpec(
+        campaign_id="test",
+        metric="loss",
+        direction="minimize",
+        command=("score",),
+        max_trials=4,
+        max_workers=1,
+        max_attempts=1,
+        candidates=(seed,),
+    )
+    calls = []
+
+    async def diagnose(prompt: str, schema: dict[str, Any], sample_seed: int) -> str:
+        calls.append(json.loads(prompt))
+        if "cause" in schema["properties"]:
+            return json.dumps({"cause": "workload", "reason": "sum needs the input sequence"})
+        assert calls[-1]["diagnosis"]["cause"] == "workload"
+        return json.dumps({"content": "sum(values)", "rationale": "supply the missing argument"})
+
+    model = TextRewrite(diagnose, "minimize loss")
+    policy = SearchPortfolio(spec, {model.name: model})
+    (initial,) = await policy.ask(spec, [], 1)
+    failure = replace(
+        observation(initial, 0),
+        status="failed",
+        metrics={},
+        error="exited 1",
+        logs=("x" * 2048 + "missing argument",),
+    )
+    (repair,) = await policy.ask(spec, [failure], 1)
+    assert repair.text == "sum(values)" and repair.parents == (seed.candidate_id,)
+    assert calls[0]["failure"]["error"] == "exited 1"
+    (tail,) = calls[0]["failure"]["output_tail"]
+    assert len(tail) == 1024 and tail.endswith("missing argument")
+
+    async def environment(prompt: str, schema: dict[str, Any], sample_seed: int) -> str:
+        context = json.loads(prompt)
+        calls.append(context)
+        if "failure" not in context:
+            return json.dumps({"content": seed.text, "rationale": "same input"})
+        return json.dumps({"cause": "environment", "reason": "worker unavailable"})
+
+    for outcome in ("lost", "retry", "environment"):
+        campaign = replace(spec, max_attempts=2 if outcome == "retry" else 1)
+        operator = TextRewrite(environment, "minimize loss")
+        fresh = SearchPortfolio(campaign, {operator.name: operator})
+        await fresh.ask(campaign, [], 1)
+        before = len(calls)
+        result = replace(failure, status="lost") if outcome == "lost" else failure
+        assert await fresh.ask(campaign, [result], 1) == []
+        assert sum("failure" in call for call in calls[before:]) == int(outcome == "environment")
+        assert "failure" not in calls[-1]
+        if outcome == "environment":
+            before = len(calls)
+            assert await fresh.ask(campaign, [result], 1) == []
+            assert all("failure" not in call for call in calls[before:])
+
+
+async def test_diagnosis_timeout_returns_the_fast_sibling_proposal() -> None:
+    async def silent(prompt: str, schema: dict[str, Any], seed: int) -> str:
+        assert "cause" in schema["properties"]
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    base = Candidate(candidate_id="initial", text="instruction", params={"width": 1})
+    spec = CampaignSpec(
+        campaign_id="test",
+        metric="loss",
+        direction="minimize",
+        command=("score",),
+        max_trials=5,
+        max_workers=2,
+        max_attempts=1,
+        candidates=(base,),
+        proposal_timeout_seconds=0.25,
+    )
+    model = TextRewrite(silent, "repair the artifact")
+    mutate = ParamMutation({"width": [1, 2]}, random.Random(1))
+    policy = SearchPortfolio(spec, {model.name: model, mutate.name: mutate})
+    (initial,) = await policy.ask(spec, [], 1)
+    failure = replace(observation(initial, 0), status="failed", metrics={}, error="invalid input")
+    async with asyncio.timeout(spec.proposal_timeout_seconds):
+        batch = await policy.ask(spec, [failure], 2)
+    assert [candidate.params["width"] for candidate in batch] == [2]
+    assert model.timeouts >= 1
 
 
 async def test_pending_promotions_and_followup_cost_survive_restart() -> None:

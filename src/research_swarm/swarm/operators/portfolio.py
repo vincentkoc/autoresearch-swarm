@@ -13,6 +13,7 @@ from statistics import fmean
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate, Operator, Result, Trial
 from research_swarm.swarm.loop import candidate_key
 from research_swarm.swarm.operators.bandit import OperatorBandit
+from research_swarm.swarm.operators.llm import TextRewrite
 from research_swarm.swarm.operators.params import child
 from research_swarm.swarm.population import Ranked
 from research_swarm.swarm.schedule import ASHA
@@ -329,11 +330,26 @@ class SearchPortfolio:
         eligible = [name for name in self.operators if name not in self._arm_jobs.values()]
         if len(parents) < 2:
             eligible = [name for name in eligible if name not in {"crossover", "ensemble-add"}]
+        failure = None
+        if not self._by_recipe and any(
+            isinstance(self.operators[name], TextRewrite) for name in eligible
+        ):
+            failure = next(
+                (
+                    result
+                    for result in reversed(self._archive)
+                    if result.status == "failed"
+                    and result.attempt.number >= spec.max_attempts
+                    and self._family_room(result.attempt.trial.candidate.family)
+                ),
+                None,
+            )
         if not parents:
             eligible = [
                 name
                 for name in eligible
-                if name not in {"new-seed", "llm-code-diff", "llm-text-rewrite"}
+                if name != "new-seed"
+                and (not isinstance(self.operators[name], TextRewrite) or failure is not None)
             ]
 
         # Keep some of the loop's outer deadline for returning fast siblings.
@@ -343,10 +359,15 @@ class SearchPortfolio:
         end = loop.time() + timeout
         while eligible and len(batch) < k and loop.time() < end:
             counts = Counter(self.bandit.choose(eligible) for _ in range(k - len(batch)))
-            jobs = {
-                asyncio.create_task(self.operators[name].propose(inner, parents, count)): name
-                for name, count in counts.items()
-            }
+            jobs: dict[asyncio.Task[Sequence[Candidate]], str] = {}
+            for name, count in counts.items():
+                operator = self.operators[name]
+                request = (
+                    operator.propose(inner, parents, count, failure=failure)
+                    if failure is not None and isinstance(operator, TextRewrite)
+                    else operator.propose(inner, parents, count)
+                )
+                jobs[asyncio.create_task(request)] = name
             self._arm_jobs.update(jobs)
             for job in jobs:
                 job.add_done_callback(self._finished)
