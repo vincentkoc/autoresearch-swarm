@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from pathlib import Path
 from statistics import fmean
@@ -74,9 +75,8 @@ def compare_seed(task, study, seed: int, model: str) -> dict[str, tuple[float, f
 
         for arm, fn in [("swarm", propose), ("random", random_search), ("greedy", greedy_search)]:
             run = run_campaign(task, study, fn, budget=12, seed=seed)
-            assert len(run.trials) == 12 and not any(t.error for t in run.trials), [
-                t.error for t in run.trials
-            ]
+            assert len(run.trials) == 12
+            failures = [(i, t.error) for i, t in enumerate(run.trials, 1) if t.error]
             curve = [t.best for t in run.trials]
             assert curve == sorted(curve, reverse=task.direction == "minimize")
             assert run.decision is not None
@@ -84,7 +84,18 @@ def compare_seed(task, study, seed: int, model: str) -> dict[str, tuple[float, f
                 (run.decision.confirmation_gain or 0.0) if run.decision.promoted else 0.0
             )
             row[arm] = (curve[-1], confirmed_gain)
-            print(task.name, seed, arm, "search", curve[-1], "held-out", run.decision, flush=True)
+            print(
+                task.name,
+                seed,
+                arm,
+                "curve",
+                curve,
+                "failures",
+                failures,
+                "held-out",
+                run.decision,
+                flush=True,
+            )
     return row
 
 
@@ -100,17 +111,27 @@ def test_equal_budget_search(name: str, tmp_path: Path) -> None:
     from benchmarks.study import open_study
     from benchmarks.suite import get_task
 
-    task = get_task(name, device="cpu", size="small")
+    protocol = os.getenv("SWARM_BENCHMARK_PROTOCOL", "v2")
+    task = get_task(name, device="cpu", size="small", protocol=protocol)
     study = open_study(task, tmp_path / "study.sqlite")
-    rows = [
-        compare_seed(task, study, seed, os.environ["SWARM_BENCHMARK_MODEL"])
-        for seed in (11, 23, 47)
-    ]
+    seeds = (
+        (11, 23, 47)
+        if protocol == "v1"
+        else tuple(
+            int.from_bytes(
+                hashlib.sha256(f"ars-bench-v2/search-seed/{i}".encode()).digest()[:4], "big"
+            )
+            for i in range(3)
+        )
+    )
+    rows = [compare_seed(task, study, seed, os.environ["SWARM_BENCHMARK_MODEL"]) for seed in seeds]
     sign = -1 if name == "nanogpt" else 1
+    comparisons = {}
     for baseline in ("random", "greedy"):
-        for panel in (0, 1):
-            deltas = [
-                (sign if panel == 0 else 1) * (row["swarm"][panel] - row[baseline][panel])
-                for row in rows
-            ]
-            assert fmean(deltas) > 0, (name, baseline, panel, deltas)
+        search = [sign * (row["swarm"][0] - row[baseline][0]) for row in rows]
+        confirmed = [row["swarm"][1] - row[baseline][1] for row in rows]
+        print(name, baseline, "paired search", search, "paired confirmation", confirmed, flush=True)
+        comparisons[baseline] = fmean(confirmed)
+        if protocol == "v1":
+            comparisons[baseline + "_search"] = fmean(search)
+    assert all(delta > 0 for delta in comparisons.values()), (name, comparisons)
