@@ -12,16 +12,13 @@ from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.budgets import BudgetLimit
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
-from research_swarm.domain.types import new_id
-from research_swarm.orchestration.search import SearchDriver
 from research_swarm.runtime import LocalRuntime
-from research_swarm.search.greedy import GreedyConfiguration
 from research_swarm.workers.journal import JournalState
 from tests.control.test_campaign_completion import complete
 from tests.control.test_confirmation import create_plan, exposure_budget, options, setup_plan
+from tests.control.test_promotions import assess, commit, evaluated
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
-from tests.search.test_proposals import baseline
 
 
 @pytest.mark.parametrize("pipeline", [{"source_network_policy": "denied"}], indirect=True)
@@ -43,25 +40,20 @@ def test_actual_claim_rejects_unavailable_isolation_without_reservation(pipeline
                 BudgetLimit(dimension="attempts", limit=2, unit="count"),
                 BudgetLimit(dimension="execution_ms", limit=50_000, unit="ms"),
                 BudgetLimit(dimension="trial_admissions", limit=1, unit="count"),
-                BudgetLimit(dimension="proposal_requests", limit=2, unit="count"),
             ),
         }
     ],
     indirect=True,
 )
-def test_reopened_controller_preserves_spent_budget_for_search_and_direct_admission(
+def test_reopened_controller_preserves_spent_budget_for_direct_admission(
     pipeline: Pipeline,
 ):
-    baseline(pipeline)
+    commit(pipeline, assess(pipeline, evaluated(pipeline)))
     before = pipeline.client.budget(pipeline.campaign["id"])
     assert (
         next(row for row in before["accounts"] if row["dimension"] == "attempts")["consumed"] == "2"
     )
     reopened = ResearchClient(LocalTransport(LocalRuntime.open(pipeline.runtime.root)))
-    progress = SearchDriver(
-        reopened, pipeline.campaign["id"], GreedyConfiguration(proposer_id=new_id())
-    ).advance()
-    assert progress.state == "budget_exhausted" and progress.actions == ()
     campaign = reopened.get("campaign", pipeline.campaign["id"])
     with pytest.raises(ResearchError) as spent:
         reopened.command(
@@ -78,13 +70,12 @@ def test_reopened_controller_preserves_spent_budget_for_search_and_direct_admiss
     assert spent.value.code == ErrorCode.BUDGET_EXHAUSTED
     assert reopened.budget(campaign["id"]) == before
     assert len(reopened.list(RecordQuery(kind="trial"))["items"]) == 1
-    assert reopened.list(RecordQuery(kind="proposal_request"))["items"] == []
 
 
 def test_completed_campaign_retains_checkpoint_bytes_across_controller_reopen(
     pipeline: Pipeline, tmp_path: Path
 ):
-    baseline(pipeline)
+    commit(pipeline, assess(pipeline, evaluated(pipeline)))
     context = CommandContext(
         principal=pipeline.runtime.principal(), idempotency_key="storage-occupancy"
     )

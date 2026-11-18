@@ -28,24 +28,10 @@ from research_swarm.control.commands import (
 from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.import_models import ImportHistoricalEvidence
-from research_swarm.control.observation_models import (
-    AbandonObservationSelection,
-    ObserveTrial,
-    ResolveTrialObservation,
-    SelectTrialObservation,
-)
-from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt
-from research_swarm.control.search_models import (
-    AdmitProposalResponse,
-    CancelProposal,
-    ProposalRead,
-    RequestProposal,
-    RespondToProposal,
-)
 from research_swarm.control.service import ResearchService
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_lifecycle import (
@@ -76,22 +62,6 @@ class CommandDefinition:
 
 
 COMMANDS = {
-    "population.retain": CommandDefinition(
-        RetainPopulationMember,
-        "retain_population_member",
-        "search.manage",
-        True,
-        "Retain an evaluated research alternative; revision zero creates membership.",
-        additional_scopes=("read",),
-    ),
-    "population.retire": CommandDefinition(
-        RetirePopulationMember,
-        "retire_population_member",
-        "search.manage",
-        True,
-        "Retire archive membership while preserving source, evidence and change history.",
-        additional_scopes=("read",),
-    ),
     "artifact.reconcile_reader_session": CommandDefinition(
         ReaderSessionTarget,
         "reconcile_reader_session",
@@ -130,63 +100,6 @@ COMMANDS = {
         False,
         "Retain historical metadata without granting execution, budget, or promotion authority.",
         additional_scopes=("read",),
-    ),
-    "search.abandon_selection": CommandDefinition(
-        AbandonObservationSelection,
-        "abandon_search_selection",
-        "search.manage",
-        True,
-        "Resolve a pinned trial using fresh closed non-scientific evidence and an explicit reason.",
-    ),
-    "search.select_observation": CommandDefinition(
-        SelectTrialObservation,
-        "select_search_observation",
-        "search.manage",
-        True,
-        "Pin the original observation and comparator before independent selection effects.",
-    ),
-    "search.observe_trial": CommandDefinition(
-        ObserveTrial,
-        "observe_search_trial",
-        "search.observe",
-        True,
-        "Record typed current evidence using the trial revision, without advancing search.",
-    ),
-    "search.resolve_trial": CommandDefinition(
-        ResolveTrialObservation,
-        "resolve_search_trial",
-        "search.manage",
-        True,
-        "Consume evidence under search-state CAS after selection or closed failure.",
-    ),
-    "search.admit_response": CommandDefinition(
-        AdmitProposalResponse,
-        "admit_proposal_response",
-        "search.manage",
-        True,
-        "Atomically consume a preserved response, validate its candidate, and queue eligible work.",
-        additional_scopes=("candidate.propose", "candidate.validate", "trial.submit", "read"),
-    ),
-    "search.request_proposal": CommandDefinition(
-        RequestProposal,
-        "request_proposal",
-        "search.manage",
-        True,
-        "Assign external research from frozen incumbent context and a request-count budget.",
-    ),
-    "search.respond": CommandDefinition(
-        RespondToProposal,
-        "respond_proposal",
-        "proposal.respond",
-        False,
-        "Preserve the assigned agent response before candidate or policy publication.",
-    ),
-    "search.cancel_proposal": CommandDefinition(
-        CancelProposal,
-        "cancel_proposal",
-        "search.manage",
-        True,
-        "Close proposal admission while retaining late output and already consumed request budget.",
     ),
     "worker.fence": CommandDefinition(
         FenceWorker,
@@ -506,10 +419,6 @@ def capabilities() -> JsonObject:
             for operation, definition in COMMANDS.items()
         },
         "queries": ["get", "list", "context", "budget", "events"],
-        "proposal_queries": {
-            "scope": "proposal.respond",
-            "operations": {"proposal.get": ProposalRead.model_json_schema()},
-        },
         "worker_queries": {
             "scope": "worker.query",
             "operations": {

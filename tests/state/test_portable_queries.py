@@ -3,16 +3,13 @@
 import pytest
 
 from research_swarm.control.auth import CredentialStore
-from research_swarm.control.proposals import ProposalControl
 from research_swarm.control.queries import RecordQuery, ResearchQueries
-from research_swarm.control.search_models import ProposalRead
 from research_swarm.control.worker_queries import WorkerQueries
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import new_id
 from research_swarm.state.database import Database
 from tests.integration.test_local_pipeline import pipeline as pipeline
-from tests.search.test_proposals import PROPOSAL_LIMITS, baseline, proposer, request_proposal
 from tests.state.test_state_store import CallbacksOnly
 from tests.workers.test_worker_queries import claim, query, read, scoped_worker
 
@@ -55,17 +52,3 @@ def test_query_snapshots_and_scoped_worker_access_without_native_connection(pipe
     with pytest.raises(ResearchError) as revoked:
         credentials.resolve(issued.token)
     assert revoked.value.code == ErrorCode.AUTHORIZATION_DENIED
-
-
-@pytest.mark.parametrize("pipeline", [{"limits": PROPOSAL_LIMITS}], indirect=True)
-def test_proposer_ownership_without_native_connection(pipeline):
-    baseline(pipeline)
-    actor, _, _ = proposer(pipeline)
-    requested = request_proposal(pipeline, actor)["request"]
-    portable = Database.from_store(CallbacksOnly(pipeline.runtime.database.store))
-    proposals = ProposalControl(portable)
-    request = ProposalRead(request_id=requested["id"])
-    assert proposals.get(context(actor), request) == {"request": requested, "response": None}
-    with pytest.raises(ResearchError) as not_owner:
-        proposals.get(context(actor.model_copy(update={"id": new_id()})), request)
-    assert not_owner.value.code == ErrorCode.AUTHORIZATION_DENIED

@@ -20,8 +20,6 @@ from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.sql import SqlSession
 
 RecordKind = Literal[
-    "population_member",
-    "population_change",
     "artifact_read_session",
     "acceptance_lease",
     "imported_evidence",
@@ -33,13 +31,6 @@ RecordKind = Literal[
     "funding_projection",
     "funding_change",
     "funding_settlement",
-    "search_state",
-    "policy_transition",
-    "search_observation",
-    "observation_consumption",
-    "proposal_request",
-    "proposal_response",
-    "proposal_cancellation",
     "project",
     "project_revision",
     "campaign",
@@ -107,8 +98,6 @@ def summarize(row: JsonObject) -> JsonObject:
             },
         }
     elif row["kind"] in {
-        "population_member",
-        "population_change",
         "acceptance_lease",
         "campaign_obligations",
         "scientific_completion",
@@ -160,67 +149,6 @@ def summarize(row: JsonObject) -> JsonObject:
         if row["kind"] == "funding_settlement":
             result["data"]["final_report_id"] = data["final_report_id"]
     elif row["kind"] == "funding_change":
-        result["data"] = data
-    elif row["kind"] == "search_state":
-        result["data"] = {
-            key: data[key] for key in ("policy", "policy_version", "generation", "request_count")
-        }
-        for name in ("pending_request_ids", "active_trial_ids"):
-            result["data"][name] = data[name][:32]
-            result["data"][name + "_count"] = len(data[name])
-        if data.get("selection_trial_id") is not None:
-            result["data"]["selection_trial_id"] = data["selection_trial_id"]
-    elif row["kind"] == "search_observation":
-        result["data"] = {
-            key: data[key]
-            for key in (
-                "facts_digest",
-                "incumbent_revision",
-                "comparator_id",
-                "observed_at",
-                "watermark",
-            )
-        }
-        result["data"]["facts"] = {
-            **data["facts"],
-            "evidence": data["facts"]["evidence"][:32],
-            "evidence_count": len(data["facts"]["evidence"]),
-            "attempt_outcomes": dict(list(data["facts"]["attempt_outcomes"].items())[:32]),
-            "attempt_count": len(data["facts"]["attempt_outcomes"]),
-        }
-    elif row["kind"] == "observation_consumption":
-        result["data"] = data
-    elif row["kind"] == "policy_transition":
-        result["data"] = {**data, "finding": data.get("finding", "")[:1024]}
-    elif row["kind"] == "proposal_request":
-        result["data"] = {
-            key: data[key]
-            for key in (
-                "proposer_id",
-                "policy_revision",
-                "parent_candidate_id",
-                "parent_source",
-                "seed",
-                "context_digest",
-                "incumbent_revision",
-            )
-        }
-        if data.get("theme_id") is not None:
-            result["data"]["theme_id"] = data["theme_id"]
-        if data.get("parent_selection") is not None:
-            result["data"]["parent_selection"] = {
-                key: data["parent_selection"][key] for key in ("reference", "change_id")
-            }
-            result["data"]["comparator_candidate_id"] = data["comparator_candidate_id"]
-    elif row["kind"] == "proposal_response":
-        result["data"] = {
-            key: data[key]
-            for key in ("response_digest", "responder_id", "recorded_at", "late_at_recording")
-        }
-        result["data"]["outcome"] = data["request"]["outcome"]
-        result["data"]["hypothesis"] = data["request"]["hypothesis"][:1024]
-        result["data"]["usage"] = data["request"]["usage"]
-    elif row["kind"] == "proposal_cancellation":
         result["data"] = data
     elif row["kind"] == "attempt_submission":
         result["data"] = {
@@ -524,27 +452,11 @@ class ResearchQueries:
             ).fetchall()
             recent = connection.execute(
                 "SELECT kind,id FROM records WHERE workspace_id=? AND campaign_id=? "
-                "AND kind IN ('candidate','trial','evaluation_receipt','promotion',"
-                "'search_observation','policy_transition','population_member','population_change') "
+                "AND kind IN ('candidate','trial','evaluation_receipt','promotion') "
                 "ORDER BY rowid DESC LIMIT ?",
                 (context.principal.workspace_id, campaign_id, limit),
             ).fetchall()
             evidence = [summarize(transaction.get(row["kind"], row["id"])) for row in recent]
-            try:
-                search = summarize(transaction.get("search_state", campaign_id))
-            except ResearchError as error:
-                if error.code != ErrorCode.NOT_FOUND:
-                    raise
-                search = None
-            pending = connection.execute(
-                "SELECT id FROM records WHERE workspace_id=? AND campaign_id=? "
-                "AND kind='proposal_request' AND state IN ('pending','responded') "
-                "ORDER BY rowid LIMIT ?",
-                (context.principal.workspace_id, campaign_id, limit),
-            ).fetchall()
-            requests = [
-                summarize(transaction.get("proposal_request", row["id"])) for row in pending
-            ]
             budgets = connection.execute(
                 "SELECT payload FROM budgets WHERE workspace_id=? "
                 "AND campaign_id=? ORDER BY dimension",
@@ -581,8 +493,6 @@ class ResearchQueries:
                 },
                 "counts": [dict(row) for row in counts],
                 "recent_evidence": evidence,
-                "search_state": search,
-                "pending_proposals": requests,
                 "stopping_status": stopping_status,
                 "budget": [
                     {**account.model_dump(mode="json"), "available": str(account.available)}

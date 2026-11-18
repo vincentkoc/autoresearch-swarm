@@ -24,6 +24,7 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
+from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.models import (
     DelegationConfiguration,
     SearchConfiguration,
@@ -46,10 +47,6 @@ from tests.control.test_evaluation_driver import role
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.orchestration.test_http_delivery import serving
-from tests.search.test_portfolio_control import answer, issue, portfolio_options
-from tests.search.test_proposals import baseline
-from tests.search.test_search_admission import admit
-from tests.search.test_search_observations import evaluate
 from tests.support import LIMITS
 
 OPTIONS = {
@@ -66,6 +63,26 @@ CHILD_LIMITS = (
     BudgetLimit(dimension="execution_ms", limit=50_000, unit="ms"),
     BudgetLimit(dimension="trial_admissions", limit=1, unit="count"),
 )
+
+
+def evaluate(pipeline: Pipeline, trial: dict[str, Any]) -> dict[str, Any]:
+    train = pipeline.client.get("job", trial["data"]["job_ids"][0])
+    attempt = pipeline.worker.claim(train)
+    pipeline.worker.execute(attempt["id"])
+    job = pipeline.client.get("job", trial["data"]["job_ids"][1])
+    authorization = pipeline.client.command(
+        "evaluation.authorize",
+        AuthorizeEvaluation(job_id=job["id"], evaluator_id=pipeline.runtime.principal().id),
+        idempotency_key=new_id(),
+        expected_revision=job["revision"],
+    )["result"]
+    attempt = pipeline.worker.claim(pipeline.client.get("job", job["id"]))
+    pipeline.worker.execute(attempt["id"])
+    return pipeline.client.command(
+        "evaluation.complete",
+        CompleteEvaluation(request_id=authorization["id"], attempt_id=attempt["id"]),
+        idempotency_key=new_id(),
+    )["result"]
 
 
 def accounts(pipeline: Pipeline, campaign_id: str) -> dict[str, Any]:
@@ -555,83 +572,6 @@ def test_legacy_campaign_omits_optional_delegation_and_funding_views(pipeline: P
     context = pipeline.client.context(pipeline.campaign["id"])
     assert "funding" not in context
     assert "delegation" not in context["contract"]
-
-
-PORTFOLIO_OPTIONS = {
-    **portfolio_options(max_trials=6),
-    "delegation": DelegationConfiguration(max_depth=1),
-    "limits": (
-        *portfolio_options()["limits"],
-        BudgetLimit(dimension="trial_admissions", unit="count", limit=4),
-        BudgetLimit(dimension="child_campaigns", unit="count", limit=2),
-    ),
-}
-
-
-@pytest.mark.parametrize("pipeline", [PORTFOLIO_OPTIONS], indirect=True)
-def test_child_and_direct_admission_cannot_spend_portfolio_promises(
-    pipeline: Pipeline,
-    tmp_path: Path,
-) -> None:
-    baseline(pipeline)
-    first, second = issue(pipeline, 0, 0)["request"], issue(pipeline, 1, 1)["request"]
-    before = accounts(pipeline, pipeline.campaign["id"])
-    with pytest.raises(ResearchError) as promised:
-        create(
-            pipeline,
-            limits=(
-                *CHILD_LIMITS[:-1],
-                BudgetLimit(dimension="trial_admissions", limit=2, unit="count"),
-            ),
-            max_trials=2,
-        )
-    assert promised.value.code == ErrorCode.BUDGET_EXHAUSTED
-    assert accounts(pipeline, pipeline.campaign["id"]) == before
-    assert len(pipeline.client.list(RecordQuery(kind="campaign"))["items"]) == 1
-    create(pipeline)  # Exactly the one remaining unpromised admission.
-    existing = TrialData.model_validate(pipeline.trial["data"])
-    campaign = pipeline.client.get("campaign", pipeline.campaign["id"])
-    budget = accounts(pipeline, campaign["id"])
-    with pytest.raises(ResearchError) as direct:
-        pipeline.client.command(
-            "trial.submit",
-            SubmitTrial(
-                campaign_id=campaign["id"],
-                candidate_id=existing.candidate_id,
-                validation_id=existing.validation_id,
-                seed=37,
-            ),
-            idempotency_key="direct-cannot-steal",
-            expected_revision=campaign["revision"],
-        )
-    assert direct.value.code == ErrorCode.BUDGET_EXHAUSTED
-    assert accounts(pipeline, campaign["id"]) == budget
-    assert len(pipeline.client.list(RecordQuery(kind="trial"))["items"]) == 1
-    for index, (proposal, rate) in enumerate(((first, 0.15), (second, 0.35))):
-        answer(pipeline, proposal, tmp_path, rate)
-        assert admit(pipeline, proposal["id"], revision=2 + index)["result"]["trial"] is not None
-    final = accounts(pipeline, campaign["id"])["trial_admissions"]
-    assert final["consumed"] == "3" and final["reserved"] == "1"
-
-
-@pytest.mark.parametrize("pipeline", [PORTFOLIO_OPTIONS], indirect=True)
-def test_proposal_issuance_counts_funding_already_held_by_child(pipeline: Pipeline) -> None:
-    baseline(pipeline)
-    create(
-        pipeline,
-        limits=(
-            *CHILD_LIMITS[:-1],
-            BudgetLimit(dimension="trial_admissions", limit=2, unit="count"),
-        ),
-        max_trials=2,
-    )
-    issue(pipeline, 0, 0)
-    budget = accounts(pipeline, pipeline.campaign["id"])
-    with pytest.raises(ResearchError) as denied:
-        issue(pipeline, 1, 1)
-    assert denied.value.code == ErrorCode.BUDGET_EXHAUSTED
-    assert accounts(pipeline, pipeline.campaign["id"]) == budget
-    assert len(pipeline.client.list(RecordQuery(kind="proposal_request"))["items"]) == 1
 
 
 @pytest.mark.parametrize(

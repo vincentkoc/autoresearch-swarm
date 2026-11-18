@@ -52,14 +52,6 @@ from research_swarm.control.models import (
     ProjectRevisionData,
     TrialData,
 )
-from research_swarm.control.observation_models import (
-    AbandonObservationSelection,
-    ObserveTrial,
-    ResolveTrialObservation,
-    SelectTrialObservation,
-)
-from research_swarm.control.population import PopulationControl
-from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.preflight import verified_source
 from research_swarm.control.promotions import (
     AssessPromotion,
@@ -67,19 +59,9 @@ from research_swarm.control.promotions import (
     InvalidateEvidence,
     PromotionControl,
 )
-from research_swarm.control.proposals import ProposalControl
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
-from research_swarm.control.search_admission import SearchAdmission
-from research_swarm.control.search_models import (
-    AdmitProposalResponse,
-    CancelProposal,
-    RequestProposal,
-    RespondToProposal,
-)
-from research_swarm.control.search_observations import ObservationControl
-from research_swarm.control.search_selection import SelectionControl
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
     SetWorkerAdmission,
@@ -183,17 +165,6 @@ class ResearchService:
             database, assignment_key, crypto_provider=self.crypto_provider
         )
         self.worker_locality = WorkerLocality(database, self.workers)
-        self.proposals = ProposalControl(database)
-        self.population = PopulationControl(database)
-        self.search_observations = ObservationControl(database)
-        self.search_selection = SelectionControl(database)
-        self.search_admission = SearchAdmission(
-            database,
-            artifacts,
-            lambda transaction, request, proposal_id: self._submit_trial(
-                transaction, request, consuming_proposal_id=proposal_id
-            ),
-        )
         self.acceptance = (
             self.workers.acceptance if self.workers is not None else AcceptanceControl(database)
         )
@@ -265,48 +236,6 @@ class ResearchService:
         self, context: CommandContext, request: ReconcileAttempt
     ) -> JsonObject:
         return self.closures.reconcile(context, request)
-
-    def abandon_search_selection(
-        self, context: CommandContext, request: AbandonObservationSelection
-    ) -> JsonObject:
-        return self.search_observations.abandon(context, request)
-
-    def select_search_observation(
-        self, context: CommandContext, request: SelectTrialObservation
-    ) -> JsonObject:
-        return self.search_selection.select(context, request)
-
-    def observe_search_trial(self, context: CommandContext, request: ObserveTrial) -> JsonObject:
-        return self.search_observations.observe(context, request)
-
-    def resolve_search_trial(
-        self, context: CommandContext, request: ResolveTrialObservation
-    ) -> JsonObject:
-        return self.search_observations.resolve(context, request)
-
-    def admit_proposal_response(
-        self, context: CommandContext, request: AdmitProposalResponse
-    ) -> JsonObject:
-        return self.search_admission.admit(context, request)
-
-    def request_proposal(self, context: CommandContext, request: RequestProposal) -> JsonObject:
-        return self.proposals.request(context, request)
-
-    def retain_population_member(
-        self, context: CommandContext, request: RetainPopulationMember
-    ) -> JsonObject:
-        return self.population.retain(context, request)
-
-    def retire_population_member(
-        self, context: CommandContext, request: RetirePopulationMember
-    ) -> JsonObject:
-        return self.population.retire(context, request)
-
-    def respond_proposal(self, context: CommandContext, request: RespondToProposal) -> JsonObject:
-        return self.proposals.respond(context, request)
-
-    def cancel_proposal(self, context: CommandContext, request: CancelProposal) -> JsonObject:
-        return self.proposals.cancel(context, request)
 
     def fence_worker(self, context: CommandContext, request: FenceWorker) -> JsonObject:
         return self.worker_turnover.fence(context, request)
@@ -568,9 +497,6 @@ class ResearchService:
 
     @staticmethod
     def _validate_contract(transaction: Transaction, campaign: CampaignData) -> None:
-        from research_swarm.control.portfolio import portfolio_contract
-
-        portfolio_contract(campaign)
         validate_delegation(campaign)
         revision = ProjectRevisionData.model_validate(
             transaction.get("project_revision", campaign.contract.project_revision_id)["data"]
@@ -716,18 +642,6 @@ class ResearchService:
     def _submit_direct_trial(self, transaction: Transaction, request: SubmitTrial) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         check_revision(transaction.context, row)
-        campaign = CampaignData.model_validate(row["data"])
-        if campaign.contract.search.policy == "portfolio":
-            from research_swarm.control.portfolio import require_portfolio_trial_allowance
-            from research_swarm.control.proposals import search_state
-            from research_swarm.control.search_models import SearchState
-
-            state = SearchState.model_validate(
-                search_state(transaction, request.campaign_id, campaign)["data"]
-            )
-            require_portfolio_trial_allowance(
-                transaction, request.campaign_id, campaign, len(state.pending_request_ids)
-            )
         return self._submit_trial(transaction, request)
 
     @staticmethod
@@ -736,8 +650,6 @@ class ResearchService:
         request: SubmitTrial,
         confirmation_plan_id: str | None = None,
         confirmation_side: Literal["candidate", "comparator"] | None = None,
-        *,
-        consuming_proposal_id: str | None = None,
     ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         campaign = CampaignData.model_validate(row["data"])
@@ -822,13 +734,7 @@ class ResearchService:
                 ),
             },
         ).sealed()
-        charge_trial(
-            transaction,
-            campaign,
-            request.campaign_id,
-            spec.trial_id,
-            consuming_proposal_id=consuming_proposal_id,
-        )
+        charge_trial(transaction, campaign, request.campaign_id, spec.trial_id)
         job_ids = {stage.id: new_id() for stage in spec.stages}
         bindings = input_sources(resolved, campaign.contract.input_artifacts)
         trial = transaction.insert(

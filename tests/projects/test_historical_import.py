@@ -23,9 +23,8 @@ from research_swarm.domain.types import new_id
 from research_swarm.runtime import LocalRuntime
 from research_swarm.state.database import Transaction
 from research_swarm.storage.filesystem import FilesystemBlobStore
-from tests.api.test_cli_mcp import cli, stdio
+from tests.api.test_cli_mcp import cli, command, stdio
 from tests.control.test_evaluation_driver import role
-from tests.integration.test_agent_research_cycle import command
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.orchestration.test_http_delivery import serving

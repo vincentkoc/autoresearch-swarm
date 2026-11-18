@@ -40,6 +40,11 @@ commands, timer thresholds and research effects survive these delivery transitio
 
 ## Implementation coverage
 
+The greedy/portfolio controller, proposal inbox and planner benchmark entries below
+record earlier qualifications. Current campaigns use the swarm loop. Its serial,
+fixed-budget regression covers a worse candidate, a tie, a strict improvement
+and reopening the completed queue.
+
 | Area | Implementation | Local verification | Native/provider qualification |
 |---|---|---|---|
 | State store callbacks | Shared command/replay/snapshot/event kernel with native SQLite adapter, portable rows/integrity failures and explicit authority identity | Callback-only facade exercises replay, CAS, nested rejection/fence commit, hook rollback, credentials, scoped service queries and recovery reads; native regression tests | Shared authority kernel is qualified in local workerd under the explicit native-witness profile; deployed service qualification remains open |

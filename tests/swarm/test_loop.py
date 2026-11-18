@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sqlite3
 import threading
 from collections.abc import Sequence
 from dataclasses import replace
@@ -85,6 +86,47 @@ class Backend:
         if name == "child":
             self.child.set()
         return Result(attempt=attempt, status="ok", metrics={"score": 1.0})
+
+
+@pytest.mark.asyncio
+async def test_serial_greedy_keeps_incumbent_until_strict_improvement(tmp_path: Path) -> None:
+    scores = {"baseline": 2.0, "worse": 1.0, "a-tie": 2.0, "better": 3.0, "over-budget": 4.0}
+    spec = campaign(
+        max_workers=1,
+        top_k=1,
+        max_trials=4,
+        candidates=tuple(Candidate(candidate_id=name, params={"name": name}) for name in scores),
+    )
+    store = SQLiteStore(tmp_path / "queue")
+    dispatched = []
+
+    class ScoringBackend(Backend):
+        async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
+            assert store.queue_depth(spec.campaign_id) == (0, 1)
+            name = attempt.trial.candidate.candidate_id
+            dispatched.append(name)
+            return Result(attempt=attempt, status="ok", metrics={"score": scores[name]})
+
+    backend = ScoringBackend()
+    worker = WorkerLoop(store, backend, "worker")
+    result = await SwarmLoop(spec, store, backend, worker).run()
+    assert result.reason == "trial_limit" and result.attempts == result.trials == 4
+    assert result.selected and result.top == (result.selected,)
+    assert result.selected.result.attempt.trial.candidate.candidate_id == "better"
+    with sqlite3.connect(tmp_path / "queue") as db:
+        selected = [
+            row[0]
+            for row in db.execute(
+                "SELECT trial_id FROM swarm_events WHERE kind='selected' ORDER BY id"
+            )
+        ]
+    assert selected == [
+        trial.trial_id
+        for trial in store.trials(spec.campaign_id)
+        if trial.candidate.candidate_id in {"baseline", "better"}
+    ]
+    assert await SwarmLoop(spec, store, backend, worker).run() == result
+    assert dispatched == ["baseline", "worse", "a-tie", "better"]
 
 
 @pytest.mark.asyncio
