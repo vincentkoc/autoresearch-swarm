@@ -190,6 +190,11 @@ The local backend starts a separate process group. It captures bounded output
 and kills remaining group members during teardown. A child that inherits
 the output pipe should not keep the trial alive after its deadline.
 
+The native controller worker sets its local POSIX deadline at startup. Its
+clock includes time spent suspended. Linux uses `CLOCK_BOOTTIME` and macOS
+uses `mach_continuous_time`. The supervisor caps startup and execution by the
+remaining allowance and bounds cleanup separately.
+
 The resource pool distinguishes CPU slots, LLM slots and GPU memory.
 A worker can account for estimated token demand before it makes a claim.
 For GPU jobs, the pool uses demand estimates and measured peak VRAM to

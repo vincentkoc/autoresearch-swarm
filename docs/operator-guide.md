@@ -125,6 +125,11 @@ provides diagnostic evidence for a retry.
 
 ## Read earlier records
 
+The native controller SQLite adapter supports `Database.backup(destination)`.
+Choose a new destination path. The operation writes a consistent image of
+the database and refuses an existing file. Back up external artifacts
+separately. Preserve the swarm queue and its panel study as separate stores.
+
 Older controller commands use receipts and a separate event model. Open
 their versioned reference when inspecting an existing manifest-based run.
 
