@@ -82,6 +82,7 @@ class TextRewrite:
         recent.append(
             {
                 "candidate": trial.candidate.candidate_id,
+                "params": trial.candidate.params,
                 "parents": trial.candidate.parents,
                 "operator": trial.candidate.operator,
                 "metrics": result.metrics,

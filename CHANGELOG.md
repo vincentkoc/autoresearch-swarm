@@ -28,6 +28,9 @@
 - Generate swarm candidates with parameter mutation, optional Optuna sampling,
   crossover, ensemble growth, seed replication and deadline-bounded local Ollama edits.
 
+- Allocate swarm proposal slots by observed gain per cost, learn mutations from
+  categorical trial results and promote replicated recipes at full fidelity.
+
 - Define the campaign, candidate, trial, attempt and result records and plugin
   protocols for capacity-driven research campaigns.
 

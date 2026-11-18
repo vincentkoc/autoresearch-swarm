@@ -49,3 +49,12 @@ class ASHA:
                     issued.add(key)
                     return key, self.fidelities[rung + 1]
         return None
+
+    def restore(self, key: str, fidelity: float, score: float) -> None:
+        """Rebuild an actually executed trajectory from the ordered trial archive."""
+        rung = self.fidelities.index(fidelity)
+        if rung:
+            if key not in self._scores[rung - 1]:
+                raise ValueError("missing preceding rung in the archive")
+            self._promoted[rung - 1].add(key)
+        self.report(key, fidelity, score)
