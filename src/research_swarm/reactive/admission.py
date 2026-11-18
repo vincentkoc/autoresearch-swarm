@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
-from research_swarm.domain.canonical import canonical_bytes
-from research_swarm.domain.experiments import ExperimentSpec, StageSpec
+from research_swarm.domain.experiments import StageSpec
 from research_swarm.projects.workload import WorkloadContext
 from research_swarm.reactive.contracts import ReactiveContract, RunBinding
 
@@ -16,20 +15,12 @@ if TYPE_CHECKING:
     from research_swarm.reactive.journal import DecisionJournal
 
 
-def training_parameters(spec: ExperimentSpec, stage: StageSpec) -> dict[str, JsonValue]:
-    if "reactive" not in spec.extensions:
+def training_parameters(
+    contract: ReactiveContract | None, stage: StageSpec
+) -> dict[str, JsonValue]:
+    if contract is None or stage.kind != "train":
         return {}
-    contract = ReactiveContract.model_validate(spec.extensions["reactive"])
-    return {"reactive": contract.model_dump(mode="json")} if stage.kind == "train" else {}
-
-
-def verify_parameters(context: WorkloadContext, spec: ExperimentSpec, stage: StageSpec) -> None:
-    expected = training_parameters(spec, stage)
-    actual = (
-        {"reactive": context.parameters["reactive"]} if "reactive" in context.parameters else {}
-    )
-    if canonical_bytes(actual) != canonical_bytes(expected):
-        raise ValueError("Reactive workload context differs from the admitted training contract")
+    return {"reactive": contract.model_dump(mode="json")}
 
 
 def create_session(context: WorkloadContext, *, path: Path | None = None) -> DecisionJournal:

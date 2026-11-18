@@ -17,7 +17,7 @@ an LLM code-patch bridge remain separate surfaces.
 | Loop | Mutation and evidence |
 |---|---|
 | Original autoresearch | An external coding agent changes training code between fixed-budget trials, evaluates and keeps or reverts the candidate. |
-| Swarm outer loop | Agents submit isolated candidates; workers execute admitted trials and independent evaluation supports promotion. |
+| Swarm outer loop | The proposer supplies candidates, the worker executes trials and the loop selects from recorded results under its panel policy. |
 | Reactive inner loop | A policy observes declared diagnostics during one trial and proposes bounded controls; the workload applies them at update boundaries and records readback. |
 
 The inner loop does not replace the outer one. Closing the session stops future
@@ -195,17 +195,58 @@ budget, increase `max_bytes` within its documented schema bound. These are local
 tools for trusted workloads and agents; controller credentials, hosted adapter
 parity and filesystem sandboxing are separate capabilities.
 
-## Admitted workload binding
+## Launch the reactive CPU example
 
-An optional `[reactive]` declaration in `research.toml` fixes the controls,
-diagnostics, policy fingerprint and limits before project admission. It becomes
-part of the protocol digest and sealed experiment specification. Projects
-without this declaration retain their existing serialized records and digests.
+From the repository root, save the following as `native-reactive.yaml`. This
+campaign uses a registered CPU interpreter. Its manifest at
+`examples/reactive_cpu/research.toml` defines the live training stage, a
+fixed-control baseline, a schedule replay and a separate evaluator. Only
+the evaluator writes the campaign metric, `mse`.
 
-Only stages with `kind = "train"` receive the declaration in their sealed
-`WorkloadContext.parameters`. Evaluation and `policy_train` stages do not receive
-it. This is an exact stage-kind rule, not a classifier of what the workload does.
-Prepared execution verifies the correspondence again, including reused markers.
+~~~yaml
+campaign_id: native-reactive
+task_dir: examples/reactive_cpu
+command:
+  - python
+  - -m
+  - research_swarm.swarm.native
+  - --registration
+  - ../../.research/engines/reactive.json
+  - --outputs
+  - ../../.research/reactive-stages
+metric: mse
+direction: minimize
+evaluation_mode: smoke
+max_trials: 1
+max_workers: 1
+candidates:
+  - candidate_id: baseline
+~~~
+
+~~~sh
+uv sync --locked --group dev
+contract=$(uv run --no-sync research project register examples/reactive_cpu --db .research/projects.sqlite | \
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["manifest"]["environment_contract_digest"])')
+uv run --no-sync research engine register python-cpu \
+  --file .research/engines/reactive.json --environment-contract "$contract" \
+  --probe-dir .research/probes
+uv run --no-sync research swarm run native-reactive.yaml --db .research/native-reactive.sqlite
+~~~
+
+The local callback supplies the training decision. Under
+`.research/reactive-stages/<attempt-id>/`, the stage directories keep the live
+transcript, trajectory, fixed-control and replay models, replay trace and
+evaluation report. Repeating the campaign command resumes the existing attempt
+history. The replay stage inside the trial applies the recorded control schedule
+to a new run. These two operations have different effects.
+
+## Workload binding
+
+The optional `[reactive]` declaration in `research.toml` fixes the controls,
+diagnostics, policy fingerprint and limits. It contributes to the project
+protocol digest. The native runner puts it in `WorkloadContext.parameters.reactive`
+only for stages with `kind = "train"`. Each stage receives a sealed context with
+the trial seed, its own attempt identity and the native trial digest.
 
 The training workload can call `ReactiveHook.from_context(context, target)`.
 This creates the journal at `output_root/reactive.sqlite` and binds it to the

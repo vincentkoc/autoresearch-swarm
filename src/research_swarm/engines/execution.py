@@ -5,25 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from research_swarm.domain.canonical import canonical_bytes, content_digest, strict_json_loads
+from research_swarm.domain.canonical import canonical_bytes, content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.experiments import ExperimentSpec, ResourceRequirements, StageSpec
+from research_swarm.domain.experiments import ResourceRequirements, StageSpec
 from research_swarm.engines.adapter import launch_adapter_digest
-from research_swarm.engines.registration import EnvironmentRegistration, read_registration
+from research_swarm.engines.registration import EnvironmentRegistration
 from research_swarm.projects.source import portable_path
-from research_swarm.runtime import private_state_directory, read_private, write_private
-from research_swarm.workers.engine_binding import EngineBinding, EngineFile
-
-
-def capacities(registration: EnvironmentRegistration) -> dict[str, int]:
-    result = {"cpu": registration.cpu_slots}
-    if registration.memory_bytes:
-        result["memory"] = registration.memory_bytes
-    if registration.scratch_bytes:
-        result["scratch"] = registration.scratch_bytes
-    if registration.device_pool is not None:
-        result[registration.device_pool] = 1
-    return result
+from research_swarm.state.private_files import private_state_directory, read_private, write_private
 
 
 def demand(
@@ -63,9 +51,9 @@ def demand(
 
 
 def validate_stage(
-    registration: EnvironmentRegistration, spec: ExperimentSpec, stage: StageSpec
+    registration: EnvironmentRegistration, environment_digest: str, stage: StageSpec
 ) -> None:
-    registration.require_environment(spec.environment_digest)
+    registration.require_environment(environment_digest)
     if registration.launch_adapter_digest is None:
         raise ResearchError(
             ErrorCode.CAPABILITY_UNAVAILABLE,
@@ -100,9 +88,9 @@ def validate_stage(
 
 
 def context(
-    registration: EnvironmentRegistration, spec: ExperimentSpec, stage: StageSpec
+    registration: EnvironmentRegistration, environment_digest: str, stage: StageSpec
 ) -> dict[str, Any]:
-    validate_stage(registration, spec, stage)
+    validate_stage(registration, environment_digest, stage)
     backend = registration.descriptor.device_backend
     return {
         "profile": registration.descriptor.profile,
@@ -114,7 +102,7 @@ def context(
         if backend == "metal"
         else backend,
         "execution_fingerprint": registration.profile.execution_fingerprint,
-        "environment_digest": spec.environment_digest,
+        "environment_digest": environment_digest,
         "policy": registration.policy.model_dump(mode="json"),
         "launch_adapter_digest": registration.launch_adapter_digest,
         "launch_mode": "isolated-verify-then-project-v1",
@@ -135,65 +123,42 @@ def environment(registration: EnvironmentRegistration, stage: StageSpec) -> dict
     return result
 
 
-def _payload(registration: EnvironmentRegistration, probe: EngineFile) -> dict[str, Any]:
-    return {
-        "profile": registration.descriptor.profile,
-        "descriptor": registration.descriptor.model_dump(mode="json", exclude_defaults=True),
-        "interpreter": registration.interpreter.model_dump(mode="json", exclude_defaults=True),
-        "executable_digest": registration.executable_digest,
-        "logical_device_index": 0,
-        "probe": probe.model_dump(mode="json", exclude_defaults=True),
-    }
-
-
-def _freeze(path: Path, payload: bytes) -> EngineFile:
+def _freeze(path: Path, content: bytes) -> str:
     if path.exists():
-        if read_private(path.parent, path.name, limit=1024 * 1024) != payload:
+        if read_private(path.parent, path.name, limit=1024 * 1024) != content:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Frozen engine input changed")
     else:
-        write_private(path, payload)
-    return EngineFile(path=str(path), digest=content_digest(payload))
+        write_private(path, content)
+    return content_digest(content)
 
 
-def prepare_engine(root: Path, registration: EnvironmentRegistration) -> EngineBinding:
+def prepare_engine(root: Path, registration: EnvironmentRegistration) -> tuple[str, ...]:
+    """Return the registered interpreter and its isolated bootstrap argv prefix."""
     root = root.absolute()
     with private_state_directory(root):
-        frozen_registration = _freeze(
-            root / "registration.json", canonical_bytes(registration.model_dump(mode="json"))
-        )
-        probe = _freeze(root / "probe.py", Path(__file__).with_name("_probe.py").read_bytes())
-        bootstrap = _freeze(root / "launch.py", Path(__file__).with_name("_launch.py").read_bytes())
-        if (
-            launch_adapter_digest(bootstrap.digest, probe.digest)
-            != registration.launch_adapter_digest
-        ):
+        launch, probe, payload = (root / name for name in ("launch.py", "probe.py", "launch.json"))
+        launch_digest = _freeze(launch, Path(__file__).with_name("_launch.py").read_bytes())
+        probe_digest = _freeze(probe, Path(__file__).with_name("_probe.py").read_bytes())
+        if launch_adapter_digest(launch_digest, probe_digest) != registration.launch_adapter_digest:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE,
                 "Registered launch adapter differs from installed code",
             )
-        payload = _freeze(root / "launch.json", canonical_bytes(_payload(registration, probe)))
-    return EngineBinding(
-        registration=frozen_registration, bootstrap=bootstrap, probe=probe, payload=payload
-    )
-
-
-def resolve_engine(binding: EngineBinding) -> EnvironmentRegistration:
-    for entry in (binding.registration, binding.bootstrap, binding.probe, binding.payload):
-        path = Path(entry.path)
-        if content_digest(read_private(path.parent, path.name, limit=1024 * 1024)) != entry.digest:
-            raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Frozen engine input differs")
-    registration = read_registration(Path(binding.registration.path))
-    if (
-        launch_adapter_digest(binding.bootstrap.digest, binding.probe.digest)
-        != registration.launch_adapter_digest
-    ):
-        raise ResearchError(
-            ErrorCode.AUTHORIZATION_DENIED, "Frozen launch adapter differs from registration"
+        _freeze(
+            payload,
+            canonical_bytes(
+                {
+                    "profile": registration.descriptor.profile,
+                    "descriptor": registration.descriptor.model_dump(
+                        mode="json", exclude_defaults=True
+                    ),
+                    "interpreter": registration.interpreter.model_dump(
+                        mode="json", exclude_defaults=True
+                    ),
+                    "executable_digest": registration.executable_digest,
+                    "logical_device_index": 0,
+                    "probe": {"path": str(probe), "digest": probe_digest},
+                }
+            ),
         )
-    path = Path(binding.payload.path)
-    payload = strict_json_loads(read_private(path.parent, path.name, limit=1024 * 1024))
-    if payload != _payload(registration, binding.probe):
-        raise ResearchError(
-            ErrorCode.AUTHORIZATION_DENIED, "Engine launch payload differs from registration"
-        )
-    return registration
+    return registration.executable, "-I", str(launch), str(payload)

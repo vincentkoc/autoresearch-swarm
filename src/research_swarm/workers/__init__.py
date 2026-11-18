@@ -1,1 +1,1 @@
-"""Native execution, durable worker state, and outbound worker protocols."""
+"""Process supervision and host clocks for native engine execution."""

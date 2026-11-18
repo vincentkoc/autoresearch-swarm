@@ -6,9 +6,8 @@ import hashlib
 import json
 import math
 from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any
-
-import rfc8785
 
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 HASH_FORMAT_VERSION = "1"
@@ -42,10 +41,33 @@ def _check_value(value: Any) -> None:
     raise ValueError(f"Unsupported JSON value: {type(value).__name__}")
 
 
+def _number(value: float) -> str:
+    if value == 0:
+        return "0"
+    shortest = repr(value)
+    if 1e-6 <= abs(value) < 1e21:
+        # Existing report and project hashes use fixed notation within this range.
+        fixed = format(Decimal(shortest), "f")
+        return fixed.rstrip("0").rstrip(".") if "." in fixed else fixed
+    mantissa, exponent = shortest.split("e")
+    return f"{mantissa.removesuffix('.0')}e{int(exponent):+d}"
+
+
+def _encode(value: Any) -> str:
+    if isinstance(value, Mapping):
+        keys = sorted(value, key=lambda key: key.encode("utf-16be"))
+        return "{" + ",".join(_encode(key) + ":" + _encode(value[key]) for key in keys) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_encode(item) for item in value) + "]"
+    if isinstance(value, float):
+        return _number(value)
+    return json.dumps(value, ensure_ascii=False, allow_nan=False)
+
+
 def canonical_bytes(value: Any) -> bytes:
-    """Preserve absent/null and Unicode contents, using JCS number semantics."""
+    """Preserve existing v1 project, replay and archived report identities."""
     _check_value(value)
-    return rfc8785.dumps(value)
+    return _encode(value).encode("utf-8")
 
 
 def content_digest(data: bytes) -> str:

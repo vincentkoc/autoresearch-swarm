@@ -83,6 +83,7 @@ class LocalBackend:
             **os.environ,
             **self._env,
             "SWARM_TRIAL": str(trial),
+            "SWARM_ATTEMPT_ID": attempt.attempt_id,
             "SWARM_METRICS": str(metrics),
             "SWARM_USAGE": str(usage),
         }

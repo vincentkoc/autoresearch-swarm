@@ -285,3 +285,35 @@ def test_trial_and_candidate_identity_survive_replicates(tmp_path: Path) -> None
                 original, trial_id="other", candidate=replace(original.candidate, text="changed")
             )
         )
+
+
+def test_init_uses_six_tables_and_preserves_a_legacy_workspace(tmp_path: Path) -> None:
+    from research_swarm.cli import main
+
+    workspace = tmp_path / "fresh"
+    assert main(["--state-dir", str(workspace), "init"]) == 0
+    assert main(["--state-dir", str(workspace), "init"]) == 0
+    with sqlite3.connect(workspace / "swarm.sqlite") as db:
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table'")}
+    assert tables - {"sqlite_sequence"} == {
+        "swarm_projects",
+        "swarm_campaigns",
+        "swarm_candidates",
+        "swarm_trials",
+        "swarm_attempts",
+        "swarm_events",
+    }
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    legacy = archive / "research.sqlite"
+    legacy.write_bytes(b"archived state")
+    assert main(["--state-dir", str(archive), "init"]) == 2
+    assert list(archive.iterdir()) == [legacy]
+    assert legacy.read_bytes() == b"archived state"
+
+
+def test_project_identity_file_does_not_make_a_legacy_workspace(tmp_path: Path) -> None:
+    from research_swarm.state.private_files import campaign_database
+
+    (tmp_path / "identity.json").write_text('{"name":"dataset"}')
+    assert campaign_database(tmp_path, project_directory=True) == tmp_path / "swarm.sqlite"

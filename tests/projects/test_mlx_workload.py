@@ -7,18 +7,17 @@ import math
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from research_swarm import ResearchClient
-from research_swarm.control.queries import RecordQuery
 from research_swarm.engines.registration import register_environment
-from research_swarm.orchestration.bootstrap import RunOptions
-from research_swarm.orchestration.run import run_project
 from research_swarm.projects.capture import capture_project
 from research_swarm.projects.manifest import resolve_project
-from tests.api.test_cli_mcp import process_environment
+from research_swarm.swarm.command import run_campaign
+from research_swarm.swarm.store import SQLiteStore
+from research_swarm.workers.supervision import base_environment
 from tests.paths import REPO_ROOT
 
 
@@ -91,7 +90,7 @@ print(json.dumps({"steps":32,"max_error":error,"stream":"gpu"}))
     result = subprocess.run(
         [str(mlx_python), "-I", "-c", program, str(source_root())],
         cwd=tmp_path,
-        env=process_environment(),
+        env=base_environment(),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -104,7 +103,7 @@ print(json.dumps({"steps":32,"max_error":error,"stream":"gpu"}))
 
 
 @pytest.mark.parametrize("seed", [7, 8])
-async def test_registered_mlx_worker_trains_then_scores_independently(
+def test_registered_mlx_worker_trains_then_scores_independently(
     mlx_python: Path,
     tmp_path: Path,
     seed: int,
@@ -116,76 +115,84 @@ async def test_registered_mlx_worker_trains_then_scores_independently(
     contract = resolve_project(
         inspected, manifest_path="research_mlx.toml"
     ).environment_contract_digest
-    with ResearchClient.local(tmp_path / "state") as client:
-        environment = register_environment(
-            tmp_path / "registration" / "mlx.json",
-            profile="mlx-metal",
-            executable=mlx_python,
-            environment_contracts=(contract,),
-            memory_bytes=1024 * 1024 * 1024,
-            probe_directory=tmp_path / "probe",
+    environment = register_environment(
+        tmp_path / "registration" / "mlx.json",
+        profile="mlx-metal",
+        executable=mlx_python,
+        environment_contracts=(contract,),
+        memory_bytes=1024 * 1024 * 1024,
+        probe_directory=tmp_path / "probe",
+    )
+    assert environment.descriptor.framework_version == "0.32.4"
+    assert environment.descriptor.device_backend == "metal"
+    assert (
+        environment.descriptor.device is not None and environment.descriptor.device.unified_memory
+    )
+    fingerprint = environment.profile.execution_fingerprint
+    stage_files = tmp_path / "outputs"
+    config = tmp_path / "campaign.yaml"
+    config.write_text(
+        json.dumps(
+            {
+                "campaign_id": "mlx-baseline",
+                "metric": "val_bpb",
+                "direction": "minimize",
+                "task_dir": str(source),
+                "command": [
+                    sys.executable,
+                    "-m",
+                    "research_swarm.swarm.native",
+                    "--manifest",
+                    "research_mlx.toml",
+                    "--registration",
+                    str(tmp_path / "registration" / "mlx.json"),
+                    "--outputs",
+                    str(stage_files),
+                ],
+                "resource": "gpu",
+                "backend": "research_swarm.swarm.backends.local:from_spec",
+                "options": {"backend": {"device": "mps"}},
+                "evaluation_mode": "smoke",
+                "max_workers": 1,
+                "max_trials": 1,
+                "max_attempts": 1,
+                "seed": seed,
+                "candidates": [{"candidate_id": "baseline"}],
+            }
         )
-        assert environment.descriptor.framework_version == "0.32.4"
-        assert environment.descriptor.device_backend == "metal"
-        assert (
-            environment.descriptor.device is not None
-            and environment.descriptor.device.unified_memory
+    )
+    queue = tmp_path / "queue.sqlite"
+    _, code = run_campaign(config, queue)
+    (result,) = SQLiteStore(queue).results("mlx-baseline")
+    assert code == 0 and result.status == "ok", result.logs
+    reports = {}
+    for path in stage_files.glob("*/stage-*/context.json"):
+        context = json.loads(path.read_bytes())
+        reports[context["stage_id"]] = json.loads(Path(context["report_path"]).read_bytes())
+    trained, evaluated = reports["train"], reports["evaluate"]
+    diagnostics = trained["diagnostics"]
+    assert diagnostics["materialized_gpu_updates"] == diagnostics["optimizer_steps"] > 0
+    assert diagnostics["stream"] == "gpu" and diagnostics["precision"] == "float32"
+    assert diagnostics["execution_fingerprint"] == fingerprint
+    assert diagnostics["device_name"] == environment.descriptor.device.name
+    assert trained["phase_timings_ms"]["active_training"] >= 1000
+    assert trained["phase_timings_ms"]["warmup"] >= 0
+    assert evaluated["observed_seed"] == seed
+    score = result.metrics["val_bpb"]
+    assert math.isfinite(score) and score < math.log2(30) - 0.05
+    assert evaluated["measurements"][0]["value"] == score
+    print(
+        json.dumps(
+            {
+                "backend": "mlx-metal",
+                "mlx": environment.descriptor.framework_version,
+                "device": environment.descriptor.device.name,
+                "seed": seed,
+                "materialized_updates": diagnostics["optimizer_steps"],
+                "val_bpb": score,
+                "active_training_ms": trained["phase_timings_ms"]["active_training"],
+                "warmup_ms": trained["phase_timings_ms"]["warmup"],
+                "execution_fingerprint": fingerprint,
+            }
         )
-        fingerprint = environment.profile.execution_fingerprint
-        result = await run_project(
-            client,
-            source,
-            key="mlx-baseline",
-            options=RunOptions(manifest_path="research_mlx.toml", seed=seed, max_trials=1),
-            machine_registry=tmp_path / "machine" / "registry.sqlite",
-            registration=environment,
-        )
-        assert result.state == "awaiting_completion"
-        assert result.driver.executed_attempt_count == 2
-        attempts = client.list(RecordQuery(kind="attempt", campaign_id=result.campaign_id))["items"]
-        reports = {}
-        for summary in attempts:
-            attempt = client.get("attempt", summary["id"])
-            assert attempt["state"] == "succeeded"
-            measured = client.get("run_result", summary["id"])["data"]
-            assert measured["observed_seed"] == seed
-            assert measured["execution_fingerprint"] == fingerprint
-            assert measured["exit_code"] == 0
-            path = tmp_path / (summary["id"] + ".json")
-            client.download(attempt["data"]["report_artifact"]["id"], path)
-            reports[attempt["data"]["dispatch"]["stage_id"]] = json.loads(path.read_bytes())
-        trained, evaluated = reports["train"], reports["evaluate"]
-        diagnostics = trained["diagnostics"]
-        assert diagnostics["materialized_gpu_updates"] == diagnostics["optimizer_steps"] > 0
-        assert diagnostics["stream"] == "gpu" and diagnostics["precision"] == "float32"
-        assert diagnostics["execution_fingerprint"] == fingerprint
-        assert diagnostics["device_name"] == environment.descriptor.device.name
-        assert trained["phase_timings_ms"]["active_training"] >= 1000
-        assert trained["phase_timings_ms"]["warmup"] >= 0
-        assert evaluated["observed_seed"] == seed
-        receipts = client.list(
-            RecordQuery(kind="evaluation_receipt", campaign_id=result.campaign_id)
-        )["items"]
-        assert len(receipts) == 1 and receipts[0]["state"] == "valid"
-        receipt = client.get("evaluation_receipt", receipts[0]["id"])["data"]["receipt"]
-        score = receipt["metrics"][0]["value"]
-        assert math.isfinite(score) and score < math.log2(30) - 0.05
-        assert evaluated["measurements"][0]["value"] == score
-        accounts = client.budget(result.campaign_id)["accounts"]
-        assert all(item["reserved"] == item["uncertain"] == "0" for item in accounts)
-        assert next(item for item in accounts if item["dimension"] == "attempts")["consumed"] == "2"
-        print(
-            json.dumps(
-                {
-                    "backend": "mlx-metal",
-                    "mlx": environment.descriptor.framework_version,
-                    "device": environment.descriptor.device.name,
-                    "seed": seed,
-                    "materialized_updates": diagnostics["optimizer_steps"],
-                    "val_bpb": score,
-                    "active_training_ms": trained["phase_timings_ms"]["active_training"],
-                    "warmup_ms": trained["phase_timings_ms"]["warmup"],
-                    "execution_fingerprint": fingerprint,
-                }
-            )
-        )
+    )

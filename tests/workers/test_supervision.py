@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -238,14 +239,14 @@ def test_cancellation_escalates_for_a_sigterm_ignoring_child(tmp_path: Path) -> 
 
 @pytest.mark.parametrize("executable", ["./program", "program"])
 def test_relative_executables_resolve_from_the_project(tmp_path: Path, executable: str) -> None:
-    program = tmp_path / "program"
-    program.write_text("#!/bin/sh\nprintf 'project-directory'\n")
-    program.chmod(0o700)
+    pwd = shutil.which("pwd")
+    assert pwd is not None
+    (tmp_path / "program").symlink_to(pwd)
     invocation = NativeCommand(argv=(executable,), cwd=str(tmp_path), timeout_ms=3000)
     environment = {**base_environment(), "PATH": "."}
     outcome = run_native(invocation, tmp_path / "out", environment=environment)
     assert outcome.exit_code == 0 and outcome.closure.scope_closed
-    assert (tmp_path / "out" / "stdout").read_text() == "project-directory"
+    assert Path((tmp_path / "out" / "stdout").read_text().strip()).resolve() == tmp_path.resolve()
 
 
 def test_failed_deadline_signal_does_not_erase_independent_closure(

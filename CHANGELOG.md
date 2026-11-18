@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Run captured native project stages as a swarm trial with
+  `python -m research_swarm.swarm.native`. Use `--registration` for a registered
+  interpreter and `--outputs` to keep per-attempt reports and reactive traces.
+  Evaluation stage metrics feed the queue directly. Legacy evaluation receipts,
+  worker journals and controller promotion commands are retired. The workload,
+  engine and reactive guides now show how to launch these stages from campaign YAML.
+
+- Remove the old controller dispatcher, historical-import API and controller
+  benchmark harness. Archived benchmark results and standalone project receipt
+  readers remain available.
+
+- **Breaking:** `research init` opens a private six-table campaign workspace.
+  Use `research swarm run` for execution. Projects, artifacts, reports, budgets,
+  HTTP campaign reads and local MCP now use `swarm.sqlite`. The SDK provides
+  synchronous and asynchronous campaign reads. Open older controller databases
+  with their original release and choose a fresh directory for new campaigns.
+  Archived report JSON still verifies its original digest. The controller
+  signing keys, legacy funding ledger and schema migration code are retired.
+
 - Serve a campaign worker with a separate private bearer and a fixed campaign
   and worker identity. Claimed attempts can heartbeat, publish observations,
   and upload immutable artifacts through the same SQLite queue.

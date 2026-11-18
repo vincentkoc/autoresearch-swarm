@@ -10,6 +10,12 @@ from research_swarm.domain.canonical import (
 )
 
 
+def test_archived_identity_preserves_number_notation_and_unicode_key_order() -> None:
+    data = {"z": [-0.0, 1e-7, 1e-6, 1e20, 1e21], "�": 0, "😀": "é"}
+    expected = '{"z":[0,1e-7,0.000001,100000000000000000000,1e+21],"😀":"é","�":0}'
+    assert canonical_bytes(data) == expected.encode("utf-8")
+
+
 @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, MAX_SAFE_INTEGER + 1])
 def test_nonportable_numbers_fail(value: object) -> None:
     with pytest.raises(ValueError):

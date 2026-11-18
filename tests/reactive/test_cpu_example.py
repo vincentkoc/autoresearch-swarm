@@ -1,51 +1,18 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
-from research_swarm import ResearchClient
-from research_swarm.control.queries import RecordQuery
-from research_swarm.engines.registration import register_environment
-from research_swarm.orchestration.bootstrap import RunOptions
-from research_swarm.orchestration.run import run_project
-from research_swarm.projects.manifest import load_manifest, resolve_project
-from research_swarm.projects.source import bundle_directory
 from research_swarm.reactive.transcript import ControlTranscript
-from tests.paths import REPO_ROOT
+from tests.integration.test_local_pipeline import run_native_example
 
 
-async def test_registered_cpu_project_records_pending_progress_baseline_replay_and_evaluation(
+def test_registered_cpu_project_records_pending_progress_baseline_replay_and_evaluation(
     tmp_path: Path,
 ) -> None:
-    source = REPO_ROOT / "examples" / "reactive_cpu"
-    manifest = load_manifest(source / "research.toml")
-    bundle = tmp_path / "source.zip"
-    bundle_directory(source, bundle, paths=manifest.source.paths)
-    resolved = resolve_project(bundle)
-    registered = register_environment(
-        tmp_path / "registration" / "engine.json",
-        profile="python-cpu",
-        executable=Path(sys.executable),
-        environment_contracts=(resolved.environment_contract_digest,),
-        probe_directory=tmp_path / "probe",
-    )
-    state = tmp_path / "state"
-    with ResearchClient.local(state) as client:
-        result = await run_project(
-            client,
-            source,
-            key="reactive-cpu",
-            options=RunOptions(max_trials=1, primary_metric="mse"),
-            machine_registry=tmp_path / "machine" / "resources.sqlite",
-            registration=registered,
-        )
-        assert result.state == "awaiting_completion", result.model_dump()
-        assert result.driver.executed_attempt_count == 4
-        trial = client.get("trial", result.trial_id)
-        assert trial["state"] == "succeeded" and trial["data"]["evaluation_status"] == "valid"
-        assert client.get("campaign", result.campaign_id)["data"]["incumbent_candidate_id"] is None
-        assert len(client.list(RecordQuery(kind="evaluation_receipt"))["items"]) == 1
+    result = run_native_example("reactive_cpu", "mse", tmp_path, registered=True)
+    assert result.metrics["mse"] >= 0
+    state = tmp_path / "outputs"
     transcripts = list(state.rglob("transcript.json"))
     assert len(transcripts) == 1
     transcript = ControlTranscript.read(transcripts[0])

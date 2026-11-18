@@ -60,13 +60,13 @@ def campaign_app(
     ) -> dict[str, Any]:
         return reader.campaigns(cursor, limit)
 
-    @app.get("/v1/campaigns/{campaign_id}/snapshot", dependencies=protected)
+    @app.get("/v1/campaigns/{campaign_id:path}/snapshot", dependencies=protected)
     def snapshot(campaign_id: str) -> dict[str, Any]:
         result = reader.snapshot(campaign_id)
         return {**result, "observed_cohorts": [{"comparison_digest": result["comparison_digest"]}]}
 
     @app.get(
-        "/v1/campaigns/{campaign_id}/view", dependencies=protected, response_class=HTMLResponse
+        "/v1/campaigns/{campaign_id:path}/view", dependencies=protected, response_class=HTMLResponse
     )
     def view(campaign_id: str, comparison_digest: str | None = None) -> HTMLResponse:
         result = reader.snapshot(campaign_id)
@@ -81,7 +81,7 @@ def campaign_app(
             headers={"Cache-Control": "no-store"},
         )
 
-    @app.get("/v1/campaigns/{campaign_id}/budget", dependencies=protected)
+    @app.get("/v1/campaigns/{campaign_id:path}/budget", dependencies=protected)
     def budget(campaign_id: str) -> dict[str, Any]:
         return reader.budget(campaign_id)
 

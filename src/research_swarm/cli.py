@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sqlite3
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TextIO
 
 import httpx
 
-from research_swarm.client import LocalTransport, ResearchClient
-from research_swarm.control.queries import RecordQuery
+from research_swarm.client import ResearchClient
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.runtime import LocalRuntime, read_private
+from research_swarm.state.private_files import read_private
+from research_swarm.swarm.reader import CampaignReader
+from research_swarm.swarm.store import LegacyDatabaseError
 
 
 def _emit_json(value: Any, *, stream: TextIO | None = None) -> None:
@@ -51,8 +52,7 @@ def parser() -> argparse.ArgumentParser:
     remote_worker.add_argument("spec", type=Path)
     remote_worker.add_argument("--worker-id", required=True)
     remote_worker.add_argument("--once", action="store_true", help="Attempt one claim and exit")
-    initialize = commands.add_parser("init", help="Initialize private local state")
-    initialize.add_argument("--storage-config", type=Path, help="Immutable storage JSON selection")
+    commands.add_parser("init", help="Initialize a private campaign database")
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
@@ -81,14 +81,10 @@ def parser() -> argparse.ArgumentParser:
     report_actions = reports.add_subparsers(dest="report_action", required=True)
     for operation in ("plot", "view"):
         plot = report_actions.add_parser(operation, help="Export bounded captured evidence")
-        source = plot.add_mutually_exclusive_group(required=True)
-        source.add_argument("--report-id", help="Existing immutable report ID")
+        source = plot.add_mutually_exclusive_group()
         source.add_argument("--file", type=Path, help="Offline report record or snapshot JSON")
         source.add_argument("--db", type=Path, help="Local swarm campaign database")
         plot.add_argument("--campaign", help="Campaign ID to read from --db")
-        plot.add_argument(
-            "--compare-report", action="append", default=[], help="Comparable report ID"
-        )
         plot.add_argument("--compare-file", action="append", type=Path, default=[])
         plot.add_argument("--comparison-digest")
         plot.add_argument("--metric")
@@ -105,7 +101,6 @@ def parser() -> argparse.ArgumentParser:
             plot.add_argument(
                 "--project-repository", help="Optional HTTPS GitHub project repository for About"
             )
-    commands.add_parser("capabilities")
     from research_swarm.swarm.campaign_gc import register as register_campaign_gc
 
     register_campaign_gc(commands)
@@ -138,56 +133,6 @@ def parser() -> argparse.ArgumentParser:
     )
     verification = engines.add_parser("verify")
     verification.add_argument("--file", type=Path, required=True)
-    run = commands.add_parser(
-        "run", help="Freeze a project, execute its baseline, and expose agent control"
-    )
-    run.add_argument("path", type=Path)
-    run.add_argument("--key", help="Stable run identity; defaults to the source path")
-    run.add_argument("--manifest", default="research.toml")
-    run.add_argument("--source-revision")
-    run.add_argument("--primary-metric")
-    run.add_argument("--seed", type=int, default=0)
-    run.add_argument("--max-trials", type=int, default=10)
-    run.add_argument("--cpu-slots", type=int, default=1)
-    run.add_argument("--machine-registry", type=Path)
-    run.add_argument("--registration", type=Path, help="Private registered execution environment")
-    run.add_argument(
-        "--inputs-file", type=Path, help="JSON mapping of input names to artifact references"
-    )
-    worker = commands.add_parser("worker")
-    worker_actions = worker.add_subparsers(dest="worker_action", required=True)
-    local = worker_actions.add_parser("run", help="Drain admitted campaign work on the local CPU")
-    local.add_argument("campaign_id")
-    local.add_argument("--cpu-slots", type=int, default=1)
-    local.add_argument("--machine-registry", type=Path)
-    local.add_argument("--registration", type=Path)
-    describe = worker_actions.add_parser("describe", help="Describe a persistent remote CPU worker")
-    describe.add_argument("--worker-dir", type=Path, required=True)
-    describe.add_argument("--cpu-slots", type=int, default=1)
-    describe.add_argument("--machine-registry", type=Path)
-    describe.add_argument("--registration", type=Path)
-    provision = worker_actions.add_parser("provision", help="Write a private scoped worker bundle")
-    provision.add_argument("--description", type=Path, required=True)
-    provision.add_argument("--url", required=True)
-    provision.add_argument("--project", action="append", required=True)
-    provision.add_argument("--bundle", type=Path, required=True)
-    provision.add_argument("--name", default="Remote CPU worker")
-    connect = worker_actions.add_parser(
-        "connect", help="Import or verify a pinned worker connection"
-    )
-    connect.add_argument("--worker-dir", type=Path, required=True)
-    connect.add_argument("--bundle", type=Path)
-    start = worker_actions.add_parser("start", help="Run the scoped HTTP worker in the foreground")
-    start.add_argument("--worker-dir", type=Path, required=True)
-    start.add_argument("--bundle", type=Path)
-    start.add_argument("--once", action="store_true", help="Drain available work and exit")
-    start.add_argument("--poll-ms", type=int, default=500)
-    start.add_argument("--maximum-backoff-ms", type=int, default=15000)
-    command = commands.add_parser("command", help="Send a typed domain command")
-    command.add_argument("operation")
-    command.add_argument("--file", type=Path, help="JSON request file, otherwise read stdin")
-    command.add_argument("--key", required=True, help="Stable idempotency key")
-    command.add_argument("--revision", type=int)
     project = commands.add_parser("project")
     project_actions = project.add_subparsers(dest="project_action", required=True)
     for action in ("capture", "register"):
@@ -196,51 +141,25 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--manifest", default="research.toml")
         item.add_argument("--source-revision")
         item.add_argument("--capture-timeout-seconds", type=float, default=30)
-        target = item.add_mutually_exclusive_group(required=True)
-        target.add_argument("--db", type=Path, help="Local swarm campaign database")
-        target.add_argument("--key", help="Legacy controller idempotency key")
-    get = commands.add_parser("get")
-    get.add_argument("kind")
-    get.add_argument("identifier")
-    query = commands.add_parser("query")
-    query.add_argument("kind")
-    query.add_argument("--campaign")
-    query.add_argument("--state")
-    query.add_argument("--limit", type=int, default=25)
-    query.add_argument("--cursor")
-    context = commands.add_parser("context")
-    context.add_argument("campaign_id")
-    context.add_argument("--limit", type=int, default=10)
+        item.add_argument("--db", type=Path, help="Local swarm campaign database")
     budget = commands.add_parser("budget")
     budget.add_argument("campaign_id")
     budget.add_argument("--db", type=Path, help="Read measured campaign cost from SQLite")
     events = commands.add_parser("events")
+    events.add_argument("--campaign")
+    events.add_argument("--db", type=Path)
     events.add_argument("--after", type=int, default=0)
     events.add_argument("--limit", type=int, default=100)
     artifact = commands.add_parser("artifact")
     artifact_actions = artifact.add_subparsers(dest="artifact_action", required=True)
     upload = artifact_actions.add_parser("upload")
     upload.add_argument("path", type=Path)
-    target = upload.add_mutually_exclusive_group(required=True)
-    target.add_argument("--db", type=Path, help="Local swarm campaign database")
-    target.add_argument("--key", help="Legacy controller idempotency key")
+    upload.add_argument("--db", type=Path, help="Local swarm campaign database")
     download = artifact_actions.add_parser("download")
     download.add_argument("--db", type=Path, help="Local swarm campaign database")
     download.add_argument("identifier")
     download.add_argument("destination", type=Path)
     return root
-
-
-def _client(args: argparse.Namespace) -> ResearchClient:
-    if args.controller:
-        if args.token_file is None:
-            raise ResearchError(
-                ErrorCode.AUTHORIZATION_DENIED, "Remote control requires --token-file"
-            )
-        path = args.token_file.expanduser().absolute()
-        token = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
-        return ResearchClient.connect(args.controller, token)
-    return ResearchClient.local(args.state_dir, token_path=args.token_file)
 
 
 def _request(path: Path | None, *, limit: int = 1024 * 1024) -> dict[str, Any]:
@@ -298,136 +217,49 @@ def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> di
     return {"output": str(args.output), "format": output_format, "reports": len(snapshots)}
 
 
-def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
-    if args.action == "report":
-        return _plot_reports(
-            [
-                client.get("report", identifier)
-                for identifier in [args.report_id, *args.compare_report]
-            ],
-            args,
-        )
-    if args.action == "run":
-        from research_swarm.engines.registration import read_registration
-        from research_swarm.orchestration.bootstrap import RunOptions
-        from research_swarm.orchestration.run import run_project
+def _database(args: argparse.Namespace) -> Path:
+    from research_swarm.state.private_files import campaign_database, default_state_directory
 
-        options = RunOptions(
-            manifest_path=args.manifest,
-            source_revision=args.source_revision,
-            primary_metric=args.primary_metric,
-            seed=args.seed,
-            max_trials=args.max_trials,
-            parallelism=args.cpu_slots,
-            input_artifacts=_request(args.inputs_file) if args.inputs_file else {},
-        )
-        return asyncio.run(
-            run_project(
-                client,
-                args.path,
-                key=args.key,
-                options=options,
-                cpu_slots=args.cpu_slots,
-                machine_registry=args.machine_registry,
-                registration=read_registration(args.registration) if args.registration else None,
-            )
-        ).model_dump(mode="json")
-    if args.action == "worker":
-        if args.worker_action == "provision":
-            from research_swarm.workers.remote_enrollment import WorkerDescription, provision_worker
+    if args.db is not None:
+        if args.state_dir is not None:
+            raise ValueError("Choose one database location with --db or --state-dir")
+        return Path(args.db).expanduser().absolute()
+    return campaign_database(args.state_dir or default_state_directory())
 
-            bundle = provision_worker(
-                client,
-                WorkerDescription.model_validate(_request(args.description)),
-                url=args.url,
-                project_ids=tuple(args.project),
-                destination=args.bundle,
-                name=args.name,
-            )
-            return {"state": "provisioned", "worker": bundle.worker.model_dump(mode="json")}
-        from research_swarm.engines.registration import read_registration
-        from research_swarm.orchestration.local import LocalDriver
-        from research_swarm.workers.local_enrollment import ensure_local_enrollment
 
-        if not isinstance(client.transport, LocalTransport):
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "Local driver requires local state"
-            )
-        enrollment = ensure_local_enrollment(
-            client.transport.runtime,
-            cpu_slots=args.cpu_slots,
-            machine_registry=args.machine_registry,
-            principal=client.transport.resolve_principal(),
-            registration=read_registration(args.registration) if args.registration else None,
-        )
-        return asyncio.run(LocalDriver(client, enrollment).drain(args.campaign_id)).model_dump(
-            mode="json"
-        )
-    if args.action == "capabilities":
-        return client.capabilities()
-    if args.action == "command":
-        return client.command(
-            args.operation,
-            _request(args.file),
-            idempotency_key=args.key,
-            expected_revision=args.revision,
-        )
-    if args.action == "project":
-        if args.project_action == "capture":
-            return client.capture_project(
-                args.path,
-                idempotency_key=args.key,
-                manifest_path=args.manifest,
-                revision=args.source_revision,
-                capture_timeout_seconds=args.capture_timeout_seconds,
-            ).model_dump(mode="json")
-        return client.register_project(
-            args.path,
-            idempotency_key=args.key,
-            manifest_path=args.manifest,
-            revision=args.source_revision,
-            capture_timeout_seconds=args.capture_timeout_seconds,
-        )
-    if args.action == "get":
-        return client.get(RecordQuery(kind=args.kind).kind, args.identifier)
-    if args.action == "query":
-        return client.list(
-            RecordQuery(
-                kind=args.kind,
-                campaign_id=args.campaign,
-                state=args.state,
-                limit=args.limit,
-                cursor=args.cursor,
-            )
-        )
-    if args.action == "context":
-        return client.context(args.campaign_id, limit=args.limit)
-    if args.action == "budget":
-        return client.budget(args.campaign_id)
-    if args.action == "events":
-        return client.events(after=args.after, limit=args.limit)
-    if args.action == "artifact":
-        if args.artifact_action == "upload":
-            return client.upload_file(args.path, idempotency_key=args.key).model_dump(mode="json")
-        return client.download(args.identifier, args.destination).model_dump(mode="json")
-    raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Unknown CLI operation")
+def _read_client(args: argparse.Namespace) -> ResearchClient:
+    if args.controller:
+        if args.db or args.state_dir or not args.token_file:
+            raise ValueError("Remote campaign reads require --controller and --token-file")
+        return ResearchClient.connect(args.controller, _token(args.token_file))
+    if args.token_file:
+        raise ValueError("Local campaign reads use filesystem access")
+    return ResearchClient(CampaignReader(_database(args)))
+
+
+def _token(path: Path) -> str:
+    path = path.expanduser().absolute()
+    return read_private(path.parent, path.name, limit=256).decode("ascii").strip()
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     result: Any
     try:
-        if args.action in {"project", "artifact"} and args.db is not None:
+        if args.action in {"project", "artifact"}:
             from research_swarm.swarm.files import CampaignFiles
 
-            if args.controller or args.token_file or args.state_dir:
-                raise ValueError("Choose a local campaign database with --db")
+            if args.controller or args.token_file:
+                raise ValueError(
+                    "Project and artifact operations require a local campaign database"
+                )
+            database = _database(args)
             if args.action == "artifact" and args.artifact_action == "download":
-                if not args.db.is_file():
-                    raise FileNotFoundError(args.db)
+                if not database.is_file():
+                    raise FileNotFoundError(database)
             else:
-                args.db.parent.mkdir(parents=True, exist_ok=True)
-            files = CampaignFiles(args.db)
+                database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            files = CampaignFiles(database)
             if args.action == "project":
                 result = files.project(
                     args.path,
@@ -442,20 +274,12 @@ def main(argv: list[str] | None = None) -> int:
                 result = files.download(args.identifier, args.destination).model_dump(mode="json")
             _emit_json(result)
             return 0
-        if args.action == "serve":
-            worker_options = (args.worker_campaign, args.worker_id, args.worker_token_file)
-            if any(worker_options) and not (args.db and all(worker_options)):
-                raise ValueError(
-                    "Worker HTTP requires --db, --worker-campaign, --worker-id "
-                    "and --worker-token-file"
-                )
-        if args.action in {"serve", "mcp"} and args.db:
+        if args.action in {"serve", "mcp"}:
             from research_swarm.api.campaign import campaign_app, campaign_tools
-            from research_swarm.swarm.reader import CampaignReader
 
-            if args.controller or args.state_dir:
-                raise ValueError("Choose a local database with --db")
-            reader = CampaignReader(args.db)
+            if args.controller:
+                raise ValueError("This service reads a local campaign database")
+            reader = CampaignReader(_database(args))
             if args.action == "mcp":
                 if args.token_file:
                     raise ValueError("Local campaign MCP reads the selected database directly")
@@ -465,21 +289,25 @@ def main(argv: list[str] | None = None) -> int:
 
                 if not args.token_file:
                     raise ValueError("Campaign HTTP reads require --token-file")
-                path = args.token_file.expanduser().absolute()
-                token = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
-                grant = None
-                if args.worker_token_file:
-                    from research_swarm.api.worker import WorkerGrant
+                token = _token(args.token_file)
+                from research_swarm.api.worker import WorkerGrant
 
-                    path = args.worker_token_file.expanduser().absolute()
-                    secret = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
-                    grant = WorkerGrant(args.worker_campaign, args.worker_id, secret)
+                worker = None
+                options = (args.worker_campaign, args.worker_id, args.worker_token_file)
+                if any(options):
+                    if not all(options):
+                        raise ValueError(
+                            "Supply --worker-campaign, --worker-id and --worker-token-file together"
+                        )
+                    worker = WorkerGrant(
+                        args.worker_campaign, args.worker_id, _token(args.worker_token_file)
+                    )
                 uvicorn.run(
-                    campaign_app(reader, token, worker=grant), host=args.host, port=args.port
+                    campaign_app(reader, token, worker=worker), host=args.host, port=args.port
                 )
             return 0
         if args.action == "campaign" and args.campaign_action == "gc":
-            from research_swarm.runtime import default_state_directory
+            from research_swarm.state.private_files import default_state_directory
             from research_swarm.swarm.campaign_gc import collect
 
             if args.controller or args.token_file:
@@ -492,8 +320,7 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.state_dir or not args.controller or not args.token_file:
                 raise ValueError("Remote worker requires --controller and --token-file")
-            path = args.token_file.expanduser().absolute()
-            secret = read_private(path.parent, path.name, limit=256).decode("ascii").strip()
+            secret = _token(args.token_file)
             try:
                 ran = asyncio.run(
                     run_worker(args.spec, args.controller, secret, args.worker_id, once=args.once)
@@ -509,25 +336,32 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.controller or args.token_file or (args.db and args.state_dir):
                 raise ValueError("Choose a local swarm database with --db or --state-dir")
-            directory = args.state_dir or args.spec.parent
+            from research_swarm.state.private_files import campaign_database
+
+            database = args.db or campaign_database(
+                args.state_dir or args.spec.parent, project_directory=args.state_dir is None
+            )
             try:
-                result, code = run_campaign(args.spec, args.db or directory / "swarm.sqlite")
+                result, code = run_campaign(args.spec, database)
             except ValueError as error:
                 raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, str(error)) from error
             _emit_json(result)
             return code
-        if args.action in {"report", "budget"} and args.db:
-            from research_swarm.swarm.report import capture as capture_campaign
-            from research_swarm.swarm.report import read_meter
-
-            if args.controller or args.token_file or args.state_dir:
-                raise ValueError("Choose a local campaign database with --db")
-            if args.action == "budget":
-                _emit_json(read_meter(args.db, args.campaign_id))
-                return 0
-            if not args.campaign or args.compare_file or args.compare_report:
-                raise ValueError("Select one campaign with --db and --campaign")
-            snapshot = capture_campaign(args.db, args.campaign)
+        if args.action in {"budget", "events"}:
+            with _read_client(args) as reader_client:
+                if args.action == "budget":
+                    result = reader_client.budget(args.campaign_id)
+                else:
+                    result = reader_client.events(
+                        after=args.after, limit=args.limit, campaign_id=args.campaign
+                    )
+            _emit_json(result)
+            return 0
+        if args.action == "report" and args.file is None:
+            if not args.campaign or args.compare_file:
+                raise ValueError("Select one campaign with --campaign")
+            with _read_client(args) as reader_client:
+                snapshot = reader_client.snapshot(args.campaign)
             objective = snapshot["research"]["objective"]["primary_metric"]
             selectors = {
                 "metric": objective["name"],
@@ -553,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
             if args.file is not None:
-                if args.compare_report or args.controller or args.state_dir or args.token_file:
+                if args.controller or args.state_dir or args.token_file:
                     raise ValueError("Offline reports cannot mix live controller inputs")
                 if len(args.compare_file) >= MAX_RUNS:
                     raise ValueError("At most eight reports may be plotted")
@@ -567,8 +401,6 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 return 0
-            if args.compare_file or len(args.compare_report) >= MAX_RUNS:
-                raise ValueError("Use at most eight report IDs, without offline files")
         if args.action == "reactive":
             if args.state_dir is not None or args.controller or args.token_file is not None:
                 raise ValueError(
@@ -636,110 +468,31 @@ def main(argv: list[str] | None = None) -> int:
                 result = registered.public_description()
             _emit_json(result)
             return 0
-        if args.action == "worker" and args.worker_action in {
-            "describe",
-            "connect",
-            "start",
-        }:
-            from research_swarm.workers.remote_enrollment import connect_worker, describe_worker
-
-            if args.controller or args.token_file or args.state_dir:
-                raise ValueError("Worker installation uses --worker-dir and its provisioned bundle")
-            if args.worker_action == "describe":
-                from research_swarm.engines.registration import read_registration
-
-                description = describe_worker(
-                    args.worker_dir,
-                    cpu_slots=args.cpu_slots,
-                    machine_registry=args.machine_registry,
-                    registration=read_registration(args.registration)
-                    if args.registration
-                    else None,
-                )
-                _emit_json(description.model_dump(mode="json"))
-            else:
-                with connect_worker(args.worker_dir, bundle_path=args.bundle) as enrollment:
-                    if args.worker_action == "start":
-                        from research_swarm.orchestration.scoped import ScopedWorkerDriver
-
-                        outcome = asyncio.run(
-                            ScopedWorkerDriver(
-                                enrollment,
-                                poll_ms=args.poll_ms,
-                                maximum_backoff_ms=args.maximum_backoff_ms,
-                            ).run(once=args.once)
-                        )
-                        _emit_json(outcome.model_dump(mode="json"))
-                        return 3 if outcome.state in {"blocked", "disconnected"} else 0
-                    _emit_json(
-                        {
-                            "state": "connected",
-                            "worker": enrollment.worker.worker.model_dump(mode="json"),
-                        }
-                    )
-            return 0
-        if args.action in {"init", "serve"}:
-            if args.controller:
-                raise ValueError("Local service commands cannot use a remote controller")
-            from research_swarm.storage.config import storage_configuration
-
-            storage = (
-                storage_configuration.validate_python(_request(args.storage_config))
-                if args.action == "init" and args.storage_config is not None
-                else None
+        if args.action == "init":
+            from research_swarm.state.private_files import (
+                campaign_database,
+                default_state_directory,
+                private_state_directory,
             )
-            runtime = LocalRuntime.open(args.state_dir, storage_config=storage)
-            runtime.principal(args.token_file).require("service.manage")
-            if args.action == "init":
-                _emit_json(runtime.identity.model_dump(mode="json"))
-                return 0
-            import uvicorn
+            from research_swarm.swarm.store import SQLiteStore
 
-            from research_swarm.api.http import create_app
-
-            uvicorn.run(
-                create_app(runtime.service, runtime.credentials),
-                host=args.host,
-                port=args.port,
-                access_log=False,
-                limit_concurrency=64,
-            )
+            if args.controller or args.token_file:
+                raise ValueError("Campaign initialization requires a local state directory")
+            database = campaign_database(args.state_dir or default_state_directory())
+            with private_state_directory(database.parent):
+                SQLiteStore(database)
+            _emit_json({"database": str(database)})
             return 0
-        with _client(args) as client:
-            if args.action == "mcp":
-                from research_swarm.api.mcp import make_mcp
-
-                capture: Callable[[], None] | None = None
-                if isinstance(client.transport, LocalTransport):
-                    local = client.transport
-
-                    def authorize_capture() -> None:
-                        local.resolve_principal().require("source.capture")
-
-                    capture = authorize_capture
-                make_mcp(client, authorize_local_capture=capture).run(transport="stdio")
-                return 0
-            result = _execute(client, args)
-            _emit_json(result)
-            if args.action in {"worker", "run"} and result["state"] in {"blocked", "needs_review"}:
-                return 3
-            if (
-                args.action == "search"
-                and args.search_action == "advance"
-                and result["state"]
-                in {
-                    "needs_review",
-                    "contended",
-                    "delivery_uncertain",
-                    "transport_unavailable",
-                }
-            ):
-                return 3
-        return 0
+        raise ValueError("Unknown campaign operation")
     except ResearchError as error:
         _emit_json(error.as_dict(), stream=sys.stderr)
         return 2
-    except (ValueError, OSError, httpx.RequestError) as error:
+    except LegacyDatabaseError as error:
+        _emit_json(
+            ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, str(error)).as_dict(), stream=sys.stderr
+        )
+        return 2
+    except (ValueError, OSError, sqlite3.Error, httpx.HTTPError) as error:
         failure = ResearchError(
             ErrorCode.PROJECT_CONTRACT_INVALID, "Operation failed: " + type(error).__name__
         )

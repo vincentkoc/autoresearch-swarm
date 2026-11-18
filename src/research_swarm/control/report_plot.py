@@ -11,7 +11,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from pydantic import BaseModel, ConfigDict, Field
 
 from research_swarm.domain.experiments import Metric, MetricDefinition
-from research_swarm.state.database import JsonObject
+from research_swarm.domain.types import JsonObject
 
 MAX_RUNS = 8
 MAX_OBSERVATIONS = 52  # At most 50 recent evaluations plus two pinned receipts.
