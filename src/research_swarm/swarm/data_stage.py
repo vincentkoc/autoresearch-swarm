@@ -41,9 +41,11 @@ def stage_path(root: Path, campaign: str, revision: str) -> Path:
     return target
 
 
-def read_stage(path: Path) -> Stage:
-    marker = path / "stage.json"
-    if marker.is_symlink() or not (path / "data").is_dir() or (path / "data").is_symlink():
+def read_stage(path: Path, *, pending_gc: bool = False) -> Stage:
+    marker = path.with_name(f".gc.{path.name}.json") if pending_gc else path / "stage.json"
+    if marker.is_symlink() or (
+        not pending_gc and (not (path / "data").is_dir() or (path / "data").is_symlink())
+    ):
         raise ValueError(f"invalid data stage at {path}")
     stage = Stage(**json.loads(marker.read_bytes()))
     if (stage.owner, stage.campaign, stage.revision) != (
@@ -105,6 +107,8 @@ def _publish(source: Path, target: Path, threads: int, *, expected: Stage | None
         raise ValueError("source and destination overlap")
     target.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(target.with_name(f".{target.name}.lock")):
+        if target.with_name(f".gc.{target.name}.json").exists():
+            raise ValueError("data stage cleanup is incomplete; retry campaign gc")
         if target.exists():
             stage = read_stage(target)
         else:
@@ -135,7 +139,10 @@ def hydrate(volume: Path, nvme: Path, campaign: str, revision: str, *, threads: 
     """Copy and verify the snapshot once on this host, before a worker starts."""
     staged = stage_path(volume, campaign, revision)
     target = stage_path(nvme, campaign, revision)
-    _publish(staged / "data", target, threads, expected=read_stage(staged))
+    if staged == target:
+        raise ValueError("the staging volume and worker cache overlap")
+    with FileLock(staged.with_name(f".{staged.name}.lock")):
+        _publish(staged / "data", target, threads, expected=read_stage(staged))
     return target / "data"
 
 
@@ -148,7 +155,20 @@ def mount_readonly(data: Path, mountpoint: Path) -> None:
     if data.is_relative_to(mountpoint) or mountpoint.is_relative_to(data):
         raise ValueError("mountpoint and hydrated data overlap")
     mountpoint.mkdir(parents=True, exist_ok=True)
-    with FileLock(mountpoint.with_name(f".{mountpoint.name}.mount.lock")):
+    stage = data.parent
+    with (
+        FileLock(stage.with_name(f".{stage.name}.lock")),
+        FileLock(mountpoint.with_name(f".{mountpoint.name}.mount.lock")),
+    ):
+        if not data.is_dir():
+            raise ValueError("hydrated data was collected before mount")
+        namespace = Path("/proc/self/ns/mnt")
+        if namespace.exists() and (stage / "stage.json").exists():
+            marker = stage / "mount-namespace"
+            identity = os.readlink(namespace)
+            if marker.exists() and marker.read_text() != identity:
+                raise ValueError("data stage is exposed in another mount namespace")
+            marker.write_text(identity)
         if not os.path.samefile(data, mountpoint):
             mounted = subprocess.run(
                 ["findmnt", "--mountpoint", str(mountpoint)], stdout=subprocess.DEVNULL
