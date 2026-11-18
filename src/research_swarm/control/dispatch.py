@@ -20,7 +20,6 @@ from research_swarm.control.commands import (
     SubmitTrial,
     ValidateCandidate,
 )
-from research_swarm.control.confirmation import AssessConfirmation, CreateConfirmationPlan
 from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
 from research_swarm.control.import_models import ImportHistoricalEvidence
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
@@ -207,20 +206,6 @@ COMMANDS = {
         "report.create",
         False,
         "Capture bounded evidence, selection, failures, and budgets as JSON and Markdown.",
-    ),
-    "confirmation.assess": CommandDefinition(
-        AssessConfirmation,
-        "assess_confirmation",
-        "promotion.assess",
-        False,
-        "Assess the complete preselected seed panel without changing its membership.",
-    ),
-    "confirmation.create": CommandDefinition(
-        CreateConfirmationPlan,
-        "create_confirmation",
-        "confirmation.manage",
-        True,
-        "Seal paired trials, execution profiles, and exposure reservations before admission.",
     ),
     "promotion.reinitialize": CommandDefinition(
         AssessPromotion,

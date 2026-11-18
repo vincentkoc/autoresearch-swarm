@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal
 
 from pydantic import ValidationError
 
@@ -23,11 +22,6 @@ from research_swarm.control.commands import (
     RetainArtifact,
     SubmitTrial,
     ValidateCandidate,
-)
-from research_swarm.control.confirmation import (
-    AssessConfirmation,
-    ConfirmationControl,
-    CreateConfirmationPlan,
 )
 from research_swarm.control.evaluations import (
     AuthorizeEvaluation,
@@ -81,7 +75,6 @@ from research_swarm.domain.experiments import ExperimentSpec, SourceRef
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.lifecycle import CampaignState, campaign_transition
 from research_swarm.domain.types import VersionedRecord, new_id, utc_now
-from research_swarm.evaluation.statistics import FixedPairedPolicy
 from research_swarm.projects.manifest import ResolvedProject, resolve_project
 from research_swarm.projects.source import SourceManifest
 from research_swarm.state.artifacts import ArtifactCatalog, ArtifactService
@@ -171,7 +164,6 @@ class ResearchService:
         self.evaluations = EvaluationControl(database, artifacts)
         self.historical_imports = HistoricalImportControl(database, artifacts)
         self.promotions = PromotionControl(database)
-        self.confirmations = ConfirmationControl(database, self._submit_trial)
         self.campaigns = CampaignControl(database)
         self.worker_lifecycle = WorkerLifecycle(database, self.acceptance)
 
@@ -250,16 +242,6 @@ class ResearchService:
 
     def report_campaign(self, context: CommandContext, request: ReportCampaign) -> JsonObject:
         return self.campaigns.report(context, request)
-
-    def create_confirmation(
-        self, context: CommandContext, request: CreateConfirmationPlan
-    ) -> JsonObject:
-        return self.confirmations.create(context, request)
-
-    def assess_confirmation(
-        self, context: CommandContext, request: AssessConfirmation
-    ) -> JsonObject:
-        return self.confirmations.assess(context, request)
 
     def assess_promotion(self, context: CommandContext, request: AssessPromotion) -> JsonObject:
         return self.promotions.assess(context, request)
@@ -483,28 +465,10 @@ class ResearchService:
             raise ResearchError(
                 ErrorCode.PROJECT_CONTRACT_INVALID, "Trial admissions require a cumulative count"
             )
-        promotion = campaign.contract.promotion
-        if promotion.mode == "paired_confirmation":
-            if promotion.version != "paired-sign-v1":
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE, "Unknown paired promotion policy"
-                )
-            try:
-                FixedPairedPolicy(
-                    seeds=promotion.confirmation_seeds,
-                    minimum_effect=promotion.minimum_effect,
-                    confidence=promotion.confidence,
-                )
-            except ValidationError as error:
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID, "Confirmation panel is infeasible"
-                ) from error
-            exposure = limits.get("evaluation_exposures")
-            if exposure is None or exposure.kind != BudgetKind.EXPOSURE or exposure.unit != "count":
-                raise ResearchError(
-                    ErrorCode.PROJECT_CONTRACT_INVALID,
-                    "Confirmation requires an evaluation_exposures/count exposure budget",
-                )
+        if campaign.contract.promotion.mode == "paired_confirmation":
+            raise ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Use a swarm campaign with held-out panels"
+            )
         for dimension, unit in {"attempts": "count", "execution_ms": "ms"}.items():
             limit = limits.get(dimension)
             if limit is None or limit.kind != BudgetKind.CUMULATIVE or limit.unit != unit:
@@ -625,15 +589,12 @@ class ResearchService:
     def _submit_trial(
         transaction: Transaction,
         request: SubmitTrial,
-        confirmation_plan_id: str | None = None,
-        confirmation_side: Literal["candidate", "comparator"] | None = None,
     ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         campaign = CampaignData.model_validate(row["data"])
         if (
             campaign.contract.promotion.mode == "paired_confirmation"
             and request.seed in campaign.contract.promotion.confirmation_seeds
-            and confirmation_plan_id is None
         ):
             raise ResearchError(
                 ErrorCode.COMPARISON_INELIGIBLE, "Confirmation seeds require a sealed plan"
@@ -701,14 +662,6 @@ class ResearchService:
                     if resolved.manifest.reactive is not None
                     else {}
                 ),
-                **(
-                    {
-                        "confirmation_plan_id": confirmation_plan_id,
-                        "confirmation_side": confirmation_side,
-                    }
-                    if confirmation_plan_id
-                    else {}
-                ),
             },
         ).sealed()
         charge_trial(transaction, campaign, request.campaign_id, spec.trial_id)
@@ -722,8 +675,6 @@ class ResearchService:
                 validation_id=request.validation_id,
                 spec=spec,
                 job_ids=tuple(job_ids.values()),
-                confirmation_plan_id=confirmation_plan_id,
-                confirmation_side=confirmation_side,
             ).model_dump(mode="json"),
             state="queued",
             campaign_id=request.campaign_id,

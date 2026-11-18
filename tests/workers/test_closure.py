@@ -8,14 +8,11 @@ from typing import Any
 import pytest
 
 from research_swarm.control.commands import CompleteCampaign
-from research_swarm.control.confirmation_models import ConfirmationData
-from research_swarm.control.evaluations import AuthorizeEvaluation, CompleteEvaluation
-from research_swarm.control.models import TrialData
+from research_swarm.control.evaluations import AuthorizeEvaluation
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.worker_artifacts import WorkerAttemptTarget
 from research_swarm.control.worker_outputs import WorkerOutputIntent
-from research_swarm.control.workers import AttemptData
 from research_swarm.domain.canonical import canonical_bytes
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.lifecycle import AttemptState, attempt_transition
@@ -23,7 +20,6 @@ from research_swarm.domain.types import new_id
 from research_swarm.orchestration.local import LocalDriver
 from research_swarm.workers.journal import JournalState
 from research_swarm.workers.local import LocalWorker
-from tests.control.test_confirmation import create_plan, exposure_budget, options, setup_plan
 from tests.control.test_reconciliation import ClosedAttempt, intent, reconcile, submit
 from tests.control.test_reconciliation import closed as closed
 from tests.integration.test_local_pipeline import Pipeline
@@ -305,53 +301,6 @@ def test_parallel_sibling_custody_survives_and_cannot_restore_trial_eligibility(
     assert trial["data"]["execution_outcome"] == "closed_unaccepted"
     assert trial["data"]["evaluation_status"] == "incomplete"
     assert pipeline.client.list(RecordQuery(kind="job", state="ready"))["items"] == []
-
-
-@pytest.mark.parametrize("pipeline", [options()], indirect=True)
-@pytest.mark.parametrize("phase", ["training", "scoring", "not_started_scoring"])
-def test_closure_settles_original_exposure_without_scientific_receipt(
-    pipeline: Pipeline, monkeypatch: pytest.MonkeyPatch, phase: str
-) -> None:
-    proposal, campaign = setup_plan(pipeline)
-    record = create_plan(pipeline, proposal, campaign)
-    binding = ConfirmationData.model_validate(record["data"]).plan.bindings[0]
-    trial = pipeline.client.get("trial", binding.trial_id)
-    train = pipeline.client.get("job", trial["data"]["job_ids"][0])
-    attempt = pipeline.worker.claim(train)
-    authority = None
-    if phase != "training":
-        pipeline.worker.execute(attempt["id"])
-        scoring = pipeline.client.get("job", binding.scoring_job_id)
-        authority = pipeline.client.command(
-            "evaluation.authorize",
-            AuthorizeEvaluation(job_id=scoring["id"], evaluator_id=proposal.evaluator_id),
-            idempotency_key=new_id(),
-            expected_revision=scoring["revision"],
-        )["result"]
-        attempt = pipeline.worker.claim(pipeline.client.get("job", scoring["id"]))
-        assert exposure_budget(pipeline)["uncertain"] == "1"
-        if phase == "not_started_scoring":
-            pipeline.worker._prepare(
-                AttemptData.model_validate(attempt["data"]), TrialData.model_validate(trial["data"])
-            )
-            pipeline.worker.journal.request_local_cancel(attempt["id"])
-    before = len(pipeline.client.list(RecordQuery(kind="evaluation_receipt"))["items"])
-    waiting = capture(pipeline.worker, attempt["id"], monkeypatch)
-    result = close_operationally(pipeline, submit(waiting))
-    expected = "consumed" if phase == "scoring" else "released"
-    assert pipeline.client.get("evaluation_exposure", binding.exposure_id)["state"] == expected
-    assert exposure_budget(pipeline)["uncertain"] == "0"
-    assert exposure_budget(pipeline)["reserved"] == "9"
-    assert exposure_budget(pipeline)["consumed"] == ("1" if phase == "scoring" else "0")
-    assert result["closure"]["data"]["not_started"] == (phase == "not_started_scoring")
-    if authority is not None:
-        with pytest.raises(ResearchError):
-            pipeline.client.command(
-                "evaluation.complete",
-                CompleteEvaluation(request_id=authority["id"], attempt_id=attempt["id"]),
-                idempotency_key=new_id(),
-            )
-    assert len(pipeline.client.list(RecordQuery(kind="evaluation_receipt"))["items"]) == before
 
 
 def test_closed_unaccepted_is_an_operator_only_terminal_disposition() -> None:
