@@ -36,6 +36,9 @@
   panel exposures across restarts and require a held-out confirmation gain to
   replace the reference candidate in benchmark campaigns.
 
+- Add a preregistered second benchmark protocol with fresh data streams,
+  larger model search spaces, and paired scores read from the held-out study.
+
 - Share sidebar width, collapse and section-height resizing across campaign and
   inventory views; retain widths when switching views and support keyboard dividers.
 

@@ -8,7 +8,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from benchmarks.suite import PANEL_SEEDS, Candidate, Policy, Task, Trial, incumbent, run_search
+from benchmarks.suite import (
+    PANEL_SEEDS,
+    Candidate,
+    Policy,
+    Task,
+    Trial,
+    comparison_seeds,
+    incumbent,
+    run_search,
+)
 from research_swarm.swarm.panels import Calibration, Decision, PanelSplit, PanelStudy, Role
 
 
@@ -18,15 +27,20 @@ def recipe_key(candidate: Candidate) -> str:
 
 def open_study(task: Task, path: Path) -> PanelStudy:
     first = task.initial
+    mid_rate, high_rate = ("0.005", "0.02") if task.protocol == "v1" else ("0.004", "0.016")
     if task.name == "program":
         partial = {**first, "line1": "lower", "line2": "strip"}
         full = {**partial, "line2": "hyphenate", "line3": "trim-hyphens"}
     elif task.name == "mlp":
-        partial = {**first, "learning_rate": "0.005"}
-        full = {**partial, "width": "32", "activation": "gelu", "learning_rate": "0.02"}
+        partial = {**first, "learning_rate": mid_rate}
+        full = {**partial, "width": "32", "activation": "gelu", "learning_rate": high_rate}
     else:
-        partial = {**first, "rate": "base_lr = 0.005"}
-        full = {**partial, "schedule": "return base_lr * (1 - progress)", "rate": "base_lr = 0.02"}
+        partial = {**first, "rate": f"base_lr = {mid_rate}"}
+        full = {
+            **partial,
+            "schedule": "return base_lr * (1 - progress)",
+            "rate": f"base_lr = {high_rate}",
+        }
     panels = PanelSplit(**{role: task.members(role) for role in PANEL_SEEDS})
 
     def evaluate(key: str, role: Role, members: tuple[str, ...], seed: int) -> float:
@@ -38,10 +52,10 @@ def open_study(task: Task, path: Path) -> PanelStudy:
         path,
         panels=panels,
         variants=[recipe_key(c) for c in (first, partial, full)],
-        seeds=(11, 23, 47),
+        seeds=comparison_seeds(task.protocol, calibration=True),
         evaluate=evaluate,
         direction=task.direction,
-        revision=f"{task.name}/{task.metric}/{task.device}/{task.size}/1",
+        revision=f"{task.name}/{task.metric}/{task.device}/{task.size}/{task.protocol[1:]}",
         look_limits={"search": 120, "selection": 36, "confirmation": 6},
     )
 
@@ -51,6 +65,7 @@ class Arm:
     trials: list[Trial]
     decision: Decision | None
     selected: Candidate | None
+    confirmed_score: float | None
 
 
 def run_campaign(task: Task, study: PanelStudy, proposer: Policy, *, budget: int, seed: int) -> Arm:
@@ -63,13 +78,14 @@ def run_campaign(task: Task, study: PanelStudy, proposer: Policy, *, budget: int
         evaluate=lambda c, s: study.search(recipe_key(c), s),
     )
     if not any(trial.score is not None for trial in trials):
-        return Arm(trials, None, None)
+        return Arm(trials, None, None, None)
     baseline = study.consider(recipe_key(task.initial), None)
     if not baseline.promoted:
-        return Arm(trials, baseline, None)
+        return Arm(trials, baseline, None, None)
     challenger = incumbent(task, trials)
     decision = study.consider(recipe_key(challenger), None)
-    return Arm(trials, decision, challenger if decision.promoted else task.initial)
+    selected = challenger if decision.promoted else task.initial
+    return Arm(trials, decision, selected, study.confirmed_score(recipe_key(selected)))
 
 
 class CampaignInputs(Protocol):
