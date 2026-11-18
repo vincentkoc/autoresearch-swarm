@@ -100,7 +100,6 @@ INDEXES = {
     "records_ready_jobs": "records",
     "records_worker_controls": "records",
     "acceptance_leases": "records",
-    "budget_settlements_reservation": "budget_settlements",
 }
 
 
