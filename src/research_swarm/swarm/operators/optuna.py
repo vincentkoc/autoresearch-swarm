@@ -25,48 +25,78 @@ class OptunaSampler:
             raise ImportError(
                 "install autoresearch-swarm[optuna] to use the Optuna sampler"
             ) from exc
+        distributions = self.optuna.distributions
+        self._domains = {}
+        for key, domain in space.items():
+            if not isinstance(domain, Range):
+                self._domains[key] = distributions.CategoricalDistribution(tuple(domain))
+            elif domain.integer:
+                self._domains[key] = distributions.IntDistribution(
+                    int(domain.low), int(domain.high), log=domain.log
+                )
+            else:
+                self._domains[key] = distributions.FloatDistribution(
+                    domain.low, domain.high, log=domain.log
+                )
         self.studies: dict[str, Any] = {}
+        self._specs: dict[str, CampaignSpec] = {}
+        self._deferred: dict[str, list[Result]] = {}
+        self._closed: set[str] = set()
         self._pending: dict[str, tuple[CampaignSpec, int]] = {}
 
     async def propose(
         self, spec: CampaignSpec, parents: Sequence[Candidate], k: int
     ) -> list[Candidate]:
         if spec.campaign_id not in self.studies:
+            self._specs[spec.campaign_id] = spec
             sampler = self.optuna.samplers.TPESampler(seed=spec.seed, n_startup_trials=4)
             self.studies[spec.campaign_id] = self.optuna.create_study(
                 direction=spec.direction, sampler=sampler
             )
+            for result in self._deferred.pop(spec.campaign_id, []):
+                self.tell(result)
         study = self.studies[spec.campaign_id]
         batch = []
         for _ in range(k):
-            trial = study.ask()
-            params = {}
-            for key, domain in self.space.items():
-                if not isinstance(domain, Range):
-                    params[key] = trial.suggest_categorical(key, list(domain))
-                elif domain.integer:
-                    params[key] = trial.suggest_int(
-                        key, int(domain.low), int(domain.high), log=domain.log
-                    )
-                else:
-                    params[key] = trial.suggest_float(key, domain.low, domain.high, log=domain.log)
+            trial = study.ask(fixed_distributions=self._domains)
+            params = trial.params
             candidate = Candidate(candidate_id=uuid4().hex, operator=self.name, params=params)
             self._pending[candidate.candidate_id] = (spec, trial.number)
             batch.append(candidate)
         return batch
 
     def tell(self, result: Result) -> None:
-        key = result.attempt.trial.candidate.candidate_id
-        pending = self._pending.get(key)
-        if pending is None:
+        trial = result.attempt.trial
+        candidate = trial.candidate
+        key = candidate.candidate_id
+        if candidate.operator != self.name or key in self._closed:
             return
-        spec, number = pending
+        spec = self._specs.get(trial.campaign_id)
+        if spec is None:
+            # On resume the loop replays observations before it first calls ask.
+            self._deferred.setdefault(trial.campaign_id, []).append(result)
+            return
         if result.status != "ok" and result.attempt.number < spec.max_attempts:
-            return  # the queue may retry this same sampling trial
+            return
         value = result.metrics.get(spec.metric)
+        state = self.optuna.trial.TrialState.COMPLETE
+        if result.status != "ok" or value is None or not isfinite(value):
+            value = None
+            state = self.optuna.trial.TrialState.FAIL
         study = self.studies[spec.campaign_id]
-        if result.status == "ok" and value is not None and isfinite(value):
-            study.tell(number, value)
+        pending = self._pending.pop(key, None)
+        if pending is not None:
+            study.tell(pending[1], value, state=state)
         else:
-            study.tell(number, state=self.optuna.trial.TrialState.FAIL)
-        del self._pending[key]
+            frozen = self.optuna.trial.create_trial(
+                params=candidate.params, distributions=self._domains, value=value, state=state
+            )
+            study.add_trial(frozen)
+        self._closed.add(key)
+
+    def discard(self, candidate: Candidate) -> None:
+        pending = self._pending.pop(candidate.candidate_id, None)
+        if pending is not None:
+            spec, number = pending
+            self.studies[spec.campaign_id].tell(number, state=self.optuna.trial.TrialState.PRUNED)
+            self._closed.add(candidate.candidate_id)
