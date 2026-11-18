@@ -105,18 +105,26 @@ class ResearchFixture:
 
 
 @pytest.fixture
-def research(
-    tmp_path: Path, database: Database, context: Callable[..., CommandContext]
-) -> ResearchFixture:
+def research_source(tmp_path: Path) -> Path:
     source = tmp_path / "source"
     shutil.copytree(REPO_ROOT / "examples" / "cpu_bigram", source)
+    return source
+
+
+@pytest.fixture
+def research(
+    tmp_path: Path,
+    database: Database,
+    context: Callable[..., CommandContext],
+    research_source: Path,
+) -> ResearchFixture:
     artifacts = ArtifactService(
         database, FilesystemBlobStore(tmp_path / "artifacts"), storage_limit_bytes=10_000_000
     )
     service = ResearchService(database, artifacts)
     fixture = ResearchFixture(
         service,
-        source,
+        research_source,
         context,
         {},
         ArtifactRef(id=new_id(), digest="sha256:" + "0" * 64, size_bytes=0),

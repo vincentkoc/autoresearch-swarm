@@ -164,6 +164,9 @@
   references and bounded-history disclosure. Capture controller evaluation event
   times and campaign creation time without inferring training time or confirmed wins.
 
+- Avoid redundant database setup and artifact publication in source capture, SDK,
+  and CLI tests that create their own runtimes.
+
 - Expose a bounded Git source-capture timeout through the sync/async SDK,
   project CLI and local MCP tool, shared across manifest reads and bundling.
 

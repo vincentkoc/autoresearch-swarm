@@ -16,7 +16,7 @@ from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import LocalRuntime, write_private
-from tests.support import LIMITS, ResearchFixture
+from tests.support import LIMITS
 
 
 def process_environment() -> dict[str, str]:
@@ -45,11 +45,11 @@ def stdio(state: Path, *arguments: str) -> StdioServerParameters:
 
 
 async def test_cli_mcp_and_sdk_share_durable_commands(
-    research: ResearchFixture, tmp_path: Path
+    research_source: Path, tmp_path: Path
 ) -> None:
     state = tmp_path / "agent-runtime"
     identity = cli(state, "init")
-    project = cli(state, "project", "register", str(research.source), "--key", "agent-source")
+    project = cli(state, "project", "register", str(research_source), "--key", "agent-source")
     request = CreateCampaign(
         project_id=project["result"]["project"]["id"],
         name="Agent campaign",
@@ -169,11 +169,8 @@ def test_cli_capture_timeout_is_enforced(tmp_path: Path, operation: str) -> None
     assert error["message"] == "Operation failed: ValueError"
 
 
-async def test_local_mcp_capture_timeout_is_enforced(
-    research: ResearchFixture, tmp_path: Path
-) -> None:
+async def test_local_mcp_capture_timeout_is_enforced(research_source: Path, tmp_path: Path) -> None:
     state = tmp_path / "capture-mcp"
-    cli(state, "init")
     async with Client(stdio(state), read_timeout_seconds=20, cache=None) as agent:
         catalog = {tool.name: tool for tool in (await agent.list_tools()).tools}
         limit = catalog["research_capture_project"].input_schema["properties"][
@@ -193,7 +190,7 @@ async def test_local_mcp_capture_timeout_is_enforced(
         captured = await agent.call_tool(
             "research_capture_project",
             {
-                "path": str(research.source),
+                "path": str(research_source),
                 "idempotency_key": "valid-timeout",
                 "capture_timeout_seconds": 120,
             },

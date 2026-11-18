@@ -10,6 +10,7 @@ from research_swarm.domain.types import new_id
 from research_swarm.state.database import Database
 from tests.support import api as api
 from tests.support import research as research
+from tests.support import research_source as research_source
 
 
 @pytest.fixture

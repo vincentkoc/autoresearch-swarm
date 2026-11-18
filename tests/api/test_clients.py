@@ -34,13 +34,13 @@ def test_local_runtime_initializes_one_identity_under_contention(tmp_path: Path)
 
 
 def test_local_sdk_captures_registers_replays_and_reopens(
-    research: ResearchFixture, tmp_path: Path
+    research_source: Path, tmp_path: Path
 ) -> None:
     state = tmp_path / "client-state"
     with ResearchClient.local(state) as client:
-        registered = client.register_project(research.source, idempotency_key="register-baseline")
+        registered = client.register_project(research_source, idempotency_key="register-baseline")
         assert (
-            client.register_project(research.source, idempotency_key="register-baseline")
+            client.register_project(research_source, idempotency_key="register-baseline")
             == registered
         )
         project = registered["result"]["project"]
@@ -154,11 +154,11 @@ def test_local_scoped_credential_has_no_operator_fallback(tmp_path: Path) -> Non
 
 
 async def test_async_client_uses_same_command_acknowledgment(
-    research: ResearchFixture, tmp_path: Path
+    research_source: Path, tmp_path: Path
 ) -> None:
     client = ResearchClient.local(tmp_path / "async-state")
     try:
-        registered = client.register_project(research.source, idempotency_key="async-project")[
+        registered = client.register_project(research_source, idempotency_key="async-project")[
             "result"
         ]
         project = registered["project"]
@@ -233,9 +233,7 @@ def test_damaged_runtime_is_not_replaced(tmp_path: Path, missing: str) -> None:
     assert runtime.identity.initialized_at is not None
 
 
-def test_pinned_git_capture_ignores_dirty_manifest(
-    research: ResearchFixture, tmp_path: Path
-) -> None:
+def test_pinned_git_capture_ignores_dirty_manifest(research_source: Path, tmp_path: Path) -> None:
     environment = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
     for arguments in (
         ["init", "--quiet"],
@@ -255,16 +253,16 @@ def test_pinned_git_capture_ignores_dirty_manifest(
     ):
         subprocess.run(
             ["git", *arguments],
-            cwd=research.source,
+            cwd=research_source,
             env=environment,
             check=True,
             capture_output=True,
         )
-    manifest = research.source / "research.toml"
+    manifest = research_source / "research.toml"
     manifest.write_text("invalid = [toml", encoding="utf-8")
     with ResearchClient.local(tmp_path / "pinned-client") as client:
         response = client.register_project(
-            research.source, revision="HEAD", idempotency_key="pinned-register"
+            research_source, revision="HEAD", idempotency_key="pinned-register"
         )
     assert response["result"]["project_revision"]["data"]["resolved"]["source"]["base_revision"]
     assert manifest.read_text(encoding="utf-8") == "invalid = [toml"
