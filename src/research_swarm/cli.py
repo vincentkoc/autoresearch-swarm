@@ -188,15 +188,6 @@ def parser() -> argparse.ArgumentParser:
         target = item.add_mutually_exclusive_group(required=True)
         target.add_argument("--db", type=Path, help="Local swarm campaign database")
         target.add_argument("--key", help="Legacy controller idempotency key")
-    evaluation = commands.add_parser("evaluation", help="Advance independent evaluation control")
-    evaluations = evaluation.add_subparsers(dest="evaluation_action", required=True)
-    advance = evaluations.add_parser("advance")
-    advance.add_argument("campaign_id")
-    advance.add_argument("--evaluator", required=True)
-    advance.add_argument("--evaluator-token-file", type=Path)
-    advance.add_argument("--continuation-file", type=Path)
-    advance.add_argument("--max-pages", type=int, default=4)
-    advance.add_argument("--page-size", type=int, default=50)
     get = commands.add_parser("get")
     get.add_argument("kind")
     get.add_argument("identifier")
@@ -330,31 +321,6 @@ def _execute(client: ResearchClient, args: argparse.Namespace) -> Any:
                 registration=read_registration(args.registration) if args.registration else None,
             )
         ).model_dump(mode="json")
-    if args.action == "evaluation":
-        from research_swarm.orchestration.evaluation import EvaluationCursor, EvaluationDriver
-
-        continuation = (
-            EvaluationCursor.model_validate(_request(args.continuation_file))
-            if args.continuation_file
-            else None
-        )
-        role_args = argparse.Namespace(**vars(args))
-        role_args.token_file = args.evaluator_token_file or args.token_file
-        with _client(role_args) as evaluator:
-            return (
-                EvaluationDriver(
-                    client,
-                    evaluator,
-                    args.campaign_id,
-                    args.evaluator,
-                )
-                .advance(
-                    continuation=continuation,
-                    max_pages=args.max_pages,
-                    page_size=args.page_size,
-                )
-                .model_dump(mode="json")
-            )
     if args.action == "worker":
         if args.worker_action == "provision":
             from research_swarm.workers.remote_enrollment import WorkerDescription, provision_worker
@@ -692,12 +658,6 @@ def main(argv: list[str] | None = None) -> int:
             result = _execute(client, args)
             _emit_json(result)
             if args.action in {"worker", "run"} and result["state"] in {"blocked", "needs_review"}:
-                return 3
-            if args.action == "evaluation" and result["state"] in {
-                "needs_review",
-                "delivery_uncertain",
-                "transport_unavailable",
-            }:
                 return 3
             if (
                 args.action == "search"

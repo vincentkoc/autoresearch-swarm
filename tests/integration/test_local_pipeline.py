@@ -47,6 +47,22 @@ class Pipeline:
         )["items"][0]
 
 
+def role(pipeline: Pipeline, *scopes: str) -> tuple[Principal, ResearchClient, str]:
+    principal = Principal(
+        id=new_id(),
+        workspace_id=pipeline.runtime.identity.workspace_id,
+        scopes=frozenset(scopes),
+    )
+    credential = pipeline.runtime.credentials.issue(pipeline.runtime.principal(), principal)
+    client = ResearchClient(
+        LocalTransport(
+            pipeline.runtime,
+            lambda: pipeline.runtime.credentials.resolve(credential.token),
+        )
+    )
+    return principal, client, credential.token
+
+
 @pytest.fixture
 def pipeline(tmp_path: Path, request: pytest.FixtureRequest) -> Pipeline:
     runtime = LocalRuntime.open(tmp_path / "runtime")
