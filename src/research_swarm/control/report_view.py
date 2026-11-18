@@ -509,7 +509,12 @@ def _hill_climb(run: PlotRun, metric: MetricDefinition) -> str:
         "<div class=time-evidence>"
         "<p>Dots: chronological evaluation receipts. Steps: running best observed for this "
         "campaign only, not a confirmed winner or parent relationship.</p>"
-        "<p>Last best held to capture time; idle tail is not a new observation.</p>"
+        + (
+            "<p>Dotted line: recorded selection score at each selection event.</p>"
+            if run.selections
+            else ""
+        )
+        + "<p>Last best held to capture time; idle tail is not a new observation.</p>"
         f"<p>{_e(baseline)}</p><p>{status}: {run.included}/{run.total} receipts captured; "
         f"{len(run.points)} plotted. Excluded: {run.ineligible} ineligible, "
         f"{run.nonmatching} other cohort/metric, {run.untimed} missing/invalid timing.</p>"

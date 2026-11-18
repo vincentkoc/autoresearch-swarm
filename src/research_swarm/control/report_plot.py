@@ -26,6 +26,14 @@ class _Observation(BaseModel):
     data: JsonObject
 
 
+class _Selected(BaseModel):
+    trial_id: str
+    recorded_at: str
+    event_sequence: int = Field(strict=True, gt=0)
+    score: float | None = Field(allow_inf_nan=False)
+    replicates: int | None = Field(strict=True, gt=0)
+
+
 class _Snapshot(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -39,6 +47,7 @@ class _Snapshot(BaseModel):
     recent_evaluations: list[_Observation] = Field(max_length=MAX_OBSERVATIONS)
     evaluation_window: JsonObject
     research: JsonObject
+    selection_history: list[_Selected] = Field(default_factory=list, max_length=50)
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,7 @@ class PlotRun:
     capture_hours: float | None
     points: tuple[PlotPoint, ...]
     baseline: PlotPoint | None
+    selections: tuple[tuple[float, float, str], ...]
     history_complete: bool
     included: int
     total: int
@@ -100,6 +110,14 @@ def project_hill_climb(
         if snapshot.campaign_id in identities:
             raise ValueError("Use one snapshot per campaign, not duplicate historical windows")
         identities.add(snapshot.campaign_id)
+        if snapshot.schema_version == "swarm-campaign-1":
+            objective = snapshot.research["objective"]["primary_metric"]
+            if raw.get("comparison_digest") != comparison_digest or (
+                objective["name"],
+                objective["unit"],
+                objective["direction"],
+            ) != (metric.name, metric.unit, metric.direction):
+                raise ValueError("Selectors do not match the captured campaign")
         origin, captured = _time(snapshot.campaign_created_at), _time(snapshot.captured_at)
         points = []
         ineligible = nonmatching = untimed = 0
@@ -152,6 +170,20 @@ def project_hill_climb(
             raise ValueError("Baseline must be an object or null")
         if len(snapshot.recent_evaluations) > snapshot.evaluation_count:
             raise ValueError("Captured receipt count exceeds total")
+        selections = []
+        for item in snapshot.selection_history:
+            recorded = _time(item.recorded_at)
+            if (
+                origin is not None
+                and captured is not None
+                and recorded is not None
+                and origin <= recorded <= captured
+                and item.event_sequence <= snapshot.evidence_through
+                and item.score is not None
+            ):
+                selections.append(
+                    ((recorded - origin).total_seconds() / 3600, item.score, item.trial_id)
+                )
         runs.append(
             PlotRun(
                 campaign_id=snapshot.campaign_id,
@@ -166,6 +198,7 @@ def project_hill_climb(
                     else None
                 ),
                 points=tuple(points),
+                selections=tuple(selections),
                 baseline=next(
                     (
                         point
@@ -238,8 +271,11 @@ def _draw_time_chart(
         max([point.hours for point in points] + [run.capture_hours or 0.0 for run in runs]) or 1.0
     )
     # Normalize before subtraction to avoid overflow for finite extreme floats.
-    scale = max((abs(point.value) for point in points), default=1.0) or 1.0
-    values = [point.value / scale for point in points]
+    scores = [point.value for point in points] + [
+        value for run in runs for _, value, _ in run.selections
+    ]
+    scale = max(map(abs, scores), default=1.0) or 1.0
+    values = [value / scale for value in scores]
     low, high = min(values, default=0.0), max(values, default=1.0)
     padding = (high - low) * 0.08 or 0.08
     low, high = low - padding, high + padding
@@ -298,6 +334,24 @@ def _draw_time_chart(
                 stroke_dasharray="6 5",
                 opacity=0.65,
             )
+        if run.selections:
+            first, *later = run.selections
+            selected_path = f"M {x(first[0]):.3f} {y(first[1]):.3f}"
+            for hours, score, _ in later:
+                selected_path += f" H {x(hours):.3f} V {y(score):.3f}"
+            if run.capture_hours is not None:
+                selected_path += f" H {x(run.capture_hours):.3f}"
+            selected_line = _element(
+                line,
+                "path",
+                d=selected_path,
+                fill="none",
+                stroke=color,
+                stroke_width=2,
+                stroke_dasharray="2 4",
+                data_series="recorded-selection",
+            )
+            _element(selected_line, "title").text = "Recorded selection scores at selection time"
         if run.points:
             best = run.points[0].value
             path = f"M {x(run.points[0].hours):.3f} {y(best):.3f}"

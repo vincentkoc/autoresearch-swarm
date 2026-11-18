@@ -82,11 +82,11 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             "WHERE e.campaign_id=? AND e.kind='finished' ORDER BY e.id DESC LIMIT 50",
             (campaign,),
         ).fetchall()
-        selected = db.execute(
+        selected_rows = db.execute(
             "SELECT e.*,t.candidate_id FROM swarm_events e JOIN swarm_trials t USING(trial_id) "
-            "WHERE e.campaign_id=? AND e.kind='selected' ORDER BY e.id DESC LIMIT 1",
+            "WHERE e.campaign_id=? AND e.kind='selected' ORDER BY e.id DESC LIMIT 50",
             (campaign,),
-        ).fetchone()
+        ).fetchall()
         candidates = db.execute(
             "SELECT candidate_id, json_extract(payload,'$.parents') AS parents, "
             "count(*) OVER () AS total FROM swarm_candidates WHERE campaign_id=? "
@@ -105,10 +105,8 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             "ORDER BY a.rowid DESC LIMIT 50",
             (campaign,),
         ).fetchall()
-    selection = None
-    if selected is not None and selected["trial_id"] == row["selected_trial_id"]:
-        fields = dict(selected)
-        selection = {
+    history = [
+        {
             "trial_id": fields["trial_id"],
             "candidate_id": fields["candidate_id"],
             "score": fields.get("score"),
@@ -116,6 +114,11 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             "recorded_at": _iso(fields["at"]),
             "event_sequence": fields["id"],
         }
+        for fields in (dict(item) for item in reversed(selected_rows))
+    ]
+    selection = (
+        history[-1] if history and history[-1]["trial_id"] == row["selected_trial_id"] else None
+    )
     observations = []
     for attempt in reversed(finished):
         result = json.loads(attempt["observation"])
@@ -176,5 +179,6 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             },
         },
         "recorded_selection": selection,
+        "selection_history": history,
         "meter": meter,
     }
