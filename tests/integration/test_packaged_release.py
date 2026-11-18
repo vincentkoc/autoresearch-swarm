@@ -17,8 +17,6 @@ import pytest
 from mcp import Client, StdioServerParameters
 
 from scripts.release import digest, prebuilt_wheel, source_identity
-from tests.api.test_cli_mcp import process_environment
-from tests.integration.test_agent_research_cycle import command, context, record, tool
 from tests.paths import REPO_ROOT
 
 pytestmark = pytest.mark.skipif(
@@ -41,7 +39,12 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
     repository = REPO_ROOT
     neutral = package_root / "outside-checkout"
     neutral.mkdir()
-    environment = {**process_environment(), "UV_NO_PROGRESS": "1", "UV_PYTHON_DOWNLOADS": "never"}
+    environment = {
+        name: os.environ[name]
+        for name in ("PATH", "HOME", "TMPDIR", "UV_OFFLINE")
+        if name in os.environ
+    }
+    environment.update(UV_NO_PROGRESS="1", UV_PYTHON_DOWNLOADS="never")
 
     def run(arguments: list[str], *, cwd: Path = neutral, timeout: int = 120) -> str:
         result = subprocess.run(
@@ -141,68 +144,54 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
     source = neutral / "ordinary-project"
     shutil.copytree(repository / "examples" / "cpu_bigram", source)
     state = neutral / "state"
-    arguments = [
-        str(research),
-        "--state-dir",
-        str(state),
-        "run",
-        str(source),
-        "--key",
-        "wheel-baseline",
-        "--max-trials",
-        "1",
-        "--machine-registry",
-        str(neutral / "machine" / "registry.sqlite"),
-    ]
+    database = state / "swarm.sqlite"
+    environment["PATH"] = str(python.parent) + os.pathsep + environment["PATH"]
+    assert json.loads(run([str(research), "--state-dir", str(state), "init"])) == {
+        "database": str(database)
+    }
+    captured = json.loads(
+        run([str(research), "project", "capture", str(source), "--db", str(database)])
+    )
+    arguments = [str(research), "swarm", "run", str(source / "swarm.yaml"), "--db", str(database)]
     baseline = json.loads(run(arguments))
-    assert baseline["state"] == "awaiting_completion"
-    assert baseline["driver"]["executed_attempt_count"] == 2
-    campaign_id = baseline["campaign_id"]
+    assert baseline["trials"] == baseline["attempts"] == 8
+    assert baseline["failed"] == 1 and baseline["selected"]
+    campaign = baseline["campaign_id"]
     connection = StdioServerParameters(
         command=str(python),
-        args=["-I", "-m", "research_swarm.cli", "--state-dir", str(state), "mcp"],
+        args=["-I", "-m", "research_swarm.cli", "mcp", "--db", str(database)],
         env=environment,
         cwd=neutral,
     )
     async with Client(connection, read_timeout_seconds=30, cache=None) as agent:
-        capabilities = (await tool(agent, "capabilities"))["result"]
-        assert "campaign.complete" in capabilities["commands"]
-        receipts = (
-            await tool(
-                agent,
-                "query_records",
-                request={"kind": "evaluation_receipt", "campaign_id": campaign_id},
-            )
-        )["result"]["items"]
-        assert len(receipts) == 1 and receipts[0]["state"] == "valid"
-        assessment = await command(
-            agent,
-            "promotion.assess",
-            {
-                "campaign_id": campaign_id,
-                "candidate_evaluation_id": receipts[0]["id"],
-                "expected_incumbent_revision": 0,
-            },
-            "wheel-assess",
+        snapshot = await agent.call_tool("research_campaign_snapshot", {"campaign_id": campaign})
+        assert not snapshot.is_error
+        report = json.loads(snapshot.content[0].text)
+        assert report["research"]["objective"]["primary_metric"]["name"] == "bits_per_byte"
+        budget = await agent.call_tool("research_budget", {"campaign_id": campaign})
+        assert not budget.is_error
+        assert json.loads(budget.content[0].text) == json.loads(
+            run([str(research), "budget", campaign, "--db", str(database)])
         )
-        await command(
-            agent, "promotion.commit", {"decision_id": assessment["result"]["id"]}, "wheel-select"
-        )
-        view = await context(agent, campaign_id)
-        completed = await command(
-            agent,
-            "campaign.complete",
-            {"campaign_id": campaign_id, "reason": "Installed wheel baseline completed"},
-            "wheel-complete",
-            view["campaign"]["revision"],
-        )
-        report = await record(agent, "report", completed["result"]["report"]["id"])
-        assert report["data"]["snapshot"]["campaign_state"] == "completed"
-        assert report["data"]["snapshot"]["incumbent"]["evidence_level"] == "observed"
-        counts = {item["kind"]: item["count"] for item in report["data"]["snapshot"]["counts"]}
-        assert counts["attempt"] == 2 and counts["evaluation_receipt"] == 1
-    shutil.rmtree(source)
     resumed = json.loads(run(arguments))
-    assert resumed["state"] == "terminal"
-    assert resumed["campaign_id"] == campaign_id and resumed["trial_id"] == baseline["trial_id"]
-    assert resumed["driver"]["executed_attempt_count"] == 0
+    assert (
+        resumed["selected"] == baseline["selected"] and resumed["attempts"] == baseline["attempts"]
+    )
+    shutil.rmtree(source)
+    restored = neutral / "captured.zip"
+    run(
+        [
+            str(research),
+            "artifact",
+            "download",
+            captured["id"],
+            str(restored),
+            "--db",
+            str(database),
+        ]
+    )
+    assert hashlib.sha256(restored.read_bytes()).hexdigest() == captured["digest"].removeprefix(
+        "sha256:"
+    )
+    with zipfile.ZipFile(restored) as archive:
+        assert "swarm_trial.py" in archive.namelist()

@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from pydantic import TypeAdapter
+
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS swarm_projects (project_id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS swarm_projects (project_id TEXT PRIMARY KEY, snapshot TEXT);
 CREATE TABLE IF NOT EXISTS swarm_campaigns (
     campaign_id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES swarm_projects,
@@ -140,15 +142,31 @@ def _deadline(db: sqlite3.Connection, campaign_id: str, max_hours: float | None)
     return float(created_at) + max_hours * 3600
 
 
+class LegacyDatabaseError(ValueError):
+    """The selected file belongs to the retired controller."""
+
+
 class SQLiteStore:
     """Campaign-local queues with atomic claim, cost reservation and attempt completion."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         with self._connection() as db:
+            legacy = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name IN ('workspaces', 'records')"
+            ).fetchone()
+            if legacy:
+                raise LegacyDatabaseError(
+                    "Legacy control database. Use its original release to read it "
+                    "and a fresh database path for this campaign."
+                )
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(_SCHEMA)
         with self._connection(write=True) as db:
+            project_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_projects)")}
+            if "snapshot" not in project_columns:
+                db.execute("ALTER TABLE swarm_projects ADD COLUMN snapshot TEXT")
             columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_campaigns)")}
             if "ranking" not in columns:
                 db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
@@ -167,6 +185,14 @@ class SQLiteStore:
                 db.execute("BEGIN IMMEDIATE")
             yield db
 
+    def register_project(self, project_id: str, snapshot: dict[str, Any]) -> None:
+        with self._connection(write=True) as db:
+            db.execute(
+                "INSERT INTO swarm_projects(project_id,snapshot) VALUES(?,?) "
+                "ON CONFLICT(project_id) DO UPDATE SET snapshot=excluded.snapshot",
+                (project_id, _json(snapshot)),
+            )
+
     def create_campaign(self, spec: CampaignSpec) -> None:
         if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
             raise ValueError("max_hours must be finite and non-negative")
@@ -176,7 +202,9 @@ class SQLiteStore:
         if spec.max_cost is not None:
             _cost(spec.max_cost)
         with self._connection(write=True) as db:
-            db.execute("INSERT OR IGNORE INTO swarm_projects VALUES(?)", (spec.project_id,))
+            db.execute(
+                "INSERT OR IGNORE INTO swarm_projects(project_id) VALUES(?)", (spec.project_id,)
+            )
             insert = db.execute(
                 "INSERT INTO swarm_campaigns(campaign_id,project_id,spec) "
                 "VALUES(?,?,?) ON CONFLICT(campaign_id) DO NOTHING",
@@ -185,15 +213,47 @@ class SQLiteStore:
             if insert.rowcount:
                 _event(db, spec.campaign_id, "created")
                 return
-            saved = _spec(db, spec.campaign_id)
-            if "evaluation_mode" not in saved:
-                # Earlier queues recorded the policy and panel names instead of the mode.
-                panels = ("panel_policy", "search_panel", "selection_panel", "confirmation_panel")
-                saved["evaluation_mode"] = (
-                    "calibrated" if any(saved.get(p) for p in panels) else "smoke"
-                )
+            saved = self._saved_spec(db, spec.campaign_id)
             if _json(asdict(CampaignSpec(**saved))) != encoded:
                 raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
+
+    @staticmethod
+    def _saved_spec(db: sqlite3.Connection, campaign_id: str) -> dict[str, Any]:
+        saved = _spec(db, campaign_id)
+        if "evaluation_mode" not in saved:
+            # Earlier queues recorded the policy and panel names instead of the mode.
+            panels = ("panel_policy", "search_panel", "selection_panel", "confirmation_panel")
+            saved["evaluation_mode"] = (
+                "calibrated" if any(saved.get(p) for p in panels) else "smoke"
+            )
+        return saved
+
+    def campaign_spec(self, campaign_id: str) -> CampaignSpec:
+        with self._connection() as db:
+            saved = self._saved_spec(db, campaign_id)
+            return TypeAdapter(CampaignSpec).validate_json(_json(saved), strict=True)
+
+    @contextmanager
+    def worker_attempt(
+        self, campaign_id: str, worker_id: str, attempt_id: str, *, write: bool = False
+    ) -> Iterator[tuple[Attempt, Result | None] | None]:
+        """Return the current claim or terminal result, fenced against reassignment."""
+        with self._connection(write=write) as db:
+            row = db.execute(
+                _ATTEMPT + " WHERE t.campaign_id=? AND a.worker_id=? AND a.attempt_id=? "
+                "AND a.number=t.attempt_count",
+                (campaign_id, worker_id, attempt_id),
+            ).fetchone()
+            if row is None:
+                yield None
+                return
+            attempt = _attempt(row)
+            result = None
+            if row["observation"] is not None:
+                data = json.loads(row["observation"])
+                data["logs"] = tuple(data["logs"])
+                result = Result(attempt=attempt, **data)
+            yield attempt, result
 
     def deadline(self, campaign_id: str) -> float | None:
         with self._connection() as db:

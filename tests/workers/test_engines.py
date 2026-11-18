@@ -17,7 +17,6 @@ from pydantic import ValidationError
 from research_swarm.domain.canonical import canonical_bytes, content_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.engines import (
-    ENGINE_DEFINITIONS,
     _probe,
     custody,
     probe,
@@ -33,7 +32,7 @@ from research_swarm.engines.registration import (
     register_environment,
     verify_registration,
 )
-from research_swarm.runtime import write_private
+from research_swarm.state.private_files import write_private
 
 CONTRACT = content_digest(b"synthetic environment contract")
 
@@ -65,7 +64,7 @@ def descriptor(**updates: Any) -> EngineDescriptor:
     )
 
 
-def test_registry_imports_no_optional_framework_and_separates_layers() -> None:
+def test_importing_engines_leaves_optional_frameworks_unloaded() -> None:
     process = subprocess.run(
         [
             sys.executable,
@@ -77,13 +76,6 @@ def test_registry_imports_no_optional_framework_and_separates_layers() -> None:
         timeout=10,
     )
     assert process.returncode == 0, process.stderr
-    assert {(item.framework, item.device_backend) for item in ENGINE_DEFINITIONS} == {
-        ("python", "cpu"),
-        ("pytorch", "cuda"),
-        ("pytorch", "rocm"),
-        ("pytorch", "mps"),
-        ("mlx", "metal"),
-    }
 
 
 def test_real_cpu_probe_is_path_free_and_does_not_claim_workload_qualification() -> None:
@@ -485,14 +477,12 @@ def test_descriptor_rejects_ambiguous_packages_and_profile() -> None:
         descriptor(framework="mlx")
 
 
-def test_private_corruption_error_does_not_echo_paths(
-    cpu_registration: EnvironmentRegistration,
-    tmp_path: Path,
-) -> None:
-    target = tmp_path / "registration" / "environment.json"
+def test_private_corruption_error_does_not_echo_paths(tmp_path: Path) -> None:
+    target = tmp_path / "environment.json"
     write_private(target, b'{"executable":"private-invalid-value"}')
     with pytest.raises(ResearchError) as failure:
         read_registration(target)
+    assert failure.value.code == ErrorCode.PROJECT_CONTRACT_INVALID
     assert "private-invalid-value" not in str(failure.value)
 
 
@@ -509,7 +499,14 @@ def test_cli_probe_registration_and_verification(tmp_path: Path) -> None:
 
     listed = run("list")
     assert listed.returncode == 0, listed.stderr
-    assert len(json.loads(listed.stdout)["profiles"]) == 5
+    profiles = json.loads(listed.stdout)["profiles"]
+    assert sorted((profile["framework"], profile["device_backend"]) for profile in profiles) == [
+        ("mlx", "metal"),
+        ("python", "cpu"),
+        ("pytorch", "cuda"),
+        ("pytorch", "mps"),
+        ("pytorch", "rocm"),
+    ]
     probed = run("probe", "python-cpu", "--probe-dir", str(tmp_path / "probe-state"))
     assert probed.returncode == 0, probed.stderr
     registered = run(

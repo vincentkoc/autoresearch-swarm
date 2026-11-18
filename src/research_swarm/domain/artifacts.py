@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
 from uuid import UUID, uuid5
 
 from research_swarm.domain.evidence import ArtifactRef
@@ -11,14 +10,8 @@ from research_swarm.domain.types import (
     ByteCount,
     Digest,
     MediaType,
-    Name,
-    Timestamp,
     VersionedRecord,
 )
-
-
-class ReaderSessionTarget(VersionedRecord):
-    session_id: ID
 
 
 class UploadSpec(VersionedRecord):
@@ -46,22 +39,3 @@ class StoredBlob(VersionedRecord):
 class UploadProgress(VersionedRecord):
     received_bytes: ByteCount
     published: bool
-
-
-class ArtifactRecord(VersionedRecord):
-    reference: ArtifactRef
-    storage_generation: ID
-    workspace_id: ID
-    published_by: ID
-    verified_at: Timestamp
-    state: Literal["verified", "deleting", "deleted"] = "verified"
-    deletion_reason: str | None = None
-    deletion_id: ID | None = None
-
-
-class ArtifactRetention(VersionedRecord):
-    artifact_id: ID
-    owner_kind: Name
-    owner_id: ID
-    purpose: Name
-    required: bool = True

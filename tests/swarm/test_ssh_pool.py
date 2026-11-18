@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -172,33 +173,33 @@ async def test_protection_failure_blocks_ssh_dispatch(tmp_path: Path) -> None:
 
 def test_detached_keeper_stops_only_after_activity_finished(tmp_path: Path) -> None:
     lockfile = tmp_path / "activity"
-    stopped = tmp_path / "poweroff"
-    executable(
-        tmp_path,
-        "systemctl",
-        f"import sys\nassert sys.argv[1:] == ['poweroff']\nopen({str(stopped)!r}, 'w').close()",
-    )
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "research_swarm.swarm.backends.keeper",
-            "--idle-seconds",
-            "0.3",
-            "--activity",
-            str(lockfile),
-        ],
-        env={**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]},
-    )
+    commands = tmp_path / "commands"
+    echo = shutil.which("echo", path=os.defpath)
+    assert echo is not None
+    (tmp_path / "systemctl").symlink_to(echo)
+    with commands.open("wb") as output:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "research_swarm.swarm.backends.keeper",
+                "--idle-seconds",
+                "0.3",
+                "--activity",
+                str(lockfile),
+            ],
+            env={**os.environ, "PATH": str(tmp_path)},
+            stdout=output,
+        )
     try:
         deadline = time.monotonic() + 5
         while not lockfile.exists() and time.monotonic() < deadline:
             time.sleep(0.01)
         with active(lockfile):
             time.sleep(0.5)
-            assert not stopped.exists() and process.poll() is None
+            assert commands.read_bytes() == b"" and process.poll() is None
         assert process.wait(timeout=5) == 0
-        assert stopped.exists()
+        assert commands.read_bytes() == b"poweroff\n"
         with pytest.raises(RuntimeError, match="stopping"), active(lockfile):
             pytest.fail("stopping host admitted work")
     finally:

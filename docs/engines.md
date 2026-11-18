@@ -12,13 +12,11 @@ The framework and device backend remain separate fields.
 | `pytorch-mps` | PyTorch | MPS | Apple Silicon, built support and runtime availability |
 | `mlx-metal` | MLX | Metal | Apple Silicon, Metal availability and device information |
 
-The generic worker can bind these registrations to native execution. CPU execution
-is tested with a separate virtual environment. Accelerator routing and admission
-have synthetic contract tests. The [original MLX bigram workload](mlx-workload.md)
-also has native Metal training and independent scoring proof on an Apple M5 Max.
-CUDA, ROCm, and MPS workloads remain separately unqualified.
-Existing CPU workers keep their original enrollment and signed-record interpretation;
-registering a new environment does not replace an active worker.
+The swarm's native runner can use a registered interpreter for manifest stages.
+The CPU and reactive examples run locally. The original MLX bigram workload
+also has a historical native Metal training and independent scoring record on
+an Apple M5 Max. That result applies to its recorded runner and hardware.
+[Archived MLX qualification](https://github.com/vincentkoc/autoresearch-swarm/blob/b8b44174b925483c8b202163fef12b733517fa49/docs/mlx-workload.md)
 
 ## Historical Windows qualification
 
@@ -81,18 +79,19 @@ would select the wrong package environment.
 
 ## Register an environment
 
-Use the `environment_contract_digest` from the resolved project revision to
-authorize that contract for the selected environment. Replace the variable below
-with that complete `sha256:` digest:
+From the repository root, register the CPU bigram project to obtain its
+environment contract digest. The command below registers the interpreter used
+by `uv run`. To use another installed environment, pass its Python executable
+with `--python`.
 
 ~~~sh
-research engine register python-cpu \
-  --python /opt/research/venv/bin/python \
-  --file /opt/research/private/environments/cpu.json \
-  --environment-contract "$ENVIRONMENT_CONTRACT" \
-  --cpu-slots 2
-
-research engine verify --file /opt/research/private/environments/cpu.json
+uv sync --locked --group dev
+contract=$(uv run --no-sync research project register examples/cpu_bigram --db .research/projects.sqlite | \
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["manifest"]["environment_contract_digest"])')
+uv run --no-sync research engine register python-cpu \
+  --file .research/engines/bigram.json --environment-contract "$contract" \
+  --probe-dir .research/probes
+uv run --no-sync research engine verify --file .research/engines/bigram.json
 ~~~
 
 `--environment-contract` may be repeated. Registration persists an immutable
@@ -124,97 +123,51 @@ admitted capacities, execution policy, and the frozen launch adapter's code dige
 It excludes local paths, worker IDs,
 candidate source, seeds, and the list of authorized contracts. A different
 candidate or seed can therefore remain comparable under the same registered
-execution profile. The private interpreter identity is checked on local resume.
+execution profile. The registered bootstrap checks interpreter identity before it runs a stage.
 Unobserved runtime or driver versions remain `null`.
-
-## Physical device identity
-
-The selected device ordinal is not a physical resource identity. An available
-device without a stable reported identity can be described and registered, but
-`device_pool` refuses to admit it. There is no automatic model-name fallback or
-operator override that could accidentally multiply one exclusive device.
-
-MPS and MLX Metal on Apple Silicon share the machine-local identity
-`apple-integrated-0`. Their pool key excludes framework, interpreter, worker ID,
-driver version, and admitted capacity. Unified memory uses the admitted host
-memory capacity; it is not a second independent GPU memory pool. Native worker
-admission atomically reserves that key. This is scheduling admission under the
-declared `trusted_local` mode, not hardware isolation.
-
-Accelerator stages must declare exactly one accelerator and `exclusive_device = true`.
-For unified memory, host and accelerator byte requests are conservatively summed
-into one `memory` pool. Requests whose sum exceeds admitted host memory fail.
-CUDA/ROCm VRAM remains a device capacity constraint; exclusive allocation reserves
-the whole physical device. UNKNOWN retains every pool until native closure.
 
 ## Execute a registered project
 
-After registering the project's environment contract, use the same private record
-to enroll its worker:
+Start with the [CPU bigram campaign YAML](workload-protocol.md#original-cpu-example).
+Save a copy as `registered-bigram.yaml`. Keep the original task directory, metric,
+candidates and limits. Replace the campaign ID and command with these two fields.
 
-~~~sh
-research run path/to/project \
-  --registration /opt/research/private/environments/cpu.json --cpu-slots 2
-
-research worker describe --worker-dir /opt/research/private/worker \
-  --registration /opt/research/private/environments/cpu.json --cpu-slots 2
+~~~yaml
+campaign_id: registered-bigram
+command: [python, -m, research_swarm.swarm.native, --registration, ../../.research/engines/bigram.json]
 ~~~
 
-The remote provision/connect/start flow is unchanged. Match `--cpu-slots` to the
-registration. Each installation pins exactly one registration and one profile.
-An accelerator installation has concurrency one. Separate workers can register
-different devices; registrations for the same physical device contend through
-the shared machine registry. Replacing an existing legacy or registered
-installation requires explicit migration; omission of `--registration` cannot
-silently change its mode.
+~~~sh
+uv run --no-sync research swarm run registered-bigram.yaml --db .research/registered-bigram.sqlite
+~~~
 
-The worker's environment-contract allowlist is checked during offer discovery and
-transactional claim admission, before budget reservation. Native preparation
-checks it again. The registration's public profile is part of the signed
-assignment; private interpreter paths remain on the worker.
+The worker starts the command in `task_dir`, so registration and output paths in
+that command are relative to the project directory. The native runner reads
+`research.toml` there by default. Use `--manifest FILE` for another manifest
+inside the captured project and `--outputs DIR` to keep the stage files.
 
-Preparation freezes the registration, bootstrap, environment probe, and bootstrap
-input. The supervisor verifies these files, the sealed workload context, and exact
-CPU/memory/scratch/device demands before creation and at the held-release gate.
-It derives environment overrides from the selected backend. No arbitrary manifest
-environment dictionary, shell activation, or inherited Python injection variables
-are accepted.
+The runner checks the registered environment contract and each stage's resource
+requirements. It freezes the launch adapter and probe code for the attempt. The
+registered Python then verifies its environment under `-I` and runs the stage's
+script, `-m module` or `-c code` with its declared arguments. Stage dependencies
+must be installed in that interpreter. The workload can read the engine profile,
+logical device, fingerprint and resource demands in
+`WorkloadContext.parameters["engine"]`. An unregistered launch supports the
+`python-cpu` profile with default stage resource requirements.
 
-The registered interpreter runs a standard-library bootstrap under `-I`, inside
-the experiment's admitted native process scope. That bootstrap checks the binary,
-interpreter identity, installed packages, framework and selected physical device
-before executing project code. A mismatch exits with code `78`, produces failed
-execution evidence, and keeps resource ownership until native closure. There is
-no separate per-attempt probe process to reconcile.
+## Physical device identity
 
-Supported Python forms are a relative script path, `-m module`, and `-c code`,
-followed by their arguments. Other interpreter flags fail before creation.
-After verification, the bootstrap sets the ordinary script or module search path
-and `sys.argv`; `sys.flags.isolated` remains true. Inline code receives a clean
-`__main__` module. Frameworks imported during verification remain cached, so this
-is an explicit `isolated-verify-then-project-v1` launch mode, not a claim of a cold
-framework import. Verification consumes execution/startup time. It does not
-rewrite the project's declared active-training timer.
+A registered accelerator stage requires one exclusive device and sufficient
+registered capacity. For unified memory, stage admission counts host and
+accelerator byte requests against the registered host memory. The runner checks
+the worker's device allocation against the registered backend. For CUDA and
+ROCm it also checks a supplied `CUDA_VISIBLE_DEVICES` ordinal. The stage sees
+the selected device as logical `cuda:0`. MPS and MLX use their native device
+conventions.
 
-CUDA and ROCm selectors are passed before interpreter startup. The selected
-physical ordinal becomes logical `cuda:0`; the bootstrap verifies its reported
-physical identity and properties. Only the logical ordinal is normalized during
-comparison. MPS and MLX retain their native device conventions.
-
-`RESEARCH_CONTEXT.parameters.engine` contains the profile, framework, backend,
-logical device, execution fingerprint, environment digest, launch adapter digest,
-policy, and exact resource demand. Its context digest binds these observations to
-the attempt. The platform interpreter runs supervision; the registered environment
-does not need Research Swarm installed.
-
-Publication verifies the recorded context and original admission without opening
-worker filesystem paths. Existing native outcomes remain publishable after the
-interpreter, GPU environment, or frozen launch files disappear. Launch-only
-validation cannot block recovery of already observed closure.
-
-Registrations created before launch-adapter binding remain readable and probe
-verifiable. They cannot launch registered workloads. Create a new registration
-file to bind the installed adapter; historical records are not silently rewritten.
+Earlier releases used signed assignments, worker enrollment, and a machine
+registry. Their launch and recovery qualifications are preserved in the
+[archived engine guide](https://github.com/vincentkoc/autoresearch-swarm/blob/b8b44174b925483c8b202163fef12b733517fa49/docs/engines.md#execute-a-registered-project).
 
 ## Qualification boundaries
 

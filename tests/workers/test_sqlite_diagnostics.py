@@ -2,11 +2,9 @@
 
 import sqlite3
 from contextlib import closing
-from pathlib import Path
 
 import pytest
 
-from research_swarm.workers.journal import WorkerJournal
 from research_swarm.workers.supervision import run_native
 from tests.workers.test_supervision import command, require_closed
 
@@ -86,29 +84,3 @@ def test_sqlite_metadata_is_bounded_and_names_match_known_constants(tmp_path, co
     assert "SQLite failure phase=cancellation_read" + expected in outcome.closure.findings
     assert "private_fixture_value" not in outcome.model_dump_json()
     require_closed(outcome.closure.identity.pid)
-
-
-@pytest.mark.parametrize("statement", ["PRAGMA foreign_keys=ON", "PRAGMA synchronous=FULL"])
-def test_failed_journal_connection_setup_closes_the_real_connection(
-    tmp_path: Path, monkeypatch, statement
-):
-    original_connect = sqlite3.connect
-    opened = []
-
-    class SetupFailure(sqlite3.Connection):
-        def execute(self, sql, parameters=()):
-            if sql == statement:
-                raise sqlite3.OperationalError("Synthetic setup failure")
-            return super().execute(sql, parameters)
-
-    def connect(*args, **kwargs):
-        connection = original_connect(*args, **kwargs, factory=SetupFailure)
-        opened.append(connection)
-        return connection
-
-    monkeypatch.setattr("research_swarm.workers.journal.sqlite3.connect", connect)
-    with pytest.raises(sqlite3.OperationalError, match="Synthetic setup failure"):
-        WorkerJournal(tmp_path / "worker.sqlite")
-    assert len(opened) == 1
-    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
-        opened[0].execute("SELECT 1")

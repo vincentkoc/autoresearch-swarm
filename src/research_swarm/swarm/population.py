@@ -65,9 +65,11 @@ class Population:
         fidelity = max(key[0] for key in eligible)
         ranked = [self.measure(*key) for key in eligible if key[0] == fidelity]
         sign = 1 if self.spec.direction == "minimize" else -1
-        ranked.sort(
-            key=lambda item: (sign * item.score, item.result.attempt.trial.candidate.candidate_id)
-        )
+        # Serial greedy keeps the first observation at a tied score. Parallel
+        # campaigns need an ID tie-break because completion order can vary.
+        if self.spec.max_workers != 1 or self.spec.top_k != 1:
+            ranked.sort(key=lambda item: item.result.attempt.trial.candidate.candidate_id)
+        ranked.sort(key=lambda item: sign * item.score)
         return ranked
 
     def top(self, *, family: str | None = None) -> list[Ranked]:

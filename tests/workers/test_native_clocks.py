@@ -17,10 +17,7 @@ from research_swarm.workers.clocks import (
     native_clock,
 )
 from research_swarm.workers.contracts import ProcessClosure
-from research_swarm.workers.journal import JournalState, WorkerJournal
 from research_swarm.workers.supervision import run_native
-from research_swarm.workers.supervisor import run_attempt
-from tests.worker_support import dispatch
 from tests.workers.test_supervision import command, require_closed
 
 
@@ -293,24 +290,3 @@ def test_closed_scope_waits_for_leader_exit_within_original_cleanup_cap(
         "Incomplete native exit or output closure" in result.closure.findings
     ) != eventually_available
     require_closed(result.closure.identity.pid)
-
-
-def test_missing_clock_leaves_unclaimed_journal_recoverable(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    verified, invocation = dispatch(tmp_path)
-    journal = WorkerJournal(tmp_path / "journal.sqlite")
-    initial = journal.receive(verified, invocation)
-
-    def unavailable() -> Any:
-        raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Synthetic clock unavailable")
-
-    with monkeypatch.context() as patch:
-        patch.setattr("research_swarm.workers.supervisor.native_clock", unavailable)
-        with pytest.raises(ResearchError, match="clock unavailable"):
-            run_attempt(journal, initial.dispatch.attempt_id)
-    assert journal.get(initial.dispatch.attempt_id) == initial
-    result = run_attempt(journal, initial.dispatch.attempt_id)
-    assert result.state == JournalState.CLOSED
-    assert result.outcome is not None and result.outcome.exit_code == 0

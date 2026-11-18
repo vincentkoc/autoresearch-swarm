@@ -15,6 +15,10 @@ from research_swarm.domain.types import new_id
 from research_swarm.projects.native_files import SourceReader
 
 
+def default_state_directory() -> Path:
+    return Path.home() / ".local" / "state" / "autoresearch-swarm"
+
+
 def restore_admission_path(root: Path) -> Path:
     """Publish the native restore admission barrier before creating its root."""
     target = root.expanduser().resolve()
@@ -36,6 +40,26 @@ def restore_admission_path(root: Path) -> Path:
     normalized = unicodedata.normalize("NFD", name).casefold()
     identity = hashlib.sha256(os.fsencode(normalized)).hexdigest()
     return target.parent / (".research-restore-" + identity + ".pending")
+
+
+def campaign_database(root: Path, *, project_directory: bool = False) -> Path:
+    """Select a campaign workspace without touching retired controller state."""
+    root = root.expanduser().absolute()
+    markers: tuple[Path, ...] = (
+        root / "research.sqlite",
+        root / "recovery.pending",
+        restore_admission_path(root),
+    )
+    # A project directory can contain its own identity.json alongside the YAML spec.
+    if not project_directory:
+        markers += (root / "identity.json",)
+    if any(marker.exists() or marker.is_symlink() for marker in markers):
+        raise ResearchError(
+            ErrorCode.SCHEMA_UNSUPPORTED,
+            "Legacy controller workspace. Read it with its original release "
+            "and select a fresh directory for the campaign.",
+        )
+    return root / "swarm.sqlite"
 
 
 def read_private(root: Path, name: str, *, limit: int) -> bytes:

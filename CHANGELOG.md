@@ -2,13 +2,81 @@
 
 ## Unreleased
 
+- Keep finite parameter campaigns running when both default bandit operators propose
+  previously tried recipes. The next available grid recipe fills the open slot.
+
+- Set `proposer: research_swarm.swarm.operators.bandit:BanditProposer` to allocate
+  trials between parameter mutation and crossover by observed gain per cost.
+  Custom proposer factories can supply other operators. The bandit restores pending
+  recipes on resume and returns completed siblings when a model proposal times out.
+
+- Make the local SSH keeper test record its shutdown command with a native executable
+  while checking activity locking, the idle deadline, and rejection of new work.
+
+- Run captured native project stages as a swarm trial with
+  `python -m research_swarm.swarm.native`. Use `--registration` for a registered
+  interpreter and `--outputs` to keep per-attempt reports and reactive traces.
+  Evaluation stage metrics feed the queue directly. Legacy evaluation receipts,
+  worker journals and controller promotion commands are retired. The workload,
+  engine and reactive guides now show how to launch these stages from campaign YAML.
+
+- Remove the old controller dispatcher, historical-import API and controller
+  benchmark harness. Archived benchmark results and standalone project receipt
+  readers remain available.
+
+- **Breaking:** `research init` opens a private six-table campaign workspace.
+  Use `research swarm run` for execution. Projects, artifacts, reports, budgets,
+  HTTP campaign reads and local MCP now use `swarm.sqlite`. The SDK provides
+  synchronous and asynchronous campaign reads. Open older controller databases
+  with their original release and choose a fresh directory for new campaigns.
+  Archived report JSON still verifies its original digest. The controller
+  signing keys, legacy funding ledger and schema migration code are retired.
+
+- Serve a campaign worker with a separate private bearer and a fixed campaign
+  and worker identity. Claimed attempts can heartbeat, publish observations,
+  and upload immutable artifacts through the same SQLite queue.
+
+- Serve authenticated campaign reads from SQLite with `serve --db`, inspect
+  a selected database with `mcp --db`, or query it through `CampaignReader`.
+
+- **Breaking:** Retire parent-funded child campaigns and their allocation commands.
+  Run each campaign with its own dispatch budget. Finish or inspect existing
+  delegated workspaces with their original release and start new runs in fresh state.
+  New control databases also omit the allocation posting journal.
+
+- Render local hill-climb reports from campaign SQLite state with `report view`
+  or `report plot --db DB --campaign ID`. Read measured cost and active dispatch
+  estimates with `budget ID --db DB`.
+
+- Use `--db` with local project capture, registration, and artifact upload or
+  download to keep project snapshots and artifact bytes beside a swarm campaign.
+
+- Remove the unused settlement-evidence verifier and its reservation lookup index
+  from new control databases.
+
+- Opening a legacy control database as a swarm campaign now reports how to
+  start in a fresh database path and preserves the existing state.
+
+- Install the optional `skypilot` extra to provide `uvx` for the isolated SkyPilot CLI.
+
+- **Breaking:** Retire `campaign.capture_obligations`, `campaign.complete_scientific`
+  and `campaign.close_resources`. New swarm campaigns persist the selected trial
+  and its score as the loop runs. Historical completion reports remain readable.
+
+- Retire the serial greedy and portfolio controller planners, their search and
+  population commands, and assigned proposal reads. Run campaigns with
+  `research swarm run`. Set `max_workers: 1` and `top_k: 1` for sequential
+  selection within a fixed trial budget. Existing report snapshots remain readable.
+
 - Run the GitHub CI workflow on manual dispatch. Pull requests use the local merge gate.
+
+- Require a PR description explaining which contracts need coverage when a
+  change adds more than 400 net lines of tests or test support.
 
 - **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
   subsystem: the 13 `learning.*` commands, their scopes, record kinds and MCP tools,
   and the `learning_cycle` and `cpu_policy_learning` examples. No real research run
-  used it. Ordinary proposals, trial submission, search and the planner comparison in
-  `examples/policy_benchmark` are unchanged.
+  used it.
 
 - Contain unexpected local failures to one attempt in `ScopedWorkerDriver`. The
   driver keeps heartbeats and sibling work running, reports `EXECUTION_UNKNOWN` and
@@ -19,6 +87,9 @@
   when resumed, including on runners where several heartbeat intervals elapse.
   The cancellation test observes the next driver's heartbeat directly while
   the worker is drained.
+
+- Consolidate canonical serialization tests around the frozen cross-language corpus
+  and remove obsolete signed-time conformance fixtures.
 
 - Remove the unused `evidence_receipt` helper and `DeadlinePolicy` model, and the
   disabled Windows CI jobs. Windows runtime code stays; qualification remains paused.
@@ -70,6 +141,9 @@
   contract runs. Give Chrome time to start cold in the real browser smoke tests
   and report its launch errors.
 
+- Check the supported engine inventory through the CLI and exercise corrupt
+  registration handling without first probing a valid environment.
+
 - Apply newly requested graph layouts while reduced motion or Pause is active,
   without accepting queued animation frames.
 
@@ -98,6 +172,18 @@
   VRAM, with a utilisation target and a batch size for multi-fit workloads.
 
 - Report the watchdog timeout duration when a swarm worker stops a stalled attempt.
+
+- **Breaking:** Retire `research evaluation advance` and its evaluator-token option.
+  Run stage commands with `research swarm run` and publish measurements through `SWARM_METRICS`.
+
+- **Breaking:** Retire `confirmation.create` and `confirmation.assess`. Swarm
+  campaigns compare candidates on selection and held-out confirmation panels.
+
+- **Breaking:** Retire the controller promotion and evidence invalidation commands.
+  The swarm loop records its selected trial, policy score and replicate count in SQLite.
+
+- Verify a score-only selection update against one migrated campaign history
+  and run the worker packing test with the public campaign specification.
 
 - Add a resident swarm worker that heartbeats, retries lost trials and records
   attempt failures. Dispatch reserves estimated cost and reports charges from
@@ -193,11 +279,17 @@
 
 - Declare the expected evaluation panel in the project-manifest template and explain receipt completeness.
 
+- Consolidate project manifest compatibility checks and reduce fixture setup
+  for release artifact verification.
+
 - Ignore directory symlinks outside source selections while rejecting selected symlink paths.
 
 - Report interrupted artifact and worker downloads as retryable transport failures, with partial-file cleanup.
 
 - Return structured capability errors for unknown HTTP commands instead of uncertain-delivery advice.
+
+- Remove the unused controller test launcher and its self-tests. Keep real CLI
+  checks for UTF-8 output and clean errors when an archived report is malformed.
 
 - Check upload and read permissions before creating artifact uploads or reserving storage.
 

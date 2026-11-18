@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,6 +38,19 @@ def trial(n: int, *, campaign_id: str = "test") -> Trial:
         seed=2,
         fidelity=1.0,
     )
+
+
+def test_legacy_database_is_rejected_before_any_writes(tmp_path: Path) -> None:
+    path = tmp_path / "research.sqlite"
+    with closing(sqlite3.connect(path)) as legacy, legacy:
+        legacy.execute("CREATE TABLE workspaces(id TEXT PRIMARY KEY)")
+        legacy.execute("INSERT INTO workspaces VALUES ('archive')")
+        legacy.execute("PRAGMA user_version=4")
+    original = path.read_bytes()
+    with pytest.raises(ValueError, match="fresh database path"):
+        SQLiteStore(path)
+    assert path.read_bytes() == original
+    assert set(tmp_path.iterdir()) == {path}
 
 
 def test_independent_connections_claim_distinct_trials_and_respect_slots(tmp_path: Path) -> None:
@@ -216,10 +230,7 @@ def test_campaign_isolation_resume_and_durable_selection(tmp_path: Path) -> None
         )
 
 
-@pytest.mark.parametrize("first_score", [0.75, 0.85])
-def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
-    tmp_path: Path, first_score: float
-) -> None:
+def test_selection_events_preserve_policy_scores_and_legacy_unknowns(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     store = SQLiteStore(path)
     store.create_campaign(spec())
@@ -236,7 +247,8 @@ def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
 
     reopened = SQLiteStore(path)
     reopened.select("test", trial(1).trial_id, score=0.95)
-    reopened.select("test", trial(1).trial_id, score=first_score, replicates=2)
+    reopened.select("test", trial(1).trial_id, score=0.85, replicates=2)
+    reopened.select("test", trial(1).trial_id, score=0.75, replicates=2)
     reopened.select("test", trial(2).trial_id, score=0.65, replicates=3)
     replay = SQLiteStore(path)
     replay.select("test", trial(2).trial_id, score=0.65, replicates=3)
@@ -248,7 +260,8 @@ def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
             ("test",),
         ).fetchall() == [
             (trial(1).trial_id, None, None),
-            (trial(1).trial_id, first_score, 2),
+            (trial(1).trial_id, 0.85, 2),
+            (trial(1).trial_id, 0.75, 2),
             (trial(2).trial_id, 0.65, 3),
         ]
 
@@ -271,3 +284,35 @@ def test_trial_and_candidate_identity_survive_replicates(tmp_path: Path) -> None
                 original, trial_id="other", candidate=replace(original.candidate, text="changed")
             )
         )
+
+
+def test_init_uses_six_tables_and_preserves_a_legacy_workspace(tmp_path: Path) -> None:
+    from research_swarm.cli import main
+
+    workspace = tmp_path / "fresh"
+    assert main(["--state-dir", str(workspace), "init"]) == 0
+    assert main(["--state-dir", str(workspace), "init"]) == 0
+    with sqlite3.connect(workspace / "swarm.sqlite") as db:
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table'")}
+    assert tables - {"sqlite_sequence"} == {
+        "swarm_projects",
+        "swarm_campaigns",
+        "swarm_candidates",
+        "swarm_trials",
+        "swarm_attempts",
+        "swarm_events",
+    }
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    legacy = archive / "research.sqlite"
+    legacy.write_bytes(b"archived state")
+    assert main(["--state-dir", str(archive), "init"]) == 2
+    assert list(archive.iterdir()) == [legacy]
+    assert legacy.read_bytes() == b"archived state"
+
+
+def test_project_identity_file_does_not_make_a_legacy_workspace(tmp_path: Path) -> None:
+    from research_swarm.state.private_files import campaign_database
+
+    (tmp_path / "identity.json").write_text('{"name":"dataset"}')
+    assert campaign_database(tmp_path, project_directory=True) == tmp_path / "swarm.sqlite"
