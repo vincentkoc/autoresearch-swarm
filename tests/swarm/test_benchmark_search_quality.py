@@ -7,9 +7,10 @@ import json
 import os
 import threading
 import time
+from itertools import pairwise
 from pathlib import Path
 from statistics import fmean
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -53,24 +54,26 @@ def compare_seed(task, study, seed: int, model: str) -> dict[str, tuple[float, f
         def propose(task_, history, rng):
             nonlocal previous
             last = history[-1]
-            trial = Trial(
-                trial_id=str(len(history)),
-                campaign_id=task.name,
-                seed=seed,
-                fidelity=1.0,
-                candidate=previous,
-            )
-            attempt = Attempt(
-                attempt_id=trial.trial_id, trial=trial, worker_id="cpu", number=1, started_at=0
-            )
-            policy.tell(
-                Result(
-                    attempt=attempt,
-                    status="ok" if last.score is not None else "failed",
-                    metrics={task.metric: last.score} if last.score is not None else {},
-                    error=last.error,
+            # A proposal error consumes a search slot without creating a worker trial.
+            if last.candidate is not None:
+                trial = Trial(
+                    trial_id=str(len(history)),
+                    campaign_id=task.name,
+                    seed=seed,
+                    fidelity=1.0,
+                    candidate=previous,
                 )
-            )
+                attempt = Attempt(
+                    attempt_id=trial.trial_id, trial=trial, worker_id="cpu", number=1, started_at=0
+                )
+                policy.tell(
+                    Result(
+                        attempt=attempt,
+                        status="ok" if last.score is not None else "failed",
+                        metrics={task.metric: last.score} if last.score is not None else {},
+                        error=last.error,
+                    )
+                )
             batch = runner.run(policy.ask(spec, [], 1))
             if not batch:
                 raise ValueError("proposal batch exhausted")
@@ -101,7 +104,10 @@ def compare_seed(task, study, seed: int, model: str) -> dict[str, tuple[float, f
             assert len(run.trials) == 12
             failures = [(i, t.error) for i, t in enumerate(run.trials, 1) if t.error]
             curve = [t.best for t in run.trials]
-            assert curve == sorted(curve, reverse=task.direction == "minimize")
+            assert all(
+                before is None or (after is not None and not task.improved(before, after))
+                for before, after in pairwise(curve)
+            )
             assert run.decision is not None
             assert run.confirmed_score is not None
             row[arm] = (curve[-1], run.confirmed_score)
@@ -126,6 +132,49 @@ def compare_seed(task, study, seed: int, model: str) -> dict[str, tuple[float, f
                 flush=True,
             )
     return row
+
+
+def test_failed_proposal_uses_a_slot_without_charging_the_previous_recipe(monkeypatch, capsys):
+    from benchmarks.suite import Task
+
+    task = Task(
+        "toy",
+        "score",
+        "score",
+        "maximize",
+        {"x": tuple(map(str, range(12)))},
+        lambda *args: 0.0,
+        "cpu",
+        "small",
+    )
+    policy = Mock()
+    policy.ask = AsyncMock(
+        side_effect=[
+            [] if i == 2 else [Candidate(candidate_id=str(i), params={"x": str(i)})]
+            for i in range(1, 12)
+        ]
+    )
+    monkeypatch.setattr(SearchOptions, "build", lambda self, spec: policy)
+
+    def score(recipe, seed):
+        value = float(json.loads(recipe)["x"])
+        if value == 0:
+            raise ValueError("initial recipe failed")
+        return value
+
+    study = Mock()
+    study.search.side_effect = score
+    study.consider.return_value = Mock(promoted=True, reason="fixture")
+    study.confirmed_score.return_value = 1.0
+    compare_seed(task, study, 23, "fixture")
+    swarm = json.loads(capsys.readouterr().out.splitlines()[0].removeprefix("arm "))
+    assert swarm["curve"][:3] == [None, 1, 1]
+    assert len(swarm["curve"]) == 12
+    assert [slot for slot, _ in swarm["failed_attempts"]] == [1, 3]
+    failed = [
+        call.args[0] for call in policy.tell.call_args_list if call.args[0].status == "failed"
+    ]
+    assert [result.attempt.trial.candidate.params for result in failed] == [task.initial]
 
 
 @pytest.mark.skipif(
