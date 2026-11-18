@@ -183,7 +183,9 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--manifest", default="research.toml")
         item.add_argument("--source-revision")
         item.add_argument("--capture-timeout-seconds", type=float, default=30)
-        item.add_argument("--key", required=True)
+        target = item.add_mutually_exclusive_group(required=True)
+        target.add_argument("--db", type=Path, help="Local swarm campaign database")
+        target.add_argument("--key", help="Legacy controller idempotency key")
     evaluation = commands.add_parser("evaluation", help="Advance independent evaluation control")
     evaluations = evaluation.add_subparsers(dest="evaluation_action", required=True)
     advance = evaluations.add_parser("advance")
@@ -214,8 +216,11 @@ def parser() -> argparse.ArgumentParser:
     artifact_actions = artifact.add_subparsers(dest="artifact_action", required=True)
     upload = artifact_actions.add_parser("upload")
     upload.add_argument("path", type=Path)
-    upload.add_argument("--key", required=True)
+    target = upload.add_mutually_exclusive_group(required=True)
+    target.add_argument("--db", type=Path, help="Local swarm campaign database")
+    target.add_argument("--key", help="Legacy controller idempotency key")
     download = artifact_actions.add_parser("download")
+    download.add_argument("--db", type=Path, help="Local swarm campaign database")
     download.add_argument("identifier")
     download.add_argument("destination", type=Path)
     return root
@@ -432,6 +437,31 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     result: Any
     try:
+        if args.action in {"project", "artifact"} and args.db is not None:
+            from research_swarm.swarm.files import CampaignFiles
+
+            if args.controller or args.token_file or args.state_dir:
+                raise ValueError("Choose a local campaign database with --db")
+            if args.action == "artifact" and args.artifact_action == "download":
+                if not args.db.is_file():
+                    raise FileNotFoundError(args.db)
+            else:
+                args.db.parent.mkdir(parents=True, exist_ok=True)
+            files = CampaignFiles(args.db)
+            if args.action == "project":
+                result = files.project(
+                    args.path,
+                    register=args.project_action == "register",
+                    manifest_path=args.manifest,
+                    revision=args.source_revision,
+                    timeout=args.capture_timeout_seconds,
+                )
+            elif args.artifact_action == "upload":
+                result = files.put(args.path).model_dump(mode="json")
+            else:
+                result = files.download(args.identifier, args.destination).model_dump(mode="json")
+            _emit_json(result)
+            return 0
         if args.action == "campaign" and args.campaign_action == "gc":
             from research_swarm.runtime import default_state_directory
             from research_swarm.swarm.campaign_gc import collect
