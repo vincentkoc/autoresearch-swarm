@@ -22,6 +22,16 @@ def require_active_workspaces(connection: DDLConnection) -> None:
             "Use its original release to read it and start new work in a fresh database.",
         )
 
+    allocated = connection.execute(
+        "SELECT 1 FROM records WHERE kind='funding_projection' AND state='open' LIMIT 1"
+    ).fetchone()
+    if allocated is not None:
+        raise ResearchError(
+            ErrorCode.SCHEMA_UNSUPPORTED,
+            "This workspace has open child campaign funding. Finish it with its original "
+            "release and use a fresh state directory for new campaigns.",
+        )
+
 
 def apply_statements(connection: DDLConnection, schema: str) -> None:
     # These are fixed internal DDL statements, without triggers or quoted semicolons.

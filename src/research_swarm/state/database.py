@@ -133,16 +133,6 @@ CREATE TABLE IF NOT EXISTS budget_settlements (
     response TEXT NOT NULL,
     PRIMARY KEY (workspace_id, settlement_id)
 );
-CREATE TABLE IF NOT EXISTS budget_entries (
-    workspace_id TEXT NOT NULL,
-    id TEXT NOT NULL,
-    campaign_id TEXT NOT NULL,
-    dimension TEXT NOT NULL,
-    settlement_id TEXT NOT NULL,
-    payload TEXT NOT NULL,
-    PRIMARY KEY (workspace_id, id),
-    UNIQUE (workspace_id, settlement_id, campaign_id, dimension)
-);
 """
 
 

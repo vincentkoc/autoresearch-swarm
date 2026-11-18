@@ -88,10 +88,6 @@ class StoppingRule(VersionedRecord):
     permit_manual_completion: bool = True
 
 
-class DelegationConfiguration(VersionedRecord):
-    max_depth: int = Field(strict=True, ge=1, le=8)
-
-
 class CampaignContract(VersionedRecord):
     project_id: ID
     project_revision_id: ID
@@ -104,9 +100,6 @@ class CampaignContract(VersionedRecord):
     stopping: StoppingRule = Field(default_factory=StoppingRule)
     limits: tuple[BudgetLimit, ...] = Field(min_length=1)
     input_artifacts: dict[Name, ArtifactRef] = Field(default_factory=dict)
-    delegation: DelegationConfiguration | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
 
     @model_validator(mode="after")
     def distinct_limits(self) -> CampaignContract:

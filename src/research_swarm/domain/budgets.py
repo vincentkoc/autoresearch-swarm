@@ -16,7 +16,6 @@ from research_swarm.domain.types import (
     Name,
     Record,
     Revision,
-    SignedAmount,
     amount_difference,
     amount_sum,
     new_id,
@@ -109,18 +108,6 @@ class BudgetAccount(Record):
                 "revision": self.revision + 1,
             }
         )
-
-
-class BudgetEntry(Record):
-    id: ID = Field(default_factory=new_id)
-    campaign_id: ID
-    dimension: Dimension
-    settlement_id: ID
-    consumed_delta: SignedAmount = Decimal(0)
-    reserved_delta: SignedAmount = Decimal(0)
-    uncertain_delta: SignedAmount = Decimal(0)
-    released_delta: Amount = Decimal(0)
-    reason: str
 
 
 class Reservation(Record):

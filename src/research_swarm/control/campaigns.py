@@ -14,7 +14,6 @@ from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.lifecycle import CampaignState, campaign_transition
 from research_swarm.domain.types import new_id
 from research_swarm.state.database import Database, JsonObject, Transaction
-from research_swarm.state.funding import FundingLedger
 
 
 def settle_pause(transaction: Transaction, campaign_id: str) -> JsonObject:
@@ -136,7 +135,6 @@ class CampaignControl:
                     raise ResearchError(
                         ErrorCode.EVALUATION_INCOMPLETE, "Successful work still awaits evaluation"
                     )
-            FundingLedger.require_children_closed(transaction, row["id"])
             accounts = transaction.connection.execute(
                 "SELECT payload FROM budgets WHERE workspace_id=? AND campaign_id=?",
                 (transaction.workspace_id, row["id"]),
@@ -179,14 +177,10 @@ class CampaignControl:
             transaction.event(
                 "campaign.completed", updated, {"report_id": report_id, "reason": intent.reason}
             )
-            settlement = (
-                FundingLedger.close(transaction, row["id"]) if campaign.parent_campaign_id else None
-            )
             report = create_report(transaction, updated, report_id=report_id)
             return {
                 "campaign": updated,
                 "report": report,
-                **({"funding_settlement": settlement} if settlement else {}),
             }
 
         return self.database.execute(

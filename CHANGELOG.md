@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Breaking:** Retire parent-funded child campaigns and their allocation commands.
+  Run each campaign with its own dispatch budget. Finish or inspect existing
+  delegated workspaces with their original release and start new runs in fresh state.
+  New control databases also omit the allocation posting journal.
+
 - Render local hill-climb reports from campaign SQLite state with `report view`
   or `report plot --db DB --campaign ID`. Read measured cost and active dispatch
   estimates with `budget ID --db DB`.
