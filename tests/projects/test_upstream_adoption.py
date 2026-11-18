@@ -10,7 +10,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -290,7 +289,7 @@ def test_context_and_checkpoint_reject_false_comparability(tmp_path, cpu_registr
             accelerator_count=1,
         ),
     )
-    engine = engine_context(registered, SimpleNamespace(environment_digest=CONTRACT), stage)
+    engine = engine_context(registered, CONTRACT, stage)
     request = {
         "schema_version": "1.0",
         "seed": 42,
