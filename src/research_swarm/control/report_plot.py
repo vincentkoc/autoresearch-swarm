@@ -455,6 +455,16 @@ def render_hill_climb_svg(
             font_size=12,
             fill="#627280",
         )
+        selection = snapshots[index].get("recorded_selection")
+        if selection:
+            _text(
+                group,
+                64,
+                note_y + 110,
+                f"Selected trial {selection['trial_id']}: score {selection.get('score')}, "
+                f"{selection.get('replicates')} replicates.",
+                font_size=12,
+            )
     _text(
         group,
         48,
