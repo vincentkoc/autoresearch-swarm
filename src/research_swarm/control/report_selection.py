@@ -2,8 +2,7 @@
 
 from research_swarm.control.confirmation_assessment import collect_panel, verify_planned_assessment
 from research_swarm.control.confirmation_models import ConfirmationData
-from research_swarm.control.models import CampaignData
-from research_swarm.control.promotions import PromotionAssessment
+from research_swarm.control.models import CampaignData, PromotionAssessment
 from research_swarm.control.queries import summarize
 from research_swarm.control.validity import require_current
 from research_swarm.domain.canonical import record_digest, strict_json_loads

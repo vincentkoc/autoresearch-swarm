@@ -3,8 +3,7 @@
 from research_swarm.control.comparisons import EligibleEvaluation, eligible_evaluation
 from research_swarm.control.confirmation_models import ConfirmationData, ConfirmationPlan
 from research_swarm.control.confirmation_runtime import bound_confirmation
-from research_swarm.control.models import CampaignData, JobData, TrialData
-from research_swarm.control.promotions import PromotionAssessment
+from research_swarm.control.models import CampaignData, JobData, PromotionAssessment, TrialData
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import RunResult
 from research_swarm.state.database import Transaction

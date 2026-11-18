@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import pytest
 
 from research_swarm.control.queries import RecordQuery
-from tests.control.test_promotions import evaluated
+from tests.control.test_evaluation_control import evaluated
 from tests.control.test_reconciliation import close_without_publication, reconcile, submit
 from tests.integration.test_local_pipeline import pipeline as pipeline
 from tests.state.test_state_store import CallbacksOnly

@@ -174,19 +174,6 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
             )
         )["result"]["items"]
         assert len(receipts) == 1 and receipts[0]["state"] == "valid"
-        assessment = await command(
-            agent,
-            "promotion.assess",
-            {
-                "campaign_id": campaign_id,
-                "candidate_evaluation_id": receipts[0]["id"],
-                "expected_incumbent_revision": 0,
-            },
-            "wheel-assess",
-        )
-        await command(
-            agent, "promotion.commit", {"decision_id": assessment["result"]["id"]}, "wheel-select"
-        )
         view = await context(agent, campaign_id)
         completed = await command(
             agent,
@@ -197,7 +184,6 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
         )
         report = await record(agent, "report", completed["result"]["report"]["id"])
         assert report["data"]["snapshot"]["campaign_state"] == "completed"
-        assert report["data"]["snapshot"]["incumbent"]["evidence_level"] == "observed"
         counts = {item["kind"]: item["count"] for item in report["data"]["snapshot"]["counts"]}
         assert counts["attempt"] == 2 and counts["evaluation_receipt"] == 1
     shutil.rmtree(source)

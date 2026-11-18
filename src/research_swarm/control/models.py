@@ -6,8 +6,9 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
+from research_swarm.control.validity import EvidenceReference
 from research_swarm.domain.budgets import BudgetLimit
-from research_swarm.domain.evidence import ArtifactRef
+from research_swarm.domain.evidence import ArtifactRef, PromotionDecision
 from research_swarm.domain.experiments import ExperimentSpec, StageSpec
 from research_swarm.domain.types import (
     ID,
@@ -17,6 +18,7 @@ from research_swarm.domain.types import (
     Timestamp,
     VersionedRecord,
 )
+from research_swarm.evaluation.statistics import GateResult, Rational
 from research_swarm.projects.manifest import ResolvedProject
 from research_swarm.projects.source import SourceManifest
 
@@ -170,3 +172,16 @@ class JobData(VersionedRecord):
     evaluation_request_id: ID | None = None
     evaluation_exposure_id: ID | None = None
     outputs: dict[Name, ArtifactRef] = Field(default_factory=dict)
+
+
+class PromotionAssessment(VersionedRecord):
+    decision: PromotionDecision
+    candidate_evaluation_id: ID
+    comparator_evaluation_id: ID | None
+    comparison_digest: Digest
+    dependencies: tuple[EvidenceReference, ...]
+    evidence_level: Literal["observed", "confirmed"] = "observed"
+    exact_improvement: Rational | None = None
+    replaces_suspension_id: ID | None = None
+    confirmation_plan_id: ID | None = None
+    gate: GateResult | None = None

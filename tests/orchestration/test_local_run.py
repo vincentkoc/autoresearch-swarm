@@ -9,7 +9,6 @@ import pytest
 
 from research_swarm.client import ResearchClient
 from research_swarm.control.commands import CompleteCampaign, PauseCampaign
-from research_swarm.control.promotions import AssessPromotion, CommitPromotion
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.workers import EngineCapabilities
 from research_swarm.domain.canonical import canonical_bytes, content_digest
@@ -223,21 +222,6 @@ def test_run_cli_executes_baseline_and_returns_agent_context_without_promotion(
     assert resumed["driver"]["executed_attempt_count"] == 0
     if limit == 1:
         with ResearchClient.local(state) as agent:
-            receipt = agent.list(RecordQuery(kind="evaluation_receipt"))["items"][0]
-            assessment = agent.command(
-                "promotion.assess",
-                AssessPromotion(
-                    campaign_id=result["campaign_id"],
-                    candidate_evaluation_id=receipt["id"],
-                    expected_incumbent_revision=0,
-                ),
-                idempotency_key="agent-assess-baseline",
-            )["result"]
-            agent.command(
-                "promotion.commit",
-                CommitPromotion(decision_id=assessment["id"]),
-                idempotency_key="agent-select-baseline",
-            )
             campaign = agent.get("campaign", result["campaign_id"])
             completed = agent.command(
                 "campaign.complete",
@@ -245,9 +229,7 @@ def test_run_cli_executes_baseline_and_returns_agent_context_without_promotion(
                 idempotency_key="agent-finish",
                 expected_revision=campaign["revision"],
             )["result"]
-            assert (
-                completed["report"]["data"]["snapshot"]["incumbent"]["evidence_level"] == "observed"
-            )
+            assert completed["report"]["data"]["snapshot"]["campaign_state"] == "completed"
         terminal = cli(state, *arguments)
         assert terminal["state"] == "terminal" and terminal["driver"]["executed_attempt_count"] == 0
 
