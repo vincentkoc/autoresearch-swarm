@@ -2,7 +2,8 @@
 
 Read the [design](docs/design.md) and the tests for the contract you change.
 Keep dispatch, retries and selection in code. Keep model logic in the workload.
-Record failed attempts. Preserve trial identity and reject stale results.
+Record failed attempts. On heartbeat expiry, requeue eligible work under the same trial ID.
+Accept one terminal result per trial ID and reject results from stale attempts.
 Calibrate panel studies before search. Keep held-out measurements out of proposal history.
 Use synthetic public fixtures and optional dependencies for framework integrations.
 Test subprocess behavior with real children and queue races with independent connections.

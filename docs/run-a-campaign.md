@@ -99,9 +99,11 @@ uv run --no-sync python -m benchmarks mlp --device cpu --size small --budget 12 
 uv run --no-sync python -m benchmarks nanogpt --device cpu --size small --budget 12 --seed 11
 ~~~
 
-Repeat on seeds 23 and 47. Keep the workload profile, device and trial budget
-fixed across arms. Share the study file for each workload. Report failures
-and ties alongside successful improvements. The benchmark README includes
-the local Ollama commands.
+For the default v1 protocol, repeat on seeds 23 and 47. For the larger
+preregistered comparison, pass `--protocol v2` and use its three registered
+seeds. Keep the workload profile, device and trial budget fixed across arms.
+Share one study file per workload and protocol. Report the selected recipe's
+confirmed score, including ties and baseline wins. The benchmark README
+includes the protocols, measured results and local Ollama commands.
 
 [Benchmark suite](../benchmarks/README.md) · [Operator guide](operator-guide.md) · [Design](design.md)
