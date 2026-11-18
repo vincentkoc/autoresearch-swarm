@@ -79,8 +79,7 @@ The worker credential has exactly `worker.query`, `worker.claim`, `worker.inputs
 operator, promotion, or evaluator authority. Evaluator authorization and receipt
 completion remain controller-side responsibilities.
 
-The destination directory and bundle require private native permissions, including
-Windows ACL checks. An existing different bundle is not overwritten. Provisioning
+The destination directory and bundle require owner-only permissions. An existing different bundle is not overwritten. Provisioning
 prints a public worker record, never the token. Missing or revoked credentials
 after completed provisioning require explicit recovery; repeating the command
 cannot restore them. Interrupted provisioning retains its original identities

@@ -9,7 +9,6 @@ import os
 import shutil
 import signal
 import stat
-import sys
 import tempfile
 import time
 import unicodedata
@@ -319,7 +318,7 @@ def _git_read(root: Path, arguments: list[str], *, limit: int, deadline: float) 
             stdout=output,
             stderr=errors,
             env=environment,
-            start_new_session=os.name == "posix",
+            start_new_session=True,
         )
         descendants: dict[int, psutil.Process] = {}
         try:
@@ -347,11 +346,8 @@ def _git_read(root: Path, arguments: list[str], *, limit: int, deadline: float) 
                 with suppress(psutil.NoSuchProcess):
                     child.kill()
             if process.poll() is None:
-                if sys.platform != "win32":
-                    with suppress(ProcessLookupError):
-                        os.killpg(process.pid, signal.SIGKILL)
-                else:
-                    process.kill()
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
                 process.wait(timeout=10)
 
 

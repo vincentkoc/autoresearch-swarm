@@ -101,10 +101,6 @@ and never overwrites an existing destination. A failed extraction removes only
 the directory that operation created.
 
 POSIX capture traverses pinned directory handles without following symlinks.
-Windows capture anchors the root and checks each file's resolved native path before
-reading its content. The Windows boundary uses
-[CreateFile sharing rules](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
-and [GetFinalPathNameByHandle](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew).
 
 `validate_mutation` compares the base and candidate manifests, including additions,
 deletions, content, and executable mode. Deny patterns and protected dependencies

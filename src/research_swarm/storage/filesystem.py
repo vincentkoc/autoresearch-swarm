@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-import sys
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -30,12 +29,11 @@ _identifier = TypeAdapter(ID)
 
 
 def _sync_directory(path: Path) -> None:
-    if sys.platform != "win32":
-        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 @contextmanager
@@ -45,10 +43,7 @@ def _file(path: Path, mode: str) -> Iterator[BinaryIO]:
     flags = {"rb": os.O_RDONLY, "r+b": os.O_RDWR, "xb": os.O_WRONLY | os.O_CREAT | os.O_EXCL}
     descriptor = os.open(
         path,
-        flags[mode]
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_BINARY", 0)
-        | getattr(os, "O_NONBLOCK", 0),
+        flags[mode] | os.O_NOFOLLOW | os.O_NONBLOCK,
         0o600,
     )
     try:
@@ -79,8 +74,6 @@ def _check(stream: BinaryIO, reference: ArtifactRef) -> None:
 
 class FilesystemBlobStore:
     def __init__(self, root: Path) -> None:
-        if os.name not in {"posix", "nt"}:
-            raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Native file locks are required")
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         if root.is_symlink() or not root.is_dir():
             raise ValueError("Artifact root must be a real directory")

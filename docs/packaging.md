@@ -29,7 +29,7 @@ RESEARCH_PACKAGE_TESTS=1 uv run pytest -q tests/integration/test_packaged_releas
 
 It requires uv and may download the build backend or missing locked runtime
 wheels into the ordinary package cache. The regular unit suite skips this test;
-dedicated CI jobs run it on Linux, macOS, and Windows with Python 3.12. The broader
+dedicated CI jobs run it on Linux and macOS with Python 3.12. The broader
 source contract matrix covers the declared Python versions separately.
 
 This establishes packaging and a local CPU path. It does not qualify accelerator

@@ -270,24 +270,12 @@ Observed live escapees prevent closure. This profile does not contain unobserved
 escapees. Stronger isolation needs a separate qualified backend. A process group
 or source directory is not a security sandbox.
 
-On Windows, `CreateProcessW` creates a suspended process inside a Job Object through
-`PROC_THREAD_ATTRIBUTE_JOB_LIST`. There is no separate post-creation assignment
-window. The job disallows breakaway and enables kill-on-last-handle-close. An explicit
-handle list limits inheritance to stdin, stdout, and stderr. The initial thread is
-resumed only after the durable release gate.
-
-Windows closure requires the job's active process count to reach zero and the
-primary process exit to be observed. A dead primary process alone is insufficient.
-Headless Windows cancellation terminates the job. A qualified application protocol
-can provide graceful cancellation before job termination.
-
 ## Output and environments
 
 Each stream has a declared retention limit. The supervisor continues draining and
 counting discarded bytes after the limit, so a full log cannot deadlock the workload.
 The outcome records retained bytes, observed bytes, content digest, and EOF status.
-Draining is nonblocking and bounded per turn. Windows uses `PeekNamedPipe` before
-reading anonymous pipes. No unbounded in-memory log queue is created.
+Draining is nonblocking and bounded per turn. No unbounded in-memory log queue is created.
 
 The default native environment copies only operating-system necessities. Controller
 and provider credentials are excluded. Execution profiles must explicitly add their
@@ -303,7 +291,6 @@ deadline enforcement during a blocked callback, stream flooding, and durable out
 recovery. A separate-process test removes the transport owner while the supervisor
 continues to its deadline.
 
-These tests qualify only the operating systems where they actually run. Passing a
-type checker for Windows is not native Windows qualification. Physical device
+These tests qualify only the operating systems where they actually run. Physical device
 exclusivity, remote enrollment, authenticated evaluator receipts, and scientific
 promotion remain separate contracts.

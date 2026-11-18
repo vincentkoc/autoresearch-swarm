@@ -43,19 +43,7 @@ from tests.search.test_portfolio_control import portfolio_options
 
 
 def require_payload_scope(native: NativeIdentity, payload: psutil.Process) -> None:
-    if native.backend != "windows_job":
-        assert native.pid == payload.pid
-        return
-    # A Windows venv redirector is the native root; Python may run in its child.
-    root = psutil.Process(native.pid)
-    root_created, payload_created = root.create_time(), payload.create_time()
-    assert native.start_token == f"native-created:{root_created.hex()}"
-    assert any(
-        process.pid == root.pid and process.create_time() == root_created
-        for process in (payload, *payload.parents())
-    ), "Payload is not in the observed native root's process ancestry"
-    assert root.is_running() and payload.is_running()
-    assert root.create_time() == root_created and payload.create_time() == payload_created
+    assert native.pid == payload.pid
 
 
 def options() -> dict[str, Any]:

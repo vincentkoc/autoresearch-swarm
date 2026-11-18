@@ -86,9 +86,9 @@ async def test_fresh_wheel_runs_native_research_and_mcp_without_source_imports(
     expected_version = source_identity(repository)["version"]
     installed = package_root / "installed"
     run([uv, "venv", "--python", sys.executable, str(installed)])
-    scripts = installed / ("Scripts" if sys.platform == "win32" else "bin")
-    python = scripts / ("python.exe" if sys.platform == "win32" else "python")
-    research = scripts / ("research.exe" if sys.platform == "win32" else "research")
+    scripts = installed / "bin"
+    python = scripts / "python"
+    research = scripts / "research"
     run(
         [
             uv,

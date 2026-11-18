@@ -7,7 +7,7 @@ on:
         description: Qualification surface
         type: choice
         default: all
-        options: [all, native, windows, clocks]
+        options: [all, native, clocks]
 
 permissions:
   contents: read
@@ -21,10 +21,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.surface == 'windows' && '["windows-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
+        os: [ubuntu-latest, macos-latest]
         python: ${{ fromJSON(inputs.surface == 'clocks' && '["3.11","3.12","3.13"]' || '["3.12"]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 20 }}
+    timeout-minutes: 20
     env:
       RESEARCH_REQUIRE_NODE: "1"
       UV_PYTHON: ${{ matrix.python }}

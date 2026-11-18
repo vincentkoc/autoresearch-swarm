@@ -18,20 +18,14 @@ from research_swarm.workers.contracts import NativeCommand, NativeIdentity, Proc
 
 
 def _nonblocking(descriptor: int) -> None:
-    if sys.platform == "win32":
-        raise OSError("POSIX supervision is unavailable")
     os.set_blocking(descriptor, False)
 
 
 def _signal_group(pid: int, *, force: bool) -> None:
-    if sys.platform == "win32":
-        raise OSError("POSIX supervision is unavailable")
     os.killpg(pid, signal.SIGKILL if force else signal.SIGTERM)
 
 
 def _group(pid: int) -> int:
-    if sys.platform == "win32":
-        raise OSError("POSIX supervision is unavailable")
     return os.getpgid(pid)
 
 

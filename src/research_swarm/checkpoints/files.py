@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -27,11 +26,7 @@ def private_reader(root: Path, name: str) -> Iterator[BinaryIO]:
         info = os.fstat(stream.fileno())
         if info.st_nlink != 1:
             raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Backup file has multiple links")
-        if sys.platform == "win32":
-            from research_swarm.state.windows_privacy import verify_descriptor
-
-            verify_descriptor(stream.fileno())
-        elif stat.S_IMODE(info.st_mode) & 0o077:
+        if stat.S_IMODE(info.st_mode) & 0o077:
             raise ResearchError(ErrorCode.AUTHORIZATION_DENIED, "Backup file is not private")
         yield stream
 
@@ -53,12 +48,7 @@ def measure_file(root: Path, name: str, *, limit: int) -> BackupFile:
 
 def copy_private(stream: BinaryIO, destination: Path, expected: BackupFile) -> None:
     staged = destination.with_name(destination.name + "." + new_id() + ".pending")
-    if sys.platform == "win32":
-        from research_swarm.state.windows_privacy import create_private_descriptor
-
-        descriptor = create_private_descriptor(staged)
-    else:
-        descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     digest, size = hashlib.sha256(), 0
     try:
         with os.fdopen(descriptor, "wb") as target:

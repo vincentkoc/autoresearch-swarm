@@ -18,6 +18,17 @@ from tests.control.test_reconciliation import reconcile, submit
 from tests.integration.test_local_pipeline import pipeline as pipeline
 
 
+def test_package_refuses_non_posix_runtime_at_import():
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", "import os; os.name = 'nt'; import research_swarm"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
+    assert "autoresearch-swarm requires a POSIX runtime" in result.stderr
+
+
 def test_service_import_does_not_load_native_worker_database_or_process_modules():
     script = """
 import builtins

@@ -1112,7 +1112,7 @@ Current MLX documentation includes CUDA-related distributed support. The archite
 | DirectML | Optional Windows portability. | Later, only with explicit operator and numerical tests. |
 | Custom command | Non-training and specialized research. | Supported by the generic worker contract. |
 
-Windows, Linux, and macOS need separate process-supervision qualification. A command worker is not cross-platform merely because Python imports successfully.
+Linux and macOS need separate process-supervision qualification. A command worker is not cross-platform merely because Python imports successfully.
 
 ### 14.3 Qualification levels
 
@@ -2109,7 +2109,7 @@ Track the exact process group or platform-native job object for each attempt.
 
 Cancellation affects only that owned execution. It must not use broad process-name kills.
 
-On Windows, qualify process-tree termination and child containment. On Unix-like systems, qualify process groups and surviving descendants.
+On supported runtimes, qualify process groups and surviving descendants.
 
 A controller timeout or workflow cancellation does not prove native termination.
 

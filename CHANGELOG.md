@@ -164,6 +164,9 @@
   saved-history fixtures and CI job. Local delivery is unchanged and never loaded
   the Temporal SDK.
 
+- Drop Windows-native runtime support. Linux and macOS workers retain process-group
+  supervision. Stored Windows process and path evidence remains readable.
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance

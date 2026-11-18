@@ -114,44 +114,11 @@ def _darwin_clock() -> NativeClock:
     )
 
 
-def _windows_clock() -> NativeClock:
-    import ctypes
-
-    if sys.platform != "win32":
-        raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Windows clocks are unavailable")
-    library = ctypes.WinDLL("kernel32", use_last_error=True)
-    counter, frequency = library.QueryPerformanceCounter, library.QueryPerformanceFrequency
-    for function in (counter, frequency):
-        function.argtypes, function.restype = [ctypes.POINTER(ctypes.c_int64)], ctypes.c_int
-    rate = ctypes.c_int64()
-    if not frequency(ctypes.byref(rate)) or rate.value <= 0:
-        raise OSError("Performance-counter frequency is unavailable")
-    unbiased = library.QueryUnbiasedInterruptTime
-    unbiased.argtypes, unbiased.restype = [ctypes.POINTER(ctypes.c_uint64)], ctypes.c_int
-
-    def continuous_ns() -> int:
-        value = ctypes.c_int64()
-        if not counter(ctypes.byref(value)):
-            raise OSError("Performance counter is unavailable")
-        return value.value * 1_000_000_000 // rate.value
-
-    def awake_ns() -> int:
-        value = ctypes.c_uint64()
-        if not unbiased(ctypes.byref(value)):
-            raise OSError("Unbiased interrupt time is unavailable")
-        return value.value * 100
-
-    # The awake companion has timer-tick precision; this is not QPC resolution.
-    return NativeClock("windows-qpc-unbiased-v1", continuous_ns, awake_ns, 16_000_000)
-
-
 @lru_cache(maxsize=1)
 def native_clock() -> NativeClock:
     try:
         if sys.platform == "darwin":
             return _darwin_clock()
-        if sys.platform == "win32":
-            return _windows_clock()
         if sys.platform.startswith("linux"):
             clock = NativeClock(
                 "linux-boottime-v1",

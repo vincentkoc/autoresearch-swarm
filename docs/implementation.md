@@ -3,11 +3,8 @@
 This is the completion ledger for the design contract. Pending means unproven,
 not implicitly supported.
 
-Windows CI and native Windows qualification are paused. Continuous CI covers
-Linux and macOS only. The Windows results below are historical and bound to
-their recorded commits. They do not qualify later revisions. Windows runtime code
-and its platform-gated tests remain in the tree. Re-enabling qualification means
-restoring a Windows workflow from Git history and recording a fresh run.
+Linux and macOS are the supported runtimes. Historical Windows results below apply to
+their recorded revisions.
 
 The [native clock and cleanup qualification](https://github.com/vincentkoc/autoresearch-swarm/actions/runs/41284221451)
 passed all nine Linux/macOS/Windows and Python 3.11–3.13 cells at
@@ -40,9 +37,6 @@ reconciliation and a timer carried through Workflow rotation and authority/Workf
 restart. It also qualifies clock discontinuity during a pending wait and explicit
 errored-Workflow recovery through one durably reserved successor. Original rejected
 commands, timer thresholds and research effects survive these delivery transitions.
-The qualification job allows 45 minutes on Windows and
-30 minutes for the expanded workerd suite; experiment budgets and individual test
-supervision remain unchanged.
 
 ## Implementation coverage
 
@@ -123,7 +117,7 @@ supervision remain unchanged.
 The suite covers schemas, artifacts, source, manifests, budgets, native supervision,
 journals, resources, workloads, controller commands, evaluation, selection, and
 SDK transports. It includes real process, deadline, race, and restart scenarios.
-CI targets Linux, macOS, and Windows with Python 3.11–3.13. Results qualify the
+CI targets Linux and macOS with Python 3.11–3.13. Results qualify the
 tested revision and platform; local success does not establish provider or
 scientific behavior. Native qualification is tracked separately.
 

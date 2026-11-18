@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import sys
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -103,12 +102,7 @@ def _authorize(reference: ArtifactRef, authorize: Authorize) -> None:
 
 @contextmanager
 def _create(path: Path) -> Iterator[BinaryIO]:
-    if sys.platform == "win32":
-        from research_swarm.state.windows_privacy import create_private_descriptor
-
-        descriptor = create_private_descriptor(path)
-    else:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             yield stream
