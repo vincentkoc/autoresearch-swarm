@@ -68,6 +68,10 @@ profile. `--size full` increases training and evaluation work.
 
 ## Configure evaluation
 
+Research campaigns use `evaluation_mode: calibrated` by default. Set
+`panel_policy` to the scorer factory. For a dispatch smoke test, specify
+`evaluation_mode: smoke` and omit the panels. The summary records the mode.
+
 Prepare the training, calibration, search, selection and confirmation member
 IDs. Use the same identity for a subject across every split. The panel policy
 rejects reused IDs. Keep evaluation case details out of proposer input.

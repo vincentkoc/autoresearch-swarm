@@ -4,12 +4,6 @@ A campaign searches for a better recipe under a fixed objective and budget.
 The coordinator asks for candidates, sends trials to workers, and compares
 the resulting measurements. A workload supplies its own model and scorer.
 
-A useful result answers three questions.
-
-- Which recipe improved on the reference?
-- Did that gain survive evaluation on independent cases?
-- How much work did the comparison consume?
-
 [Run a campaign](run-a-campaign.md) · [Operate a campaign](operator-guide.md)
 
 ## Workloads
@@ -24,10 +18,6 @@ An LLM can propose a candidate in the first or third workload.
 It receives the task description and a bounded search history.
 The worker runs the resulting candidate under the same scorer as its peers.
 
-A training workload can use a small CPU or MPS profile during development.
-Larger profiles can use CUDA on a provisioned device.
-Record the profile and device with each comparison.
-
 ## Campaign contract
 
 The YAML spec supplies the task, objective, capacity and stop conditions.
@@ -38,6 +28,7 @@ The path to the YAML file provides the base for its task directory.
 | --- | --- |
 | `campaign_id` | Durable identity of this search |
 | `metric`, `direction` | Numeric output and whether to maximize or minimize it |
+| `evaluation_mode` | Calibrated research by default, or explicit smoke testing |
 | `task_dir`, `command` | Working directory and argument vector for a trial |
 | `candidates`, `search_space` | Named starting recipes or dimensions of a finite grid |
 | `seed`, `fidelity` | Default random seed and amount of work for a trial |
@@ -153,10 +144,6 @@ An expired heartbeat permits another attempt within the retry allowance.
 The original process might still be alive. Tasks must tolerate duplicate
 execution and keep outputs separate until the store accepts a result.
 
-Read the event order for a timeline. Use candidate parents for ancestry and
-the selected trial for the scientific decision. A timestamp alone does not
-establish which recipe produced a child.
-
 ## Workload interface
 
 The worker launches an argument vector in `task_dir`. The task can be an
@@ -261,9 +248,6 @@ fraction to a higher rung. An island policy can choose parents from several
 families. A paired-seed comparison can request another replicate before a
 gain becomes eligible for promotion.
 
-Policies plug into the coordinator. Their work remains subject to trial,
-time and cost limits. A proposed candidate has no dispatch authority.
-
 ## Evaluation panels
 
 A panel lists stable IDs for evaluation members. Use subject IDs when
@@ -285,10 +269,14 @@ A workload must use that list when it computes the score.
 
 ### Calibration
 
-A panel-aware campaign calibrates before asking for candidates or dispatching
-trials. It measures the reference and at least two other known recipes with
-at least two distinct seeds. Each proxy measurement has a target measurement
-for the same recipe and seed.
+A research campaign requires a panel policy. It calibrates before its first
+proposal or dispatch. Measure the reference and at least two other known
+recipes with at least two distinct seeds. Pair each proxy measurement with a
+target measurement for the same recipe and seed.
+
+For a dispatch smoke test, the spec can set `evaluation_mode: smoke`.
+The summary identifies this mode. It ranks direct measurements and excludes
+held-out panels.
 
 For each recipe, compute the mean proxy score and mean target score across
 seeds. Fit a line across the recipe means.
@@ -322,7 +310,9 @@ leaves the incumbent in place.
 
 The benchmark nominates one finalist per arm at the end of its search budget.
 The swarm loop can nominate a candidate when a new result changes its
-ranking. Both routes use the same study decision.
+ranking. After a rejection, it can consider the next eligible candidate.
+Held-out scoring runs off the event loop so other workers can heartbeat.
+Both routes use the same study decision.
 
 ### Exposure history
 
@@ -400,11 +390,6 @@ independent measurements for the question being asked.
 | `Evaluator` | Read the stage's numeric metrics |
 | `Meter` | Estimate dispatch cost and price measured usage |
 | `Store` | Persist trials, claims, observations, selection and events |
-
-Keep model code in the workload. Keep the measurement rule in the evaluator.
-Keep dispatch and retry decisions in the coordinator and worker.
-This division lets one campaign replace its proposer or backend while
-preserving its objective and evidence.
 
 ## Compatibility
 
