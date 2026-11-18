@@ -7,7 +7,7 @@ import signal
 import sys
 import tempfile
 import time
-from dataclasses import replace
+from dataclasses import asdict, dataclass, replace
 from multiprocessing.connection import Connection
 from pathlib import Path
 
@@ -18,7 +18,7 @@ from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Re
 from research_swarm.swarm.meter import CostMeter
 from research_swarm.swarm.resources import ResourcePool
 from research_swarm.swarm.store import SQLiteStore
-from research_swarm.swarm.worker import WorkerLoop
+from research_swarm.swarm.worker import WorkerLoop, from_spec
 
 
 def _campaign(directory: Path) -> CampaignSpec:
@@ -223,13 +223,19 @@ async def test_worker_uses_measured_vram_for_packed_device_dispatch(tmp_path: Pa
         "Path(os.environ['SWARM_METRICS']).write_text(json.dumps({'loss': 2}))\n"
         "Path(os.environ['SWARM_USAGE']).write_text(json.dumps({'peak_vram_mib': 20.4}))\n"
     )
-    spec = replace(_campaign(tmp_path), resource="gpu", max_workers=3)
+
+    @dataclass(frozen=True, kw_only=True)
+    class ConfiguredCampaign(CampaignSpec):
+        options: dict[str, object]
+
+    fields = asdict(replace(_campaign(tmp_path), resource="gpu", max_workers=3))
+    fields["options"] = {"resources": {"devices_mib": {"cuda:1": 60}, "target": 0.8}}
+    spec = ConfiguredCampaign(**fields)
     store = SQLiteStore(tmp_path / "queue.db")
     store.create_campaign(spec)
     for name in ("calibration", "a", "b", "c"):
         store.submit(_trial(spec, name))
-    pool = ResourcePool(devices_mib={"cuda:1": 60}, target=0.8)
-    worker = WorkerLoop(store, LocalBackend(3), "packed", pool=pool)
+    worker = from_spec(spec, store, LocalBackend(3))
     assert await worker.run_once(spec)
     assert sorted(await asyncio.gather(*(worker.run_once(spec) for _ in range(3)))) == [
         False,
