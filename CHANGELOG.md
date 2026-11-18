@@ -38,6 +38,9 @@
   render only on changes. Default to topology-led layout without circular category
   anchors; category grouping remains optional.
 
+- Stage a campaign dataset revision once per location. Workers copy it in parallel
+  to local storage, verify the content digest, and bind it read-only on Linux.
+
 - Refresh selected graph connection visibility annotations when search or category
   filters change, including when filters are cleared.
 
