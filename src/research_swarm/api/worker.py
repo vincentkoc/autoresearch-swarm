@@ -113,15 +113,15 @@ def worker_router(database: Path, grant: WorkerGrant) -> APIRouter:
             if store.report(replace(result, cost=cost)):
                 return True
             _, previous = current(attempt_id)
+        if previous is not None and replace(previous, cost=0.0) == result:
+            return False
         if (
             previous is not None
             and previous.status == "lost"
             and previous.error == "Heartbeat expired"
         ):
             raise HTTPException(410, "Attempt expired")
-        if previous is None or replace(previous, cost=0.0) != result:
-            raise HTTPException(409, "Terminal observation differs")
-        return False
+        raise HTTPException(409, "Terminal observation differs")
 
     @router.put("/{attempt_id}/artifact", dependencies=secured)
     async def artifact(

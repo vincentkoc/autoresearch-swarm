@@ -57,7 +57,9 @@ def bearer(token: str) -> dict[str, str]:
 def test_scoped_worker_writes_and_replays_on_loopback(tmp_path: Path) -> None:
     path = tmp_path / "campaign.sqlite"
     store = SQLiteStore(path)
-    store.create_campaign(spec(price_per_million_input_tokens=1_000_000, max_cost=1))
+    store.create_campaign(
+        spec(price_per_million_input_tokens=1_000_000, estimated_input_tokens=1, max_cost=1)
+    )
     store.submit(trial(1))
     store.submit(trial(2))
     store.create_campaign(spec(campaign_id="other"))
@@ -69,6 +71,13 @@ def test_scoped_worker_writes_and_replays_on_loopback(tmp_path: Path) -> None:
         claim = "/v1/worker/claim?campaign_id=test&worker_id=worker-1"
         assert http.post(claim, headers=bearer("test-reader-token")).status_code == 401
         assert http.get("/v1/campaigns", headers=worker).status_code == 401
+        for campaign, identity in [("other", "worker-1"), ("test", "other-worker")]:
+            refused = http.post(
+                "/v1/worker/claim",
+                params={"campaign_id": campaign, "worker_id": identity},
+                headers=worker,
+            )
+            assert refused.status_code == 403
         first = http.post(claim, headers=worker).raise_for_status().json()
         assert first["attempt"]["worker_id"] == "worker-1"
         scope = "/v1/worker/" + first["attempt"]["attempt_id"]
@@ -106,6 +115,7 @@ def test_scoped_worker_writes_and_replays_on_loopback(tmp_path: Path) -> None:
             == 409
         )
         assert [r.cost for r in store.results("test")] == [1]
+        assert http.post(claim, headers=worker).json() is None
         assert store.queue_depth("other") == (1, 0)
 
 
@@ -120,11 +130,17 @@ def test_reclaimed_attempt_cannot_report_or_put(tmp_path: Path) -> None:
             "/v1/worker/claim?campaign_id=test&worker_id=worker-1", headers=auth
         ).json()
         assert store.requeue_expired("test", time.time() + 1) == 1
+        old = "/v1/worker/" + first["attempt"]["attempt_id"]
+        assert (
+            http.post(
+                old + "/report", headers=bearer(first["token"]), json={"status": "failed"}
+            ).status_code
+            == 410
+        )
         second = http.post(
             "/v1/worker/claim?campaign_id=test&worker_id=worker-1", headers=auth
         ).json()
         assert second["attempt"]["number"] == 2
-        old = "/v1/worker/" + first["attempt"]["attempt_id"]
         assert http.post(old + "/heartbeat", headers=bearer(second["token"])).status_code == 401
         assert (
             http.post(
