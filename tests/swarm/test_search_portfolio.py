@@ -136,8 +136,15 @@ async def test_model_repairs_a_terminal_workload_failure_without_a_scored_parent
     (repair,) = await policy.ask(spec, [failure], 1)
     assert repair.text == "sum(values)" and repair.parents == (seed.candidate_id,)
     assert calls[0]["failure"]["error"] == "exited 1"
+    assert calls[0]["failure"]["attempt_number"] == failure.attempt.number
     (tail,) = calls[0]["failure"]["output_tail"]
     assert len(tail) == 1024 and tail.endswith("missing argument")
+    replay = TextRewrite(diagnose, "minimize loss")
+    same_failure = replace(failure, attempt=replace(failure.attempt, attempt_id="new-storage-id"))
+    replay_policy = SearchPortfolio(spec, {replay.name: replay})
+    await replay_policy.ask(spec, [], 1)
+    await replay_policy.ask(spec, [same_failure], 1)
+    assert calls[2:] == calls[:2]
 
     async def environment(prompt: str, schema: dict[str, Any], sample_seed: int) -> str:
         context = json.loads(prompt)

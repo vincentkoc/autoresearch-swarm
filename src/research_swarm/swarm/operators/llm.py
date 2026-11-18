@@ -81,7 +81,7 @@ class TextRewrite:
         self._slots = threading.BoundedSemaphore(concurrency)
         self._sequence = 0
         self._recent: dict[str, deque[dict[str, Any]]] = {}
-        self._diagnoses: dict[str, deque[dict[str, str]]] = {}
+        self._diagnoses: dict[str, deque[tuple[str, dict[str, str]]]] = {}
         self.errors = 0
         self.timeouts = 0
 
@@ -123,11 +123,12 @@ class TextRewrite:
             "recent_results": list(self._recent.get(spec.campaign_id, ())),
             "instruction": self.instruction,
         }
-        if diagnoses := self._diagnoses.get(spec.campaign_id):
-            context["recent_diagnoses"] = list(diagnoses)
+        diagnoses = tuple(self._diagnoses.get(spec.campaign_id, ()))
+        if diagnoses:
+            context["recent_diagnoses"] = [record for _, record in diagnoses]
         if failure is not None:
             context["failure"] = {
-                "attempt": failure.attempt.attempt_id,
+                "attempt_number": failure.attempt.number,
                 "error": failure.error,
                 "output_tail": [entry[-1024:] for entry in failure.logs[-2:]],
                 "seed": failure.attempt.trial.seed,
@@ -143,11 +144,8 @@ class TextRewrite:
                 "source": context["source"],
                 "failure": context["failure"],
             }
-            history = self._diagnoses.setdefault(spec.campaign_id, deque(maxlen=8))
             attempt_id = failure.attempt.attempt_id
-            record = next(
-                (entry for entry in reversed(history) if entry["attempt"] == attempt_id), None
-            )
+            record = next((note for key, note in reversed(diagnoses) if key == attempt_id), None)
             if record is None:
                 diagnosis = FailureDiagnosis.model_validate_json(
                     await self.generate(
@@ -157,12 +155,12 @@ class TextRewrite:
                     )
                 )
                 record = {
-                    "attempt": attempt_id,
                     "candidate": parent.candidate_id,
                     "cause": diagnosis.cause,
                     "reason": diagnosis.reason,
                 }
-                history.append(record)
+                history = self._diagnoses.setdefault(spec.campaign_id, deque(maxlen=8))
+                history.append((attempt_id, record))
             context["diagnosis"] = record
             if record["cause"] != "workload":
                 return None
