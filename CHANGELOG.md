@@ -132,6 +132,9 @@
   contract runs. Give Chrome time to start cold in the real browser smoke tests
   and report its launch errors.
 
+- Check the supported engine inventory through the CLI and exercise corrupt
+  registration handling without first probing a valid environment.
+
 - Apply newly requested graph layouts while reduced motion or Pause is active,
   without accepting queued animation frames.
 
