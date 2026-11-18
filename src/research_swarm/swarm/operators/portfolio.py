@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from statistics import fmean
 
-from research_swarm.swarm.interfaces import CampaignSpec, Candidate, Operator, Result
+from research_swarm.swarm.interfaces import CampaignSpec, Candidate, Operator, Result, Trial
 from research_swarm.swarm.loop import candidate_key
 from research_swarm.swarm.operators.bandit import OperatorBandit
 from research_swarm.swarm.operators.params import child
@@ -90,6 +90,7 @@ class SearchPortfolio:
         reduction: int = 3,
         exploration: float = 0.5,
         family_cap: int = 2,
+        family_trial_limit: int | None = None,
         selection: ReplicatedSelection | None = None,
         cost: Callable[[Result], float] | None = None,
     ) -> None:
@@ -105,15 +106,20 @@ class SearchPortfolio:
             raise ValueError("highest rung must be spec.fidelity and family_cap must be positive")
         self.bandit = OperatorBandit(operators, exploration)
         self.family_cap = family_cap
+        if family_trial_limit is not None and family_trial_limit < 1:
+            raise ValueError("family_trial_limit must be positive")
+        self.family_trial_limit = family_trial_limit
+        self._family_trials: Counter[str] = Counter()
+        self._origin: dict[str, str] = {}
         self.selection = selection
-        priced = any(
+        self._priced = any(
             (
                 spec.price_per_hour,
                 spec.price_per_million_input_tokens,
                 spec.price_per_million_output_tokens,
             )
         )
-        self.cost = cost or (lambda r: r.cost if priced else r.attempt.trial.fidelity)
+        self._cost = cost
         self._seen: set[str] = set()
         self._archive: list[Result] = []
         self._at_rung: dict[tuple[str, float], float] = {}
@@ -123,6 +129,52 @@ class SearchPortfolio:
         self._chosen: set[str] = set()
         self._arm_jobs: dict[asyncio.Task[Sequence[Candidate]], str] = {}
         self._failed: set[tuple[str, int, float]] = set()
+
+    def _family_room(self, family: str) -> bool:
+        return (
+            self.family_trial_limit is None or self._family_trials[family] < self.family_trial_limit
+        )
+
+    def _remember(self, candidate: Candidate, seed: int, fidelity: float) -> None:
+        identity = (candidate_key(candidate), seed, fidelity)
+        if identity not in self._issued:
+            self._issued.add(identity)
+            self._family_trials[candidate.family] += 1
+        if candidate.operator in self.operators:
+            self._origin[candidate.candidate_id] = candidate.operator
+        elif candidate.operator in {"asha", "replicate"} and candidate.parents:
+            origin = self._origin.get(candidate.parents[0])
+            if origin is not None:
+                self._origin[candidate.candidate_id] = origin
+
+    def restore_trials(self, trials: Sequence[Trial]) -> None:
+        """After result replay, reserve durable work that still lacks an outcome."""
+        for trial in trials:
+            candidate = trial.candidate
+            self._remember(candidate, trial.seed, trial.fidelity)
+            if candidate.operator == "asha":
+                trajectory = json.dumps([candidate_key(candidate), trial.seed])
+                self.scheduler.restore(trajectory, trial.fidelity, None)
+
+    def _charge(self, result: Result, gain: float) -> None:
+        candidate = result.attempt.trial.candidate
+        # Custom meters may report currency even when no static price is set.
+        if self._cost is None and not self._priced and result.cost > 0:
+            self._priced = True
+            for arm in self.bandit.arms.values():
+                arm.cost = 0.0  # all preceding currency charges were zero
+        origin = self._origin.get(candidate.candidate_id)
+        if origin is None:
+            return
+        if candidate.operator == origin and candidate.candidate_id not in self._chosen:
+            self.bandit.arms[origin].pulls += 1
+            self._chosen.add(candidate.candidate_id)
+        cost = (
+            self._cost(result)
+            if self._cost
+            else (result.cost if self._priced else result.attempt.trial.fidelity)
+        )
+        self.bandit.observe(origin, 0.0 if candidate.operator == "replicate" else gain, cost)
 
     def tell(self, result: Result) -> None:
         trial = result.attempt.trial
@@ -134,7 +186,7 @@ class SearchPortfolio:
         self._archive.append(result)
         candidate = trial.candidate
         key = candidate_key(candidate)
-        self._issued.add((key, trial.seed, trial.fidelity))
+        self._remember(candidate, trial.seed, trial.fidelity)
         value = result.metrics.get(self.spec.metric)
         ok = result.status == "ok" and value is not None and math.isfinite(value)
         if not ok and (result.status == "ok" or result.attempt.number >= self.spec.max_attempts):
@@ -156,11 +208,9 @@ class SearchPortfolio:
             self._at_seed[trajectory] = replace(candidate, seed=trial.seed, fidelity=trial.fidelity)
             if trial.fidelity == self.scheduler.fidelities[0] or candidate.operator == "asha":
                 self.scheduler.restore(trajectory, trial.fidelity, value)
-        if candidate.operator in self.operators:
-            if candidate.candidate_id not in self._chosen:
-                self.bandit.arms[candidate.operator].pulls += 1  # restored from the archive
-                self._chosen.add(candidate.candidate_id)
-            self.bandit.observe(candidate.operator, gain, self.cost(result))
+        elif candidate.operator == "asha":
+            self.scheduler.restore(json.dumps([key, trial.seed]), trial.fidelity, None)
+        self._charge(result, gain)
         for op in self.operators.values():
             observe = getattr(op, "tell", None)
             if observe is not None:
@@ -196,7 +246,11 @@ class SearchPortfolio:
             offset = len(pool)
             pool.extend(replace(row[2], score=float(i)) for i, row in enumerate(rung, offset))
         selected = island_parents(pool, max(2, self.spec.top_k), per_family=self.family_cap)
-        return [candidates[p.candidate_id] for p in selected] or list(self.spec.candidates)
+        parents = [candidates[p.candidate_id] for p in selected] or list(self.spec.candidates)
+        return sorted(
+            (p for p in parents if self._family_room(p.family)),
+            key=lambda p: self._family_trials[p.family],
+        )
 
     def _reserve(self, candidate: Candidate) -> Candidate | None:
         seed = self.spec.seed if candidate.seed is None else candidate.seed
@@ -204,9 +258,9 @@ class SearchPortfolio:
             self.scheduler.fidelities[0] if candidate.fidelity is None else candidate.fidelity
         )
         identity = (candidate_key(candidate), seed, fidelity)
-        if identity in self._issued:
+        if identity in self._issued or not self._family_room(candidate.family):
             return None
-        self._issued.add(identity)
+        self._remember(candidate, seed, fidelity)
         self._chosen.add(candidate.candidate_id)
         return replace(candidate, seed=seed, fidelity=fidelity)
 
@@ -239,7 +293,11 @@ class SearchPortfolio:
                     )
                     if replicate is not None:
                         batch.append(replicate)
-        while len(batch) < k and (promotion := self.scheduler.promote()) is not None:
+
+        def eligible(trajectory: str) -> bool:
+            return self._family_room(self._at_seed[trajectory].family)
+
+        while len(batch) < k and (promotion := self.scheduler.promote(eligible)) is not None:
             trajectory, fidelity = promotion
             parent = self._at_seed[trajectory]
             proposal = self._reserve(child(parent, "asha", seed=parent.seed, fidelity=fidelity))
@@ -299,6 +357,10 @@ class SearchPortfolio:
                         for candidate in job.result()[: counts[name]]:
                             if (proposal := self._reserve(candidate)) is not None:
                                 batch.append(proposal)
+                            else:
+                                discard = getattr(self.operators[name], "discard", None)
+                                if discard is not None:
+                                    discard(candidate)
                     eligible.remove(name)
             finally:
                 for job in jobs:

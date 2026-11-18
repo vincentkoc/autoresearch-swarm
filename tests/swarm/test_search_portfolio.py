@@ -99,3 +99,40 @@ async def test_mix_of_timeout_and_fast_operators_returns_inside_loop_deadline() 
         batch = await policy.ask(spec, [], 3)
     assert [c.params["width"] for c in batch] == [1, 2]
     assert model.timeouts == 1
+
+
+async def test_pending_promotions_and_followup_cost_survive_restart() -> None:
+    a = Candidate(
+        candidate_id="a", params={"x": 1}, operator="param-mutate", family="a", fidelity=0.25
+    )
+    b = Candidate(
+        candidate_id="b", params={"x": 2}, operator="param-mutate", family="b", fidelity=0.25
+    )
+    spec = CampaignSpec(
+        campaign_id="test",
+        metric="loss",
+        direction="minimize",
+        command=("score",),
+        max_workers=2,
+        max_trials=8,
+    )
+    mutate = ParamMutation({"x": [1, 2, 3, 4]}, random.Random(4))
+
+    def make() -> SearchPortfolio:
+        return SearchPortfolio(
+            spec, {mutate.name: mutate}, fidelities=[0.25, 1], reduction=2, family_trial_limit=2
+        )
+
+    original = make()
+    archive = [replace(observation(c, float(c.params["x"])), cost=3) for c in (a, b)]
+    upgrade = (await original.ask(spec, archive, 1))[0]
+    assert upgrade.operator == "asha"
+    resumed = make()
+    for result in archive:
+        resumed.tell(result)
+    pending = observation(upgrade, 0).attempt.trial
+    resumed.restore_trials([r.attempt.trial for r in archive] + [pending])
+    next_batch = await resumed.ask(spec, archive, 1)
+    assert all(c.operator != "asha" and c.family != "a" for c in next_batch)
+    resumed.tell(replace(observation(upgrade, 0), status="failed", cost=12))
+    assert resumed.bandit.arms[mutate.name].cost == 18
