@@ -12,7 +12,6 @@ Tests follow the component they exercise. Run a folder for a focused check or ru
 | `workers/` | Enrollment, native processes, clocks, resources and journals |
 | `control/` | Campaigns, evaluation, promotion and reports |
 | `search/` | Proposals, populations and search policies |
-| `learning/` | Policy training, assessment and adoption |
 | `reactive/` | Training-time decisions, local sessions and application evidence |
 | `orchestration/` | Saved actions, waits, delivery and local drivers |
 | `api/` | HTTP, SDK, CLI and MCP |

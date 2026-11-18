@@ -5,12 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import nullcontext
 
-from research_swarm.control.benchmark_admission import candidate_authority
-from research_swarm.control.benchmark_trials import BenchmarkTrialAuthority
 from research_swarm.control.candidates import propose_candidate, validate_candidate
 from research_swarm.control.commands import ProposeCandidate, SubmitTrial
 from research_swarm.control.comparisons import eligible_evaluation
-from research_swarm.control.learning_guard import require_learning_policy
 from research_swarm.control.models import CampaignData
 from research_swarm.control.population_parents import require_frozen_parent
 from research_swarm.control.preflight import verified_source
@@ -45,9 +42,7 @@ class SearchAdmission:
         self,
         database: Database,
         artifacts: ArtifactService,
-        submit_trial: Callable[
-            [Transaction, SubmitTrial, str, BenchmarkTrialAuthority | None], JsonObject
-        ],
+        submit_trial: Callable[[Transaction, SubmitTrial, str], JsonObject],
     ) -> None:
         self.database = database
         self.artifacts = artifacts
@@ -62,7 +57,6 @@ class SearchAdmission:
         JsonObject,
         ProposalRequest,
         ProposalResponse,
-        BenchmarkTrialAuthority | None,
     ]:
         campaign_row = transaction.get("campaign", intent.campaign_id)
         campaign = CampaignData.model_validate(campaign_row["data"])
@@ -124,9 +118,7 @@ class SearchAdmission:
             raise ResearchError(
                 ErrorCode.RESOURCE_UNAVAILABLE, "Search exceeds its sealed capacity"
             )
-        require_learning_policy(transaction, intent.request_id)
-        benchmark = candidate_authority(transaction, intent.request_id, request, response)
-        return previous, state, row, request, response, benchmark
+        return previous, state, row, request, response
 
     def admit(self, context: CommandContext, intent: AdmitProposalResponse) -> JsonObject:
         for scope in ADMISSION_SCOPES:
@@ -157,7 +149,7 @@ class SearchAdmission:
     def _commit(
         self, transaction: Transaction, intent: AdmitProposalResponse, source: SourceManifest | None
     ) -> JsonObject:
-        previous, state, row, request, response, benchmark = self._guard(transaction, intent)
+        previous, state, row, request, response = self._guard(transaction, intent)
         admission = ProposalAdmission(
             campaign_id=intent.campaign_id,
             request_id=intent.request_id,
@@ -179,8 +171,7 @@ class SearchAdmission:
                 "AND json_extract(payload,'$.source.tree_digest')=? ORDER BY rowid LIMIT 1",
                 (transaction.workspace_id, intent.campaign_id, source.tree_digest),
             ).fetchone()
-            # Fixed policy cases include precommitted no-ops; each gets a fresh measured trial.
-            if existing is not None and benchmark is None:
+            if existing is not None:
                 admission = admission.model_copy(
                     update={"outcome": "duplicate", "candidate_id": existing["id"]}
                 )
@@ -207,7 +198,6 @@ class SearchAdmission:
                             seed=request.seed,
                         ),
                         intent.request_id,
-                        benchmark,
                     )
                 admission = admission.model_copy(
                     update={

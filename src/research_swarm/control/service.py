@@ -10,24 +10,6 @@ from pydantic import ValidationError
 from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.acceptance_models import ExpireAcceptance
 from research_swarm.control.backup import BackupControl
-from research_swarm.control.benchmark_assessment import BenchmarkAssessmentControl
-from research_swarm.control.benchmark_assessment_models import AssessPolicyBenchmark
-from research_swarm.control.benchmark_execution import BenchmarkExecutionControl
-from research_swarm.control.benchmark_execution_models import (
-    RequestBenchmarkProposal,
-    StartPolicyBenchmark,
-)
-from research_swarm.control.benchmark_guard import (
-    require_prepared_training_authority,
-)
-from research_swarm.control.benchmark_models import FreezePolicyBenchmark
-from research_swarm.control.benchmark_proposals import BenchmarkProposalControl
-from research_swarm.control.benchmark_trials import (
-    BenchmarkTrialAuthority,
-    consume_trial_slot,
-    require_trial_slot,
-)
-from research_swarm.control.benchmarks import BenchmarkControl
 from research_swarm.control.campaigns import CampaignControl
 from research_swarm.control.candidates import propose_candidate, retain_source, validate_candidate
 from research_swarm.control.child_models import (
@@ -67,23 +49,6 @@ from research_swarm.control.evaluations import (
 )
 from research_swarm.control.import_models import ImportHistoricalEvidence
 from research_swarm.control.imports import HistoricalImportControl
-from research_swarm.control.learning import LearningControl
-from research_swarm.control.learning_admission import LearningAdmissionControl
-from research_swarm.control.learning_datasets import LearningDatasetControl
-from research_swarm.control.learning_inputs import LearningInputControl
-from research_swarm.control.learning_models import (
-    CommitPolicyDecision,
-    FreezeLearningPlan,
-    QualifyTrajectoryDataset,
-)
-from research_swarm.control.learning_profiles import LearningProfileControl
-from research_swarm.control.learning_publication import LearningPublicationControl
-from research_swarm.control.learning_training_models import (
-    AdmitPolicyTraining,
-    PreparePolicyInputs,
-    PublishPolicyTraining,
-    RegisterPolicyTrainingProfile,
-)
 from research_swarm.control.models import (
     CampaignContract,
     CampaignData,
@@ -113,8 +78,6 @@ from research_swarm.control.orchestration_models import (
 )
 from research_swarm.control.orchestration_transfer import OrchestrationTransferControl
 from research_swarm.control.orchestration_waits import OrchestrationWaitControl
-from research_swarm.control.policy_adoption import PolicyAdoptionControl
-from research_swarm.control.policy_models import AdoptPolicy, CreatePolicyBinding
 from research_swarm.control.population import PopulationControl
 from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.preflight import verified_source
@@ -265,43 +228,13 @@ class ResearchService:
         self.worker_locality = WorkerLocality(database, self.workers)
         self.proposals = ProposalControl(database)
         self.population = PopulationControl(database)
-        self.learning = LearningControl(database)
-        self.benchmarks = BenchmarkControl(database)
-        self.policy_adoption = PolicyAdoptionControl(database)
-        self.benchmark_assessment = BenchmarkAssessmentControl(database)
-        self.benchmark_proposals = BenchmarkProposalControl(database)
-        self.benchmark_execution = BenchmarkExecutionControl(
-            database,
-            artifacts,
-            lambda transaction, request, identifier: self._create_campaign(
-                transaction, request, identifier=identifier
-            ),
-            self._seal_campaign,
-            self._start_campaign,
-            lambda transaction, request, authority: self._submit_trial(
-                transaction, request, benchmark_authority=authority
-            ),
-        )
-        self.learning_datasets = LearningDatasetControl(database)
-        self.learning_inputs = LearningInputControl(database, artifacts)
-        self.learning_profiles = LearningProfileControl(database, artifacts)
-        self.learning_publication = LearningPublicationControl(database, artifacts)
-        self.learning_admission = LearningAdmissionControl(
-            database,
-            lambda transaction, request, admission_id: self._submit_direct_trial(
-                transaction, request, qualified_training_id=admission_id
-            ),
-        )
         self.search_observations = ObservationControl(database)
         self.search_selection = SelectionControl(database)
         self.search_admission = SearchAdmission(
             database,
             artifacts,
-            lambda transaction, request, proposal_id, benchmark: self._submit_trial(
-                transaction,
-                request,
-                consuming_proposal_id=proposal_id,
-                benchmark_authority=benchmark,
+            lambda transaction, request, proposal_id: self._submit_trial(
+                transaction, request, consuming_proposal_id=proposal_id
             ),
         )
         self.acceptance = (
@@ -500,69 +433,6 @@ class ResearchService:
         self, context: CommandContext, request: RetirePopulationMember
     ) -> JsonObject:
         return self.population.retire(context, request)
-
-    def freeze_learning_plan(
-        self, context: CommandContext, request: FreezeLearningPlan
-    ) -> JsonObject:
-        return self.learning.freeze(context, request)
-
-    def freeze_policy_benchmark(
-        self, context: CommandContext, request: FreezePolicyBenchmark
-    ) -> JsonObject:
-        return self.benchmarks.freeze(context, request)
-
-    def start_policy_benchmark(
-        self, context: CommandContext, request: StartPolicyBenchmark
-    ) -> JsonObject:
-        return self.benchmark_execution.start(context, request)
-
-    def assess_policy_benchmark(
-        self, context: CommandContext, request: AssessPolicyBenchmark
-    ) -> JsonObject:
-        return self.benchmark_assessment.assess(context, request)
-
-    def create_policy_binding(
-        self, context: CommandContext, request: CreatePolicyBinding
-    ) -> JsonObject:
-        return self.policy_adoption.create(context, request)
-
-    def adopt_policy(self, context: CommandContext, request: AdoptPolicy) -> JsonObject:
-        return self.policy_adoption.adopt(context, request)
-
-    def request_benchmark_proposal(
-        self, context: CommandContext, request: RequestBenchmarkProposal
-    ) -> JsonObject:
-        return self.benchmark_proposals.request(context, request)
-
-    def qualify_trajectory_dataset(
-        self, context: CommandContext, request: QualifyTrajectoryDataset
-    ) -> JsonObject:
-        return self.learning_datasets.qualify(context, request)
-
-    def prepare_policy_inputs(
-        self, context: CommandContext, request: PreparePolicyInputs
-    ) -> JsonObject:
-        return self.learning_inputs.prepare(context, request)
-
-    def register_policy_training_profile(
-        self, context: CommandContext, request: RegisterPolicyTrainingProfile
-    ) -> JsonObject:
-        return self.learning_profiles.register(context, request)
-
-    def admit_policy_training(
-        self, context: CommandContext, request: AdmitPolicyTraining
-    ) -> JsonObject:
-        return self.learning_admission.admit(context, request)
-
-    def publish_policy_training(
-        self, context: CommandContext, request: PublishPolicyTraining
-    ) -> JsonObject:
-        return self.learning_publication.publish(context, request)
-
-    def commit_policy_decision(
-        self, context: CommandContext, request: CommitPolicyDecision
-    ) -> JsonObject:
-        return self.learning.commit_decision(context, request)
 
     def respond_proposal(self, context: CommandContext, request: RespondToProposal) -> JsonObject:
         return self.proposals.respond(context, request)
@@ -997,13 +867,7 @@ class ResearchService:
             lambda transaction: self._submit_direct_trial(transaction, request),
         )
 
-    def _submit_direct_trial(
-        self,
-        transaction: Transaction,
-        request: SubmitTrial,
-        *,
-        qualified_training_id: str | None = None,
-    ) -> JsonObject:
+    def _submit_direct_trial(self, transaction: Transaction, request: SubmitTrial) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         check_revision(transaction.context, row)
         campaign = CampaignData.model_validate(row["data"])
@@ -1018,7 +882,7 @@ class ResearchService:
             require_portfolio_trial_allowance(
                 transaction, request.campaign_id, campaign, len(state.pending_request_ids)
             )
-        return self._submit_trial(transaction, request, qualified_training_id=qualified_training_id)
+        return self._submit_trial(transaction, request)
 
     @staticmethod
     def _submit_trial(
@@ -1028,8 +892,6 @@ class ResearchService:
         confirmation_side: Literal["candidate", "comparator"] | None = None,
         *,
         consuming_proposal_id: str | None = None,
-        qualified_training_id: str | None = None,
-        benchmark_authority: BenchmarkTrialAuthority | None = None,
     ) -> JsonObject:
         row = transaction.get("campaign", request.campaign_id)
         campaign = CampaignData.model_validate(row["data"])
@@ -1045,10 +907,6 @@ class ResearchService:
             raise ResearchError(
                 ErrorCode.INVALID_TRANSITION, "Trial admission requires a running campaign"
             )
-        benchmark_trial_id = require_trial_slot(
-            transaction, campaign, request, benchmark_authority, consuming_proposal_id
-        )
-        require_prepared_training_authority(transaction, campaign.contract, qualified_training_id)
         candidate = CandidateData.model_validate(
             transaction.get("candidate", request.candidate_id)["data"]
         )
@@ -1079,7 +937,7 @@ class ResearchService:
         resolved = revision.resolved
         ArtifactCatalog.available(transaction, candidate.source_artifact)
         spec = ExperimentSpec(
-            trial_id=benchmark_trial_id or new_id(),
+            trial_id=new_id(),
             workspace_id=transaction.workspace_id,
             project_id=candidate.project_id,
             campaign_id=request.campaign_id,
@@ -1167,6 +1025,4 @@ class ResearchService:
             )
             transaction.event("job.created", job, {"trial_id": spec.trial_id, "stage_id": stage.id})
         transaction.event("trial.submitted", trial, {"spec_digest": spec.spec_digest})
-        if benchmark_trial_id is not None:
-            consume_trial_slot(transaction, benchmark_trial_id)
         return trial
