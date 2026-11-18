@@ -93,7 +93,7 @@ class SQLiteStore:
         with self.connect() as session:
             connection = session.connection
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, SCHEMA_VERSION):
+            if version not in (0, 1, 2, 3, SCHEMA_VERSION):
                 raise ResearchError(ErrorCode.SCHEMA_UNSUPPORTED, "Unsupported database schema")
             enable_wal(connection, timeout_ms=busy_timeout_ms)
             connection.execute("PRAGMA synchronous=FULL")

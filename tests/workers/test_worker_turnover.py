@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 
 from research_swarm.client import LocalTransport, ResearchClient
-from research_swarm.control.commands import SubmitTrial
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.worker_lifecycle import SetWorkerAdmission, WorkerHeartbeat
 from research_swarm.control.worker_records import WorkerData
@@ -15,15 +14,10 @@ from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSes
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import Principal
 from research_swarm.domain.types import new_id
-from research_swarm.workers.local import LocalWorker
-from research_swarm.workers.recovery import recover_worker_attempt
 from research_swarm.workers.remote_enrollment import WORKER_SCOPES
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
-from tests.workers.test_closure import close_operationally
 from tests.workers.test_worker_queries import claim, query, read, scoped_worker
-from tests.workers.test_worker_recovery import Recoverable
-from tests.workers.test_worker_recovery import recoverable as recoverable
 from tests.workers.test_worker_sessions import advance_epoch
 
 
@@ -237,66 +231,6 @@ def test_epoch_drift_requires_current_operator_authority_and_can_fence_old_sessi
         pipeline.client.get("worker_session", old.binding.worker_session_id)["data"]
         == original["data"]
     )
-
-
-@pytest.mark.parametrize("pipeline", [{"search": {"max_parallel_trials": 2}}], indirect=True)
-def test_replacement_preserves_original_native_and_controller_capacity_until_closure(
-    pipeline: Pipeline, recoverable: Recoverable
-) -> None:
-    old = recoverable.enrollment.bundle.worker
-    original = pipeline.client.get("attempt", recoverable.attempt_id)
-    budget = pipeline.client.budget(pipeline.campaign["id"])
-    fenced = fence(pipeline, old)
-    replaced, new_client = replace(pipeline, old, fenced)
-    new = WorkerData.model_validate(replaced["worker"]["data"])
-    activate(pipeline, replaced)
-    assert pipeline.client.get("attempt", recoverable.attempt_id) == original
-    assert pipeline.client.budget(pipeline.campaign["id"]) == budget
-    with pytest.raises(ResearchError) as borrowed:
-        new_client.worker_get(read(old, "historical_attempt", recoverable.attempt_id))
-    assert borrowed.value.code == ErrorCode.AUTHORIZATION_DENIED
-    new_native = LocalWorker(
-        new_client,
-        new,
-        root=recoverable.root.parent / "replacement-native",
-        machine_registry=recoverable.enrollment.worker.resources.path,
-    )
-    assert new_native.resources.availability() == {"cpu": 0}
-    campaign = pipeline.client.get("campaign", pipeline.campaign["id"])
-    pipeline.client.command(
-        "trial.submit",
-        SubmitTrial(
-            campaign_id=campaign["id"],
-            candidate_id=pipeline.trial["data"]["spec"]["candidate_id"],
-            validation_id=pipeline.trial["data"]["validation_id"],
-            seed=13,
-        ),
-        idempotency_key=new_id(),
-        expected_revision=campaign["revision"],
-    )
-    job = pipeline.ready()
-    with pytest.raises(ResearchError) as occupied:
-        claim(new_client, new, job)
-    assert occupied.value.code == ErrorCode.RESOURCE_UNAVAILABLE
-    recovered = recover_worker_attempt(recoverable.root, recoverable.attempt_id)
-    assert recovered.delivery_state == "quarantined" and recovered.custody_state == "released"
-    assert new_native.resources.availability() == {"cpu": 1}
-    with pytest.raises(ResearchError) as still_occupied:
-        claim(new_client, new, job)
-    assert still_occupied.value.code == ErrorCode.RESOURCE_UNAVAILABLE
-    submission = pipeline.client.get("attempt_submission", recovered.submission_id)
-    publication = recoverable.intent().publication
-    assert publication is not None
-    with pytest.raises(ResearchError) as stale_publication:
-        recoverable.enrollment.worker.client.command(
-            "worker.publish_attempt", publication, idempotency_key="old-session-publication"
-        )
-    assert stale_publication.value.code == ErrorCode.AUTHORIZATION_DENIED
-    assert pipeline.client.budget(pipeline.campaign["id"]) == budget
-    close_operationally(pipeline, submission)
-    admitted = claim(new_client, new, job)
-    assert admitted["data"]["dispatch"]["worker_session_id"] == new.binding.worker_session_id
-    assert pipeline.client.list(RecordQuery(kind="run_result"))["items"] == []
 
 
 def test_claim_and_fence_race_preserves_any_issued_grant(pipeline: Pipeline) -> None:

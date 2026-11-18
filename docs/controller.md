@@ -6,30 +6,16 @@ They do not write records or interpret success independently.
 
 ## State authority
 
-`workspace.seal` establishes a transaction cut for a native backup. It requires
-`service.manage`, the current controller ID and control epoch, a backup ID, a
-reason and expected revision zero. The result records the evidence watermark,
-worker IDs and unresolved attempt IDs. Inspect it as the `workspace_gate` record
-whose ID is the workspace ID.
+Lost swarm attempts return to the queue after their heartbeat expires. Each
+retry gets a new attempt ID for the same trial. Only the current claim can
+finish the trial. Repeated or late results leave its terminal result intact.
 
-An unfinished upload, deletion or retained artifact reader blocks sealing.
-After the cut, the shared kernel refuses new research mutations before running
-their handlers or rejection hooks. Credential changes, local enrollment and
-notification acknowledgment also refuse. Exact previously committed command
-replies remain replayable; completed deletion replay does not touch storage.
-Normal artifact downloads require a new reader pin and therefore refuse too.
-
-A seal does not stop processes, release machine capacity, refund reservations,
-settle attempts or prove that native execution ended. Keep original worker
-journals and resource registries. This command is a recovery foundation, not a
-rolling backup or an unseal operation. [Verified native export and inactive
-restore](backup.md) are available; reconciliation and activation are separate
-work. Do not seal a working campaign
-merely to inspect it.
+Legacy sealed, restoring and recovering workspaces require the release that
+created them. Start a new database for new work and keep the old state intact.
 
 The command kernel depends on a synchronous `StateStore` and `SqlSession` contract.
 The default `SQLiteStore` owns native connections, WAL, migration setup, busy
-timeouts, filesystem backup and SQL savepoints. `Database(path)` keeps the local
+timeouts and SQL savepoints. `Database(path)` keeps the local
 construction path. `Database.from_store(store)` binds an already initialized store
 to the same command implementation; it does not create a second set of domain rules.
 
@@ -50,12 +36,10 @@ rejection is raised to the caller only after its acknowledgment commits.
 
 `StoreIdentity` identifies the actual transaction authority. Services sharing a
 ledger compare that identity rather than inventing filesystem paths for hosted
-stores. Native connection escape hatches and filesystem backup explicitly refuse
-stores that cannot provide those capabilities.
+stores. The native SQLite adapter can copy a consistent database image. This copies database rows only. Artifacts stored outside SQLite need their own copy.
 
 The command, replay, bootstrap, record, snapshot, event and notification paths use
-these callbacks. Credentials, campaign queries, scoped worker/proposer reads,
-orchestration turn inspection and recovery page/chunk reads use the same boundary.
+these callbacks. Credentials, campaign queries and scoped worker and proposer reads use the same boundary.
 Credential installation keeps its lookup and conditional insert in one write;
 queries retain their ownership checks and pagination bounds in one snapshot.
 Worker query authority does not grant global research read access.

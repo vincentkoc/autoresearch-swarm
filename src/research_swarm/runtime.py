@@ -86,7 +86,10 @@ class LocalRuntime:
         root = (root or default_state_directory()).expanduser().absolute()
         admission = restore_admission_path(root)
         if admission.exists() or admission.is_symlink():
-            raise ResearchError(ErrorCode.STALE_FENCE, "Native restore is incomplete")
+            raise ResearchError(
+                ErrorCode.STALE_FENCE,
+                "Incomplete legacy restore. Use its original release or a fresh directory.",
+            )
         with private_state_directory(root), FileLock(root / "initialize.lock"):
             admission = restore_admission_path(root)
             pending = root / "recovery.pending"
@@ -98,7 +101,7 @@ class LocalRuntime:
             ):
                 raise ResearchError(
                     ErrorCode.STALE_FENCE,
-                    "Native restore is incomplete; resume its exact restore operation",
+                    "Incomplete legacy restore. Use its original release or a fresh directory.",
                 )
             identity_path = root / "identity.json"
             initialize = not (identity_path.exists() or identity_path.is_symlink())

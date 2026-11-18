@@ -7,8 +7,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-from research_swarm.crypto import Ed25519Provider, resolve_crypto
-from research_swarm.domain.backup import RecoveryAdmission, RestoreReceipt
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import Event
@@ -17,10 +15,7 @@ from research_swarm.domain.types import utc_now
 from research_swarm.state.boundaries import ExecutionBoundary, QueryOutcome, synchronous_value
 from research_swarm.state.events import event_page
 from research_swarm.state.execution import command_execution
-from research_swarm.state.recovery_verification import (
-    NativeRecoveryVerifier,
-    RecoveryAdmissionVerifier,
-)
+from research_swarm.state.schema import require_active_workspaces
 from research_swarm.state.sql import (
     IntegrityViolation,
     SqlSession,
@@ -202,13 +197,10 @@ def _deliver(response: JsonObject) -> JsonObject:
 class Transaction:
     """Private repository access used only inside a domain command."""
 
-    def __init__(
-        self, connection: SqlSession, context: CommandContext, *, observe_waits: bool = True
-    ) -> None:
+    def __init__(self, connection: SqlSession, context: CommandContext) -> None:
         self.connection = connection
         self.context = context
         self.workspace_id = context.principal.workspace_id
-        self.observe_waits = observe_waits
 
     def get(self, kind: str, identifier: str) -> JsonObject:
         row = self.connection.execute(
@@ -324,10 +316,6 @@ class Transaction:
             "INSERT INTO outbox(event_id,workspace_id,sequence) VALUES (?,?,?)",
             (event.id, self.workspace_id, sequence),
         )
-        from research_swarm.state.waits import consider_event
-
-        if self.observe_waits:
-            consider_event(self, event)
         return event
 
 
@@ -347,7 +335,6 @@ class Database:
         self._native_store: SQLiteStore | None = native
         self.store: StateStore = native
         self._execution_boundary = execution_boundary
-        self._recovery_verifier: RecoveryAdmissionVerifier | None = NativeRecoveryVerifier()
 
     @classmethod
     def from_store(
@@ -355,43 +342,14 @@ class Database:
         store: StateStore,
         *,
         execution_boundary: ExecutionBoundary | None = None,
-        recovery_verifier: RecoveryAdmissionVerifier | None = None,
     ) -> Database:
         """Bind the shared command kernel to an already initialized authority store."""
         instance = cls.__new__(cls)
         instance.store = store
         instance._native_store = None
         instance._execution_boundary = execution_boundary
-        instance._recovery_verifier = recovery_verifier
+        store.read(require_active_workspaces)
         return instance
-
-    def verify_recovery_admission(
-        self,
-        sql: SqlSession,
-        context: CommandContext,
-        receipt: RestoreReceipt,
-        admission: RecoveryAdmission,
-        *,
-        crypto_provider: Ed25519Provider | None = None,
-    ) -> None:
-        verifier = self._recovery_verifier
-        if verifier is None:
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "State authority has no recovery verifier"
-            )
-
-        # Check plugin return values even when an implementation violates the protocol.
-        verify = cast(Callable[..., object], verifier.verify)
-        result = verify(
-            sql,
-            authority=self.authority_identity,
-            context=context,
-            receipt=receipt,
-            admission=admission,
-            crypto=resolve_crypto(crypto_provider),
-        )
-        if synchronous_value(result) is not None:
-            raise TypeError("Recovery verifiers must return None synchronously")
 
     @property
     def path(self) -> Path:
@@ -459,42 +417,9 @@ class Database:
             previous = _stored_response(connection, context, request_digest)
             if previous is not None:
                 return previous
-            from research_swarm.state.workspace_gate import (
-                require_recovery_admission,
-                require_workspace_mutation,
-            )
-
-            # Fencing precedes rejection hooks: an inactive authority cannot settle or
-            # quarantine new observations through a failed command's side effects.
-            if operation == "workspace.begin_recovery":
-                require_recovery_admission(
-                    connection, context, self.authority_identity, request_digest
-                )
-            elif operation == "workspace.activate_recovery":
-                from research_swarm.state.recovery_activation import require_recovery_activation
-
-                require_recovery_activation(
-                    connection, context, self.authority_identity, request_digest
-                )
-            else:
-                require_workspace_mutation(
-                    connection,
-                    workspace_id,
-                    operation,
-                    context=context,
-                    authority=self.authority_identity,
-                    payload=payload,
-                    request_digest=request_digest,
-                )
-            from research_swarm.state.drive_guard import require_reserved_command_key
-
-            require_reserved_command_key(Transaction(connection, context), request_digest)
 
             def operation_effects(nested: SqlSession) -> JsonObject:
-                from research_swarm.state.drive_guard import require_drive_authority
-
                 transaction = Transaction(nested, context)
-                require_drive_authority(transaction, operation, payload, request_digest)
                 result = handler(transaction)
                 response = {
                     "command_id": context.command_id,
@@ -602,9 +527,7 @@ class Database:
         boundary = self._execution_boundary
 
         def apply(connection: SqlSession) -> QueryOutcome[T]:
-            from research_swarm.state.workspace_gate import require_workspace_mutation
 
-            require_workspace_mutation(connection, context.principal.workspace_id, name)
             transaction = Transaction(connection, context)
 
             def reject(error: ResearchError) -> QueryOutcome[T]:
@@ -750,9 +673,7 @@ class Database:
             ).fetchone()
             if row is None:
                 return
-            from research_swarm.state.workspace_gate import require_workspace_mutation
 
-            require_workspace_mutation(connection, row["workspace_id"], "outbox.acknowledge")
             connection.execute(
                 "UPDATE outbox SET delivered=1,delivery_attempts=? WHERE event_id=?",
                 (next_counter(row[0]), event_id),

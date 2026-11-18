@@ -211,6 +211,11 @@
   resource slot. Deployments that used calibrated time require fresh controller
   and worker state directories.
 
+- **Breaking:** Retire durable turns, recovery snapshots, backup elections and
+  worker recovery routes. Lost swarm attempts return to the queue under the
+  same trial ID. A superseded worker cannot replace the accepted result.
+  Use the original release for inactive legacy workspaces.
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance

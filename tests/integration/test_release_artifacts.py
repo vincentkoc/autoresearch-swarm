@@ -22,6 +22,27 @@ from scripts.release import validate_distributions as validate
 from tests.paths import REPO_ROOT
 
 
+def fixture_git(root: Path, *arguments: str, data: bytes | None = None) -> bytes:
+    return subprocess.check_output(
+        [
+            "git",
+            "-c",
+            "user.name=Release fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.autocrlf=false",
+            "-c",
+            f"core.hooksPath={root / '.git' / 'no-hooks'}",
+            *arguments,
+        ],
+        cwd=root,
+        input=data,
+    )
+
+
 @pytest.fixture
 def distributions(tmp_path: Path) -> tuple[Path, dict]:
     tmp_path = tmp_path / "dist"
@@ -189,44 +210,35 @@ def test_stale_artifacts_cannot_be_relabelled_with_a_new_commit(
             member.size = len(body)
             output.addfile(member, io.BytesIO(body))
 
-    def git(*arguments: str) -> None:
-        subprocess.run(
-            [
-                "git",
-                "-c",
-                "user.name=Release fixture",
-                "-c",
-                "user.email=fixture@example.invalid",
-                "-c",
-                "commit.gpgsign=false",
-                "-c",
-                "core.autocrlf=false",
-                "-c",
-                f"core.hooksPath={tmp_path / 'no-hooks'}",
-                *arguments,
-            ],
-            cwd=root,
-            check=True,
-            capture_output=True,
-        )
-
-    git("init", "-q")
-    git("add", ".")
-    git("commit", "-qm", "First same-version source")
-    git("config", "core.autocrlf", "true")
+    fixture_git(root, "init", "-q")
+    fixture_git(root, "add", ".")
+    fixture_git(root, "commit", "-qm", "First same-version source")
+    fixture_git(root, "config", "core.autocrlf", "true")
     check_release(root, directory, write=True)
     (root / "src/research_swarm/__init__.py").write_text(
         f'__version__ = "{project["version"]}"\nchanged = True\n'
     )
-    git("add", ".")
-    git("commit", "-qm", "Second same-version source")
+    fixture_git(root, "add", ".")
+    fixture_git(root, "commit", "-qm", "Second same-version source")
     with pytest.raises(ValueError, match="differs from the committed source"):
         check_release(root, directory, write=True)
 
 
-def test_committed_source_batch_exceeds_pipe_capacity() -> None:
-    files = committed_files(REPO_ROOT, ["src/research_swarm"])
-    assert len(files) > 200 and sum(map(len, files.values())) > 1024 * 1024
-    assert files["src/research_swarm/__init__.py"] == subprocess.check_output(
-        ["git", "show", "HEAD:src/research_swarm/__init__.py"], cwd=REPO_ROOT, timeout=10
+def test_committed_source_batch_exceeds_pipe_capacity(tmp_path: Path) -> None:
+    fixture_git(tmp_path, "init", "-q")
+    bodies = [bytes(range(64)), b"line one\r\nline two\n" * 4]
+    objects = {
+        body: fixture_git(tmp_path, "hash-object", "-w", "--stdin", data=body).strip()
+        for body in bodies
+    }
+    # Both the requested object IDs and the returned blobs exceed 1 MiB.
+    # Shared Git blobs keep the fixture small without thousands of disk files.
+    expected = {f"entry-{index:05d}": bodies[index % 2] for index in range(32_768)}
+    entries = b"".join(
+        b"100644 blob " + objects[body] + b"\t" + name.encode() + b"\n"
+        for name, body in expected.items()
     )
+    tree = fixture_git(tmp_path, "mktree", data=entries).decode().strip()
+    commit = fixture_git(tmp_path, "commit-tree", tree, "-m", "Synthetic batch").decode().strip()
+    fixture_git(tmp_path, "update-ref", "HEAD", commit)
+    assert committed_files(tmp_path, ["."]) == expected

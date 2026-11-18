@@ -21,7 +21,6 @@ from research_swarm.control.worker_outputs import WorkerUploadTarget
 from research_swarm.control.worker_queries import WorkerQueries, WorkerQuery, WorkerRead
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.event_recovery import RecoveryItem, RecoveryPage
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
 from research_swarm.domain.types import new_id
@@ -415,20 +414,6 @@ def create_app(service: ResearchService, credentials: CredentialStore) -> FastAP
         return await asyncio.to_thread(
             service.database.event_page, context, after=after, limit=limit
         )
-
-    @app.post("/v1/snapshot/page")
-    async def snapshot_page(
-        request: Request, context: Annotated[CommandContext, Depends(read_context)]
-    ) -> JsonObject:
-        parsed = RecoveryPage.model_validate(await read_json(request))
-        return await asyncio.to_thread(service.event_recovery.page, context, parsed)
-
-    @app.post("/v1/snapshot/item")
-    async def snapshot_item(
-        request: Request, context: Annotated[CommandContext, Depends(read_context)]
-    ) -> JsonObject:
-        parsed = RecoveryItem.model_validate(await read_json(request))
-        return await asyncio.to_thread(service.event_recovery.item, context, parsed)
 
     @app.get("/v1/events/stream")
     async def event_stream(

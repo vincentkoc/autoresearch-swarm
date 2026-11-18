@@ -39,16 +39,6 @@ from research_swarm.control.observation_models import (
     ResolveTrialObservation,
     SelectTrialObservation,
 )
-from research_swarm.control.orchestration_models import (
-    AcknowledgeDriverStart,
-    BindOrchestration,
-    CloseDriveTurn,
-    DriveTurnTarget,
-    FenceOrchestration,
-    PrepareDriveTurn,
-    RegisterDelivery,
-    TransferOrchestration,
-)
 from research_swarm.control.population_models import RetainPopulationMember, RetirePopulationMember
 from research_swarm.control.promotions import AssessPromotion, CommitPromotion, InvalidateEvidence
 from research_swarm.control.reconciliation import ReconcileAttempt
@@ -62,11 +52,6 @@ from research_swarm.control.search_models import (
     RespondToProposal,
 )
 from research_swarm.control.service import ResearchService
-from research_swarm.control.wait_models import (
-    AcknowledgeWakeup,
-    OrchestrationWaitTarget,
-    RecordOrchestrationWait,
-)
 from research_swarm.control.worker_artifacts import WorkerArtifactRead
 from research_swarm.control.worker_lifecycle import (
     RequestAttemptCancellation,
@@ -79,14 +64,7 @@ from research_swarm.control.worker_queries import WorkerQuery, WorkerRead
 from research_swarm.control.worker_turnover import FenceWorker, ReplaceWorkerSession
 from research_swarm.control.workers import ClaimJob, EnrollWorker
 from research_swarm.domain.artifacts import ReaderSessionTarget
-from research_swarm.domain.backup import RegisterBackupCustody, SealWorkspace
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.event_recovery import (
-    AdvanceEventFloor,
-    CollectExpiredSnapshots,
-    CreateRecoverySnapshot,
-    RecoverySnapshotTarget,
-)
 from research_swarm.domain.identity import CommandContext
 from research_swarm.domain.types import VersionedRecord
 from research_swarm.state.database import JsonObject
@@ -127,21 +105,6 @@ COMMANDS = {
         "Release one reader session's pins only after proving its exact owner cannot resume.",
         additional_scopes=("read",),
     ),
-    "workspace.register_backup_custody": CommandDefinition(
-        RegisterBackupCustody,
-        "register_backup_custody",
-        "*",
-        False,
-        "Pin source-only custody for one sealed control epoch; never replace an existing pin.",
-    ),
-    "workspace.seal": CommandDefinition(
-        SealWorkspace,
-        "seal_workspace",
-        "service.manage",
-        True,
-        "Seal workspace mutations for backup; retain original execution obligations "
-        "without releasing custody.",
-    ),
     "artifact.retain": CommandDefinition(
         RetainArtifact,
         "retain_artifact",
@@ -172,124 +135,6 @@ COMMANDS = {
         False,
         "Retain historical metadata without granting execution, budget, or promotion authority.",
         additional_scopes=("read",),
-    ),
-    "orchestration.transfer": CommandDefinition(
-        TransferOrchestration,
-        "transfer_orchestration",
-        "orchestration.manage",
-        True,
-        "Transfer a reconciled paused campaign to fresh drivers within the same state authority.",
-        additional_scopes=("read", "orchestration.drive"),
-    ),
-    "orchestration.acknowledge_start": CommandDefinition(
-        AcknowledgeDriverStart,
-        "acknowledge_driver_start",
-        "orchestration.drive",
-        True,
-        "Acknowledge this successor's checkpoint before preparing research actions.",
-        additional_scopes=("read",),
-    ),
-    "orchestration.close_turn": CommandDefinition(
-        CloseDriveTurn,
-        "close_drive_turn",
-        "orchestration.manage",
-        True,
-        "Close a fenced action with no target acknowledgment while preserving evidence.",
-        additional_scopes=("read",),
-    ),
-    "stream.collect_expired": CommandDefinition(
-        CollectExpiredSnapshots,
-        "collect_expired_snapshots",
-        "stream.manage",
-        False,
-        "Collect a bounded batch of expired frozen contents while retaining terminal metadata.",
-    ),
-    "stream.create_snapshot": CommandDefinition(
-        CreateRecoverySnapshot,
-        "create_recovery_snapshot",
-        "read",
-        False,
-        "Freeze an authorized read model and pin its event catch-up interval.",
-    ),
-    "stream.release_snapshot": CommandDefinition(
-        RecoverySnapshotTarget,
-        "release_recovery_snapshot",
-        "read",
-        False,
-        "Release this reader's recovery pin and disposable frozen page contents.",
-    ),
-    "stream.advance_floor": CommandDefinition(
-        AdvanceEventFloor,
-        "advance_event_floor",
-        "stream.manage",
-        False,
-        "Advance logical stream retention without deleting evidence or crossing recovery pins.",
-    ),
-    "orchestration.record_wait": CommandDefinition(
-        RecordOrchestrationWait,
-        "record_orchestration_wait",
-        "orchestration.drive",
-        True,
-        "Persist event and timer conditions without losing events committed during planning.",
-        additional_scopes=("read",),
-    ),
-    "orchestration.reconcile_wait": CommandDefinition(
-        OrchestrationWaitTarget,
-        "reconcile_orchestration_wait",
-        "orchestration.drive",
-        False,
-        "Reconcile timer or event readiness without a final acknowledgment for pending conditions.",
-        additional_scopes=("read",),
-    ),
-    "orchestration.acknowledge_wakeup": CommandDefinition(
-        AcknowledgeWakeup,
-        "acknowledge_orchestration_wakeup",
-        "orchestration.drive",
-        True,
-        "Acknowledge destination delivery without consuming a wait or research evidence.",
-    ),
-    "orchestration.bind": CommandDefinition(
-        BindOrchestration,
-        "bind_orchestration",
-        "orchestration.manage",
-        True,
-        "Assign dedicated driver actors without changing native worker authority.",
-    ),
-    "orchestration.register_delivery": CommandDefinition(
-        RegisterDelivery,
-        "register_delivery",
-        "orchestration.manage",
-        True,
-        "Register one gateway and exact credential IDs for an existing driver binding.",
-        additional_scopes=("auth.manage",),
-    ),
-    "orchestration.prepare_turn": CommandDefinition(
-        PrepareDriveTurn,
-        "prepare_drive_turn",
-        "orchestration.drive",
-        True,
-        "Persist one exact action and ordinal before any delivery.",
-    ),
-    "orchestration.execute_turn": CommandDefinition(
-        DriveTurnTarget,
-        "execute_drive_turn",
-        "orchestration.drive",
-        False,
-        "Execute or recover the original saved action under its authenticated route.",
-    ),
-    "orchestration.reconcile_turn": CommandDefinition(
-        DriveTurnTarget,
-        "reconcile_drive_turn",
-        "orchestration.drive",
-        False,
-        "Close a turn only from its authoritative target command acknowledgment.",
-    ),
-    "orchestration.fence": CommandDefinition(
-        FenceOrchestration,
-        "fence_orchestration",
-        "orchestration.manage",
-        True,
-        "Stop new driver effects while preserving native work and prior acknowledgments.",
     ),
     "search.abandon_selection": CommandDefinition(
         AbandonObservationSelection,
@@ -686,7 +531,7 @@ def capabilities() -> JsonObject:
             }
             for operation, definition in COMMANDS.items()
         },
-        "queries": ["get", "list", "context", "budget", "events", "snapshot.page", "snapshot.item"],
+        "queries": ["get", "list", "context", "budget", "events"],
         "proposal_queries": {
             "scope": "proposal.respond",
             "operations": {"proposal.get": ProposalRead.model_json_schema()},

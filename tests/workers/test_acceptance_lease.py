@@ -19,6 +19,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from research_swarm.runtime import LocalRuntime
 from research_swarm.state.database import Database
+from research_swarm.state.schema import SCHEMA_VERSION
 from research_swarm.workers.journal import JournalState
 from tests.control.test_reconciliation import ClosedAttempt, reconcile, submit
 from tests.control.test_reconciliation import closed as closed
@@ -265,7 +266,7 @@ def test_v2_pending_attempts_are_unqualified_without_rewriting_signed_records(
     reopened = LocalRuntime.open(pipeline.runtime.root)
     assert pipeline.client.get("attempt", attempt_id) == attempt
     with reopened.database.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     expired = pipeline.client.command(
         "attempt.expire_acceptance",
         ExpireAcceptance(attempt_id=attempt_id),

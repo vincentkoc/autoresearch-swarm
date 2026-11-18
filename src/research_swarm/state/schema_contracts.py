@@ -88,16 +88,6 @@ TABLES = (
         "workspace_id id campaign_id dimension settlement_id payload",
         ("workspace_id", "id"),
     ),
-    (
-        "recovery_snapshots",
-        "workspace_id id actor_id watermark expires_at released_at expired_at payload",
-        ("workspace_id", "id"),
-    ),
-    (
-        "recovery_items",
-        "workspace_id snapshot_id ordinal content_digest size_bytes content",
-        ("workspace_id", "snapshot_id", "ordinal"),
-    ),
 )
 
 INDEXES = {
@@ -111,7 +101,6 @@ INDEXES = {
     "records_worker_controls": "records",
     "acceptance_leases": "records",
     "budget_settlements_reservation": "budget_settlements",
-    "recovery_pins": "recovery_snapshots",
 }
 
 
