@@ -414,31 +414,25 @@ class LocalWorker:
             expiry = datetime.fromisoformat(entry.dispatch.hard_deadline_at)
             wait_seconds = max(0, (expiry - datetime.now(UTC)).total_seconds()) + 10
             until = time.monotonic() + wait_seconds
-            while entry.state not in {
+            terminal_states = {
                 JournalState.CLOSED,
                 JournalState.NOT_STARTED,
                 JournalState.UNKNOWN,
-            }:
-                if process is not None and process.poll() is not None:
+            }
+            while entry.state not in terminal_states:
+                supervisor_exited = process is not None and process.poll() is not None
+                if supervisor_exited or time.monotonic() >= until:
                     entry = reconcile_outcome(self.journal, attempt_id)
-                    if entry.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}:
-                        if entry.supervisor_id is None:
-                            self.journal.request_local_cancel(attempt_id)
-                            entry = self.journal.settle_unstarted(attempt_id)
-                        else:
-                            entry = self.journal.unknown(
-                                attempt_id, entry.supervisor_id, "Supervisor exited without closure"
-                            )
-                    break
-                if time.monotonic() >= until:
-                    entry = reconcile_outcome(self.journal, attempt_id)
-                    if (
-                        entry.state not in {JournalState.CLOSED, JournalState.NOT_STARTED}
-                        and entry.supervisor_id is not None
-                    ):
-                        entry = self.journal.unknown(
-                            attempt_id, entry.supervisor_id, "Native outcome is overdue"
+                    if entry.state == JournalState.RECEIVED:
+                        self.journal.request_local_cancel(attempt_id)
+                        entry = self.journal.settle_unstarted(attempt_id)
+                    if entry.state not in terminal_states and entry.supervisor_id is not None:
+                        finding = (
+                            "Supervisor exited without closure"
+                            if supervisor_exited
+                            else "Native outcome is overdue"
                         )
+                        entry = self.journal.unknown(attempt_id, entry.supervisor_id, finding)
                     break
                 time.sleep(0.025)
                 entry = self.journal.get(attempt_id)

@@ -95,6 +95,26 @@ def test_launch_cap_is_rechecked_after_held_callback_independently_of_hard_cap(
     assert outcome.closure.scope_closed and not marker.exists()
 
 
+def test_overdue_unclaimed_supervisor_publishes_not_started(pipeline, tmp_path, monkeypatch):
+    worker, _ = native_worker(pipeline, tmp_path)
+    row = worker.claim(pipeline.ready())
+    clock = iter((0.0, 1_000_000.0))
+    monkeypatch.setattr(
+        "research_swarm.workers.local.time", SimpleNamespace(monotonic=lambda: next(clock))
+    )
+    monkeypatch.setattr(
+        "research_swarm.workers.local.spawn_supervisor",
+        lambda *_: SimpleNamespace(poll=lambda: None, wait=lambda timeout: None),
+    )
+
+    result = worker.execute(row["id"])
+    entry = worker.journal.get(row["id"])
+    assert result["state"] == "not_started"
+    assert entry.state == JournalState.NOT_STARTED and entry.supervisor_id is None
+    assert run_attempt(worker.journal, row["id"]) == entry
+    assert worker.resources.availability() == {"cpu": 1}
+
+
 @pytest.mark.parametrize("phase", ["claim", "release"])
 def test_lock_wait_consumes_the_local_launch_deadline(tmp_path, monkeypatch, phase):
     from research_swarm.domain.types import new_id
