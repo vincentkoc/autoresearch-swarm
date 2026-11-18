@@ -100,6 +100,17 @@ def test_resolution_uses_bundled_contract_and_protects_dependencies(
         "requirements.lock",
         "data-manifest.json",
     }
+    assert (
+        resolved.manifest_digest
+        == "sha256:f12e43b0475d9bfb90de1fcc49af17122a58f9d4d2c66d6ed9e10c770cad51a7"
+    )
+    assert (
+        resolved.protocol_digest
+        == "sha256:93cc028cc8204827d7b70fc8de39e48f2909acd490fc9ff85f1e10327331cfa5"
+    )
+    wire = resolved.model_dump(mode="json")
+    assert "reactive" not in wire["manifest"]
+    assert wire["source"]["base_revision"] is None
     (project / "research.toml").write_text(
         MANIFEST.replace('unit = "squared_error"', 'unit = "other"')
     )
@@ -130,24 +141,6 @@ def test_train_changes_preserve_protocol_but_evaluator_changes_do_not(
     capture(project, third)
     changed = resolve_project(third)
     assert changed.protocol_digest != baseline.protocol_digest
-
-
-def test_absent_reactive_declaration_preserves_legacy_hashes_and_nested_wire(
-    project: Path, tmp_path: Path
-) -> None:
-    bundle = tmp_path / "legacy.zip"
-    capture(project, bundle)
-    resolved = resolve_project(bundle)
-    assert (
-        resolved.manifest_digest
-        == "sha256:f12e43b0475d9bfb90de1fcc49af17122a58f9d4d2c66d6ed9e10c770cad51a7"
-    )
-    assert (
-        resolved.protocol_digest
-        == "sha256:93cc028cc8204827d7b70fc8de39e48f2909acd490fc9ff85f1e10327331cfa5"
-    )
-    assert "reactive" not in resolved.model_dump(mode="json")["manifest"]
-    assert resolved.model_dump(mode="json")["source"]["base_revision"] is None
 
 
 def test_reactive_declaration_is_protected_scientific_identity(

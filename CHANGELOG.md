@@ -267,6 +267,9 @@
 
 - Declare the expected evaluation panel in the project-manifest template and explain receipt completeness.
 
+- Consolidate project manifest compatibility checks and reduce fixture setup
+  for release artifact verification.
+
 - Ignore directory symlinks outside source selections while rejecting selected symlink paths.
 
 - Report interrupted artifact and worker downloads as retryable transport failures, with partial-file cleanup.
