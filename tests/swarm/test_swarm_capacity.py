@@ -16,10 +16,12 @@ def test_mixed_slots_and_rolling_token_window() -> None:
     assert first is not None and first.fits == 2
     assert pool.acquire(Demand(cpu=1)) is None
     pool.release(first)
-    assert pool.acquire(demand) is None
+    assert pool.acquire_or_delay(demand) == (None, 60.0)
+    assert pool.acquire_or_delay(Demand(llm=1, llm_tokens=21)) == (None, None)
     assert pool.acquire(Demand(cpu=2)) is not None
     now[0] += 59.9
-    assert pool.acquire(Demand(llm=1, llm_tokens=1)) is None
+    allocation, delay = pool.acquire_or_delay(Demand(llm=1, llm_tokens=1))
+    assert allocation is None and delay == pytest.approx(0.1)
     now[0] += 0.1
     assert pool.acquire(Demand(llm=1, llm_tokens=20)) is not None
 

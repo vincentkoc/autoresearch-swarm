@@ -68,6 +68,12 @@ class WorkerLoop:
         self.demand = demand
         self.heartbeat_seconds = heartbeat_seconds
         self.lost_after_seconds = lost_after_seconds
+        self._quota_ready: dict[str, float] = {}
+
+    def retry_after(self, spec: CampaignSpec) -> float | None:
+        """Seconds until an attempt refused by the token window can be tried again."""
+        at = self._quota_ready.get(spec.campaign_id)
+        return max(0.0, at - time.monotonic()) if at is not None else None
 
     def _demand(self, spec: CampaignSpec) -> Demand:
         if self.demand is not None:
@@ -88,13 +94,16 @@ class WorkerLoop:
     ) -> bool:
         """Reclaim expired work and dispatch at most one attempt. False means no claim."""
         self.store.requeue_expired(spec.campaign_id, time.time() - self.lost_after_seconds)
+        self._quota_ready.pop(spec.campaign_id, None)
         backend = self.backend
         if backend.free_slots(spec) <= 0:
             return False
         allocation: Allocation | None = None
         if self.pool is not None:
-            allocation = self.pool.acquire(self._demand(spec))
+            allocation, delay = self.pool.acquire_or_delay(self._demand(spec))
             if allocation is None:
+                if delay is not None:
+                    self._quota_ready[spec.campaign_id] = time.monotonic() + delay
                 return False
         attempt = None
         peak = None

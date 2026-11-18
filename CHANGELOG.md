@@ -57,7 +57,8 @@
 - Add a resident swarm worker that heartbeats, retries lost trials and records
   attempt failures. Dispatch reserves estimated cost and reports charges from
   elapsed compute time and measured input and output tokens. Validated usage
-  remains billable when a task returns invalid objective metrics.
+  remains billable when a task returns invalid objective metrics. A worker reports
+  the retry delay when a rolling LLM token quota temporarily prevents dispatch.
 
 - Add a layout selector for connected clusters, category groups and a symmetric
   ring plus a broad spread-out force view, retaining filters, selection and recorded ancestry across layout changes.

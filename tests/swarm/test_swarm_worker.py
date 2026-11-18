@@ -109,6 +109,7 @@ async def test_budget_gates_dispatch_then_settles_measured_usage(tmp_path: Path)
     await asyncio.wait_for(backend.started.wait(), timeout=5)
     try:
         assert not await second.run_once(spec, before_execute=observe)
+        assert second.retry_after(spec) is None  # The cost reservation denied this claim.
         assert backend.calls == 1
         assert len(observed) == 1
     finally:
@@ -120,6 +121,9 @@ async def test_budget_gates_dispatch_then_settles_measured_usage(tmp_path: Path)
     assert not await WorkerLoop(store, backend, "three").run_once(spec, before_execute=observe)
     assert backend.calls == 2
     assert observed == [r.attempt for r in store.results(spec.campaign_id)]
+    assert not await second.run_once(spec)
+    delay = second.retry_after(spec)
+    assert delay is not None and 0 < delay <= 60  # This pool has now spent its token allowance.
 
 
 async def test_bad_metrics_still_spend_tokens_and_block_the_next_dispatch(tmp_path: Path) -> None:
