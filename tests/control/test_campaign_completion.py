@@ -7,17 +7,14 @@ import pytest
 from research_swarm.control.commands import CampaignTarget, CompleteCampaign, PauseCampaign
 from research_swarm.control.evaluations import CompleteEvaluation
 from research_swarm.control.models import StoppingRule, TrialData
-from research_swarm.control.promotions import InvalidateEvidence
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.reports import ReportCampaign, literal
 from research_swarm.control.results import PublishAttempt
-from research_swarm.control.validity import EvidenceReference
 from research_swarm.control.workers import AttemptData, ClaimJob
 from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.workers.journal import JournalState
-from tests.control.test_evaluation_control import prepare_evaluation
-from tests.control.test_promotions import assess, commit, evaluated
+from tests.control.test_evaluation_control import evaluated, prepare_evaluation
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 
@@ -32,11 +29,10 @@ def complete(pipeline: Pipeline, key: str = "finish") -> dict[str, Any]:
     )
 
 
-def test_completion_and_report_are_atomic_replayable_and_preserve_later_corrections(
+def test_completion_and_report_are_atomic_and_replayable(
     pipeline: Pipeline,
 ) -> None:
-    receipt = evaluated(pipeline)
-    commit(pipeline, assess(pipeline, receipt))
+    evaluated(pipeline)
     before = pipeline.client.get("campaign", pipeline.campaign["id"])
     response = complete(pipeline)
     assert (
@@ -66,7 +62,7 @@ def test_completion_and_report_are_atomic_replayable_and_preserve_later_correcti
         pipeline.client.events(after=snapshot["evidence_through"] - 1, limit=1)["events"][0]["type"]
         == "campaign.completed"
     )
-    assert snapshot["incumbent"]["evidence_level"] == "observed"
+    assert snapshot["incumbent"]["evidence_level"] is None
     assert snapshot["recent_evaluations"][0]["eligible"]
     observed = snapshot["recent_evaluations"][0]["data"]
     assert observed["measurement_trust"] == "authenticated"
@@ -79,25 +75,8 @@ def test_completion_and_report_are_atomic_replayable_and_preserve_later_correcti
         "Protected evaluation: unavailable. Official evaluation: unavailable."
         in content["markdown"]
     )
-    assert "No incumbent" not in content["markdown"]
     assert all(item["reserved"] == "0" and item["uncertain"] == "0" for item in snapshot["budget"])
-    pipeline.client.command(
-        "evidence.invalidate",
-        InvalidateEvidence(
-            target=EvidenceReference(kind="evaluation_receipt", id=receipt["id"]),
-            reason="Correction after completion",
-        ),
-        idempotency_key="late-correction",
-    )
     assert pipeline.client.get("report", report["id"]) == report
-    current = pipeline.client.command(
-        "report.create",
-        ReportCampaign(campaign_id=campaign["id"], recent_limit=1),
-        idempotency_key="current-report",
-    )["result"]["data"]["snapshot"]
-    assert not current["recent_evaluations"][0]["eligible"]
-    assert current["recent_evaluations"][0]["data"] == observed
-    assert current["incumbent"]["eligibility"] == "suspended"
 
 
 def test_unfinished_execution_and_pending_evaluation_cannot_complete(pipeline: Pipeline) -> None:
@@ -187,16 +166,6 @@ def test_completion_respects_declared_stopping_rule(pipeline: Pipeline) -> None:
     assert "stopping condition" in failure.value.message
 
 
-@pytest.mark.parametrize(
-    "pipeline",
-    [{"stopping": StoppingRule(max_trials=2, target_metric=20.0, permit_manual_completion=False)}],
-    indirect=True,
-)
-def test_selected_target_can_complete_before_trial_count(pipeline: Pipeline) -> None:
-    commit(pipeline, assess(pipeline, evaluated(pipeline)))
-    assert complete(pipeline)["result"]["campaign"]["state"] == "completed"
-
-
 def test_unknown_execution_blocks_completion_without_refunding_budget(
     pipeline: Pipeline, tmp_path: Path
 ) -> None:
@@ -240,19 +209,6 @@ def test_unknown_execution_blocks_completion_without_refunding_budget(
     pipeline.worker.journal.request_cancel(attempt["id"], 1)
     assert pipeline.worker.execute(attempt["id"])["state"] == "not_started"
     assert pipeline.client.get("report", unresolved["id"]) == unresolved
-
-
-def test_completion_freezes_uncommitted_selection(pipeline: Pipeline) -> None:
-    assessment = assess(pipeline, evaluated(pipeline))
-    complete(pipeline)
-    with pytest.raises(ResearchError) as failure:
-        commit(pipeline, assessment)
-    assert failure.value.code == ErrorCode.INVALID_TRANSITION
-    assert pipeline.client.get("promotion", assessment["id"])["state"] == "assessed"
-    assert (
-        pipeline.client.get("campaign", pipeline.campaign["id"])["data"]["incumbent_candidate_id"]
-        is None
-    )
 
 
 def test_report_failure_rolls_back_completion_and_its_event(

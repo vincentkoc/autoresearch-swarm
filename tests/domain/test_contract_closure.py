@@ -12,7 +12,7 @@ from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.runtime import LocalRuntime
 from tests.control.test_campaign_completion import complete
-from tests.control.test_promotions import assess, commit, evaluated
+from tests.control.test_evaluation_control import evaluated
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
 
@@ -44,7 +44,7 @@ def test_actual_claim_rejects_unavailable_isolation_without_reservation(pipeline
 def test_reopened_controller_preserves_spent_budget_for_direct_admission(
     pipeline: Pipeline,
 ):
-    commit(pipeline, assess(pipeline, evaluated(pipeline)))
+    evaluated(pipeline)
     before = pipeline.client.budget(pipeline.campaign["id"])
     assert (
         next(row for row in before["accounts"] if row["dimension"] == "attempts")["consumed"] == "2"
@@ -71,7 +71,7 @@ def test_reopened_controller_preserves_spent_budget_for_direct_admission(
 def test_completed_campaign_retains_checkpoint_bytes_across_controller_reopen(
     pipeline: Pipeline, tmp_path: Path
 ):
-    commit(pipeline, assess(pipeline, evaluated(pipeline)))
+    evaluated(pipeline)
     context = CommandContext(
         principal=pipeline.runtime.principal(), idempotency_key="storage-occupancy"
     )

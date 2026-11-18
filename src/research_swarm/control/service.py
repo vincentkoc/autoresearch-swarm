@@ -41,12 +41,6 @@ from research_swarm.control.models import (
     TrialData,
 )
 from research_swarm.control.preflight import verified_source
-from research_swarm.control.promotions import (
-    AssessPromotion,
-    CommitPromotion,
-    InvalidateEvidence,
-    PromotionControl,
-)
 from research_swarm.control.reconciliation import ReconcileAttempt, ReconciliationControl
 from research_swarm.control.reports import ReportCampaign
 from research_swarm.control.results import PublishAttempt, ResultControl
@@ -163,7 +157,6 @@ class ResearchService:
         self.closures = ClosureControl(database, self.reconciliation)
         self.evaluations = EvaluationControl(database, artifacts)
         self.historical_imports = HistoricalImportControl(database, artifacts)
-        self.promotions = PromotionControl(database)
         self.campaigns = CampaignControl(database)
         self.worker_lifecycle = WorkerLifecycle(database, self.acceptance)
 
@@ -242,22 +235,6 @@ class ResearchService:
 
     def report_campaign(self, context: CommandContext, request: ReportCampaign) -> JsonObject:
         return self.campaigns.report(context, request)
-
-    def assess_promotion(self, context: CommandContext, request: AssessPromotion) -> JsonObject:
-        return self.promotions.assess(context, request)
-
-    def reinitialize_baseline(
-        self, context: CommandContext, request: AssessPromotion
-    ) -> JsonObject:
-        return self.promotions.reinitialize(context, request)
-
-    def commit_promotion(self, context: CommandContext, request: CommitPromotion) -> JsonObject:
-        return self.promotions.commit(context, request)
-
-    def invalidate_evidence(
-        self, context: CommandContext, request: InvalidateEvidence
-    ) -> JsonObject:
-        return self.promotions.invalidate(context, request)
 
     def enroll_worker(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         if self.workers is None:

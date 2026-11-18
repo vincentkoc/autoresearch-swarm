@@ -88,6 +88,17 @@ def prepare_evaluation(pipeline: Pipeline) -> tuple[dict[str, Any], ResearchClie
     return authorized["result"], client, train
 
 
+def evaluated(pipeline: Pipeline) -> dict[str, Any]:
+    authority, evaluator, _ = prepare_evaluation(pipeline)
+    attempt = pipeline.worker.claim(pipeline.ready())
+    pipeline.worker.execute(attempt["id"])
+    return evaluator.command(
+        "evaluation.complete",
+        CompleteEvaluation(request_id=authority["id"], attempt_id=attempt["id"]),
+        idempotency_key="baseline-evaluation",
+    )["result"]
+
+
 def test_only_authorized_evaluator_can_complete_exact_native_evidence(pipeline: Pipeline) -> None:
     authorized, evaluator, train = prepare_evaluation(pipeline)
     attempt = pipeline.worker.claim(pipeline.ready())

@@ -133,6 +133,9 @@
 - **Breaking:** Retire `confirmation.create` and `confirmation.assess`. Swarm
   campaigns compare candidates on selection and held-out confirmation panels.
 
+- **Breaking:** Retire the controller promotion and evidence invalidation commands.
+  The swarm loop records its selected trial, policy score and replicate count in SQLite.
+
 - Add a resident swarm worker that heartbeats, retries lost trials and records
   attempt failures. Dispatch reserves estimated cost and reports charges from
   elapsed compute time and measured input and output tokens. Validated usage

@@ -13,7 +13,6 @@ from research_swarm import ResearchClient
 from research_swarm.api.http import create_app
 from research_swarm.client import LocalTransport
 from research_swarm.control.import_models import HistoricalObservation, ImportHistoricalEvidence
-from research_swarm.control.promotions import AssessPromotion
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.artifacts import StoredBlob
 from research_swarm.domain.canonical import content_digest
@@ -139,17 +138,6 @@ def test_schema_and_original_record_id_distinguish_historical_formats(
         pipeline, historical.model_copy(update={"source_record_id": "fictional-b"})
     )["result"]
     assert len({item["id"] for item in (first, other_schema, other_record)}) == 3
-    with pytest.raises(ResearchError) as unrankable:
-        pipeline.client.command(
-            "promotion.assess",
-            AssessPromotion(
-                campaign_id=pipeline.campaign["id"],
-                candidate_evaluation_id=first["id"],
-                expected_incumbent_revision=0,
-            ),
-            idempotency_key="cannot-promote-history",
-        )
-    assert unrankable.value.code == ErrorCode.NOT_FOUND
 
 
 def test_import_rollback_retains_neither_record_nor_permanent_artifact_owner(

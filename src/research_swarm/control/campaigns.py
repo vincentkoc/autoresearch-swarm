@@ -4,8 +4,7 @@ from fractions import Fraction
 
 from research_swarm.control.commands import CompleteCampaign, PauseCampaign
 from research_swarm.control.comparisons import eligible_evaluation
-from research_swarm.control.models import CampaignData, TrialData
-from research_swarm.control.promotions import PromotionAssessment
+from research_swarm.control.models import CampaignData, PromotionAssessment, TrialData
 from research_swarm.control.reports import ReportCampaign, create_report
 from research_swarm.domain.budgets import BudgetAccount, BudgetKind
 from research_swarm.domain.errors import ErrorCode, ResearchError
