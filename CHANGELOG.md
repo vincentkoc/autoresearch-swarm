@@ -92,6 +92,9 @@
 - Refresh selected graph connection visibility annotations when search or category
   filters change, including when filters are cleared.
 
+- Run trials on dedicated SSH pool hosts with EC2 termination protection, idle
+  shutdown to the stopped state, and verified read-only worker-local data.
+
 - Add a standalone, offline force-directed experiment inventory with up to 5,000
   nodes, category layout, search/filter, pan/zoom, pinned-node dragging and explicit
   causal ancestry inspection. Source references stay non-causal; inventory size

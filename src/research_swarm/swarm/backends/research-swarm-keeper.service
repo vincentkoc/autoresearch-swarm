@@ -1,0 +1,14 @@
+[Unit]
+Description=Stop an idle autoresearch swarm SSH pool host
+After=local-fs.target
+
+[Service]
+Type=simple
+Group=swarm
+RuntimeDirectory=research-swarm
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/python3 -m research_swarm.swarm.backends.keeper --idle-seconds 1800
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
