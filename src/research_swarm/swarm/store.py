@@ -133,6 +133,10 @@ class SQLiteStore:
         with self._connection() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(_SCHEMA)
+        with self._connection(write=True) as db:
+            columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_campaigns)")}
+            if "ranking" not in columns:
+                db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -158,7 +162,7 @@ class SQLiteStore:
             )
             if insert.rowcount:
                 _event(db, spec.campaign_id, "created")
-            elif _json(_spec(db, spec.campaign_id)) != encoded:
+            elif _json(asdict(CampaignSpec(**_spec(db, spec.campaign_id)))) != encoded:
                 raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
 
     def submit(self, trial: Trial) -> bool:
@@ -341,7 +345,25 @@ class SQLiteStore:
     def outstanding(self, campaign_id: str) -> int:
         return sum(self.queue_depth(campaign_id))
 
-    def select(self, campaign_id: str, trial_id: str) -> None:
+    def incumbent(self, campaign_id: str) -> tuple[str, float | None, int] | None:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT selected_trial_id,ranking FROM swarm_campaigns WHERE campaign_id=?",
+                (campaign_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Unknown campaign {campaign_id}")
+            if row[0] is None:
+                return None
+            score, replicates = json.loads(row[1]) if row[1] else (None, 1)
+            return row[0], score, replicates
+
+    def select(
+        self, campaign_id: str, trial_id: str, *, score: float | None = None, replicates: int = 1
+    ) -> None:
+        if replicates < 1:
+            raise ValueError("A ranking requires at least one replicate")
+        ranking = _json([score, replicates])
         with self._connection(write=True) as db:
             if not db.execute(
                 "SELECT 1 FROM swarm_trials WHERE campaign_id=? AND trial_id=? AND status='ok'",
@@ -349,9 +371,9 @@ class SQLiteStore:
             ).fetchone():
                 raise ValueError("Selection requires a successful trial from this campaign")
             changed = db.execute(
-                "UPDATE swarm_campaigns SET selected_trial_id=? WHERE campaign_id=? "
-                "AND selected_trial_id IS NOT ?",
-                (trial_id, campaign_id, trial_id),
+                "UPDATE swarm_campaigns SET selected_trial_id=?,ranking=? WHERE campaign_id=? "
+                "AND (selected_trial_id IS NOT ? OR ranking IS NOT ?)",
+                (trial_id, ranking, campaign_id, trial_id, ranking),
             )
             if changed.rowcount:
                 _event(db, campaign_id, "selected", trial_id)

@@ -1,0 +1,10 @@
+campaign_id: cpu-bigram-smoothing
+metric: bits_per_byte
+direction: minimize
+command: [python, swarm_trial.py]
+max_trials: 8
+max_workers: 8
+top_k: 3
+# The invalid smoothing value exercises failure isolation in the eight-slot run.
+search_space:
+  alpha: [0.01, 0.05, 0.1, -1.0, 0.5, 1.0, 2.0, 4.0]
