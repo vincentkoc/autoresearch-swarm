@@ -45,6 +45,14 @@
 - Apply newly requested graph layouts while reduced motion or Pause is active,
   without accepting queued animation frames.
 
+- Add reproducible program, MLP and causal language model benchmarks with random
+  and greedy baselines, local Ollama program and training-code proposals, and
+  small CPU/MPS and full CUDA training profiles.
+
+- Calibrate workloads on separate proxy and target cases before search. Count
+  panel exposures across restarts and require a held-out confirmation gain to
+  replace the reference candidate in benchmark campaigns.
+
 - Share sidebar width, collapse and section-height resizing across campaign and
   inventory views; retain widths when switching views and support keyboard dividers.
 
