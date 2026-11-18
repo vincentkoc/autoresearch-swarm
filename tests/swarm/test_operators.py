@@ -2,6 +2,8 @@ import asyncio
 import json
 import random
 import subprocess
+import sys
+import threading
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -74,6 +76,7 @@ async def test_optuna_updates_actual_trial_and_handles_retry() -> None:
         }
     )
     a, b = await sampler.propose(spec, [], 2)
+    restored = OptunaSampler(sampler.space)
     for candidate in [a, b]:
         assert 0.001 <= candidate.params["lr"] <= 0.1
         assert isinstance(candidate.params["width"], int)
@@ -90,25 +93,44 @@ async def test_optuna_updates_actual_trial_and_handles_retry() -> None:
         done = Result(attempt=replace(attempt, number=2), status="ok", metrics={"loss": value})
         sampler.tell(done)
         sampler.tell(done)
+        restored.tell(done)
+        restored.tell(done)
     assert sampler.studies["test"].best_trial.params == b.params
+    (unused,) = await restored.propose(spec, [], 1)
+    restored.discard(unused)
+    history = restored.studies["test"].trials
+    assert [t.state.name for t in history] == ["COMPLETE", "COMPLETE", "PRUNED"]
+    assert restored.studies["test"].best_trial.params == b.params
+
+
+def test_wedged_provider_cannot_hold_interpreter_shutdown() -> None:
+    script = """
+import asyncio, threading
+from research_swarm.swarm.interfaces import Candidate, CampaignSpec
+from research_swarm.swarm.operators import TextRewrite
+started = threading.Event()
+async def stuck(*args):
+    started.set()
+    threading.Event().wait()
+spec = CampaignSpec(campaign_id='timeout', metric='score', direction='maximize', command=('test',),
+                    max_workers=2, max_trials=2, proposal_timeout_seconds=0.2)
+operation = TextRewrite(stuck, 'rewrite').propose(spec, [Candidate(candidate_id='a')], 2)
+assert asyncio.run(operation) == []
+assert started.is_set()
+"""
+    subprocess.run([sys.executable, "-c", script], timeout=8, check=True)
 
 
 async def test_parallel_timeout_keeps_fast_results_and_caps_late_work() -> None:
-    both_started = asyncio.Event()
-    release = asyncio.Event()
-    started = 0
+    both_started = threading.Barrier(2)
+    release = threading.Event()
 
     async def fake(prompt: str, schema: dict[str, Any], seed: int) -> str:
-        nonlocal started
-        started += 1
-        if started == 2:
-            both_started.set()
-        await both_started.wait()
+        if seed <= 2:
+            both_started.wait(timeout=2)
         if seed == 1:
-            try:
-                await release.wait()
-            except asyncio.CancelledError:
-                await release.wait()
+            # Deliberately block even the provider's own asyncio event loop.
+            release.wait()
         assert schema["additionalProperties"] is False
         return json.dumps({"content": str(seed), "rationale": "shorten"})
 

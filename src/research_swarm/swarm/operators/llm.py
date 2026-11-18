@@ -6,8 +6,10 @@ import asyncio
 import difflib
 import json
 import math
+import threading
 from collections import deque
 from collections.abc import Awaitable, Callable, Sequence
+from concurrent.futures import Future
 from dataclasses import asdict
 from pathlib import PurePosixPath
 from typing import Any
@@ -70,7 +72,7 @@ class TextRewrite:
         self.generate = generate
         self.objective = objective
         self.concurrency = concurrency
-        self._active: set[asyncio.Task[Candidate | None]] = set()
+        self._slots = threading.BoundedSemaphore(concurrency)
         self._sequence = 0
         self._recent: dict[str, deque[dict[str, Any]]] = {}
         self.errors = 0
@@ -116,10 +118,36 @@ class TextRewrite:
         raw = await self.generate(prompt, self.schema, spec.seed + sequence)
         return self._edit(parent, raw)
 
-    def _finished(self, task: asyncio.Task[Candidate | None]) -> None:
-        self._active.discard(task)
-        if not task.cancelled() and task.exception() is not None:
-            self.errors += 1
+    def _start(
+        self, spec: CampaignSpec, parent: Candidate, sequence: int, timeout: float
+    ) -> asyncio.Future[Candidate | None]:
+        result: Future[Candidate | None] = Future()
+        result.set_running_or_notify_cancel()
+
+        async def request() -> Candidate | None:
+            async with asyncio.timeout(timeout):
+                return await self._one(spec, parent, sequence)
+
+        def run() -> None:
+            try:
+                candidate = asyncio.run(request())
+            except BaseException as exc:
+                self._slots.release()
+                result.set_exception(exc)
+            else:
+                self._slots.release()
+                result.set_result(candidate)
+
+        # A provider may block inside its async API or suppress cancellation.
+        # Its thread holds a slot until it exits and cannot delay CLI shutdown.
+        try:
+            threading.Thread(target=run, name=self.name, daemon=True).start()
+        except RuntimeError:
+            self._slots.release()
+            raise
+        wrapped = asyncio.wrap_future(result)
+        wrapped.add_done_callback(lambda f: None if f.cancelled() else f.exception())
+        return wrapped
 
     async def propose(
         self, spec: CampaignSpec, parents: Sequence[Candidate], k: int
@@ -127,33 +155,33 @@ class TextRewrite:
         timeout = spec.proposal_timeout_seconds
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("proposal timeout must be finite and positive")
-        slots = min(k, self.concurrency - len(self._active))
-        if slots <= 0 or not parents:
+        if k <= 0 or not parents:
             return []
-        tasks = []
-        for i in range(slots):
+        end = asyncio.get_running_loop().time() + timeout
+        jobs = []
+        for i in range(min(k, self.concurrency)):
+            if not self._slots.acquire(blocking=False):
+                break
             self._sequence += 1
-            job = asyncio.create_task(self._one(spec, parents[i % len(parents)], self._sequence))
-            self._active.add(job)
-            job.add_done_callback(self._finished)
-            tasks.append(job)
-        try:
-            done, pending = await asyncio.wait(tasks, timeout=timeout)
-            self.timeouts += len(pending)
-            return [
-                candidate
-                for task in tasks
-                if task in done
-                and not task.cancelled()
-                and task.exception() is None
-                and (candidate := task.result()) is not None
-            ]
-        finally:
-            # Cancellation-resistant transports keep their slot until they actually exit.
-            # Never wait for one to acknowledge cancellation on the dispatch path.
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
+            jobs.append(self._start(spec, parents[i % len(parents)], self._sequence, timeout))
+        if not jobs:
+            return []
+        done, pending = await asyncio.wait(
+            jobs, timeout=max(0, end - asyncio.get_running_loop().time())
+        )
+        self.timeouts += len(pending)
+        batch = []
+        for job in jobs:
+            if job not in done:
+                continue
+            error = job.exception()
+            if isinstance(error, TimeoutError):
+                self.timeouts += 1
+            elif error is not None:
+                self.errors += 1
+            elif (candidate := job.result()) is not None:
+                batch.append(candidate)
+        return batch
 
 
 class CodeDiff(TextRewrite):
