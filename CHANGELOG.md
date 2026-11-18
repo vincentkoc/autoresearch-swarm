@@ -42,6 +42,9 @@
   crossover, ensemble growth, seed replication and deadline-bounded local Ollama edits.
   Ensembles keep individual member recipes when replicated, promoted or resumed.
 
+- Allocate swarm proposal slots by observed gain per cost, learn mutations from
+  categorical trial results and promote replicated recipes at full fidelity.
+
 - Define the campaign, candidate, trial, attempt and result records and plugin
   protocols for capacity-driven research campaigns.
 
