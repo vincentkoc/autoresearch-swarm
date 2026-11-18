@@ -193,6 +193,10 @@ class Store(Protocol):
         """Count queued and running trials, including retries."""
         ...
 
+    def queue_depth(self, campaign_id: str) -> tuple[int, int]:
+        """Return queued and running trial counts from the same snapshot."""
+        ...
+
     def select(self, campaign_id: str, trial_id: str) -> None:
         """Persist the selected successful trial."""
         ...
