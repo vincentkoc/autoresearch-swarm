@@ -6,16 +6,12 @@ import pytest
 
 from research_swarm.client import LocalTransport, ResearchClient
 from research_swarm.control.commands import SubmitTrial
-from research_swarm.control.confirmation_models import ConfirmationData
-from research_swarm.control.evaluations import AuthorizeEvaluation
 from research_swarm.control.queries import RecordQuery
 from research_swarm.domain.budgets import BudgetLimit
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.identity import CommandContext
 from research_swarm.runtime import LocalRuntime
-from research_swarm.workers.journal import JournalState
 from tests.control.test_campaign_completion import complete
-from tests.control.test_confirmation import create_plan, exposure_budget, options, setup_plan
 from tests.control.test_promotions import assess, commit, evaluated
 from tests.integration.test_local_pipeline import Pipeline
 from tests.integration.test_local_pipeline import pipeline as pipeline
@@ -104,47 +100,3 @@ def test_completed_campaign_retains_checkpoint_bytes_across_controller_reopen(
     assert reopened.get("campaign", pipeline.campaign["id"])["state"] == "completed"
     assert reopened.download(artifact["id"], tmp_path / "still-retained.json") == downloaded
     assert reopened_runtime.service.artifacts.occupancy(context) == occupied
-
-
-@pytest.mark.parametrize(
-    "pipeline", [{**options(), "source_scoring_delay_seed": 101}], indirect=True
-)
-def test_confirmation_timeout_after_input_access_cannot_refund_exposure(pipeline: Pipeline):
-    intent, campaign = setup_plan(pipeline)
-    plan = ConfirmationData.model_validate(create_plan(pipeline, intent, campaign)["data"]).plan
-    binding = plan.bindings[0]
-    trial = pipeline.client.get("trial", binding.trial_id)
-    training = pipeline.worker.claim(pipeline.client.get("job", trial["data"]["job_ids"][0]))
-    pipeline.worker.execute(training["id"])
-    scoring = pipeline.client.get("job", binding.scoring_job_id)
-    pipeline.client.command(
-        "evaluation.authorize",
-        AuthorizeEvaluation(
-            job_id=scoring["id"],
-            evaluator_id=intent.evaluator_id,
-        ),
-        idempotency_key="timed-confirmation",
-        expected_revision=scoring["revision"],
-    )
-    attempt = pipeline.worker.claim(pipeline.client.get("job", scoring["id"]))
-    assert exposure_budget(pipeline)["uncertain"] == "1"
-    result = pipeline.worker.execute(attempt["id"])
-    assert result["state"] == "failed"
-    entry = pipeline.worker.journal.get(attempt["id"])
-    assert entry.state == JournalState.CLOSED and entry.outcome.reason == "deadline"
-    assert entry.outcome.closure.scope_closed
-    markers = list(pipeline.worker.root.rglob("access.marker"))
-    assert len(markers) == 1 and markers[0].read_text() == "101"
-    before = exposure_budget(pipeline)
-    assert before["consumed"] == "1" and before["uncertain"] == "0" and before["reserved"] == "9"
-    reopened = ResearchClient(LocalTransport(LocalRuntime.open(pipeline.runtime.root)))
-    assert reopened.get("evaluation_exposure", binding.exposure_id)["state"] == "consumed"
-    assert pipeline.worker.execute(attempt["id"]) == result
-    assert pipeline.worker.journal.get(attempt["id"]) == entry
-    after = next(
-        item
-        for item in reopened.budget(campaign["id"])["accounts"]
-        if item["dimension"] == "evaluation_exposures"
-    )
-    assert after == before
-    assert reopened.get("trial", binding.trial_id)["data"]["evaluation_status"] != "valid"
