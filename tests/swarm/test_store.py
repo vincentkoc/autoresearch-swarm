@@ -103,6 +103,19 @@ def test_atomic_cost_reservations_and_candidate_specific_estimates(tmp_path: Pat
     assert next_attempt is not None and next_attempt.trial == trial(1)
 
 
+def test_decimal_dispatch_exactly_at_budget(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "queue.db")
+    store.create_campaign(spec(max_cost=0.30))
+    for n in range(3):
+        store.submit(trial(n))
+    first = store.claim("test", "one", reserve_cost=0.10)
+    assert first is not None
+    store.report(Result(attempt=first, status="ok", cost=0.10))
+    assert store.claim("test", "two", reserve_cost=0.20000001) is None
+    assert store.claim("test", "two", reserve_cost=0.20) is not None
+    assert store.claim("test", "three", reserve_cost=0.00000001) is None
+
+
 def test_campaign_isolation_resume_and_durable_selection(tmp_path: Path) -> None:
     path = tmp_path / "queue.db"
     queue = SQLiteStore(path)

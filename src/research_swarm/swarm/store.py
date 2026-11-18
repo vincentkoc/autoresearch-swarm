@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import asdict, replace
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -208,19 +209,22 @@ class SQLiteStore:
             ).fetchone()[0]
             if active >= spec["max_workers"]:
                 return None
-            spent = db.execute(
-                "SELECT coalesce(sum(CASE WHEN observation IS NULL "
-                "THEN max(reserve,cost) ELSE cost END),0) FROM swarm_attempts "
-                "JOIN swarm_trials USING(trial_id) WHERE campaign_id=?",
-                (campaign_id,),
-            ).fetchone()[0]
+            remaining = None
+            if spec["max_cost"] is not None:
+                charges = db.execute(
+                    "SELECT CASE WHEN observation IS NULL THEN max(reserve,cost) ELSE cost END "
+                    "FROM swarm_attempts JOIN swarm_trials USING(trial_id) WHERE campaign_id=?",
+                    (campaign_id,),
+                )
+                spent = sum((Decimal(str(row[0])) for row in charges), Decimal(0))
+                remaining = Decimal(str(spec["max_cost"])) - spent
             for row in db.execute(
                 _TRIAL + " WHERE t.campaign_id=? AND status='queued' ORDER BY t.rowid",
                 (campaign_id,),
             ):
                 trial = _trial(row)
                 reserve = _cost(reserve_cost(trial) if callable(reserve_cost) else reserve_cost)
-                if spec["max_cost"] is None or spent + reserve <= spec["max_cost"]:
+                if remaining is None or Decimal(str(reserve)) <= remaining:
                     break
             else:
                 return None
