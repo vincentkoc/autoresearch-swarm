@@ -131,6 +131,9 @@
   selected revisions and active mounts, and resume an interrupted deletion.
   Workers can copy the same revision concurrently while collection waits.
 
+- Extend campaign cleanup to managed jobs, EC2 instances, and EBS volumes.
+  Recheck ownership before removal and report partial failures for retry.
+
 - Keep campaign graph coordinates finite for extreme scores.
 
 - Rework the campaign view into a compact three-column workspace: narrow context

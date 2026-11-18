@@ -490,11 +490,12 @@ def main(argv: list[str] | None = None) -> int:
     result: Any
     try:
         if args.action == "campaign" and args.campaign_action == "gc":
+            from research_swarm.runtime import default_state_directory
             from research_swarm.swarm.campaign_gc import collect
 
             if args.controller or args.token_file:
                 raise ValueError("campaign gc operates on the local resource inventory")
-            result, code = collect(args)
+            result, code = asyncio.run(collect(args, args.state_dir or default_state_directory()))
             _emit_json(result)
             return code
         if args.action == "report":
