@@ -36,8 +36,9 @@
 - Add a reproducible synthetic research atlas with 600 records and 2,028 links,
   including branching trials and cross-area references, for the README graph example.
 
-- Run the full contract suite on Python 3.12 on Linux and macOS. Python 3.11 and
-  3.13 run compatibility smoke tests on both platforms.
+- Include pytest-xdist in the locked development environment for parallel local
+  contract runs. Give Chrome time to start cold in the real browser smoke tests
+  and report its launch errors.
 
 - Apply newly requested graph layouts while reduced motion or Pause is active,
   without accepting queued animation frames.
