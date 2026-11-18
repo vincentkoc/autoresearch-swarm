@@ -24,6 +24,16 @@ PANEL_SEEDS = {
     "calibration_target": 503,
 }
 
+
+def panel_size(name: str, size: str, role: str) -> int:
+    if name == "program":
+        return 0 if role == "train" else (48 if size == "small" else 512)
+    if name == "mlp":
+        return 256 if size == "small" else 4096
+    batch_size = 16 if size == "small" else 64
+    return batch_size * (8 if role == "train" else 2)
+
+
 Score = Callable[[Candidate, int, str, str, str, float], float]
 
 
@@ -60,6 +70,13 @@ class Task:
 
     def improved(self, value: float, previous: float) -> bool:
         return value > previous if self.direction == "maximize" else value < previous
+
+    def members(self, panel: str) -> tuple[str, ...]:
+        # Each row is identified by its generating stream and offset within it.
+        return tuple(
+            f"{self.name}/{PANEL_SEEDS[panel]}/{i}"
+            for i in range(panel_size(self.name, self.size, panel))
+        )
 
 
 @dataclass(frozen=True)
@@ -101,7 +118,14 @@ def greedy_search(task: Task, history: Sequence[Trial], rng: random.Random) -> C
     return rng.choice(unseen or neighbors)
 
 
-def run_search(task: Task, propose: Policy, *, budget: int, seed: int) -> list[Trial]:
+def run_search(
+    task: Task,
+    propose: Policy,
+    *,
+    budget: int,
+    seed: int,
+    evaluate: Callable[[Candidate, int], float] | None = None,
+) -> list[Trial]:
     if budget < 1:
         raise ValueError("budget must include at least the initial trial")
     rng = random.Random(seed)
@@ -114,7 +138,9 @@ def run_search(task: Task, propose: Policy, *, budget: int, seed: int) -> list[T
         error = None
         try:
             candidate = task.initial if not history else propose(task, tuple(history), rng)
-            score = task.score(candidate, seed=seed)
+            score = (
+                task.score(candidate, seed=seed) if evaluate is None else evaluate(candidate, seed)
+            )
             if best is None or task.improved(score, best):
                 best = score
         except Exception as exc:
@@ -139,7 +165,7 @@ def _slug_score(
         "trim-hyphens": lambda s: s.strip("-"),
     }
     scores = []
-    for index in range(math.ceil(fidelity * (48 if size == "small" else 512))):
+    for index in range(math.ceil(fidelity * panel_size("program", size, panel))):
         words = rng.sample(("Elm", "ash", "OAK", "gingko", "FIR", "Birch"), k=2)
         # The unique suffix identifies a fixed case across all runs of this panel.
         suffix = f"{PANEL_SEEDS[panel]}x{index}"
