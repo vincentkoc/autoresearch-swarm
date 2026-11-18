@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Remove the unused settlement-evidence verifier and its reservation lookup index
+  from new control databases.
+
 - Opening a legacy control database as a swarm campaign now reports how to
   start in a fresh database path and preserves the existing state.
 
