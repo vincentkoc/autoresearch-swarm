@@ -44,7 +44,6 @@ class CommandIntents:
             set(clients) != {"worker"}
             or not isinstance(clients["worker"].transport, HTTPTransport)
             or remote_worker.project_ids is None
-            or remote_worker.clock_mode != "bounded-continuous-v1"
         ):
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Remote intents require one scoped worker route"

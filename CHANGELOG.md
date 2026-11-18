@@ -187,6 +187,10 @@
 - Drop Windows-native runtime support. Linux and macOS workers retain process-group
   supervision. Stored Windows process and path evidence remains readable.
 
+- Replace signed time samples, witness servers, and worker clock channels with
+  local monotonic launch and execution deadlines. Deployments that used calibrated
+  time require fresh controller and worker state directories.
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance

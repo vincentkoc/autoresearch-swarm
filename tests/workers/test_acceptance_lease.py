@@ -42,15 +42,7 @@ def expire(pipeline: Pipeline, row: dict[str, Any], key: str | None = None) -> d
 def clock(
     pipeline: Pipeline, monkeypatch: pytest.MonkeyPatch, row: dict[str, Any], now: str
 ) -> None:
-    monkeypatch.setattr(
-        pipeline.runtime.service.acceptance,
-        "time",
-        lambda worker: (
-            now,
-            row["data"]["clock_epoch"],
-            row["data"]["clock_policy_digest"],
-        ),
-    )
+    monkeypatch.setattr("research_swarm.control.acceptance.utc_now", lambda: now)
 
 
 def heartbeat(pipeline: Pipeline, row: dict[str, Any], *, sequence: int = 1) -> WorkerHeartbeat:
@@ -139,24 +131,14 @@ def test_exact_expiry_preserves_cancellation_acknowledgments_and_cannot_revive(
     assert lease(pipeline, attempt["id"]) == expired
 
 
-@pytest.mark.parametrize("reason", ["backward", "epoch", "policy"])
 def test_clock_discontinuity_requires_reconciliation(
     pipeline: Pipeline,
     monkeypatch: pytest.MonkeyPatch,
-    reason: str,
 ) -> None:
     attempt = pipeline.worker.claim(pipeline.ready())
     original = lease(pipeline, attempt["id"])
-    now, epoch, policy = original["data"]["issued_at"], None, None
-    if reason == "backward":
-        now = after(now, -1)
-    elif reason == "epoch":
-        epoch = new_id()
-    else:
-        policy = "sha256:" + "0" * 64
-    monkeypatch.setattr(
-        pipeline.runtime.service.acceptance, "time", lambda worker: (now, epoch, policy)
-    )
+    now = after(original["data"]["issued_at"], -1)
+    clock(pipeline, monkeypatch, original, now)
     result = expire(pipeline, original)["result"]
     assert result["state"] == "unqualified"
     assert pipeline.client.get("attempt", attempt["id"])["state"] == "execution_unknown"
@@ -476,9 +458,7 @@ def test_clock_failure_between_renewal_checks_is_latched_without_a_third_observa
     attempt = pipeline.worker.claim(pipeline.ready())
     row = lease(pipeline, attempt["id"])
     ticks = iter((after(row["data"]["issued_at"], 1), after(row["data"]["issued_at"], -1)))
-    monkeypatch.setattr(
-        pipeline.runtime.service.acceptance, "time", lambda worker: (next(ticks), None, None)
-    )
+    monkeypatch.setattr("research_swarm.control.acceptance.utc_now", lambda: next(ticks))
     reply = pipeline.worker.client.command(
         "worker.heartbeat", heartbeat(pipeline, row), idempotency_key="clock-between-checks"
     )

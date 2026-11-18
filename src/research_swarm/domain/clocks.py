@@ -6,13 +6,10 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from research_swarm.domain.assignments import SignatureHex, SignedAssignment
 from research_swarm.domain.canonical import record_digest
-from research_swarm.domain.types import ID, Digest, Name, VersionedRecord
-from research_swarm.domain.workers import WorkerBinding
+from research_swarm.domain.types import VersionedRecord
 
 ClockMilliseconds = Annotated[int, Field(strict=True, ge=0, le=2**53 - 1)]
-ClockMode = Literal["local-utc-v1", "bounded-continuous-v1"]
 
 
 class ClockPolicy(VersionedRecord):
@@ -32,50 +29,3 @@ class ClockPolicy(VersionedRecord):
     @property
     def digest(self) -> str:
         return record_digest("research.clock-policy", self.model_dump(mode="json"))
-
-
-class AuthorityClockAdmission(VersionedRecord):
-    """Enrollment-owned authority profile; never inferred from a sampled reply."""
-
-    profile: Literal["hosted-native-witness-v1"] = "hosted-native-witness-v1"
-    policy_digest: Digest
-
-
-class ClockChallenge(VersionedRecord):
-    worker_id: ID
-    session_id: ID
-    nonce: ID
-
-
-class ClockReplyPayload(VersionedRecord):
-    binding: WorkerBinding
-    clock_epoch: ID
-    nonce: ID
-    authority_time_ms: ClockMilliseconds
-    clock_profile: Name
-    policy: ClockPolicy
-
-
-class SignedClockReply(VersionedRecord):
-    algorithm: Literal["ed25519-jcs-v1"] = "ed25519-jcs-v1"
-    key_id: Digest
-    payload: ClockReplyPayload
-    signature: SignatureHex
-
-
-class AssignmentTimePayload(VersionedRecord):
-    binding: WorkerBinding
-    clock_epoch: ID
-    assignment_digest: Digest
-    policy_digest: Digest
-
-
-class SignedAssignmentTime(VersionedRecord):
-    algorithm: Literal["ed25519-jcs-v1"] = "ed25519-jcs-v1"
-    key_id: Digest
-    payload: AssignmentTimePayload
-    signature: SignatureHex
-
-
-def timed_assignment_digest(assignment: SignedAssignment) -> str:
-    return record_digest("research.timed-assignment", assignment.model_dump(mode="json"))

@@ -11,11 +11,6 @@ from research_swarm.control.acceptance import AcceptanceControl
 from research_swarm.control.confirmation_runtime import claim_confirmation
 from research_swarm.control.job_inputs import resolved_job_inputs
 from research_swarm.control.models import CampaignData, JobData, ProjectRevisionData, TrialData
-from research_swarm.control.time_authority import (
-    AuthorityTime,
-    AuthorityTimeProvider,
-    ClockAuthorityScope,
-)
 from research_swarm.control.worker_records import (
     AttemptData as AttemptData,
 )
@@ -28,15 +23,6 @@ from research_swarm.crypto import Ed25519Provider, resolve_crypto
 from research_swarm.domain.assignments import (
     AssignmentPayload,
 )
-from research_swarm.domain.clocks import (
-    AssignmentTimePayload,
-    AuthorityClockAdmission,
-    ClockChallenge,
-    ClockMode,
-    ClockReplyPayload,
-    SignedClockReply,
-    timed_assignment_digest,
-)
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.experiments import DispatchEnvelope
@@ -47,15 +33,12 @@ from research_swarm.domain.types import (
     Name,
     VersionedRecord,
     new_id,
-    utc_now,
 )
 from research_swarm.domain.workers import EngineCapabilities as EngineCapabilities
 from research_swarm.state.artifacts import ArtifactCatalog
 from research_swarm.state.database import Database, JsonObject, Transaction
 from research_swarm.state.ledger import BudgetLedger
 from research_swarm.workers.authority import WorkerBinding, authorize_dispatch
-from research_swarm.workers.clock_signatures import ClockSigner, ClockVerifier
-from research_swarm.workers.clocks import require_authority_clock
 from research_swarm.workers.signatures import AssignmentSigner
 
 NATIVE_CLEANUP_MS = 5000
@@ -69,18 +52,12 @@ class EnrollWorker(VersionedRecord):
     profiles: tuple[EngineCapabilities, ...] = Field(min_length=1, max_length=32)
     max_concurrency: int = Field(default=1, strict=True, ge=1, le=1024)
     project_ids: tuple[ID, ...] | None = Field(default=None, min_length=1, max_length=128)
-    clock_mode: ClockMode = "local-utc-v1"
-    clock_admission: AuthorityClockAdmission | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
     environment_contracts: tuple[Digest, ...] | None = Field(
         default=None, min_length=1, max_length=128, exclude_if=lambda value: value is None
     )
 
     @model_validator(mode="after")
     def distinct_profiles(self) -> EnrollWorker:
-        if self.clock_admission is not None and self.clock_mode != "bounded-continuous-v1":
-            raise ValueError("Authority clock admission requires calibrated time")
         if len({profile.name for profile in self.profiles}) != len(self.profiles):
             raise ValueError("Worker profiles must be unique")
         if self.project_ids is not None and len(set(self.project_ids)) != len(self.project_ids):
@@ -131,7 +108,6 @@ class WorkerControl:
         dispatch_key: bytes,
         assignment_key: bytes | None = None,
         *,
-        authority_time_provider: AuthorityTimeProvider | None = None,
         crypto_provider: Ed25519Provider | None = None,
     ) -> None:
         if len(dispatch_key) < 32:
@@ -142,120 +118,10 @@ class WorkerControl:
         if assignment_key is not None and len(assignment_key) != 32:
             raise ValueError("Assignment signing requires a 32-byte Ed25519 key")
         self._assignment_key = assignment_key
-        if (
-            authority_time_provider is not None
-            and authority_time_provider.authority_identity != database.authority_identity
-        ):
-            raise ValueError("Clock provider must share the controller state authority")
-        self._authority_time_provider = authority_time_provider
-        self.acceptance = AcceptanceControl(database, self._execution_time)
-
-    def _clock_signer(self, worker: WorkerData) -> ClockSigner:
-        if self._assignment_key is None or worker.assignment_authority is None:
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "Clock signing authority is absent"
-            )
-        signer = ClockSigner(
-            worker.binding, self._assignment_key, crypto_provider=self.crypto_provider
-        )
-        if signer.authority != worker.assignment_authority:
-            raise ResearchError(ErrorCode.STALE_FENCE, "Clock signing authority changed")
-        return signer
-
-    def _time(self, worker: WorkerData) -> AuthorityTime:
-        signer = self._clock_signer(worker)
-        binding = worker.binding
-        if self._authority_time_provider is None:
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE, "Authority time provider is absent"
-            )
-        observation = self._authority_time_provider.observe(
-            ClockAuthorityScope(
-                binding.workspace_id,
-                binding.controller_id,
-                binding.control_epoch,
-                signer.authority.key_id,
-            )
-        )
-        if worker.clock_admission is not None:
-            require_authority_clock(observation.profile, observation.policy, worker.clock_admission)
-        return observation
-
-    def _execution_time(self, worker: WorkerData) -> AuthorityTime:
-        observation = self._time(worker)
-        require_authority_clock(observation.profile, observation.policy, worker.clock_admission)
-        return observation
-
-    def observation_time(self, worker: WorkerData) -> AuthorityTime:
-        """Qualified time for operational observations, without extending a lease."""
-        return self._time(worker)
-
-    def _clock_worker(self, transaction: Transaction, request: ClockChallenge) -> WorkerData:
-        worker = worker_authority(transaction, request.worker_id, request.session_id)
-        if worker.clock_mode != "bounded-continuous-v1":
-            raise ResearchError(
-                ErrorCode.CAPABILITY_UNAVAILABLE,
-                "Worker is enrolled for local UTC, not calibrated authority time",
-            )
-        self._clock_signer(worker)
-        return worker
-
-    def validate_clock(self, context: CommandContext, request: ClockChallenge) -> WorkerData:
-        """Authenticate a clock request before witness I/O, without obtaining time."""
-        context.principal.require("worker.query")
-        request = ClockChallenge.model_validate(request)
-        return self.database.store.read(
-            lambda connection: self._clock_worker(Transaction(connection, context), request)
-        )
-
-    def clock(self, context: CommandContext, request: ClockChallenge) -> SignedClockReply:
-        context.principal.require("worker.query")
-        request = ClockChallenge.model_validate(request)
-
-        def read(transaction: Transaction) -> SignedClockReply:
-            worker = self._clock_worker(transaction, request)
-            observed = self._time(worker)
-            return self._clock_signer(worker).reply(
-                ClockReplyPayload(
-                    binding=worker.binding,
-                    clock_epoch=observed.epoch,
-                    nonce=request.nonce,
-                    authority_time_ms=observed.milliseconds,
-                    clock_profile=observed.profile,
-                    policy=observed.policy,
-                )
-            )
-
-        return self.database.query(
-            context, "worker.clock", request.model_dump(mode="json"), "worker.query", read
-        )
-
-    def input_time(self, worker: WorkerData, attempt: AttemptData) -> str:
-        if worker.clock_mode == "local-utc-v1":
-            if attempt.assignment_time is not None:
-                raise ResearchError(ErrorCode.STALE_FENCE, "Assignment clock mode differs")
-            return utc_now()
-        if attempt.assignment_time is None or attempt.signed_assignment is None:
-            raise ResearchError(ErrorCode.STALE_FENCE, "Assignment time binding is absent")
-        signer = self._clock_signer(worker)
-        ClockVerifier(signer.authority, crypto_provider=self.crypto_provider).binding(
-            attempt.assignment_time, attempt.signed_assignment
-        )
-        observed = self._time(worker)
-        grant = attempt.assignment_time.payload
-        if grant.clock_epoch != observed.epoch or grant.policy_digest != observed.policy.digest:
-            raise ResearchError(ErrorCode.STALE_FENCE, "Issuing clock epoch is unavailable")
-        return observed.datetime.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        self.acceptance = AcceptanceControl(database)
 
     def enroll(self, context: CommandContext, request: EnrollWorker) -> JsonObject:
         def enroll(transaction: Transaction) -> JsonObject:
-            if request.clock_mode == "bounded-continuous-v1" and (
-                self._assignment_key is None or self._authority_time_provider is None
-            ):
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE,
-                    "Calibrated workers require signing and qualified time authority",
-                )
             if request.project_ids is not None:
                 if self._assignment_key is None:
                     raise ResearchError(
@@ -289,8 +155,6 @@ class WorkerControl:
                 profiles=request.profiles,
                 max_concurrency=request.max_concurrency,
                 project_ids=request.project_ids,
-                clock_mode=request.clock_mode,
-                clock_admission=request.clock_admission,
                 environment_contracts=request.environment_contracts,
                 assignment_authority=(
                     AssignmentSigner(
@@ -300,8 +164,6 @@ class WorkerControl:
                     else None
                 ),
             )
-            if data.clock_admission is not None:
-                self._execution_time(data)
             worker = transaction.insert(
                 "worker",
                 request.worker_id,
@@ -313,9 +175,6 @@ class WorkerControl:
             return worker
 
         payload = request.model_dump(mode="json")
-        # Local enrollment acknowledgments predate the opt-in clock contract.
-        if request.clock_mode == "local-utc-v1":
-            payload.pop("clock_mode")
         return self.database.execute(context, "worker.enroll", payload, "worker.manage", enroll)
 
     def claim(self, context: CommandContext, request: ClaimJob) -> JsonObject:
@@ -415,12 +274,7 @@ class WorkerControl:
                     "execution_ms": Decimal(job.stage.timeout_ms + NATIVE_CLEANUP_MS),
                 },
             )
-            clock_time = (
-                self._execution_time(worker)
-                if worker.clock_mode == "bounded-continuous-v1"
-                else None
-            )
-            now = clock_time.datetime if clock_time is not None else datetime.now(UTC)
+            now = datetime.now(UTC)
             expiry = (
                 (now + timedelta(minutes=2))
                 .isoformat(timespec="milliseconds")
@@ -453,7 +307,6 @@ class WorkerControl:
             source = ArtifactRef.model_validate(candidate["source_artifact"])
             ArtifactCatalog.available(transaction, source)
             signed_assignment = None
-            assignment_time = None
             if worker.assignment_authority is not None:
                 if self._assignment_key is None:
                     raise ResearchError(
@@ -479,15 +332,6 @@ class WorkerControl:
                         issued_at=now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
                     )
                 )
-                if clock_time is not None:
-                    assignment_time = self._clock_signer(worker).bind(
-                        AssignmentTimePayload(
-                            binding=worker.binding,
-                            clock_epoch=clock_time.epoch,
-                            assignment_digest=timed_assignment_digest(signed_assignment),
-                            policy_digest=clock_time.policy.digest,
-                        )
-                    )
             attempt = transaction.insert(
                 "attempt",
                 attempt_id,
@@ -499,7 +343,6 @@ class WorkerControl:
                     source_tree_digest=trial.spec.source.tree_digest,
                     evaluation_request_id=job.evaluation_request_id,
                     signed_assignment=signed_assignment,
-                    assignment_time=assignment_time,
                 ).model_dump(mode="json"),
                 state="reserved",
                 campaign_id=row["campaign_id"],
@@ -510,7 +353,6 @@ class WorkerControl:
                 attempt,
                 worker,
                 now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-                clock_time,
             )
             updated_job = transaction.update(
                 "job",

@@ -71,12 +71,7 @@ def input_reference(
     transaction: Transaction, request: WorkerArtifactRead, workers: WorkerControl | None = None
 ) -> ArtifactRef:
     worker, attempt, reference = assigned_input(transaction, request)
-    if workers is None:
-        if worker.clock_mode != "local-utc-v1" or attempt.assignment_time is not None:
-            raise ResearchError(ErrorCode.STALE_FENCE, "Issuing clock authority is unavailable")
-        now = utc_now()
-    else:
-        now = workers.input_time(worker, attempt)
+    now = utc_now()
     if min(attempt.dispatch.expires_at, attempt.dispatch.hard_deadline_at) <= now:
         raise ResearchError(ErrorCode.STALE_FENCE, "Input acquisition grant has expired")
     return reference

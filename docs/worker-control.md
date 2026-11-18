@@ -337,7 +337,7 @@ that attempt. New research requires an explicitly admitted new trial.
 This command pins and reads the journal, not the scientific report or model output
 blobs. A missing or malformed report must not make known process closure disappear.
 The journal must still match the original dispatch, specification, signed assignment,
-clock evidence, command, native identity, and current job ownership. UNKNOWN state,
+command, native identity, and current job ownership. UNKNOWN state,
 an unclosed scope, or unproven exit refuses settlement. The immutable `attempt_closure`
 receipt keeps the actual native exit/reason, original authority, original publication
 digest, measured consumption, and current operator authority. Successful native exit

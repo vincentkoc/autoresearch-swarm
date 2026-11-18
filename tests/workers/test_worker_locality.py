@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
-from dataclasses import replace
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +12,6 @@ from research_swarm.api.mcp import make_mcp
 from research_swarm.client import LocalTransport
 from research_swarm.control.queries import RecordQuery
 from research_swarm.control.worker_locality import AdvertiseWorkerCache
-from research_swarm.domain.clocks import ClockChallenge
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.identity import CommandContext, Principal
@@ -100,13 +98,6 @@ def test_cache_observation_is_own_session_metadata_without_execution_authority(
         for operation in (
             lambda: client.worker_list(query(worker, "pending")),
             lambda: client.worker_get(read(worker, "worker", worker.binding.worker_id)),
-            lambda: client.worker_clock(
-                ClockChallenge(
-                    worker_id=worker.binding.worker_id,
-                    session_id=worker.binding.worker_session_id,
-                    nonce=new_id(),
-                )
-            ),
         ):
             with pytest.raises(ResearchError) as denied:
                 operation()
@@ -116,13 +107,14 @@ def test_cache_observation_is_own_session_metadata_without_execution_authority(
 def test_cache_replay_preserves_receipt_time_and_cas_prevents_lost_observations(
     pipeline: Pipeline, monkeypatch
 ):
-    control = pipeline.runtime.service.workers
-    now = control.observation_time(pipeline.worker.worker)
-    monkeypatch.setattr(control, "observation_time", lambda worker: now)
+    now = 1_000_000
+    monkeypatch.setattr(
+        "research_swarm.control.worker_locality.monotonic_ns", lambda: now * 1_000_000
+    )
     client = pipeline.worker.client
     request = advertisement(pipeline)
     first = publish(client, request, key="first-cache")
-    now = replace(now, milliseconds=now.milliseconds + 61_000)
+    now += 61_000
     assert publish(client, request, key="first-cache") == first
     assert publish(client, request, revision=1)["result"] == first["result"]
     with pytest.raises(ResearchError) as changed_snapshot:
@@ -146,36 +138,20 @@ def test_cache_replay_preserves_receipt_time_and_cas_prevents_lost_observations(
 
 @pytest.mark.parametrize("age", [-1, 59_999, 60_000])
 def test_cache_hint_expiry_uses_authority_elapsed_time(pipeline: Pipeline, monkeypatch, age):
-    control = pipeline.runtime.service.workers
-    origin = control.observation_time(pipeline.worker.worker)
-    now = origin
-    monkeypatch.setattr(control, "observation_time", lambda worker: now)
+    now = 1_000_000
+    monkeypatch.setattr(
+        "research_swarm.control.worker_locality.monotonic_ns", lambda: now * 1_000_000
+    )
     request = advertisement(pipeline)
     publish(pipeline.worker.client, request)
-    now = replace(origin, milliseconds=origin.milliseconds + age)
+    now += age
     assert fresh(pipeline) == (request.references if 0 <= age < 60_000 else ())
 
 
-def test_cache_hint_ignores_replaced_clock_and_unavailable_authority(
-    pipeline: Pipeline, monkeypatch
-):
-    control = pipeline.runtime.service.workers
-    origin = control.observation_time(pipeline.worker.worker)
-    monkeypatch.setattr(control, "observation_time", lambda worker: origin)
+def test_cache_hint_ignores_a_previous_process_clock(pipeline: Pipeline, monkeypatch):
     publish(pipeline.worker.client, advertisement(pipeline))
-    monkeypatch.setattr(control, "observation_time", lambda worker: replace(origin, epoch=new_id()))
+    monkeypatch.setattr("research_swarm.control.worker_locality._CACHE_CLOCK_EPOCH", new_id())
     assert fresh(pipeline) == ()
-
-    def unavailable(worker):
-        raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Synthetic missing clock")
-
-    monkeypatch.setattr(control, "observation_time", unavailable)
-    assert fresh(pipeline) == ()
-    with pytest.raises(ResearchError) as refused:
-        publish(pipeline.worker.client, advertisement(pipeline), revision=1)
-    assert refused.value.code == ErrorCode.CAPABILITY_UNAVAILABLE
-    row = pipeline.client.get("worker_cache", pipeline.worker.worker.binding.worker_session_id)
-    assert row["revision"] == 1
 
 
 @pytest.mark.parametrize("change", ["missing", "media_type", "size_bytes"])

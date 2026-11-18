@@ -44,13 +44,6 @@ def parser() -> argparse.ArgumentParser:
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
-    witness = commands.add_parser("witness", help="Run a private native time source")
-    witness_actions = witness.add_subparsers(dest="witness_action", required=True)
-    witness_serve = witness_actions.add_parser("serve", help="Serve one pinned native witness")
-    witness_serve.add_argument("--config", type=Path, required=True)
-    witness_serve.add_argument("--signing-key-file", type=Path, required=True)
-    witness_serve.add_argument("--tls-certificate-file", type=Path)
-    witness_serve.add_argument("--tls-key-file", type=Path)
     commands.add_parser("mcp", help="Expose typed agent tools over stdio")
     reactive = commands.add_parser(
         "reactive", help="Operate one explicitly granted local decision session"
@@ -193,9 +186,6 @@ def parser() -> argparse.ArgumentParser:
     describe.add_argument("--cpu-slots", type=int, default=1)
     describe.add_argument("--machine-registry", type=Path)
     describe.add_argument("--registration", type=Path)
-    describe.add_argument(
-        "--clock-admission", type=Path, help="Explicit authority-clock admission JSON"
-    )
     provision = worker_actions.add_parser("provision", help="Write a private scoped worker bundle")
     provision.add_argument("--description", type=Path, required=True)
     provision.add_argument("--url", required=True)
@@ -655,18 +645,6 @@ def main(argv: list[str] | None = None) -> int:
                 arguments = {"after": args.after, "limit": args.limit, "max_bytes": args.max_bytes}
             _emit_json(decisions.dispatch(args.reactive_action, arguments))
             return 0
-        if args.action == "witness":
-            if args.state_dir is not None or args.controller or args.token_file is not None:
-                raise ValueError("A witness does not use controller state or research credentials")
-            from research_swarm.witness_launcher import serve_witness
-
-            serve_witness(
-                args.config,
-                args.signing_key_file,
-                tls_certificate_file=args.tls_certificate_file,
-                tls_key_file=args.tls_key_file,
-            )
-            return 0
         if args.action == "backup":
             if args.controller:
                 raise ValueError("Native backup operations cannot use a remote controller")
@@ -905,7 +883,6 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 0
             if args.worker_action == "describe":
-                from research_swarm.domain.clocks import AuthorityClockAdmission
                 from research_swarm.engines.registration import read_registration
 
                 description = describe_worker(
@@ -914,11 +891,6 @@ def main(argv: list[str] | None = None) -> int:
                     machine_registry=args.machine_registry,
                     registration=read_registration(args.registration)
                     if args.registration
-                    else None,
-                    clock_admission=AuthorityClockAdmission.model_validate(
-                        _request(args.clock_admission, limit=4096)
-                    )
-                    if args.clock_admission
                     else None,
                 )
                 _emit_json(description.model_dump(mode="json"))

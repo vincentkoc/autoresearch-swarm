@@ -5,28 +5,11 @@ its authority on the controller, and connect the worker with that private bundle
 The worker uses the same typed HTTP operations as other clients. It never opens a
 local controller database or receives an evaluator credential.
 
-This release supplies enrollment, scoped discovery, calibrated native execution,
+This release supplies enrollment, scoped discovery, native execution,
 and publication. `worker connect` verifies and persists the connection, then exits.
 `worker start` runs the scoped worker in the foreground.
 
 ## Describe the worker
-
-The default description admits native controller clocks. For a qualified hosted
-witness controller, explicitly supply an `AuthorityClockAdmission` JSON file
-with `schema_version: "1.0"`, `profile: "hosted-native-witness-v1"` and the exact
-`policy_digest` selected by the operator. Pass it with
-`research worker describe --worker-dir ./worker-state --clock-admission ./clock-admission.json`.
-The Python equivalent is `describe_worker(..., clock_admission=admission)`.
-The installation persists this choice before provisioning; reopening with a
-different choice fails. The controller echoes it into the worker and archived
-session, and bundle import requires exact equality. Existing replacement retains
-that choice; a different admission requires a new explicit enrollment.
-
-An admission is a permission and policy pin, not a clock-rate measurement or
-proof of a hosted execution deployment. It accepts only the named authority
-profile and policy, with no fallback to native authority profiles. The worker's
-own clock must still use a supported native implementation. Descriptions without
-this optional field retain their original serialization and behavior.
 
 Run on the worker machine:
 
@@ -34,8 +17,7 @@ Run on the worker machine:
 research worker describe --worker-dir ./worker-state --cpu-slots 2 > worker-description.json
 ~~~
 
-The description is public metadata: a stable worker UUID, CPU profile, and native
-clock profile. The CPU fingerprint covers OS, architecture, CPU model, Python
+The description is public metadata: a stable worker UUID and CPU profile. The CPU fingerprint covers OS, architecture, CPU model, Python
 runtime, and admitted capacity. The private installation record is written before
 the description is returned. Repeating the command preserves the UUID and profile.
 It cannot silently change CPU slots or replace missing native execution history.
@@ -70,7 +52,7 @@ research --state-dir ./controller-state worker provision \
 Repeat `--project` to admit several projects. Provisioning checks those projects,
 persists worker session/principal/credential IDs and a random token, then installs
 the credential and issues `worker.enroll` with a stable command key. The enrollment
-requires `bounded-continuous-v1` and pins the complete assignment public authority.
+pins the complete assignment public authority.
 The bundle contains the controller URL, description, credential, and exact worker
 record. No signing private key is exported.
 
@@ -107,9 +89,7 @@ changed controller authority fails closed. It does not erase historical attempts
 or create another controller.
 
 URLs require HTTPS outside loopback; redirects and environment proxy credentials
-are disabled by the existing HTTP client contract. Connection verification is not
-a clock-rate or accelerator benchmark. Each actual timed attempt obtains fresh
-clock evidence and passes the [native admission gates](worker-assignments.md).
+are disabled by the existing HTTP client contract. The supervisor enforces [local monotonic deadlines](worker-assignments.md#native-deadline-clocks).
 
 Python callers can retain a connected worker:
 

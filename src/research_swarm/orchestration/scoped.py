@@ -340,8 +340,6 @@ class ScopedWorkerDriver:
         if blocked or recovery_fences or self.stop.is_set() or not self._fresh_admission():
             return
         await self._cache_reporter.refresh()
-        assert self.worker.clock_sampler is not None
-        self.worker.clock_sampler.read()
         async for offer in self._records("offers"):
             if (
                 len(active) >= self.worker.worker.max_concurrency

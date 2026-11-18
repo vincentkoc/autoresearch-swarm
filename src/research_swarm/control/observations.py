@@ -18,7 +18,6 @@ from research_swarm.projects.manifest import TimingContract
 from research_swarm.projects.workload import WorkloadReport
 from research_swarm.state.database import JsonObject, Transaction
 from research_swarm.workers.journal_records import JournalEntry, JournalState
-from research_swarm.workers.timed_launch import verify_timing
 
 
 class PublishAttempt(VersionedRecord):
@@ -102,24 +101,11 @@ def validate_native_grant(
         journal.dispatch != attempt.dispatch
         or journal.spec != trial.spec
         or journal.signed_assignment != attempt.signed_assignment
-        or journal.assignment_time != attempt.assignment_time
-        or journal.clock_mode != worker.clock_mode
         or job.current_attempt_id != request.attempt_id
         or journal.command.argv != job.stage.argv
         or journal.command.timeout_ms > job.stage.timeout_ms
     ):
         raise ResearchError(ErrorCode.STALE_FENCE, "Observation differs from its original grant")
-    if journal.timing is not None:
-        assert worker.assignment_authority is not None
-        assert journal.assignment_time is not None and journal.signed_assignment is not None
-        verify_timing(
-            journal.timing,
-            worker.assignment_authority,
-            journal.assignment_time,
-            journal.signed_assignment,
-            crypto_provider=crypto_provider,
-            clock_admission=worker.clock_admission,
-        )
     if journal.outcome is not None and journal.outcome.closure.identity != journal.native:
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Native closure identity differs")
     return NativeGrant(job_row, trial_row, job, trial)
