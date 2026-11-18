@@ -15,8 +15,9 @@ The swarm CLI emits a JSON summary after the loop finishes. Check the
 | `trial_limit` | The campaign submitted its allowed number of distinct trials. |
 | `exhausted` | The proposer has no more work for the available slots. |
 | `target` | The selected score reached the target in the declared direction. |
+| `time_limit` | Wall-clock time since campaign creation reached `max_hours`. Inspect completed attempts and queued work. |
 | `proposal_timeout` | The proposal call reached its deadline and the loop had no further work. |
-| `dispatch_unavailable` | Check capacity, in-flight reservations and the configured budget. |
+| `dispatch_unavailable` | Check capacity, in-flight reservations and the configured budget. A temporary token-rate limit uses a bounded wait before retry. |
 
 Read `selected` for the incumbent. Read `top` for the ranked search
 observations. A held-out policy can reject the top-ranked recipe. Keep both

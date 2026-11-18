@@ -33,6 +33,7 @@ The path to the YAML file provides the base for its task directory.
 | `candidates`, `search_space` | Named starting recipes or dimensions of a finite grid |
 | `seed`, `fidelity` | Default random seed and amount of work for a trial |
 | `max_trials`, `max_workers` | Total distinct trials and concurrent work |
+| `max_hours` | Wall-clock limit for new work, measured from campaign creation |
 | `max_attempts` | Maximum executions of each trial, including the first |
 | `trial_timeout_seconds` | Workload deadline |
 | `proposal_timeout_seconds` | Proposal deadline |
@@ -111,7 +112,9 @@ other trials can finish.
 
 The loop can resume after interruption. It restores archived observations,
 reads existing trial IDs and recovers the selected trial from SQLite.
-Replaying a completed finite campaign does not launch its finished trials.
+Replaying a completed finite campaign reuses its recorded trials.
+Resuming preserves the original wall-clock deadline. After that deadline,
+the queue refuses new claims and the coordinator collects active attempts.
 
 ## Queue and result publication
 
@@ -146,7 +149,7 @@ execution and keep outputs separate until the store accepts a result.
 
 ## Workload interface
 
-The worker launches an argument vector in `task_dir`. The task can be an
+The worker starts the task with its argument vector in `task_dir`. The task can be an
 ordinary Python program, a training binary or a project-specific evaluator.
 The swarm package does not need to import that project's model.
 
@@ -252,7 +255,7 @@ gain becomes eligible for promotion.
 
 A panel lists stable IDs for evaluation members. Use subject IDs when
 examples from the same subject would leak information between splits.
-Validate those IDs against the training manifest before the first trial.
+Check those IDs against the training manifest before the first trial.
 
 | Split | When the study reads it |
 | --- | --- |

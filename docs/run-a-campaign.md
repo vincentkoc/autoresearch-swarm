@@ -59,8 +59,9 @@ use previous search scores and failure diagnoses.
 
 Set `max_trials` for distinct candidate, seed and fidelity combinations.
 Set `max_workers` for concurrent work. Set `max_attempts` for the number of
-tries per trial. Give each trial and proposer a timeout. Set price fields and
-`max_cost` when the campaign uses a priced resource.
+tries per trial. Give each trial and proposer a timeout. Set `max_hours` for
+a wall-clock budget that survives restarts. Set price fields and `max_cost`
+when the campaign uses a priced resource.
 
 Start with a small trial. Check the metric, time and device before increasing
 the budget. For the built-in training tasks, `--size small` selects the short
@@ -103,7 +104,7 @@ For the default v1 protocol, repeat on seeds 23 and 47. For the larger
 preregistered comparison, pass `--protocol v2` and use its three registered
 seeds. Keep the workload profile, device and trial budget fixed across arms.
 Share one study file per workload and protocol. Report the selected recipe's
-confirmed score, including ties and baseline wins. The benchmark README
+`confirmed_score`, including ties and baseline wins. The benchmark README
 includes the protocols, measured results and local Ollama commands.
 
 [Benchmark suite](../benchmarks/README.md) · [Operator guide](operator-guide.md) · [Design](design.md)
