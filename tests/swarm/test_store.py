@@ -216,6 +216,43 @@ def test_campaign_isolation_resume_and_durable_selection(tmp_path: Path) -> None
         )
 
 
+@pytest.mark.parametrize("first_score", [0.75, 0.85])
+def test_selection_events_preserve_policy_scores_and_legacy_unknowns(
+    tmp_path: Path, first_score: float
+) -> None:
+    path = tmp_path / "history.db"
+    store = SQLiteStore(path)
+    store.create_campaign(spec())
+    for n in (1, 2):
+        store.submit(trial(n))
+        claim = store.claim("test", "local")
+        assert claim is not None
+        store.report(Result(attempt=claim, status="ok", metrics={"loss": 0.9}))
+    store.select("test", trial(1).trial_id, score=0.95)
+    with sqlite3.connect(path) as db:
+        # Earlier event rows contained only the identifiers and timestamp.
+        db.execute("ALTER TABLE swarm_events DROP COLUMN score")
+        db.execute("ALTER TABLE swarm_events DROP COLUMN replicates")
+
+    reopened = SQLiteStore(path)
+    reopened.select("test", trial(1).trial_id, score=0.95)
+    reopened.select("test", trial(1).trial_id, score=first_score, replicates=2)
+    reopened.select("test", trial(2).trial_id, score=0.65, replicates=3)
+    replay = SQLiteStore(path)
+    replay.select("test", trial(2).trial_id, score=0.65, replicates=3)
+    assert replay.incumbent("test") == (trial(2).trial_id, 0.65, 3)
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT trial_id,score,replicates FROM swarm_events "
+            "WHERE campaign_id=? AND kind='selected' ORDER BY id",
+            ("test",),
+        ).fetchall() == [
+            (trial(1).trial_id, None, None),
+            (trial(1).trial_id, first_score, 2),
+            (trial(2).trial_id, 0.65, 3),
+        ]
+
+
 def test_trial_and_candidate_identity_survive_replicates(tmp_path: Path) -> None:
     queue = SQLiteStore(tmp_path / "queue.db")
     queue.create_campaign(spec())

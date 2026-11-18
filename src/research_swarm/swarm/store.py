@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS swarm_events (
     kind TEXT NOT NULL,
     at REAL NOT NULL,
     trial_id TEXT REFERENCES swarm_trials,
-    attempt_id TEXT REFERENCES swarm_attempts
+    attempt_id TEXT REFERENCES swarm_attempts,
+    score REAL,
+    replicates INTEGER
 );
 CREATE INDEX IF NOT EXISTS swarm_event_order ON swarm_events(campaign_id, kind, id);
 """
@@ -107,11 +109,14 @@ def _event(
     kind: str,
     trial_id: str | None = None,
     attempt_id: str | None = None,
+    *,
+    score: float | None = None,
+    replicates: int | None = None,
 ) -> None:
     db.execute(
-        "INSERT INTO swarm_events(campaign_id, kind, at, trial_id, attempt_id) "
-        "VALUES(?, ?, ?, ?, ?)",
-        (campaign_id, kind, time.time(), trial_id, attempt_id),
+        "INSERT INTO swarm_events(campaign_id, kind, at, trial_id, attempt_id, score, replicates) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?)",
+        (campaign_id, kind, time.time(), trial_id, attempt_id, score, replicates),
     )
 
 
@@ -147,6 +152,11 @@ class SQLiteStore:
             columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_campaigns)")}
             if "ranking" not in columns:
                 db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
+            event_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_events)")}
+            if "score" not in event_columns:
+                db.execute("ALTER TABLE swarm_events ADD COLUMN score REAL")
+            if "replicates" not in event_columns:
+                db.execute("ALTER TABLE swarm_events ADD COLUMN replicates INTEGER")
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -405,4 +415,4 @@ class SQLiteStore:
                 (trial_id, ranking, campaign_id, trial_id, ranking),
             )
             if changed.rowcount:
-                _event(db, campaign_id, "selected", trial_id)
+                _event(db, campaign_id, "selected", trial_id, score=score, replicates=replicates)

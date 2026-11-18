@@ -68,6 +68,10 @@ os.execv(sys.executable, [sys.executable, workload])
         )
         (selected,) = conn.execute("SELECT selected_trial_id FROM swarm_campaigns").fetchone()
         assert selected == winner["result"]["attempt"]["trial"]["trial_id"]
+        assert conn.execute(
+            "SELECT trial_id,score,replicates FROM swarm_events WHERE kind='selected' "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone() == (selected, winner["score"], winner["replicates"])
         events = conn.execute("SELECT count(*) FROM swarm_events").fetchone()
         # Queues written before explicit evaluation modes still resume as direct-metric smoke runs.
         conn.execute(
