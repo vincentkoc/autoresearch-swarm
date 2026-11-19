@@ -36,8 +36,13 @@ TERMINAL = {
 }
 
 
+def _recovering(row: dict[str, Any]) -> bool:
+    return row["status"] == "RECOVERING" or bool(row.get("recovery_count", 0))
+
+
 class SkyCLI:
-    def __init__(self, sky: str | None = None) -> None:
+    def __init__(self, sky: str | None = None, *, inventory: Inventory | None = None) -> None:
+        self._inventory = inventory
         installed = sky or shutil.which("sky")
         self.argv = [installed] if installed else ["uvx", "--from", "skypilot==0.14.3", "sky"]
 
@@ -54,6 +59,11 @@ class SkyCLI:
         row = job.match(await self.queue())
         if row is None:
             return False
+        if self._inventory is not None and not job.fallback and _recovering(row):
+            # A replacement worker may see preemption for the first time here.
+            # Cancellation can erase that state before the next queue observation.
+            job.fallback = True
+            self._inventory.save(job)
         if row["status"] not in TERMINAL | {"CANCELLING"}:
             await self.call("cancel", "-y", str(row["job_id"]))
         return True
@@ -83,7 +93,7 @@ class SkyPilotBackend:
         ):
             raise ValueError("idle, poll and startup intervals must be positive")
         self.inventory = Inventory(state)
-        self.cli = SkyCLI(sky)
+        self.cli = SkyCLI(sky, inventory=self.inventory)
         self.placements = []
         aws_regions: set[str] = set()
         for placement in placements:
@@ -182,7 +192,7 @@ class SkyPilotBackend:
                         status="lost" if lost else "failed",
                         error=f"managed job {status}",
                     )
-                if not cancelling and (status == "RECOVERING" or row.get("recovery_count", 0)):
+                if not cancelling and _recovering(row):
                     # Fence Sky's retry before handing the trial back to the queue.
                     job.fallback = True
                     self.inventory.save(job)
