@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
+import math
 import sqlite3
 import subprocess
 import sys
 import time
+from collections import deque
+from threading import Event
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -58,13 +62,33 @@ def interval(store, allocation, device, sequence, allocated, busy):
     )
 
 
+def set_sample_windows(monkeypatch, *durations):
+    """Deliver scheduled ticks, then take the final sample on the real allocation drain."""
+    pending = deque(durations)
+    elapsed = 0.0
+
+    class SampleEvent(Event):
+        def wait(self, timeout=None):
+            nonlocal elapsed
+            if len(pending) == 1:
+                super().wait()
+            elapsed += pending.popleft()
+            return not pending
+
+    # Keep worker deadlines and subprocess supervision on the host's real clock.
+    monkeypatch.setattr(gpu_time, "time", SimpleNamespace(monotonic=lambda: elapsed))
+    monkeypatch.setattr(gpu_time, "Event", SampleEvent)
+
+
 def test_instrumented_run_packs_retries_and_replays(tmp_path, monkeypatch):
-    query = tmp_path / "nvidia-smi"
-    query.write_text(f"#!/bin/sh\nprintf '%s\\n' '{GPU_A}, 100' '{GPU_B}, 20'\n")
-    query.chmod(0o755)
-    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    set_sample_windows(monkeypatch, 1.0, 0.5)
+    driver = Mock(wraps=subprocess)
+    driver.run.return_value = subprocess.CompletedProcess(
+        ["nvidia-smi"], 0, stdout=f"{GPU_A}, 100\n{GPU_B}, 20\n"
+    )
+    monkeypatch.setattr(gpu_time, "subprocess", driver)
     workload = """
-import json, os, time
+import json, os
 from pathlib import Path
 trial = json.loads(Path(os.environ["SWARM_TRIAL"]).read_text())
 assert os.environ["CUDA_VISIBLE_DEVICES"] in (
@@ -72,7 +96,6 @@ assert os.environ["CUDA_VISIBLE_DEVICES"] in (
 if trial["candidate"]["candidate_id"] == "a" and not Path("retried").exists():
     Path("retried").touch()
     raise SystemExit(2)
-time.sleep(1.15)
 Path(os.environ["SWARM_METRICS"]).write_text('{"loss": 1}')
 """
     yaml = tmp_path / "campaign.json"
@@ -108,6 +131,11 @@ Path(os.environ["SWARM_METRICS"]).write_text('{"loss": 1}')
         starts = db.execute(
             "SELECT COUNT(*) FROM swarm_events WHERE kind='gpu_allocation_started'"
         ).fetchone()[0]
+    assert [call.args[0] for call in driver.run.call_args_list] == [
+        ["nvidia-smi", "--query-gpu=uuid,utilization.gpu", "--format=csv,noheader,nounits"]
+    ] * 2
+    assert len(samples) == 4
+    assert item["covered_device_seconds"] == item["allocated_device_seconds"] == 3.0
     assert starts == 2 and {sample["device"] for sample in samples} == {GPU_A, GPU_B}
     assert item["busy_device_seconds"] == pytest.approx(
         sum(s["busy_device_seconds"] for s in samples)
@@ -125,6 +153,37 @@ Path(os.environ["SWARM_METRICS"]).write_text('{"loss": 1}')
     after = CampaignReader(path).snapshot("instrumented")
     assert after["kpis"]["gpu_utilization"] == item
     assert after["campaign_revision"] == snap["campaign_revision"]
+
+
+@pytest.mark.parametrize(
+    ("windows", "expected_busy"),
+    [
+        ((math.nextafter(1.0, 0.0),), (None,)),
+        ((math.nextafter(2.0, math.inf),), (None,)),
+        ((1.0, 2.0, 2.125, 0.25), (0.5, 1.0, None, 0.125)),
+    ],
+)
+def test_sampler_coverage_boundaries(tmp_path, monkeypatch, windows, expected_busy):
+    set_sample_windows(monkeypatch, *windows)
+    monkeypatch.setattr(gpu_time, "_busy_fractions", lambda: {GPU_A: 0.5})
+    path = tmp_path / "boundaries.sqlite"
+    store = SQLiteStore(path)
+    store.create_campaign(spec(resource="gpu", options=config(GPU_A)))
+    with gpu_time.sample_allocation(store, "test", "local", (GPU_A,)):
+        pass
+    with sqlite3.connect(path) as db:
+        intervals = db.execute(
+            "SELECT json_extract(gpu_time,'$.allocated_device_seconds'),"
+            "json_extract(gpu_time,'$.busy_device_seconds') FROM swarm_events "
+            "WHERE kind='gpu_device_interval' ORDER BY id"
+        ).fetchall()
+    assert intervals == list(zip(windows, expected_busy, strict=True))
+    item = kpi(path)
+    assert item["value"] is None and item["coverage"] == "partial"
+    assert item["missing_samples"] == expected_busy.count(None)
+    assert item["covered_device_seconds"] == sum(
+        seconds for seconds, busy in intervals if busy is not None
+    )
 
 
 def test_weighted_evidence_replay_idle_and_gaps(tmp_path):
