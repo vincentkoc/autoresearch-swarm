@@ -1,6 +1,6 @@
 """Promotion-based asynchronous successive halving for a single campaign."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from math import isfinite
 
 
@@ -35,7 +35,7 @@ class ASHA:
         if self._scores[rung].setdefault(key, score) != score:
             raise ValueError("conflicting score for the same trajectory and rung")
 
-    def promote(self) -> tuple[str, float] | None:
+    def promote(self, eligible: Callable[[str], bool] | None = None) -> tuple[str, float] | None:
         """Reserve one promotion, favouring the most advanced eligible rung."""
         for rung in range(len(self.fidelities) - 2, -1, -1):
             scores = self._scores[rung]
@@ -43,9 +43,22 @@ class ASHA:
             issued = self._promoted[rung]
             if len(issued) >= quota:
                 continue
-            ranked = sorted(scores, key=lambda k: (scores[k] if self.minimize else -scores[k], k))
+            ranked = sorted(
+                (key for key in scores if eligible is None or eligible(key)),
+                key=lambda k: (scores[k] if self.minimize else -scores[k], k),
+            )
             for key in ranked[:quota]:
                 if key not in issued:
                     issued.add(key)
                     return key, self.fidelities[rung + 1]
         return None
+
+    def restore(self, key: str, fidelity: float, score: float | None) -> None:
+        """Rebuild an actually executed trajectory from the ordered trial archive."""
+        rung = self.fidelities.index(fidelity)
+        if rung:
+            if key not in self._scores[rung - 1]:
+                raise ValueError("missing preceding rung in the archive")
+            self._promoted[rung - 1].add(key)
+        if score is not None:
+            self.report(key, fidelity, score)

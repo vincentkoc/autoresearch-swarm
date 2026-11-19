@@ -124,6 +124,12 @@
   crossover, ensemble growth, seed replication and deadline-bounded local Ollama edits.
   Ensembles keep individual member recipes when replicated, promoted or resumed.
 
+- Allocate swarm proposal slots by observed gain per cost, learn mutations from
+  categorical trial results and promote replicated recipes at full fidelity.
+  A model editor can propose a corrected recipe when the initial workload fails
+  after its last retry and the campaign has no scored parent. SQLite attempt IDs
+  stay out of model prompts so replaying the same failure preserves its input.
+
 - Define the campaign, candidate, trial, attempt and result records and plugin
   protocols for capacity-driven research campaigns.
 

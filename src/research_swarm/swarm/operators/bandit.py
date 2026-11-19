@@ -4,7 +4,7 @@ import asyncio
 import math
 import random
 from collections import Counter
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from itertools import islice
 
@@ -15,15 +15,68 @@ from research_swarm.swarm.population import Population
 
 
 @dataclass
-class Arm:
+class _ArmTotals:
     pulls: int = 0
     gain: float = 0.0
+
+
+@dataclass
+class Arm(_ArmTotals):
     spend: float = 0.0
     effort: float = 0.0
 
     def rate(self, priced: bool) -> float:
         cost = self.spend if priced else self.effort
         return self.gain / cost if cost else 0.0
+
+
+@dataclass
+class _MeasuredArm(_ArmTotals):
+    cost: float = 0.0
+
+    @property
+    def rate(self) -> float:
+        return self.gain / self.cost if self.cost else 0.0
+
+
+def _allocate(
+    arms: Mapping[str, _ArmTotals], rates: Mapping[str, float], exploration: float
+) -> str:
+    if not rates:
+        raise ValueError("no eligible operators")
+    scale = max(rates.values()) or 1.0
+    total = sum(arm.pulls for arm in arms.values())
+
+    def priority(name: str) -> float:
+        pulls = arms[name].pulls
+        if not pulls:
+            return math.inf
+        return rates[name] / scale + exploration * math.sqrt(math.log1p(total) / pulls)
+
+    chosen = max(rates, key=priority)
+    arms[chosen].pulls += 1
+    return chosen
+
+
+class OperatorBandit:
+    """Allocate portfolio slots against the measured cost supplied by the search policy."""
+
+    def __init__(self, names: Iterable[str], exploration: float = 0.5) -> None:
+        self.arms = {name: _MeasuredArm() for name in names}
+        if not self.arms or not math.isfinite(exploration) or exploration < 0:
+            raise ValueError("expected operators and finite nonnegative exploration")
+        self.exploration = exploration
+
+    def choose(self, eligible: Iterable[str]) -> str:
+        rates = {name: self.arms[name].rate for name in eligible}
+        return _allocate(self.arms, rates, self.exploration)
+
+    def observe(self, name: str, gain: float, cost: float) -> None:
+        if not math.isfinite(gain) or not math.isfinite(cost) or cost < 0:
+            raise ValueError("expected finite gain and finite nonnegative measured cost")
+        arm = self.arms[name]
+        arm.gain += max(0.0, gain)
+        arm.cost += cost
 
 
 class BanditProposer:
@@ -87,18 +140,8 @@ class BanditProposer:
 
     def _choose(self, eligible: Sequence[str]) -> str:
         priced = any(arm.spend for arm in self.arms.values())
-        scale = max(self.arms[name].rate(priced) for name in eligible) or 1.0
-        total = sum(arm.pulls for arm in self.arms.values())
-
-        def priority(name: str) -> float:
-            arm = self.arms[name]
-            if not arm.pulls:
-                return math.inf
-            return arm.rate(priced) / scale + 0.5 * math.sqrt(math.log1p(total) / arm.pulls)
-
-        chosen = max(eligible, key=priority)
-        self.arms[chosen].pulls += 1
-        return chosen
+        rates = {name: self.arms[name].rate(priced) for name in eligible}
+        return _allocate(self.arms, rates, 0.5)
 
     async def ask(self, spec: CampaignSpec, archive: Sequence[Result], k: int) -> list[Candidate]:
         for result in archive:

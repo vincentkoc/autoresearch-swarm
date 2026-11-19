@@ -10,9 +10,9 @@ import threading
 from collections import deque
 from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import Future
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,6 +32,12 @@ class SourceEdit(BaseModel):
     before: str = Field(min_length=1, max_length=65536)
     after: str = Field(max_length=65536)
     rationale: str = Field(min_length=1, max_length=1024)
+
+
+class FailureDiagnosis(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    cause: Literal["workload", "environment", "unknown"]
+    reason: str = Field(min_length=1, max_length=1024)
 
 
 Generate = Callable[[str, dict[str, Any], int], Awaitable[str]]
@@ -75,6 +81,7 @@ class TextRewrite:
         self._slots = threading.BoundedSemaphore(concurrency)
         self._sequence = 0
         self._recent: dict[str, deque[dict[str, Any]]] = {}
+        self._diagnoses: dict[str, deque[tuple[str, dict[str, str]]]] = {}
         self.errors = 0
         self.timeouts = 0
 
@@ -84,6 +91,7 @@ class TextRewrite:
         recent.append(
             {
                 "candidate": trial.candidate.candidate_id,
+                "params": trial.candidate.params,
                 "parents": trial.candidate.parents,
                 "operator": trial.candidate.operator,
                 "metrics": result.metrics,
@@ -102,31 +110,77 @@ class TextRewrite:
             return None
         return child(parent, self.name, text=content, diff=None)
 
-    async def _one(self, spec: CampaignSpec, parent: Candidate, sequence: int) -> Candidate | None:
-        prompt = json.dumps(
-            {
-                "objective": self.objective,
-                "metric": spec.metric,
-                "direction": spec.direction,
-                "operator": self.name,
-                "recipe": asdict(parent),
-                "source": self._source(parent),
-                "recent_results": list(self._recent.get(spec.campaign_id, ())),
-                "instruction": self.instruction,
+    async def _one(
+        self, spec: CampaignSpec, parent: Candidate, sequence: int, failure: Result | None
+    ) -> Candidate | None:
+        context: dict[str, Any] = {
+            "objective": self.objective,
+            "metric": spec.metric,
+            "direction": spec.direction,
+            "operator": self.name,
+            "recipe": asdict(parent),
+            "source": self._source(parent),
+            "recent_results": list(self._recent.get(spec.campaign_id, ())),
+            "instruction": self.instruction,
+        }
+        diagnoses = tuple(self._diagnoses.get(spec.campaign_id, ()))
+        if diagnoses:
+            context["recent_diagnoses"] = [record for _, record in diagnoses]
+        if failure is not None:
+            context["failure"] = {
+                "attempt_number": failure.attempt.number,
+                "error": failure.error,
+                "output_tail": [entry[-1024:] for entry in failure.logs[-2:]],
+                "seed": failure.attempt.trial.seed,
+                "fidelity": failure.attempt.trial.fidelity,
             }
-        )
-        raw = await self.generate(prompt, self.schema, spec.seed + sequence)
+            diagnostic_prompt = {
+                "instruction": (
+                    "Classify the observed failure and explain the evidence. A defect in the "
+                    "candidate source, artifact or parameters is workload. An unavailable "
+                    "worker or runtime is environment. Use unknown if the evidence is inconclusive."
+                ),
+                "recipe": context["recipe"],
+                "source": context["source"],
+                "failure": context["failure"],
+            }
+            attempt_id = failure.attempt.attempt_id
+            record = next((note for key, note in reversed(diagnoses) if key == attempt_id), None)
+            if record is None:
+                diagnosis = FailureDiagnosis.model_validate_json(
+                    await self.generate(
+                        json.dumps(diagnostic_prompt),
+                        FailureDiagnosis.model_json_schema(),
+                        spec.seed + sequence,
+                    )
+                )
+                record = {
+                    "candidate": parent.candidate_id,
+                    "cause": diagnosis.cause,
+                    "reason": diagnosis.reason,
+                }
+                history = self._diagnoses.setdefault(spec.campaign_id, deque(maxlen=8))
+                history.append((attempt_id, record))
+            context["diagnosis"] = record
+            if record["cause"] != "workload":
+                return None
+        raw = await self.generate(json.dumps(context), self.schema, spec.seed + sequence)
         return self._edit(parent, raw)
 
     def _start(
-        self, spec: CampaignSpec, parent: Candidate, sequence: int, timeout: float
+        self,
+        spec: CampaignSpec,
+        parent: Candidate,
+        sequence: int,
+        timeout: float,
+        failure: Result | None,
     ) -> asyncio.Future[Candidate | None]:
         result: Future[Candidate | None] = Future()
         result.set_running_or_notify_cancel()
 
         async def request() -> Candidate | None:
             async with asyncio.timeout(timeout):
-                return await self._one(spec, parent, sequence)
+                return await self._one(spec, parent, sequence, failure)
 
         def run() -> None:
             try:
@@ -150,7 +204,36 @@ class TextRewrite:
         return wrapped
 
     async def propose(
-        self, spec: CampaignSpec, parents: Sequence[Candidate], k: int
+        self,
+        spec: CampaignSpec,
+        parents: Sequence[Candidate],
+        k: int,
+        *,
+        failure: Result | None = None,
+    ) -> list[Candidate]:
+        if failure is not None:
+            clock = asyncio.get_running_loop()
+            end = clock.time() + spec.proposal_timeout_seconds
+            repairs = await self.diagnose(spec, failure, k)
+            remaining = end - clock.time()
+            if repairs or not parents or remaining <= 0:
+                return repairs
+            # Abstaining from a diagnosis leaves ordinary recipe exploration available.
+            spec = replace(spec, proposal_timeout_seconds=remaining)
+        return await self._batch(spec, parents, k, None)
+
+    async def diagnose(self, spec: CampaignSpec, failure: Result, k: int) -> list[Candidate]:
+        attempt = failure.attempt
+        if (
+            attempt.trial.campaign_id != spec.campaign_id
+            or failure.status != "failed"
+            or attempt.number < spec.max_attempts
+        ):
+            return []
+        return await self._batch(spec, [attempt.trial.candidate], k, failure)
+
+    async def _batch(
+        self, spec: CampaignSpec, parents: Sequence[Candidate], k: int, failure: Result | None
     ) -> list[Candidate]:
         timeout = spec.proposal_timeout_seconds
         if not math.isfinite(timeout) or timeout <= 0:
@@ -171,7 +254,9 @@ class TextRewrite:
             for i in range(reserved):
                 unstarted -= 1  # _start owns this slot, including thread-start failure
                 self._sequence += 1
-                jobs.append(self._start(spec, parents[i % len(parents)], self._sequence, timeout))
+                jobs.append(
+                    self._start(spec, parents[i % len(parents)], self._sequence, timeout, failure)
+                )
         finally:
             for _ in range(unstarted):
                 self._slots.release()
