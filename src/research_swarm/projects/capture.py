@@ -40,33 +40,25 @@ def capture_project(
 
     root = root.resolve()
     portable_path(manifest_path)
-    if revision is not None:
-        revision, content = read_git_file(
-            root,
-            revision,
-            manifest_path,
-            limit=MAX_PROJECT_MANIFEST_BYTES,
-            timeout_seconds=remaining(),
-        )
-        manifest = parse_manifest(content)
-    else:
+    if revision is None:
         with SourceReader(root) as reader, reader.open(manifest_path) as source:
             manifest = parse_manifest(source.read(MAX_PROJECT_MANIFEST_BYTES + 1))
-        if manifest.source.mode == "git":
-            revision, content = read_git_file(
-                root,
-                manifest.source.base_revision,
-                manifest_path,
-                limit=MAX_PROJECT_MANIFEST_BYTES,
-                timeout_seconds=remaining(),
-            )
-            manifest = parse_manifest(content)
-    if revision is not None:
-        return bundle_git(
-            root,
-            revision,
-            destination,
-            paths=manifest.source.paths,
-            timeout_seconds=remaining(),
-        )
-    return bundle_directory(root, destination, paths=manifest.source.paths)
+        if manifest.source.mode == "directory":
+            return bundle_directory(root, destination, paths=manifest.source.paths)
+        revision = manifest.source.base_revision
+
+    revision, content = read_git_file(
+        root,
+        revision,
+        manifest_path,
+        limit=MAX_PROJECT_MANIFEST_BYTES,
+        timeout_seconds=remaining(),
+    )
+    manifest = parse_manifest(content)
+    return bundle_git(
+        root,
+        revision,
+        destination,
+        paths=manifest.source.paths,
+        timeout_seconds=remaining(),
+    )
