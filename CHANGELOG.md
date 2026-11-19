@@ -21,6 +21,9 @@
   Custom proposer factories can supply other operators. The bandit restores pending
   recipes on resume and returns completed siblings when a model proposal times out.
 
+- Model editors receive only the campaign's declared search metric in proposal
+  history. Worker results retain their auxiliary measurements for reporting.
+
 - `research swarm notify` journals hourly digests, selected-score targets and low
   trial throughput in the operator's timezone. Concurrent watchers share the journal.
 

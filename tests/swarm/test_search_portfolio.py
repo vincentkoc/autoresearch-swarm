@@ -102,6 +102,50 @@ async def test_mix_of_timeout_and_fast_operators_returns_inside_loop_deadline() 
     assert model.timeouts == 1
 
 
+async def test_model_search_is_independent_of_held_out_worker_metrics() -> None:
+    base = Candidate(candidate_id="initial", text="baseline")
+    spec = CampaignSpec(
+        campaign_id="test",
+        metric="loss",
+        direction="minimize",
+        command=("score",),
+        candidates=(base,),
+        max_trials=3,
+        max_workers=1,
+    )
+    prompts = []
+    proposals = []
+
+    async def generate(prompt: str, schema: dict[str, Any], seed: int) -> str:
+        prompts.append(json.loads(prompt))
+        history = prompts[-1]["recent_results"]
+        content = (
+            "fit the held-out score"
+            if history[-1]["metrics"].get("confirmation", 0) > 0
+            else "use search"
+        )
+        return json.dumps({"content": content, "rationale": "fixture"})
+
+    for held_out in (-1.0, 1.0):
+        editor = TextRewrite(generate, "minimize loss")
+        policy = SearchPortfolio(spec, {editor.name: editor})
+        failed = replace(
+            observation(Candidate(candidate_id="failed", text="invalid"), 0),
+            status="failed",
+            metrics={"selection": held_out},
+            error="invalid recipe",
+        )
+        metrics = {"loss": 0.0, "selection": -held_out, "confirmation": held_out}
+        scored = replace(observation(base, 0), metrics=metrics.copy())
+        (proposal,) = await policy.ask(spec, [failed, scored], 1)
+        proposals.append(proposal.text)
+        assert scored.metrics == metrics
+
+    assert proposals == ["use search", "use search"]
+    assert prompts[0] == prompts[1]
+    assert [row["metrics"] for row in prompts[0]["recent_results"]] == [{}, {"loss": 0.0}]
+
+
 async def test_model_repairs_a_terminal_workload_failure_without_a_scored_parent() -> None:
     seed = Candidate(candidate_id="broken", text="sum()")
     spec = CampaignSpec(
