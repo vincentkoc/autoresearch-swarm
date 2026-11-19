@@ -78,9 +78,11 @@ Each active request exposes a `heartbeat.json` under `<db>.agent-jobs/`.
 It contains the role and absolute deadline in Unix seconds. The provider updates
 the file's modification time while awaiting a response. On expiry the supervisor
 kills the provider process group, reaps the child and returns `timed_out`.
-If the advice CLI is killed, the provider still enforces the original deadline.
-An expired heartbeat file can remain after a crash. Run the advice command
-again against the same database to start a fresh request.
+If the advice CLI is killed, each job retains its own deadline guard. A stalled
+job's guard terminates its process group. Other jobs can finish independently.
+Read `outcome.json` beside an abandoned heartbeat for the job's role, deadline
+and terminal status. The record contains no prompt or advice text. A fresh
+advice command starts a new request. It does not replay abandoned jobs.
 Cancellation also cleans up the job. A failed or incomplete advice command exits
 with status 3. Successful siblings remain in the batch output. Read a late or
 malformed response as missing advice and use the measured campaign evidence.

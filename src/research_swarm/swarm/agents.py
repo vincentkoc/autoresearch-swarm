@@ -16,6 +16,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from research_swarm.swarm.agent_guard import record_outcome
+
 Role = Literal["proposer", "diagnoser", "reporter"]
 
 
@@ -141,7 +143,7 @@ async def ask_agent(
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
-            "research_swarm.swarm.agents",
+            "research_swarm.swarm.agent_guard",
             str(heartbeat),
             str(deadline),
             stdin=asyncio.subprocess.PIPE,
@@ -156,6 +158,10 @@ async def ask_agent(
             if process.returncode == -signal.SIGALRM:
                 raise TimeoutError
             completed = True
+            if process.returncode == -signal.SIGKILL:
+                outcome = heartbeat.with_name("outcome.json")
+                if outcome.is_file() and json.loads(outcome.read_text())["status"] == "timed_out":
+                    return {"role": role, "status": "timed_out", "timeout_seconds": timeout}
             if process.returncode:
                 return {
                     "role": role,
@@ -164,11 +170,23 @@ async def ask_agent(
                 }
             return {"role": role, "status": "ok", "advice": json.loads(stdout)}
         except TimeoutError:
+            record_outcome(heartbeat, "timed_out")
             return {"role": role, "status": "timed_out", "timeout_seconds": timeout}
         finally:
             if not completed:
-                with contextlib.suppress(ProcessLookupError):
+                try:
                     os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except PermissionError as error:
+                    # Darwin may return EPERM while the guard's own SIGKILL is taking effect.
+                    # An actual permission failure on a live group must still surface.
+                    try:
+                        exit_code = await asyncio.wait_for(process.wait(), timeout=1)
+                    except TimeoutError:
+                        raise error from None
+                    if exit_code != -signal.SIGKILL:
+                        raise
                 await process.wait()
 
 
