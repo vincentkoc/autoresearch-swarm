@@ -141,6 +141,7 @@ def run(
         output.mkdir(mode=0o700)
         parameters: dict[str, Any] = {
             "candidate": trial.candidate.params,
+            "fidelity": trial.fidelity,
             **training_parameters(manifest.reactive, stage),
         }
         env = base_environment()
