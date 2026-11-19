@@ -122,8 +122,8 @@ SQLite serializes claims and results. The swarm store uses six tables.
 
 | Table | Content |
 | --- | --- |
-| `swarm_projects` | Project IDs |
-| `swarm_campaigns` | Campaign spec and selected trial |
+| `swarm_projects` | Project IDs and optional source snapshots |
+| `swarm_campaigns` | Campaign spec, panel study binding and selected trial |
 | `swarm_candidates` | Campaign-scoped recipe and ancestry |
 | `swarm_trials` | Seed, fidelity, state and attempt count |
 | `swarm_attempts` | Worker claim, heartbeat, reservation, cost and observation |
@@ -134,17 +134,17 @@ moves a queued trial to running. The worker receives its attempt only after
 the store records the claim.
 
 ~~~text
-queued -> running -> ok
-                  -> failed or lost
-                  -> queued if the retry allowance remains
+queued -> running -> ok             on success
+                  -> queued         on failure or loss with tries remaining
+                  -> failed or lost on the last try
 ~~~
 
 A heartbeat updates the active attempt. Once an observation exists, a late
 heartbeat or result cannot replace it. This prevents an old worker from
 overwriting an accepted retry.
 
-An expired heartbeat permits another attempt within the retry allowance.
-The original process might still be alive. Tasks must tolerate duplicate
+Heartbeat expiry records a lost attempt. A missing heartbeat alone cannot
+establish that the workload has stopped. Tasks must tolerate duplicate
 execution and keep outputs separate until the store accepts a result.
 
 ## Workload interface
@@ -186,17 +186,21 @@ A worker claims one trial, executes it with a backend and reports its
 result. It releases its allocation after the attempt. Subprocess lifetime
 belongs to the backend.
 
-The local backend starts a separate process group. It captures bounded output
-and kills remaining group members during teardown. A child that inherits
-the output pipe should not keep the trial alive after its deadline.
+The local POSIX backend starts a guard to lead each command's process group.
+The guard ends the group when the command exits or its socket to the worker
+closes, including on timeout, cancellation or worker death. This also
+releases output pipes held by children in the group. The backend keeps a
+bounded tail of stdout and stderr.
 
 Local engine probes use a separate POSIX supervisor with a clock that
 includes time spent suspended. [Engine profiles](engines.md)
 
-The resource pool distinguishes CPU slots, LLM slots and GPU memory.
-A worker can account for estimated token demand before it makes a claim.
-For GPU jobs, the pool uses demand estimates and measured peak VRAM to
-choose a device with sufficient headroom.
+The optional resource pool reserves CPU slots, LLM slots, token allowances
+and GPU memory before a queue claim. Each pool tracks its own allocations
+in memory. A GPU profile with no recorded peak reserves the device's
+configured memory budget for one fit. When a fit reports a higher peak,
+the pool budgets that peak for active fits of the same profile on the same
+device before admitting new work.
 
 A backend with explicit device binding can execute on the chosen device.
 The training command must respect that binding.
@@ -234,7 +238,8 @@ candidate and fidelity, with one measurement per distinct seed.
 
 A candidate must have enough distinct seeds for the configured replicate
 count. The population ranks eligible candidates at the highest eligible
-fidelity by mean score. Candidate ID breaks an exact tie.
+fidelity by mean score. With one worker and `top_k: 1`, an exact tie keeps
+the first candidate observed at that fidelity. Otherwise candidate ID breaks the tie.
 
 ~~~text
 candidate A at fidelity 0.25, seed 11
@@ -336,8 +341,9 @@ Reopening the file preserves that outcome. A stored successful decision
 can be replayed without exposing the panel again.
 
 Look limits are warnings. Counts remain available across runs that share
-the same study. Recalibrate after changing the scorer, split, calibration
-recipes or decision rule. A separate study identifies the new comparison.
+the same study. Resume a bound campaign with its original study. If the
+scorer revision, split, calibration recipes or decision rule changes,
+start a new campaign and study so calibration precedes the new comparison.
 
 ## Backends and data
 

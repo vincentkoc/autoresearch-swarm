@@ -22,6 +22,9 @@
 - End a local trial's process group when its worker is killed, so an orphaned
   workload does not keep running alongside its retry.
 
+- Clarify local worker cleanup, GPU memory accounting, score ties and
+  panel study reuse in the campaign design.
+
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
 
