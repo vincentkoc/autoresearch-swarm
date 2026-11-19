@@ -3,7 +3,7 @@
 Run a campaign from the checkout that contains its task and plugin factories.
 Keep its YAML spec, queue database and panel study together for resumption.
 
-[Run a campaign](run-a-campaign.md) · [Design](design.md)
+[Run a campaign](run-a-campaign.md) · [Watch and diagnose a campaign](campaign-ops.md) · [Design](design.md)
 
 ## Inspect the summary
 

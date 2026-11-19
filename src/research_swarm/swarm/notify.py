@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import math
 import os
@@ -26,6 +27,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--score-target", type=float, help="Alert at the first selected target score"
     )
     parser.add_argument("--min-trials-per-hour", type=int, help="Alert on low hourly completions")
+    reporter = parser.add_mutually_exclusive_group()
+    reporter.add_argument("--reporter-model", help="Summarize each hourly digest with local Ollama")
+    reporter.add_argument("--fake-reporter", action="store_true", help="Use the offline reporter")
+    parser.add_argument(
+        "--reporter-timeout", type=float, default=10, help="Reporter deadline in seconds"
+    )
     parser.add_argument("--once", action="store_true", help="Poll once and exit")
 
 
@@ -78,7 +85,14 @@ def poll(
                 )
 
             def record(key: str, kind: str, **fields: Any) -> None:
-                item = dict(kind=kind, campaign=campaign, at=when.isoformat(), **fields)
+                item = dict(
+                    kind=kind,
+                    campaign=campaign,
+                    at=when.isoformat(),
+                    campaign_created_at=row["at"],
+                    key=key,
+                    **fields,
+                )
                 out.execute(
                     "INSERT INTO notifications VALUES (?,?,?,?)",
                     (*scope, key, json.dumps(item, allow_nan=False)),
@@ -142,6 +156,13 @@ def poll(
 
 
 def watch(database: Path, args: argparse.Namespace, emit: Callable[[Any], None]) -> None:
+    from research_swarm.swarm.agents import ask_agent
+
+    database = database.resolve()
+    if not math.isfinite(args.reporter_timeout) or args.reporter_timeout <= 0:
+        raise ValueError("Reporter timeout must be positive and finite")
+    if args.reporter_model is not None and not args.reporter_model.strip():
+        raise ValueError("Reporter model name must be nonempty")
     try:
         zone = ZoneInfo(args.timezone)
     except ZoneInfoNotFoundError as error:
@@ -155,6 +176,29 @@ def watch(database: Path, args: argparse.Namespace, emit: Callable[[Any], None])
             target=args.score_target,
             min_trials=args.min_trials_per_hour,
         ):
+            if item["kind"] == "hourly_digest" and (args.reporter_model or args.fake_reporter):
+                # The measured digest is durable before model work starts. Hold no queue lock.
+                item["reporter"] = asyncio.run(
+                    ask_agent(
+                        "reporter",
+                        {**item, "purpose": "hourly digest"},
+                        model=args.reporter_model,
+                        timeout=args.reporter_timeout,
+                        jobs=database.with_name(database.name + ".agent-jobs"),
+                    )
+                )
+                journal = database.with_name(database.name + ".notifications.sqlite")
+                with closing(sqlite3.connect(journal)) as out, out:
+                    out.execute(
+                        "UPDATE notifications SET payload=? "
+                        "WHERE campaign=? AND created=? AND key=?",
+                        (
+                            json.dumps(item, allow_nan=False),
+                            item["campaign"],
+                            item["campaign_created_at"],
+                            item["key"],
+                        ),
+                    )
             emit(item)
         if args.once:
             return
