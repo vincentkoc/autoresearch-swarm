@@ -23,6 +23,9 @@
   `run_native`. Native commands use their timeout and optional absolute deadline
   during both preparation and execution.
 
+- Share committed-manifest resolution between explicit and manifest-selected
+  Git revisions in project capture and registration.
+
 - Report the fraction of returned proposer candidates admitted to a new campaign,
   including duplicate and invalid entries in the denominator. Earlier campaigns
   retain an unavailable rate.
