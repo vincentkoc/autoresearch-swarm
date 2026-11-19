@@ -26,9 +26,10 @@ def test_workers_copy_together_while_gc_waits(
     readers, release = Barrier(3), Event()
     copy = data_stage._hash_tree
 
-    def gated_copy(source: Path, target: Path, threads: int) -> tuple[str, int, int]:
-        readers.wait(timeout=10)
-        assert release.wait(timeout=10)
+    def gated_copy(source: Path, target: Path | None, threads: int) -> tuple[str, int, int]:
+        if target is not None:
+            readers.wait(timeout=10)
+            assert release.wait(timeout=10)
         return copy(source, target, threads)
 
     monkeypatch.setattr(data_stage, "_hash_tree", gated_copy)
@@ -102,6 +103,38 @@ def test_cached_worker_bytes_must_match_the_published_digest(tmp_path: Path) -> 
     with pytest.raises(ValueError, match="differs"):
         hydrate(volume, nvme, "demo", "v1")
     assert cached.read_bytes() == b"99"
+
+
+@pytest.mark.parametrize("action", ["prepare", "hydrate"])
+def test_new_stage_verifies_destination_bytes_before_publication(
+    action: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, volume, nvme = (tmp_path / name for name in ("source", "volume", "nvme"))
+    source.mkdir()
+    (source / "points").write_bytes(b"13")
+    if action == "hydrate":
+        prepare(source, volume, "demo", "v1")
+
+    chmod = Path.chmod
+
+    def corrupt_copy(file: Path, mode: int) -> None:
+        if file.name == "points" and mode == 0o444:
+            file.write_bytes(b"99")
+        chmod(file, mode)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "chmod", corrupt_copy)
+        with pytest.raises(ValueError, match="differs"):
+            if action == "prepare":
+                prepare(source, volume, "demo", "v1")
+            else:
+                hydrate(volume, nvme, "demo", "v1")
+    destination = volume if action == "prepare" else nvme
+    assert not stage_path(destination, "demo", "v1").exists()
+    stage = prepare(source, volume, "demo", "v1")
+    data = hydrate(volume, nvme, "demo", "v1")
+    assert data_stage.read_stage(data.parent) == stage
+    assert (data / "points").read_bytes() == b"13"
 
 
 def test_staged_directories_and_files_are_read_only(tmp_path: Path) -> None:
