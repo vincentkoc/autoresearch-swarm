@@ -24,10 +24,12 @@ when the panel policy supplies one. The normalized program should pass all
 search cases. To inspect its promotion decision and exposure counts, use the
 [operator guide's panel query](operator-guide.md#inspect-the-panel-study).
 
-After the example finishes, run the same command again to resume. The queue
-restores completed trials, and the panel study reuses recorded confirmation
-scores. Choose a new campaign ID for a changed spec. Use a new panel study
-when you change a split or scorer revision.
+After the example finishes, repeat the launch command with
+`--db .research/program.sqlite`. Without `--db` or `--state-dir`, the CLI
+opens `swarm.sqlite` beside the YAML file. Resume with the original queue
+and bound panel study to reuse completed trials and confirmation scores.
+Choose a new campaign ID for a changed spec. Start a new campaign and study
+when you change the split, scorer revision, calibration recipes or decision rule.
 
 If the process stopped during calibration, inspect the stored looks before resuming.
 [Panel recovery check](operator-guide.md#inspect-the-panel-study)

@@ -25,6 +25,9 @@
 - Clarify local worker cleanup, GPU memory accounting, score ties and
   panel study reuse in the campaign design.
 
+- Document how to stop and resume a local campaign with its original queue
+  and panel study, and where to find trial, proposal and advisory timeout diagnostics.
+
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
 
