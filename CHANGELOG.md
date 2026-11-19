@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Resume partial panel calibration using the recorded proxy and target scores
+  for each recipe and seed. An unscored reservation stays spent and stops the
+  fit. Recovered fits report unavailable throughput when earlier timing is unknown.
+
 - Validate the selected backend before creating or migrating the campaign queue.
   A rejected backend configuration leaves the queue untouched.
 
