@@ -142,3 +142,27 @@ We predeclared one change and compared it with the three retained coverage-corre
 On seed 47, trial 9 increased the incumbent's width from 16 to 32. Trial 12 promoted that recipe, tying greedy. On seed 11, random's winning recipe differed from the swarm incumbent only in learning rate. On seed 23, it differed only in width. The three local proposals on each seed sampled other neighbors. The measured mean gain came entirely from seed 47. The swarm still trails both baselines in mean search accuracy. The original failed acceptance remains recorded. This experiment used zero new selection or confirmation evaluations.
 
 The prospective protocol tests whether distributing local proposals across eligible coordinates improves the remaining MLP search gap. [Frozen protocol and retained evidence](mlp-local-search-protocol.md)
+
+### Prospective MLP coordinate comparison
+
+**The prediction failed.** The challenger tied the corrected control on all three fresh seeds. Its mean best full-fidelity search accuracy exceeded random by 1.30 percentage points and greedy by 3.52 points. The frozen rule required a strictly positive paired mean against each comparator. The historical three-workload Phase 3 acceptance remains failed. [Preregistered protocol](mlp-local-search-protocol.md)
+
+Each score is the best successful full-fidelity accuracy through trial 12 on the common 256-case generated search stream. The three differences subtract the comparator from the challenger. The decision uses unrounded values. [Per-trial records, local moves and running-best curves](../benchmarks/results/v1-mlp-local-coordinates.json)
+
+| Paired seed | Control | Challenger | Random | Greedy | Δ control | Δ random | Δ greedy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 3884184493 | 0.917969 | 0.917969 | 0.917969 | 0.914062 | 0.000000 | 0.000000 | +0.003906 |
+| 237053528 | 0.960938 | 0.960938 | 0.902344 | 0.832031 | 0.000000 | +0.058594 | +0.128906 |
+| 4205356979 | 0.890625 | 0.890625 | 0.910156 | 0.917969 | 0.000000 | −0.019531 | −0.027344 |
+| Mean | 0.923177 | 0.923177 | 0.910156 | 0.888021 | 0.000000 | +0.013021 | +0.035156 |
+
+The new rule changed the trial-11 local move on two seeds. On 3884184493 it chose width after the incumbent had already used learning rate and activation. The resulting promotion scored 0.894531, below the 0.917969 already recorded at trial 4. On 237053528 it chose activation after one learning-rate move from the current incumbent. Both portfolios promoted the same recipe at trial 12 and kept the 0.960938 recorded at trial 8. On 4205356979 both policies issued the same recipes throughout. Coordinate diversification changed which neighbors were screened without increasing the best observed full-fidelity score.
+
+All 144 trials succeeded on the first attempt. Each campaign used one serial CPU worker and one Torch thread, with Python 3.12.14 and PyTorch 2.15.0. The workers recorded training stream 17 and search stream 3413209931. Each portfolio used nine half-fidelity screens and three full-fidelity evaluations per seed. Each baseline used its 12 slots at full fidelity. Counts and elapsed times below sum across the three seeds. Distinct recipe counts follow seed order in the score table. [Frozen experimental implementation](https://github.com/vincentkoc/autoresearch-swarm/blob/ea9f8b03b613432ce53972a1310647dc239d2c53/benchmarks/mlp_local_coordinates.py)
+
+| Arm | Distinct recipes by seed | Half / full trials | Completed optimizer updates | Elapsed seconds |
+| --- | --- | ---: | ---: | ---: |
+| Corrected control | 9, 9, 9 | 27 / 9 | 540 | 127.4 |
+| Challenger | 9, 9, 9 | 27 / 9 | 540 | 126.2 |
+| Random | 11, 9, 11 | 0 / 36 | 864 | 127.0 |
+| Greedy | 12, 12, 12 | 0 / 36 | 864 | 125.5 |

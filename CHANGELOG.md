@@ -28,6 +28,9 @@
 - Document the remaining MLP search gap and freeze a search-only comparison
   of coordinate coverage around the incumbent.
 
+- Publish the prospective CPU MLP results. Diversifying local coordinates tied
+  the corrected control on all three seeds under the 12-trial budget.
+
 - Schedule one-coordinate finite search moves by the campaign trial budget,
   counting screened and promoted trials once each.
 
