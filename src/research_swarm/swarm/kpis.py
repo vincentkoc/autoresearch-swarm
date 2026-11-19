@@ -153,13 +153,13 @@ def _panel_kpis(db: sqlite3.Connection, campaign: str) -> dict[str, Any]:
     passes, decisions, unknown, latest = db.execute(
         """WITH outcomes AS (
             SELECT id, panel_evidence, json_extract(panel_evidence,'$.reason') AS reason,
-                   json_extract(panel_evidence,'$.confirmation_gain') AS gain,
+                   json_type(panel_evidence,'$.confirmation_gain') AS gain_type,
                    json_extract(panel_evidence,'$.promoted') AS promoted
             FROM swarm_events WHERE campaign_id=? AND kind='panel_decision'
                 AND json_extract(panel_evidence,'$.binding')=?),
            classified AS (
                 SELECT *, CASE
-                    WHEN reason='confirmation' AND typeof(gain) IN ('real','integer')
+                    WHEN reason='confirmation' AND gain_type IN ('real','integer')
                         AND promoted IN (0,1) THEN 1
                     WHEN reason IN ('selection','reference','evaluation_failed') THEN 0
                 END AS eligible FROM outcomes)

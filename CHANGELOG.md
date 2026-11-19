@@ -57,6 +57,9 @@
 - Report calibration slope, target seed noise and confirmation pass counts from
   the panel outcomes recorded for each campaign, counting replayed comparisons once.
 
+- Show the confirmation pass rate as unavailable when a recorded confirmation
+  gain is a JSON boolean. A numeric zero still counts as a measured gain.
+
 - Pass the dispatched trial fidelity to native workload stages so training can
   use the budget assigned by the campaign scheduler.
 
