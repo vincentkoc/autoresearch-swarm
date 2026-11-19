@@ -79,7 +79,7 @@ class PlotRun:
     capture_hours: float | None
     points: tuple[PlotPoint, ...]
     baseline: PlotPoint | None
-    selections: tuple[tuple[float, float, str], ...]
+    selections: tuple[tuple[float, float | None, str], ...]
     history_complete: bool
     included: int
     total: int
@@ -177,7 +177,7 @@ def project_hill_climb(
             raise ValueError("Baseline must be an object or null")
         if len(snapshot.recent_evaluations) > snapshot.evaluation_count:
             raise ValueError("Captured receipt count exceeds total")
-        selections = []
+        selections: list[tuple[float, float | None, str]] = []
         for item in snapshot.selection_history:
             if item.comparison_digest is not None and item.comparison_digest != comparison_digest:
                 continue
@@ -188,8 +188,10 @@ def project_hill_climb(
                 and recorded is not None
                 and origin <= recorded <= captured
                 and item.event_sequence <= snapshot.evidence_through
-                and item.score is not None
             ):
+                # An unknown score ends a measured step. Before the first score there is no step.
+                if item.score is None and not selections:
+                    continue
                 selections.append(
                     ((recorded - origin).total_seconds() / 3600, item.score, item.trial_id)
                 )
@@ -291,7 +293,7 @@ def _draw_time_chart(
     )
     # Normalize before subtraction to avoid overflow for finite extreme floats.
     scores = [point.value for point in points] + [
-        value for run in runs for _, value, _ in run.selections
+        value for run in runs for _, value, _ in run.selections if value is not None
     ]
     scale = max(map(abs, scores), default=1.0) or 1.0
     values = [value / scale for value in scores]
@@ -354,16 +356,22 @@ def _draw_time_chart(
                 opacity=0.65,
             )
         if run.selections:
-            first, *later = run.selections
-            selected_path = f"M {x(first[0]):.3f} {y(first[1]):.3f}"
-            for hours, score, _ in later:
-                selected_path += f" H {x(hours):.3f} V {y(score):.3f}"
-            if run.capture_hours is not None:
-                selected_path += f" H {x(run.capture_hours):.3f}"
+            commands = []
+            measured = False
+            for hours, score, _ in run.selections:
+                if measured:
+                    commands.append(f"H {x(hours):.3f}")
+                    if score is not None:
+                        commands.append(f"V {y(score):.3f}")
+                elif score is not None:
+                    commands.append(f"M {x(hours):.3f} {y(score):.3f}")
+                measured = score is not None
+            if measured and run.capture_hours is not None:
+                commands.append(f"H {x(run.capture_hours):.3f}")
             selected_line = _element(
                 line,
                 "path",
-                d=selected_path,
+                d=" ".join(commands),
                 fill="none",
                 stroke=color,
                 stroke_width=2,
