@@ -6,13 +6,14 @@ import pytest
 from scripts.ci_test_budget import check_budget, count_test_lines
 
 
+def git(*arguments: str) -> str:
+    return subprocess.check_output(["git", *arguments], text=True).strip()
+
+
 def test_budget_counts_moves_across_test_boundary_and_nested_test_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-
-    def git(*arguments: str) -> None:
-        subprocess.run(["git", *arguments], check=True, capture_output=True)
 
     git("init", "-q")
     Path("tests").mkdir()
@@ -38,8 +39,31 @@ def test_budget_counts_moves_across_test_boundary_and_nested_test_files(
     Path("tests/binary.dat").write_bytes(b"\x00\xff\x00")
     Path("standalone.test.ts").write_text("standalone\n")
     git("add", ".")
-    tree = subprocess.check_output(["git", "write-tree"], text=True).strip()
+    tree = git("write-tree")
     assert count_test_lines("HEAD", tree) == (5, 2)
+
+
+def test_budget_counts_text_sides_independently_of_diff_attributes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.chdir(tmp_path)
+    git("init", "-q")
+    Path("tests").mkdir()
+    Path(".gitattributes").write_text("tests/*.py -diff\ntests/*.dat diff\n")
+    Path("tests/old.py").write_bytes(b"\x00")
+    Path("tests/binary.dat").write_bytes(b"\x00" + b"\n" * 400)
+    git("add", "-A")
+    previous = git("write-tree")
+    Path("tests/old.py").write_text("assert True\n" * 400 + "assert True")
+    Path("tests/binary.dat").unlink()
+    git("add", "-A")
+    current = git("write-tree")
+    assert count_test_lines(previous, current) == (401, 0)
+    assert count_test_lines(current, previous) == (0, 401)
+    Path("tests/old.py").write_text("assert False\n" + "assert True\n" * 399 + "assert True")
+    git("add", "-A")
+    edited = git("write-tree")
+    assert count_test_lines(current, edited) == (1, 1)
 
 
 def test_budget_accepts_boundary_and_requires_visible_reason_for_overage() -> None:

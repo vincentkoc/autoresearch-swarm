@@ -94,6 +94,9 @@
 - Require a PR description explaining which contracts need coverage when a
   change adds more than 400 net lines of tests or test support.
 
+- Count tracked text fixtures in the local test-line budget even when a PR changes
+  their diff attributes or replaces a binary fixture with text.
+
 - **Breaking:** Remove the policy-learning, held-out benchmark and policy-adoption
   subsystem: the 13 `learning.*` commands, their scopes, record kinds and MCP tools,
   and the `learning_cycle` and `cpu_policy_learning` examples. No real research run
