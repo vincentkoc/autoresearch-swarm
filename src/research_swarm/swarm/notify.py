@@ -51,7 +51,10 @@ def poll(
         raise ValueError("Minimum trials per hour must be positive")
     database = database.resolve()
     when = datetime.fromtimestamp(now, zone)
-    hour = str(int(when.replace(minute=0, second=0, microsecond=0).timestamp()))
+    # Subtract wall-clock minutes using the observed offset. A DST rollback can
+    # repeat part of an hour without repeating its 00-minute boundary.
+    hour = int(when.replace(microsecond=0).timestamp()) - when.minute * 60 - when.second
+    legacy_hour = int(when.replace(minute=0, second=0, microsecond=0).timestamp())
     records: list[dict[str, Any]] = []
     with _read(database) as queue:
         row = queue.execute(
@@ -74,6 +77,25 @@ def poll(
                 "PRIMARY KEY(campaign,created,key))"
             )
             scope = (campaign, row["at"])
+
+            def hourly_key(kind: str, suffix: str = "") -> str:
+                key = f"{kind}:{hour}{suffix}"
+                if hour == legacy_hour:
+                    return key
+                old_key = f"{kind}:{legacy_hour}{suffix}"
+                prior = out.execute(
+                    "SELECT payload FROM notifications WHERE campaign=? AND created=? AND key=?",
+                    (*scope, old_key),
+                ).fetchone()
+                if prior:
+                    previous = datetime.fromisoformat(json.loads(prior[0])["at"]).astimezone(zone)
+                    if (previous.date(), previous.hour, previous.utcoffset()) == (
+                        when.date(),
+                        when.hour,
+                        when.utcoffset(),
+                    ):
+                        return old_key
+                return key
 
             def missing(key: str) -> bool:
                 return (
@@ -99,8 +121,8 @@ def poll(
                 )
                 records.append(item)
 
-            digest_key = "digest:" + hour
-            rate_key = f"low_rate:{hour}:{min_trials}"
+            digest_key = hourly_key("digest")
+            rate_key = hourly_key("low_rate", f":{min_trials}")
             due = missing(digest_key)
             check_rate = min_trials is not None and now - row["at"] >= 3600 and missing(rate_key)
             if due or check_rate:
@@ -131,8 +153,14 @@ def poll(
                         completed_trials_last_hour=completed,
                         minimum=min_trials,
                     )
-            target_key = f"score_target:{target}"
-            if target is not None and missing(target_key):
+            if (
+                target is not None
+                and not out.execute(
+                    "SELECT 1 FROM notifications WHERE campaign=? AND created=? "
+                    "AND key GLOB 'score_target:*' AND json_extract(payload,'$.target')=? LIMIT 1",
+                    (*scope, target),
+                ).fetchone()
+            ):
                 compare = "<=" if spec["direction"] == "minimize" else ">="
                 columns = {r["name"] for r in queue.execute("PRAGMA table_info(swarm_events)")}
                 if "score" in columns:
@@ -143,7 +171,7 @@ def poll(
                     ).fetchone()
                     if hit is not None:
                         record(
-                            target_key,
+                            f"score_target:{target}",
                             "score_target",
                             metric=spec["metric"],
                             target=target,
