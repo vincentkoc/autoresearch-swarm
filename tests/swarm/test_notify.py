@@ -227,6 +227,43 @@ def test_concurrent_watchers_restart_and_dst_fold(
         assert journal.execute("SELECT count(*) FROM notifications").fetchone() == (4,)
 
 
+def test_restart_in_spring_forward_partial_hour(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    before_jump = "2024-10-06T01:59:59+10:30"
+    after_jump = "2024-10-06T02:30:00+11:00"
+    next_hour = "2024-10-06T03:00:00+11:00"
+    now = datetime.fromisoformat(before_jump).timestamp()
+    clock = SimpleNamespace(time=lambda: now)
+    monkeypatch.setattr(notify, "time", clock)
+    monkeypatch.setattr("research_swarm.swarm.store.time", clock)
+    database = tmp_path / "queue.sqlite"
+    SQLiteStore(database).create_campaign(spec())
+    parser = argparse.ArgumentParser()
+    notify.add_arguments(parser)
+    args = parser.parse_args(["test", "--timezone", "Australia/Lord_Howe", "--once"])
+
+    delivered: list[dict] = []
+    for at, expected_total in (
+        (before_jump, 1),
+        (after_jump, 2),
+        ("2024-10-06T02:59:59+11:00", 2),
+        (next_hour, 3),
+    ):
+        now = datetime.fromisoformat(at).timestamp()
+        notify.watch(database, args, delivered.append)
+        assert len(delivered) == expected_total
+
+    assert [(item["kind"], item["at"]) for item in delivered] == [
+        ("hourly_digest", before_jump),
+        ("hourly_digest", after_jump),
+        ("hourly_digest", next_hour),
+    ]
+    with closing(sqlite3.connect(str(database) + ".notifications.sqlite")) as journal:
+        rows = journal.execute("SELECT payload FROM notifications ORDER BY rowid")
+        assert [json.loads(payload) for (payload,) in rows] == delivered
+
+
 def test_restart_honors_legacy_digest_in_second_partial_hour(tmp_path: Path) -> None:
     database = tmp_path / "queue.sqlite"
     SQLiteStore(database).create_campaign(spec())
