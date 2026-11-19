@@ -92,8 +92,8 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             "WHERE e.campaign_id=? AND e.kind='selected' ORDER BY e.id DESC LIMIT 50",
             (campaign,),
         ).fetchall()
-        current_score = (
-            dict(selected_rows[0]).get("score")
+        current_selection = (
+            dict(selected_rows[0])
             if selected_rows and selected_rows[0]["trial_id"] == row["selected_trial_id"]
             else None
         )
@@ -104,7 +104,7 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             meter,
             created_at=events[1],
             captured_at=captured_at.timestamp(),
-            current_score=current_score,
+            current_selection=current_selection,
         )
         candidates = db.execute(
             "SELECT candidate_id, json_extract(payload,'$.parents') AS parents, "

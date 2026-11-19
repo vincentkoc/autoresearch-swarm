@@ -188,6 +188,31 @@ def test_efficiency_uses_full_selection_history_and_requires_priced_usage(tmp_pa
         assert capture(database, campaign)["kpis"]["cost_per_0_01_improvement"]["value"] is None
 
 
+@pytest.mark.parametrize(
+    ("direction", "scores"),
+    [("maximize", (0.1, 0.8, 0.9)), ("minimize", (0.9, 0.2, 0.1))],
+)
+def test_cost_per_gain_uses_comparable_selections_and_all_campaign_cost(
+    tmp_path: Path, direction: str, scores: tuple[float, float, float]
+) -> None:
+    database = tmp_path / "queue.sqlite"
+    queue = SQLiteStore(database)
+    queue.create_campaign(spec(direction=direction))
+    for index, (fidelity, score) in enumerate(zip((0.5, 1.0, 1.0), scores, strict=True), start=1):
+        queue.submit(replace(trial(index), fidelity=fidelity))
+        attempt = queue.claim("test", "worker")
+        assert attempt and queue.report(
+            Result(attempt=attempt, status="ok", metrics={"loss": score}, cost=index)
+        )
+        queue.select("test", attempt.trial.trial_id, score=score)
+        metric = capture(database, "test")["kpis"]["cost_per_0_01_improvement"]
+        if index < 3:
+            assert metric["value"] is None
+        else:
+            assert metric["value"] == pytest.approx((1 + 2 + 3) * 0.01 / 0.1)
+            assert "fidelity 1" in metric["detail"]
+
+
 def test_reports_keep_screening_observations_and_selections_in_their_rung(tmp_path: Path) -> None:
     database = tmp_path / "queue.sqlite"
     queue = SQLiteStore(database)

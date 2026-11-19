@@ -65,19 +65,30 @@ def _cost_efficiency(
     campaign: str,
     spec: dict[str, Any],
     measured: float,
-    current_score: float | None,
+    current_selection: dict[str, Any] | None,
 ) -> dict[str, Any]:
     unit = "campaign currency / 0.01"
+    if current_selection is None or current_selection.get("score") is None:
+        return _metric(None, unit, "The current recorded selection needs a score.")
+    current_score = current_selection["score"]
+    fidelity = current_selection["fidelity"]
     first = db.execute(
-        "SELECT * FROM swarm_events WHERE campaign_id=? AND kind='selected' ORDER BY id LIMIT 1",
-        (campaign,),
+        "SELECT e.* FROM swarm_events e JOIN swarm_trials t USING(trial_id) "
+        "WHERE e.campaign_id=? AND e.kind='selected' AND t.fidelity=? ORDER BY e.id LIMIT 1",
+        (campaign, fidelity),
     ).fetchone()
     baseline = dict(first).get("score") if first else None
-    if baseline is None or current_score is None:
-        return _metric(None, unit, "The first and current recorded selections both need scores.")
+    if baseline is None:
+        return _metric(
+            None, unit, f"The first recorded selection at fidelity {fidelity:g} needs a score."
+        )
     gain = current_score - baseline if spec["direction"] == "maximize" else baseline - current_score
     if gain <= 0:
-        return _metric(None, unit, "The current selection has no net improvement over the first.")
+        return _metric(
+            None,
+            unit,
+            f"No net improvement over the first recorded selection at fidelity {fidelity:g}.",
+        )
     if measured == 0 and not any(
         spec.get(key)
         for key in (
@@ -91,7 +102,8 @@ def _cost_efficiency(
         measured * 0.01 / gain,
         unit,
         f"Recorded campaign cost {measured:g} over a {gain:g} gain from first to current "
-        "selection. Pending estimates are excluded. Invoiced USD is unavailable.",
+        f"selection at fidelity {fidelity:g}. Pending estimates are excluded. "
+        "Invoiced USD is unavailable.",
     )
 
 
@@ -190,7 +202,7 @@ def read_kpis(
     *,
     created_at: float | None,
     captured_at: float,
-    current_score: float | None,
+    current_selection: dict[str, Any] | None,
 ) -> dict[str, Any]:
     started = db.execute(
         "SELECT MIN(at) FROM swarm_events WHERE campaign_id=? AND kind='workload_started'",
@@ -229,7 +241,7 @@ def read_kpis(
         ),
         "gpu_utilization": gpu_utilization(db, campaign, spec),
         "cost_per_0_01_improvement": _cost_efficiency(
-            db, campaign, spec, meter["measured_cost"], current_score
+            db, campaign, spec, meter["measured_cost"], current_selection
         ),
         "failed_attempts_by_class": {
             **_metric(
