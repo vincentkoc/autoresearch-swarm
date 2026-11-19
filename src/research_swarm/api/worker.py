@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from research_swarm.swarm.files import CampaignFiles
-from research_swarm.swarm.interfaces import Attempt, Outcome, Result
+from research_swarm.swarm.interfaces import Attempt, FailureClass, Outcome, Result
 from research_swarm.swarm.meter import CostMeter
 
 MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
@@ -37,6 +37,7 @@ class Observation(BaseModel):
     input_tokens: int = Field(default=0, ge=0, strict=True)
     output_tokens: int = Field(default=0, ge=0, strict=True)
     peak_vram_mib: float | None = Field(default=None, ge=0)
+    failure_class: FailureClass | None = None
 
 
 def worker_router(database: Path, grant: WorkerGrant) -> APIRouter:
@@ -95,7 +96,16 @@ def worker_router(database: Path, grant: WorkerGrant) -> APIRouter:
         )
         if attempt is None:
             return None
-        return {"attempt": asdict(attempt), "token": attempt_token(attempt.attempt_id)}
+        return {
+            "attempt": asdict(attempt),
+            "token": attempt_token(attempt.attempt_id),
+            "attempt_telemetry": True,
+        }
+
+    @router.post("/{attempt_id}/started", dependencies=secured)
+    def started(attempt_id: str) -> None:
+        current(attempt_id)
+        store.workload_started(attempt_id)
 
     @router.post("/{attempt_id}/heartbeat", dependencies=secured)
     def heartbeat(attempt_id: str) -> bool:
@@ -107,6 +117,8 @@ def worker_router(database: Path, grant: WorkerGrant) -> APIRouter:
         attempt, previous = current(attempt_id)
         if body.status == "ok" and spec.metric not in body.metrics:
             raise HTTPException(422, "Successful result requires the campaign metric")
+        if body.status == "ok" and body.failure_class is not None:
+            raise HTTPException(422, "Successful result cannot have a failure class")
         result = Result(attempt=attempt, **body.model_dump())
         if previous is None:
             cost = charge(attempt, body.input_tokens, body.output_tokens)

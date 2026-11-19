@@ -297,6 +297,10 @@
 - Finish local trials when the workload command exits. Helpers that inherit
   its output pipes are stopped, preserving the command's metric or exit status.
 
+- Record when local and SSH workers acknowledge a workload launch, including
+  attempts later lost. Backend failures carry a machine-readable class when
+  known. Existing queues remain readable with their original measurements.
+
 - Add Hill climb / Graph tabs within the resizable campaign workspace. Hill climb
   retains chronological receipts and a separate running best per selected comparable
   campaign. Graph arrows use explicit parent IDs only, fade older generations and

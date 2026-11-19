@@ -16,7 +16,8 @@ from pathlib import Path
 
 from research_swarm.swarm.backends.capacity import Slots
 from research_swarm.swarm.data_stage import Stage, local_stage, verify_local_stage
-from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Result
+from research_swarm.swarm.interfaces import Attempt, CampaignSpec, FailureClass, Result
+from research_swarm.swarm.telemetry import workload_started
 
 
 class _TrialStreams(asyncio.subprocess.SubprocessStreamProtocol):
@@ -92,7 +93,12 @@ class LocalBackend:
                 with tempfile.TemporaryDirectory(prefix="swarm-trial-") as temp:
                     return await self._run(spec, attempt, Path(temp))
             except (OSError, ValueError, OverflowError) as error:
-                return Result(attempt=attempt, status="failed", error=str(error))
+                return Result(
+                    attempt=attempt,
+                    status="failed",
+                    error=str(error),
+                    failure_class="backend_setup",
+                )
 
     async def _run(self, spec: CampaignSpec, attempt: Attempt, directory: Path) -> Result:
         trial, metrics, usage = (
@@ -121,14 +127,18 @@ class LocalBackend:
         stdout = asyncio.create_task(_tail(streams.stdout))
         stderr = asyncio.create_task(_tail(streams.stderr))
         error_message = None
+        failure_class: FailureClass | None = None
         try:
+            workload_started(attempt.attempt_id)
             async with asyncio.timeout(spec.trial_timeout_seconds):
                 await streams.exited.wait()
                 code = process.get_returncode()
                 if code:
                     error_message = f"command exited with status {code}"
+                    failure_class = "command_exit"
         except TimeoutError:
             error_message = f"command timed out after {spec.trial_timeout_seconds:g} seconds"
+            failure_class = "timeout"
         finally:
             # Descendants may outlive the leader or keep its output pipes open.
             with suppress(ProcessLookupError):
@@ -148,7 +158,13 @@ class LocalBackend:
                 if counters.get("peak_vram_mib", 0.0) < 0:
                     raise ValueError("peak_vram_mib must be nonnegative")
         except (ValueError, OSError, OverflowError) as error:
-            return Result(attempt=attempt, status="failed", error=str(error), logs=logs)
+            return Result(
+                attempt=attempt,
+                status="failed",
+                error=str(error),
+                logs=logs,
+                failure_class="invalid_output",
+            )
         if error_message is None:
             try:
                 measurements = _numbers(metrics)
@@ -156,11 +172,13 @@ class LocalBackend:
                     raise ValueError(f"missing objective metric: {spec.metric}")
             except (ValueError, OSError, OverflowError) as error:
                 error_message = str(error)
+                failure_class = "invalid_output"
                 measurements = {}
         return Result(
             attempt=attempt,
             status="failed" if error_message else "ok",
             error=error_message,
+            failure_class=failure_class,
             metrics=measurements,
             logs=logs,
             input_tokens=int(counters.get("input_tokens", 0)),

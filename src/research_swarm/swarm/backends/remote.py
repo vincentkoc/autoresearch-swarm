@@ -13,8 +13,10 @@ from typing import Any
 from research_swarm.swarm.backends.local import LocalBackend
 from research_swarm.swarm.data_stage import hydrate, mount_readonly, stage_path
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
+from research_swarm.swarm.telemetry import observe_starts, workload_started
 
 RESULT_PREFIX = "SWARM_RESULT "
+START_PREFIX = "SWARM_STARTED "
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -26,7 +28,26 @@ class BootData:
     threads: int = 16
 
 
-async def command(argv: list[str], *, timeout: float, payload: bytes | None = None) -> str:
+async def _ssh_diagnostics(stream: asyncio.StreamReader, attempt_id: str) -> bytes:
+    marker = f"\n{START_PREFIX}{attempt_id}\n".encode()
+    tail = bytearray(b"\n")
+    acknowledged = False
+    while chunk := await stream.read(16384):
+        tail.extend(chunk)
+        if not acknowledged and marker in tail:
+            workload_started(attempt_id)
+            acknowledged = True
+        del tail[:-4096]
+    return bytes(tail)
+
+
+async def command(
+    argv: list[str],
+    *,
+    timeout: float,
+    payload: bytes | None = None,
+    started_attempt: str | None = None,
+) -> str:
     process = await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.PIPE if payload is not None else asyncio.subprocess.DEVNULL,
@@ -35,7 +56,16 @@ async def command(argv: list[str], *, timeout: float, payload: bytes | None = No
     )
     try:
         async with asyncio.timeout(timeout):
-            stdout, stderr = await process.communicate(payload)
+            if started_attempt is None:
+                stdout, stderr = await process.communicate(payload)
+            else:
+                assert process.stdin and process.stdout and process.stderr and payload is not None
+                process.stdin.write(payload)
+                process.stdin.close()
+                stdout, stderr = await asyncio.gather(
+                    process.stdout.read(), _ssh_diagnostics(process.stderr, started_attempt)
+                )
+                await process.wait()
     finally:
         if process.returncode is None:
             process.kill()
@@ -48,6 +78,7 @@ async def command(argv: list[str], *, timeout: float, payload: bytes | None = No
 
 def request(spec: CampaignSpec, attempt: Attempt, task_dir: str, device: str) -> dict[str, Any]:
     return {
+        "attempt_telemetry": True,
         "spec": {
             "campaign_id": spec.campaign_id,
             "command": list(spec.command),
@@ -83,11 +114,18 @@ async def run(request_data: dict[str, Any]) -> None:
     trial_data = dict(attempt_data.pop("trial"))
     trial_data["candidate"] = Candidate(**trial_data["candidate"])
     attempt = Attempt(trial=Trial(**trial_data), **attempt_data)
-    result = await LocalBackend(1, device=request_data["device"], data_dir=mountpoint).execute(
-        spec, attempt
-    )
+
+    def announce(attempt_id: str) -> None:
+        print(START_PREFIX + attempt_id, file=sys.stderr, flush=True)
+
+    with observe_starts(announce if request_data.get("acknowledge_start") else None):
+        result = await LocalBackend(1, device=request_data["device"], data_dir=mountpoint).execute(
+            spec, attempt
+        )
     fields = asdict(result)
     del fields["attempt"]
+    if not request_data.get("attempt_telemetry"):
+        del fields["failure_class"]
     print(
         RESULT_PREFIX
         + json.dumps({"attempt_id": attempt.attempt_id, "result": fields}, allow_nan=False)

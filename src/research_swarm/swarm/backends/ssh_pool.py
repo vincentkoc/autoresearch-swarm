@@ -22,7 +22,7 @@ from research_swarm.swarm.backends import remote
 from research_swarm.swarm.backends.capacity import Slots
 from research_swarm.swarm.backends.keeper import ACTIVITY, active
 from research_swarm.swarm.backends.remote import BootData as BootData
-from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Result
+from research_swarm.swarm.interfaces import Attempt, CampaignSpec, FailureClass, Result
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -101,8 +101,14 @@ class SSHPoolBackend:
     async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
         async with self._slots.claim(spec):
             if self._stopping:
-                return Result(attempt=attempt, status="lost", error="pool is stopping")
+                return Result(
+                    attempt=attempt,
+                    status="lost",
+                    error="pool is stopping",
+                    failure_class="backend_setup",
+                )
             host = self._available.pop(0)
+            failure_class: FailureClass = "backend_setup"
             try:
                 await self._prepare_host(host)
                 worker = shlex.join(
@@ -110,6 +116,8 @@ class SSHPoolBackend:
                 )
                 payload = remote.request(spec, attempt, host.task_dir, host.device)
                 payload["data"] = asdict(host.data) if host.data else None
+                payload["acknowledge_start"] = True
+                failure_class = "remote_dispatch"
                 output = await remote.command(
                     [
                         self.ssh,
@@ -127,11 +135,16 @@ class SSHPoolBackend:
                     ],
                     timeout=spec.trial_timeout_seconds + 1800,
                     payload=json.dumps(payload, allow_nan=False).encode(),
+                    started_attempt=attempt.attempt_id,
                 )
+                failure_class = "invalid_output"
                 return remote.read_result(output, attempt)
             except (OSError, ValueError, RuntimeError, TimeoutError) as error:
                 return Result(
-                    attempt=attempt, status="lost", error=str(error) or type(error).__name__
+                    attempt=attempt,
+                    status="lost",
+                    error=str(error) or type(error).__name__,
+                    failure_class=failure_class,
                 )
             finally:
                 self._available.append(host)

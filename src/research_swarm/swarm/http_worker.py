@@ -23,7 +23,7 @@ class HTTPWorkerQueue:
     def __init__(self, http: httpx.Client, token: str) -> None:
         self.http = http
         self.token = token
-        self.claims: dict[str, str] = {}
+        self.claims: dict[str, tuple[str, bool]] = {}
 
     def _post(self, route: str, token: str, **kwargs: Any) -> httpx.Response:
         return self.http.post(
@@ -50,11 +50,19 @@ class HTTPWorkerQueue:
         attempt = TypeAdapter(Attempt).validate_python(data["attempt"])
         if attempt.worker_id != worker_id or attempt.trial.campaign_id != campaign_id:
             raise ValueError("Controller returned an attempt for another worker or campaign")
-        self.claims[attempt.attempt_id] = data["token"]
+        self.claims[attempt.attempt_id] = data["token"], data.get("attempt_telemetry") is True
         return attempt
 
+    def workload_started(self, attempt_id: str) -> None:
+        token, supported = self.claims[attempt_id]
+        if supported:
+            response = self._post(attempt_id + "/started", token)
+            if response.status_code != 410:
+                response.raise_for_status()
+
     def heartbeat(self, attempt_id: str, *, cost: float = 0.0) -> bool:
-        response = self._post(attempt_id + "/heartbeat", self.claims[attempt_id])
+        token, _ = self.claims[attempt_id]
+        response = self._post(attempt_id + "/heartbeat", token)
         if response.status_code == 410 or response.raise_for_status().json() is False:
             self.claims.pop(attempt_id, None)
             return False
@@ -65,7 +73,9 @@ class HTTPWorkerQueue:
         route = attempt_id + "/report"
         payload = asdict(result)
         del payload["attempt"], payload["cost"]
-        token = self.claims[attempt_id]
+        token, supported = self.claims[attempt_id]
+        if not supported:
+            del payload["failure_class"]
         try:
             response = self._post(route, token, json=payload)
         except httpx.TransportError:

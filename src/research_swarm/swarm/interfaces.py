@@ -10,6 +10,15 @@ from typing import Any, Literal, Protocol
 Direction = Literal["minimize", "maximize"]
 Resource = Literal["cpu", "gpu", "llm"]
 Outcome = Literal["ok", "failed", "lost"]
+FailureClass = Literal[
+    "backend_setup",
+    "command_exit",
+    "timeout",
+    "invalid_output",
+    "remote_dispatch",
+    "cancelled",
+    "heartbeat_expired",
+]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -107,6 +116,7 @@ class Result:
     input_tokens: int = 0
     output_tokens: int = 0
     peak_vram_mib: float | None = None
+    failure_class: FailureClass | None = None
 
 
 class Proposer(Protocol):
