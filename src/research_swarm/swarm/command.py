@@ -36,7 +36,9 @@ def campaign_backend(spec: CampaignSpec) -> Backend:
     return local_backend(spec)
 
 
-def run_campaign(path: Path, database: Path) -> tuple[dict[str, Any], int]:
+def run_campaign(
+    path: Path, database: Path, *, retry_exhausted: bool = False
+) -> tuple[dict[str, Any], int]:
     spec = load_spec(path)
     database.parent.mkdir(parents=True, exist_ok=True)
     store = SQLiteStore(database)
@@ -55,7 +57,7 @@ def run_campaign(path: Path, database: Path) -> tuple[dict[str, Any], int]:
         selection=_factory(spec.selection_policy)(spec) if spec.selection_policy else None,
         panels=_factory(spec.panel_policy)(spec) if spec.panel_policy else None,
     )
-    summary = asyncio.run(loop.run())
+    summary = asyncio.run(loop.run(retry_exhausted=retry_exhausted))
     report = asdict(summary)
     read_score = getattr(loop.panels, "confirmed_score", None)
     report["confirmed_score"] = (

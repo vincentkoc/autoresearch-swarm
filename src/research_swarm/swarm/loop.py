@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from itertools import chain, islice, product
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from uuid import NAMESPACE_URL, uuid5
 
 from research_swarm.swarm.interfaces import (
@@ -35,6 +35,12 @@ class PanelPolicy(Protocol):
     def calibrate(self) -> object: ...
     def record_search(self, candidate_key: str, seed: int) -> object: ...
     def consider(self, challenger_key: str, incumbent_key: str | None) -> PanelDecision: ...
+
+
+@runtime_checkable
+class _ExhaustionStore(Protocol):
+    def exhausted_after(self, campaign_id: str) -> int | None: ...
+    def mark_exhausted(self, campaign_id: str, observations: int) -> None: ...
 
 
 def candidate_key(candidate: Candidate) -> str:
@@ -223,7 +229,7 @@ class SwarmLoop:
 
         return await self.worker.run_once(self.spec, before_execute=record_search)
 
-    async def run(self) -> RunSummary:
+    async def run(self, *, retry_exhausted: bool = False) -> RunSummary:
         s = self.spec
         if s.evaluation_mode == "calibrated" and self.panels is None:
             raise ValueError("Configure a panel_policy or explicitly set evaluation_mode: smoke")
@@ -235,6 +241,12 @@ class SwarmLoop:
                 "Smoke campaigns use direct metrics and cannot declare evaluation panels"
             )
         self.store.create_campaign(s)
+        exhaustion = self.store if isinstance(self.store, _ExhaustionStore) else None
+        exhausted_after = (
+            exhaustion.exhausted_after(s.campaign_id)
+            if exhaustion and not retry_exhausted
+            else None
+        )
         deadline = self.store.deadline(s.campaign_id) if s.max_hours is not None else None
 
         def remaining_seconds() -> float:
@@ -281,7 +293,7 @@ class SwarmLoop:
                 reason = "trial_limit" if len(seen) >= s.max_trials else "exhausted"
                 if self._at_target():
                     reason = "target"
-                elif room > 0 and remaining_seconds() > 0:
+                elif room > 0 and remaining_seconds() > 0 and cursor != exhausted_after:
                     try:
                         async with asyncio.timeout(
                             min(s.proposal_timeout_seconds, remaining_seconds())
@@ -332,6 +344,8 @@ class SwarmLoop:
                     continue
                 if reason != "time_limit" and slots <= 0 and (queued or len(seen) < s.max_trials):
                     reason = "dispatch_unavailable"
+                if reason == "exhausted" and exhaustion and cursor != exhausted_after:
+                    exhaustion.mark_exhausted(s.campaign_id, cursor)
                 break
         finally:
             for task in pending:
