@@ -35,6 +35,12 @@ class FiniteMutation:
         self.rng = random.Random(spec.seed)
         self.data: dict[tuple[str, ...], list[float]] = defaultdict(list)
         self._issued: set[tuple[str, ...]] = set()
+        self._coverage: Counter[tuple[int, str]] = Counter()
+
+    def _remember(self, point: tuple[str, ...]) -> None:
+        if point not in self._issued:
+            self._issued.add(point)
+            self._coverage.update(self._features(point))
 
     def tell(self, result: Result) -> None:
         trial = result.attempt.trial
@@ -44,7 +50,7 @@ class FiniteMutation:
         ):
             return
         point = tuple(params[key] for key in self.keys)
-        self._issued.add(point)
+        self._remember(point)
         value = result.metrics.get(self.spec.metric)
         if (
             result.status == "ok"
@@ -61,21 +67,19 @@ class FiniteMutation:
                 features[-1 - self.domains.index(domain), value] += 1
         return features
 
-    def _fit(self) -> tuple[dict[tuple[int, str], float], Counter[tuple[int, str]]]:
+    def _fit(self) -> dict[tuple[int, str], float]:
         # Coordinate descent for ridge regression. Center and scale observed
         # scores so the exploration bonus is independent of objective units.
         values = [fmean(v) for v in self.data.values()]
         if not values:
-            return {}, Counter()
+            return {}
         avg = fmean(values)
         spread = max(values) - min(values) or 1.0
         residual = [(v - avg) / spread for v in values]
         design: dict[tuple[int, str], list[tuple[int, int]]] = defaultdict(list)
-        counts: Counter[tuple[int, str]] = Counter()
         for i, point in enumerate(self.data):
             for feature, amount in self._features(point).items():
                 design[feature].append((i, amount))
-                counts[feature] += amount
         weights: dict[tuple[int, str], float] = defaultdict(float)
         for _ in range(8):
             for feature, column in design.items():
@@ -85,7 +89,7 @@ class FiniteMutation:
                 weights[feature] += delta
                 for i, x in column:
                     residual[i] -= delta * x
-        return weights, counts
+        return weights
 
     async def propose(
         self, spec: CampaignSpec, parents: Sequence[Candidate], k: int
@@ -116,7 +120,7 @@ class FiniteMutation:
             if len(nearby) >= k:
                 pool = nearby
         self.rng.shuffle(pool)
-        weights, counts = self._fit()
+        weights = self._fit()
         batch = []
         for _ in range(min(k, len(pool))):
 
@@ -125,13 +129,12 @@ class FiniteMutation:
                 estimate = sum(weights.get(f, 0.0) * x for f, x in features.items())
                 # Diminishing information from repeating the same categorical
                 # level within a recipe or across earlier experiments.
-                bonus = sum(math.sqrt(x / (1 + counts[f])) for f, x in features.items())
+                bonus = sum(math.sqrt(x / (1 + self._coverage[f])) for f, x in features.items())
                 return estimate + 0.8 * bonus / math.sqrt(len(self.keys))
 
             best = max(pool, key=acquisition)
             pool.remove(best)
-            self._issued.add(best)
-            counts.update(self._features(best))
+            self._remember(best)
             params = dict(zip(self.keys, best, strict=True))
             if parents:
 
