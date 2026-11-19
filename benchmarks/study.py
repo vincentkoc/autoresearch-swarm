@@ -117,6 +117,9 @@ class WorkerPanelPolicy:
     def record_search(self, candidate_key: str, seed: int) -> None:
         self.study.record_search(self._recipe(candidate_key), seed)
 
+    def confirmed_score(self, candidate_key: str) -> float | None:
+        return self.study.confirmed_score(self._recipe(candidate_key))
+
     def consider(self, challenger_key: str, incumbent_key: str | None) -> Decision:
         reference = self._recipe(incumbent_key) if incumbent_key is not None else None
         return self.study.consider(self._recipe(challenger_key), reference)

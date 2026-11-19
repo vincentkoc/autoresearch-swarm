@@ -50,6 +50,9 @@
   and worker identity. Claimed attempts can heartbeat, publish observations,
   and upload immutable artifacts through the same SQLite queue.
 
+- `research swarm run` reports the winner's held-out `confirmed_score` when
+  the panel policy can read it. `selected.score` keeps the search ranking.
+
 - Serve authenticated campaign reads from SQLite with `serve --db`, inspect
   a selected database with `mcp --db`, or query it through `CampaignReader`.
 
