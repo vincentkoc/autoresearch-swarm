@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from research_swarm.swarm.interfaces import Candidate, Trial
@@ -15,6 +16,41 @@ from research_swarm.swarm.store import SQLiteStore
 from tests.paths import REPO_ROOT
 
 BIGRAM = REPO_ROOT / "examples" / "cpu_bigram"
+
+
+def test_run_reports_held_out_score_without_another_panel_look(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from research_swarm.swarm.command import run_campaign
+
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(REPO_ROOT), os.getenv("PYTHONPATH", "")]))
+    spec = yaml.safe_load((REPO_ROOT / "benchmarks" / "program.yaml").read_text())
+    spec.update(
+        task_dir=".",
+        command=[sys.executable, "-m", "benchmarks.trial", "program", "--protocol", "v2"],
+        max_workers=1,
+    )
+    spec["candidates"] = [
+        {
+            "candidate_id": "partial",
+            "params": {
+                "line1": "identity",
+                "line2": "strip",
+                "line3": "lower",
+                "line4": "hyphenate",
+            },
+        }
+    ]
+    spec_path, queue = tmp_path / "campaign.yaml", tmp_path / "queue.sqlite"
+    spec_path.write_text(yaml.safe_dump(spec))
+    report, code = run_campaign(spec_path, queue)
+    assert code == 0 and report["selected"]["score"] == 20 / 48
+    assert report["confirmed_score"] == 14 / 48
+    panel_db = next((tmp_path / ".research" / "panels").glob("*.sqlite"))
+    with sqlite3.connect(panel_db) as db:
+        looks = db.execute("SELECT count(*) FROM panel_looks").fetchone()
+        assert run_campaign(spec_path, queue) == (report, code)
+        assert db.execute("SELECT count(*) FROM panel_looks").fetchone() == looks
 
 
 def test_eight_processes_overlap_one_crashes_and_winner_survives_resume(tmp_path: Path) -> None:
@@ -47,6 +83,7 @@ os.execv(sys.executable, [sys.executable, workload])
     run = subprocess.run(args, capture_output=True, text=True, timeout=45, env=env)
     assert run.returncode == 0, run.stderr + run.stdout
     summary = json.loads(run.stdout)
+    assert summary["confirmed_score"] is None
     assert len(list(tmp_path.glob("*.ready"))) == 8
     assert (summary["trials"], summary["attempts"], summary["failed"], summary["lost"]) == (
         8,
@@ -84,8 +121,6 @@ os.execv(sys.executable, [sys.executable, workload])
 
 
 def test_yaml_rejects_unknown_fields_and_wrong_types(tmp_path: Path) -> None:
-    import pytest
-
     spec = yaml.safe_load((BIGRAM / "swarm.yaml").read_text())
     path = tmp_path / "bad.yaml"
     for change in (

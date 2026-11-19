@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from research_swarm.swarm.backends.local import from_spec as local_backend
 from research_swarm.swarm.interfaces import Backend, CampaignSpec, Worker
-from research_swarm.swarm.loop import SwarmLoop
+from research_swarm.swarm.loop import SwarmLoop, candidate_key
 from research_swarm.swarm.spec import load_spec
 from research_swarm.swarm.store import SQLiteStore
 from research_swarm.swarm.worker import from_spec
@@ -56,6 +56,11 @@ def run_campaign(path: Path, database: Path) -> tuple[dict[str, Any], int]:
         panels=_factory(spec.panel_policy)(spec) if spec.panel_policy else None,
     )
     summary = asyncio.run(loop.run())
-    return asdict(
-        summary
-    ), 0 if summary.selected and summary.reason != "dispatch_unavailable" else 3
+    report = asdict(summary)
+    read_score = getattr(loop.panels, "confirmed_score", None)
+    report["confirmed_score"] = (
+        read_score(candidate_key(summary.selected.result.attempt.trial.candidate))
+        if summary.selected and read_score is not None
+        else None
+    )
+    return report, 0 if summary.selected and summary.reason != "dispatch_unavailable" else 3
