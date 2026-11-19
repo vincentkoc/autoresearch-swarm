@@ -40,6 +40,9 @@
   the 12 top-level CLI commands, 23 executable paths and six campaign tables.
   Update report and MLX examples to use the current CLI.
 
+- Document how to reconcile proposal, confirmation, calibration and GPU time
+  in a campaign report with its recorded queue evidence.
+
 - Correct the operator guide's panel query for the supplied YAML campaign and
   show where to read its held-out score and promotion decision.
 

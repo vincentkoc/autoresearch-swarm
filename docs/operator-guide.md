@@ -53,12 +53,62 @@ PYTHON
 | --- | --- |
 | `time_to_first_trial` | Seconds from campaign creation to the first acknowledged workload start. Queues without a launch record report `null`. For a cold-start qualification, also time preparation and provisioning before campaign creation. |
 | `trials_per_hour` | Distinct trials that reached a terminal outcome in the 60 minutes ending at capture. A failed attempt that was retried does not add another completed trial. |
-| `gpu_utilization` | Run-wide percentage requires summed busy device-seconds divided by allocated device-seconds, including idle allocation. The queue records no such time series. |
+| `gpu_utilization` | Sum measured busy device-seconds across the campaign’s dedicated allocations, including measured idle time in the denominator. Divide by total allocated device-seconds and multiply by 100. Inspect coverage and open allocations before using the value. |
 | `cost_per_0_01_improvement` | Multiply metered campaign cost by 0.01 and divide by the positive gain from the first to the current recorded selection. Gain follows the objective direction. Missing scores, no net gain or an unpriced free run leave the value unavailable. Pending estimates are excluded. Invoiced dollars require billing evidence. |
 | `failed_attempts_by_class` | Percentages use finished attempts as the denominator. Retries are separate attempts. An unclassified failed or lost observation has no recorded cause. |
-| `proposer_acceptance_rate` | Unavailable without a campaign count of all proposals, including rejections. Submitted trials alone give no proposal denominator. |
-| `confirmation_pass_rate` | Unavailable without campaign-attributed confirmation decisions and outcomes. A shared study can pool exposures from several runs or reuse a measurement without a new look. |
-| `proxy_to_target_slope` | Fitted change in target score per unit of proxy score across calibration variants. The snapshot reports `null` without campaign-attributed calibration. Smoke runs omit calibration. A flat proxy has an undefined slope. |
+| `proposer_acceptance_rate` | Percentage of candidate entries returned by the controller’s proposer that created a new trial. Duplicate and invalid entries count as rejections. A timeout returning no entries adds none. Direct submissions and worker retries are outside this count. |
+| `confirmation_pass_rate` | Percentage of distinct, campaign-bound comparisons that reached confirmation with a measured gain and passed. Reference decisions, selection vetoes and evaluator failures are excluded. A completed campaign can have zero eligible decisions. |
+| `proxy_to_target_slope` | Slope fitted to the mean proxy and target score for each calibration variant, from the study bound to this campaign. Read `seed_noise` in target-score units alongside it. A flat proxy gives a null slope even when seed noise is known. |
+
+### Reconcile a captured report
+
+For a queue with the telemetry columns, set `:campaign` to the same campaign
+ID you passed to `research report view`. In the SQLite shell, open the queue
+with `sqlite3 -readonly .research/program.sqlite`, then run
+`.parameter set :campaign program-normalization`.
+
+~~~sql
+SELECT id, kind, proposed_count, accepted_count, panel_evidence, gpu_time
+FROM swarm_events
+WHERE campaign_id = :campaign
+  AND kind IN ('created', 'proposal_batch', 'proposal_timeout',
+               'panel_calibration', 'panel_decision',
+               'gpu_allocation_started', 'gpu_device_interval', 'gpu_allocation_finished')
+ORDER BY id;
+~~~
+
+- **Proposals.** Suppose the proposer returned five entries and three created trials.
+  The snapshot shows three accepted, two rejected, a fraction of 0.6 and a report
+  value of 60%. With complete coverage and zero returns, the counts are zero and the
+  percentage is null. A campaign created before proposal accounting has unknown
+  lifetime counts, even if it records a later batch.
+- **Confirmation.** A reference decision followed by one passing and one failing
+  measured comparison gives one pass in two decisions, or 50%. Filter by the
+  campaign’s study binding and count comparisons, including cached outcomes attributed
+  to this campaign. The number of panel looks can differ. Missing or incomplete
+  attribution leaves the rate unavailable. Use `recorded_passes` and
+  `recorded_decisions` for the observed subset. `last_confirmation` gives the latest
+  eligible comparison’s promotion decision and measured gain.
+- **Calibration.** Variant means of 0, 1 and 2 on the proxy and 0.05, 2.05 and 4.05 on
+  the target give a slope of 2 target units per proxy unit. Use the bound calibration
+  stored in the queue. The `seed_noise` field is the square root of the mean
+  within-variant target variance across seeds. A smoke run has no calibration.
+  Opening the report requires no new panel evaluation.
+- **GPU time.** If one allocated second contains 0.5 busy seconds and the next 1.5
+  seconds are measured idle, the result is 20% over 2.5 device-seconds. An entirely
+  measured idle allocation gives 0%. A CPU run, missing samples or an unfinished
+  allocation leave the percentage unavailable. Inspect `coverage`,
+  `busy_device_seconds`, `covered_device_seconds`, `allocated_device_seconds` and
+  `open_allocations` in the snapshot.
+
+For `resource: gpu` on a dedicated local CUDA device, set `options.backend.device` to its full GPU UUID
+and `options.backend.sample_gpu_time` to `true`. The sampler reads device utilization
+from first dispatch through drain, including idle, staging and retries during the
+allocation.
+
+These generated numbers demonstrate how to reconcile a report. A hardware
+utilization claim requires measurements from the actual allocation. A private
+campaign result requires its own held-out confirmation evidence.
 
 ## Inspect a running queue
 
