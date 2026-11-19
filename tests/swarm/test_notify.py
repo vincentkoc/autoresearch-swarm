@@ -7,7 +7,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -63,14 +63,26 @@ def test_target_uses_recorded_selections_including_older_than_report_window(
         )
 
 
+@pytest.mark.parametrize(
+    "zone_name,first_at,second_at",
+    [
+        ("America/New_York", "2024-11-03T01:15:00-04:00", "2024-11-03T01:15:00-05:00"),
+        ("Australia/Lord_Howe", "2024-04-07T01:45:00+11:00", "2024-04-07T01:45:00+10:30"),
+    ],
+)
 def test_concurrent_watchers_restart_and_dst_fold(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    zone_name: str,
+    first_at: str,
+    second_at: str,
 ) -> None:
     database = tmp_path / "queue.sqlite"
-    first = datetime(2024, 11, 3, 5, 15, tzinfo=UTC).timestamp()
+    first = datetime.fromisoformat(first_at).timestamp()
+    second = datetime.fromisoformat(second_at).timestamp()
     monkeypatch.setattr("research_swarm.swarm.store.time.time", lambda: first - 7200)
     SQLiteStore(database).create_campaign(spec())
-    zone = ZoneInfo("America/New_York")
+    zone = ZoneInfo(zone_name)
 
     def check(now: float) -> list[dict]:
         return poll(database, "test", zone, now=now, min_trials=1)
@@ -78,21 +90,43 @@ def test_concurrent_watchers_restart_and_dst_fold(
     with ThreadPoolExecutor(2) as pool:
         records = [item for batch in pool.map(check, [first, first]) for item in batch]
     assert [r["kind"] for r in records] == ["hourly_digest", "low_trial_rate"]
-    assert records[0]["at"].endswith("01:15:00-04:00")
+    assert records[0]["at"] == first_at
     assert check(first + 600) == []
-    assert check(first + 3600)[0]["at"].endswith("01:15:00-05:00")
+    repeated = check(second)
+    assert [item["kind"] for item in repeated] == ["hourly_digest", "low_trial_rate"]
+    assert repeated[0]["at"] == second_at
+    assert check(second + 600) == []
     with closing(sqlite3.connect(str(database) + ".notifications.sqlite")) as journal:
         assert journal.execute("SELECT count(*) FROM notifications").fetchone() == (4,)
 
 
-def test_restart_recovers_alert_after_stdout_pipe_breaks(tmp_path: Path) -> None:
+def test_restart_honors_legacy_digest_in_second_partial_hour(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    SQLiteStore(database).create_campaign(spec())
+    zone = ZoneInfo("Australia/Lord_Howe")
+    when = datetime.fromisoformat("2024-04-07T01:45:00+10:30").astimezone(zone)
+    (digest,) = poll(database, "test", zone, now=when.timestamp())
+    # The earlier release used the first hour boundary even for a poll in the later fold.
+    old_key = f"digest:{int(when.replace(minute=0).timestamp())}"
+    with closing(sqlite3.connect(str(database) + ".notifications.sqlite")) as journal, journal:
+        journal.execute(
+            "UPDATE notifications SET key=?,payload=? WHERE key=?",
+            (old_key, json.dumps({**digest, "key": old_key}), digest["key"]),
+        )
+    assert poll(database, "test", zone, now=when.timestamp() + 60) == []
+
+
+@pytest.mark.parametrize("target,resume_target,score", [("2", "2", 1.5), ("-0", "0", 0.0)])
+def test_restart_recovers_alert_after_stdout_pipe_breaks(
+    tmp_path: Path, target: str, resume_target: str, score: float
+) -> None:
     database = tmp_path / "queue.sqlite"
     queue = SQLiteStore(database)
     queue.create_campaign(spec())
     queue.submit(trial(1))
     attempt = queue.claim("test", "local")
-    assert attempt and queue.report(Result(attempt=attempt, status="ok", metrics={"loss": 1.5}))
-    queue.select("test", "test-1", score=1.5)
+    assert attempt and queue.report(Result(attempt=attempt, status="ok", metrics={"loss": score}))
+    queue.select("test", "test-1", score=score)
     cmd = [
         sys.executable,
         "-u",
@@ -103,9 +137,8 @@ def test_restart_recovers_alert_after_stdout_pipe_breaks(tmp_path: Path) -> None
         "test",
         "--db",
         str(database),
-        "--score-target",
-        "2",
         "--once",
+        "--score-target",
     ]
     with closing(sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)) as campaign:
         version = campaign.execute("PRAGMA data_version").fetchone()
@@ -115,7 +148,7 @@ def test_restart_recovers_alert_after_stdout_pipe_breaks(tmp_path: Path) -> None
         read_fd, write_fd = os.pipe()
         os.close(read_fd)  # The first write must fail, regardless of scheduling.
         with os.fdopen(write_fd, "wb") as pipe:
-            failed = subprocess.run(cmd, stdout=pipe, stderr=subprocess.PIPE, timeout=15)
+            failed = subprocess.run([*cmd, target], stdout=pipe, stderr=subprocess.PIPE, timeout=15)
         assert failed.returncode != 0 and b"BrokenPipeError" in failed.stderr
 
         journal_uri = (tmp_path / "queue.sqlite.notifications.sqlite").as_uri() + "?mode=ro"
@@ -123,15 +156,17 @@ def test_restart_recovers_alert_after_stdout_pipe_breaks(tmp_path: Path) -> None
             query = "SELECT payload FROM notifications WHERE campaign='test' ORDER BY rowid"
             original = [json.loads(row[0]) for row in journal.execute(query)]
             digest, alert = original
-            assert (digest["kind"], digest["selected_score"]) == ("hourly_digest", 1.5)
+            assert (digest["kind"], digest["selected_score"]) == ("hourly_digest", score)
             assert (alert["kind"], alert["trial_id"], alert["score"], alert["event_id"]) == (
                 "score_target",
                 "test-1",
-                1.5,
+                score,
                 event_id,
             )
 
-            restarted = subprocess.run(cmd, capture_output=True, check=True, timeout=15)
+            restarted = subprocess.run(
+                [*cmd, resume_target], capture_output=True, check=True, timeout=15
+            )
             emitted = [json.loads(line) for line in restarted.stdout.splitlines()]
             recovered = [json.loads(row[0]) for row in journal.execute(query)]
             # A restart across the clock hour may legitimately emit a new digest.

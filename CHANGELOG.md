@@ -57,6 +57,9 @@
   campaign observations. Each request has a process deadline and live heartbeat.
   The deterministic fake runs offline.
 
+- Keep hourly notifications distinct across half-hour daylight-saving rollbacks
+  and deduplicate equivalent numeric score targets when a watcher restarts.
+
 - Enforce each advisory provider's deadline inside its process so a stalled
   model request ends even if its supervising CLI is killed.
 
