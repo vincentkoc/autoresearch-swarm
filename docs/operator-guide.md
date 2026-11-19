@@ -13,7 +13,7 @@ The swarm CLI emits a JSON summary after the loop finishes. Check the
 | Reason | What to inspect |
 | --- | --- |
 | `trial_limit` | The campaign submitted its allowed number of distinct trials. |
-| `exhausted` | The proposer has no more work for the available slots. |
+| `exhausted` | The proposer has no more work for the available slots. A plain resume reuses this outcome while the history is unchanged. Add `--retry-exhausted` to the run command to ask the proposer again within the remaining budget. Worker retries follow `max_attempts`. |
 | `target` | The selected score reached the target in the declared direction. |
 | `time_limit` | Wall-clock time since campaign creation reached `max_hours`. Inspect completed attempts and queued work. |
 | `proposal_timeout` | The proposal call reached its deadline and the loop had no further work. |
@@ -54,7 +54,7 @@ PYTHON
 | `time_to_first_trial` | Seconds from campaign creation to the first acknowledged workload start. Queues without a launch record report `null`. For a cold-start qualification, also time preparation and provisioning before campaign creation. |
 | `trials_per_hour` | Distinct trials that reached a terminal outcome in the 60 minutes ending at capture. A failed attempt that was retried does not add another completed trial. |
 | `gpu_utilization` | Sum measured busy device-seconds across the campaign’s dedicated allocations, including measured idle time in the denominator. Divide by total allocated device-seconds and multiply by 100. Inspect coverage and open allocations before using the value. |
-| `cost_per_0_01_improvement` | Multiply metered campaign cost by 0.01 and divide by the positive gain from the first to the current recorded selection. Gain follows the objective direction. Missing scores, no net gain or an unpriced free run leave the value unavailable. Pending estimates are excluded. Invoiced dollars require billing evidence. |
+| `cost_per_0_01_improvement` | Multiply metered campaign cost by 0.01 and divide by the positive gain in the objective direction. Check the first and current selected scores at the same fidelity. Older reports can mix screening and full-fidelity selections. Missing comparable scores, no net gain or an unpriced free run leave cost per comparable gain unmeasured. Pending estimates are excluded. Invoiced dollars require billing evidence. |
 | `failed_attempts_by_class` | Percentages use finished attempts as the denominator. Retries are separate attempts. An unclassified failed or lost observation has no recorded cause. |
 | `proposer_acceptance_rate` | Percentage of candidate entries returned by the controller’s proposer that created a new trial. Duplicate and invalid entries count as rejections. A timeout returning no entries adds none. Direct submissions and worker retries are outside this count. |
 | `confirmation_pass_rate` | Percentage of distinct, campaign-bound comparisons that reached confirmation with a measured gain and passed. Reference decisions, selection vetoes and evaluator failures are excluded. A completed campaign can have zero eligible decisions. |
@@ -162,7 +162,8 @@ configured retry rule when another execution is needed.
 
 For a changed workload or budget, create a new campaign spec and ID.
 Keep the previous measurements accessible for comparison.
-Resume an interrupted campaign with its original spec and queue.
+Resume with the original spec, queue and panel study. If the coordinator
+stopped during calibration, inspect the study before restarting.
 
 ## Inspect the panel study
 
@@ -175,8 +176,9 @@ Read the cumulative counts for overuse and check the reason for each
 promotion decision. A rejected selection saves the confirmation cases.
 Confirmation can also reject a candidate that passed selection.
 
-Run this from the repository root after the supplied program campaign. It
-prints the exposure counts and each stored promotion decision with its recipe.
+Run this from the repository root for the supplied program campaign. For
+another campaign using the same policy, set its ID and use its task directory.
+The query reads the saved calibration, exposure counts and promotion decisions.
 
 ~~~sh
 uv run --no-sync python - <<'PYTHON'
@@ -190,6 +192,12 @@ campaign = "program-normalization"
 filename = sha256(campaign.encode()).hexdigest() + ".sqlite"
 study = (Path(".research/panels") / filename).resolve()
 with closing(sqlite3.connect(study.as_uri() + "?mode=ro", uri=True)) as db:
+    saved, reserved, scored = db.execute("""
+        SELECT EXISTS(SELECT 1 FROM panel_state WHERE key = 'calibration'),
+               count(*), count(score)
+        FROM panel_looks WHERE role IN ('calibration_proxy', 'calibration_target')
+    """).fetchone()
+    print("calibration saved", bool(saved), "reserved", reserved, "scored", scored)
     for role, count in db.execute("SELECT role,count(*) FROM panel_looks GROUP BY role"):
         print(role, count)
     for recipe, decision in db.execute("""
@@ -199,6 +207,21 @@ with closing(sqlite3.connect(study.as_uri() + "?mode=ro", uri=True)) as db:
         print(json.dumps({"recipe": json.loads(recipe), "decision": json.loads(decision)}))
 PYTHON
 ~~~
+
+Keep the original queue and study. With the calibration recovery fix, use
+the query output to choose the next action. [Recovery fix](https://github.com/vincentkoc/autoresearch-swarm/pull/143)
+
+- **Saved summary.** Resume with the original run command. The policy reuses the fit.
+- **Partial fit with a finite score for each unique reservation.** Resume with the
+  same command. The policy reuses each stored role, recipe and seed score and
+  evaluates the missing combinations. The recovered fit reports `null` for
+  seconds per trial and trials per second because earlier timings are unavailable.
+- **More reservations than scores.** The unscored look is spent. Resume stops
+  before trial dispatch. Record the reported role and seed, keep the ledger and
+  investigate the scorer. Duplicate scores for a role, recipe and seed also stop the fit.
+
+On revision `d39c765`, restarting a partial calibration could score completed
+cases again. Preserve those recorded looks when interpreting older runs.
 
 Standalone benchmark comparisons report `calibration`, `panel_looks` and
 `finalists` in their JSON output. Their studies live under

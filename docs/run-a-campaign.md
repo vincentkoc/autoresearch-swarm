@@ -24,10 +24,13 @@ when the panel policy supplies one. The normalized program should pass all
 search cases. To inspect its promotion decision and exposure counts, use the
 [operator guide's panel query](operator-guide.md#inspect-the-panel-study).
 
-Run the same command again to resume. The queue restores completed trials,
-and the panel study reuses recorded confirmation scores. Choose a new
-campaign ID for a changed spec. Use a new panel study when you change a split
-or scorer revision.
+After the example finishes, run the same command again to resume. The queue
+restores completed trials, and the panel study reuses recorded confirmation
+scores. Choose a new campaign ID for a changed spec. Use a new panel study
+when you change a split or scorer revision.
+
+If the process stopped during calibration, inspect the stored looks before resuming.
+[Panel recovery check](operator-guide.md#inspect-the-panel-study)
 
 ## Report what the run qualifies
 
@@ -43,14 +46,16 @@ to read the campaign KPIs from the existing queue.
 | Physical GPU utilization and provider billing | **Unmeasured.** The generated device records exercise accounting. The target above 80% requires busy and allocated device-seconds for a complete hardware run. Actual charges require billing records. [GPU qualification](gpu-qualification.md) |
 | Workload acceptance | **Generated rehearsal passed. Real workload unmeasured.** Source edits, short and full fits, and recovery ran on generated signals. Their scores describe fictional subjects. [Native workload fidelity](https://github.com/vincentkoc/autoresearch-swarm/pull/117) |
 
-Compare hill-climb scores within one fidelity. If a report groups all rungs
-in one campaign curve, read the running best per rung from the trial records.
+Compare hill-climb scores within one fidelity. For a multi-fidelity campaign,
+find the rung in the snapshot's `observed_cohorts`. Pass its `comparison_digest`
+as `--comparison-digest` to `research report view` when exporting that curve.
+If an older report groups all rungs together, use the per-rung trial records.
 [Recorded example](../benchmarks/results/v1-cli-cpu-small.jsonl)
 
-The prospective MLP comparison has approval for local CPU search only. Its
-four arms share three frozen seeds and a total cap of 144 trials. Report the
-paired full-fidelity search accuracies. Selection and confirmation require
-separate authorization. [Frozen protocol](mlp-local-search-protocol.md)
+The local CPU MLP comparison used all 144 trials. The challenger tied the
+control on all three seeds, so it failed the strict superiority test.
+It measured full-fidelity search accuracy only. Selection and confirmation
+require separate authorization. [Paired results](search-quality.md#prospective-mlp-coordinate-comparison) · [Frozen protocol](mlp-local-search-protocol.md)
 
 ### Before a real-workload acceptance run
 

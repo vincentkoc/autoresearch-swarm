@@ -66,6 +66,9 @@
 - Document the repeated-failure alert and when missing inputs or budget
   require an operator to stop a real-workload acceptance run.
 
+- Show operators how to inspect calibration reservations before resuming an
+  interrupted campaign and how to identify a saved calibration summary.
+
 - Document how to reconcile proposal, confirmation, calibration and GPU time
   in a campaign report with its recorded queue evidence.
 
