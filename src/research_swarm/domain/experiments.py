@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from graphlib import CycleError, TopologicalSorter
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -67,17 +68,13 @@ class StageSpec(VersionedRecord):
 
 
 def validate_stage_graph(stages: tuple[StageSpec, ...]) -> None:
-    indexed = {stage.id: stage for stage in stages}
-    if len(indexed) != len(stages):
+    dependencies = {stage.id: stage.dependencies for stage in stages}
+    if len(dependencies) != len(stages):
         raise ValueError("Duplicate stage ID")
-    missing = {dependency for stage in stages for dependency in stage.dependencies} - indexed.keys()
+    missing = {name for parents in dependencies.values() for name in parents} - dependencies.keys()
     if missing:
         raise ValueError(f"Unknown stage dependency: {sorted(missing)[0]}")
-    remaining = set(indexed)
-    complete: set[str] = set()
-    while remaining:
-        ready = {name for name in remaining if set(indexed[name].dependencies) <= complete}
-        if not ready:
-            raise ValueError("Stage graph contains a cycle")
-        complete.update(ready)
-        remaining.difference_update(ready)
+    try:
+        TopologicalSorter(dependencies).prepare()
+    except CycleError as error:
+        raise ValueError("Stage graph contains a cycle") from error
