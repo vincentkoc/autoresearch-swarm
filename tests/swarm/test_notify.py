@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import asyncio
 import json
 import os
 import sqlite3
@@ -9,15 +11,140 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from research_swarm.cli import main
+from research_swarm.swarm import notify
 from research_swarm.swarm.interfaces import Result
 from research_swarm.swarm.notify import poll
 from research_swarm.swarm.store import SQLiteStore
 from tests.swarm.test_store import spec, trial
+
+
+def test_repeated_failures_are_journaled_once_per_streak(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "queue.sqlite"
+    queue = SQLiteStore(database)
+    now = 1000.0
+    monkeypatch.setattr("research_swarm.swarm.store.time", SimpleNamespace(time=lambda: now))
+    queue.create_campaign(spec(max_attempts=1))
+    queue.create_campaign(spec(campaign_id="other"))
+    zone = ZoneInfo("Asia/Kathmandu")
+
+    def check() -> list[dict]:
+        return poll(database, "test", zone, now=now)
+
+    def finish(n: int, status: str, campaign: str = "test") -> None:
+        queue.submit(trial(n, campaign_id=campaign))
+        attempt = queue.claim(campaign, "worker")
+        assert attempt and queue.report(Result(attempt=attempt, status=status))
+
+    assert [msg["kind"] for msg in check()] == ["hourly_digest"]
+    finish(1, "failed")
+    assert check() == []
+    finish(1, "ok", campaign="other")
+    queue.submit(trial(2))
+    stale = queue.claim("test", "stale")
+    assert stale
+    now += 2
+    queue.submit(trial(3))
+    healthy = queue.claim("test", "healthy")
+    assert healthy and queue.requeue_expired("test", now - 1) == 1
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as reader:
+        version = reader.execute("PRAGMA data_version").fetchone()
+        with ThreadPoolExecutor(2) as pool:
+            futures = [pool.submit(check) for _ in range(2)]
+            alerts = [item for future in futures for item in future.result()]
+        assert reader.execute("PRAGMA data_version").fetchone() == version
+        (alert,) = alerts
+        assert alert["kind"] == "repeated_failure" and alert["consecutive_failures"] == 2
+        assert alert["attempt_id"] == stale.attempt_id and alert["trial_id"] == stale.trial.trial_id
+        assert alert["status"] == "lost" and alert["failure_class"] == "heartbeat_expired"
+        assert (
+            alert["event_id"]
+            == reader.execute(
+                "SELECT id FROM swarm_events WHERE kind='finished' AND attempt_id=?",
+                (stale.attempt_id,),
+            ).fetchone()[0]
+        )
+        assert check() == []
+    finish(4, "failed")
+    assert check() == []
+    assert queue.report(Result(attempt=healthy, status="ok", metrics={"loss": 1}))
+    finish(5, "lost")
+    assert check() == []
+    finish(6, "failed")
+    (second,) = check()
+    assert second["trial_id"] == "test-6" and second["event_id"] > alert["event_id"]
+    assert check() == []
+    with closing(sqlite3.connect(str(database) + ".notifications.sqlite")) as journal:
+        assert journal.execute("SELECT count(*) FROM notifications").fetchone() == (3,)
+
+
+async def test_stalled_hourly_agent_reports_timeout_while_alert_and_healthy_work_finish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "queue.sqlite"
+    queue = SQLiteStore(database)
+    queue.create_campaign(spec(max_attempts=1))
+    launched, alerted, digested = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    children = []
+    start = asyncio.create_subprocess_exec
+
+    async def stall(*args, **kwargs):
+        process = await start(sys.executable, "-c", "import time; time.sleep(60)", **kwargs)
+        children.append(process)
+        launched.set()
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", stall)
+    monkeypatch.setattr(notify, "_POLL_SECONDS", 0.02)
+    monkeypatch.setattr(notify, "time", SimpleNamespace(time=lambda: 1000))
+    messages = []
+
+    def emit(item: dict) -> None:
+        messages.append(item)
+        (alerted if item["kind"] == "repeated_failure" else digested).set()
+
+    args = argparse.Namespace(
+        campaign="test",
+        once=False,
+        score_target=None,
+        min_trials_per_hour=None,
+        reporter_model=None,
+        fake_reporter=True,
+        reporter_timeout=1.5,
+    )
+    watcher = asyncio.create_task(notify._watch(database, args, ZoneInfo("UTC"), emit))
+    try:
+        await asyncio.wait_for(launched.wait(), 3)
+        (beat,) = tmp_path.glob("*.agent-jobs/reporter-*/heartbeat.json")
+        heartbeat = beat.stat().st_mtime_ns
+        for i, status in enumerate(("failed", "lost", "ok"), start=1):
+            queue.submit(trial(i))
+            attempt = queue.claim("test", "working")
+            assert attempt and queue.report(Result(attempt=attempt, status=status))
+        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as reader:
+            version = reader.execute("PRAGMA data_version").fetchone()
+            await asyncio.wait_for(alerted.wait(), 3)
+            assert not digested.is_set() and children[0].returncode is None
+            assert beat.stat().st_mtime_ns == heartbeat
+            await asyncio.wait_for(digested.wait(), 4)
+            alert, digest = messages
+            assert alert["trial_id"] == "test-2" and digest["reporter"]["status"] == "timed_out"
+            assert children[0].returncode is not None
+            assert reader.execute(
+                "SELECT status FROM swarm_trials WHERE trial_id='test-3'"
+            ).fetchone() == ("ok",)
+            assert reader.execute("PRAGMA data_version").fetchone() == version
+    finally:
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
 
 
 @pytest.mark.parametrize("direction,target", [("minimize", 1.0), ("maximize", 3.0)])

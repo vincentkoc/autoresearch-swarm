@@ -18,6 +18,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from research_swarm.swarm.report import _read, _usage
 
+_POLL_SECONDS = 10
+
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("campaign")
@@ -34,6 +36,40 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--reporter-timeout", type=float, default=10, help="Reporter deadline in seconds"
     )
     parser.add_argument("--once", action="store_true", help="Poll once and exit")
+
+
+def _repeated_failures(
+    queue: sqlite3.Connection, journal: sqlite3.Connection, scope: tuple[str, float]
+) -> list[sqlite3.Row]:
+    """Advance in finished-event order within the same transaction as alert creation."""
+    journal.execute(
+        "CREATE TABLE IF NOT EXISTS failure_cursor "
+        "(campaign TEXT, created REAL, last_event INTEGER, consecutive INTEGER, "
+        "PRIMARY KEY(campaign,created))"
+    )
+    state = journal.execute(
+        "SELECT last_event,consecutive FROM failure_cursor WHERE campaign=? AND created=?", scope
+    ).fetchone()
+    last_event, consecutive = state or (0, 0)
+    alerts = []
+    for event in queue.execute(
+        "SELECT e.id,e.trial_id,e.attempt_id,json_extract(a.observation,'$.status') AS status, "
+        "json_extract(a.observation,'$.failure_class') AS failure_class "
+        "FROM swarm_events e JOIN swarm_attempts a USING(attempt_id) "
+        "WHERE e.campaign_id=? AND e.kind='finished' AND e.id>? ORDER BY e.id",
+        (scope[0], last_event),
+    ):
+        last_event = event["id"]
+        consecutive = consecutive + 1 if event["status"] in ("failed", "lost") else 0
+        if consecutive == 2:
+            alerts.append(event)
+    if last_event and (state is None or state[0] != last_event):
+        journal.execute(
+            "INSERT INTO failure_cursor VALUES(?,?,?,?) ON CONFLICT(campaign,created) DO UPDATE "
+            "SET last_event=excluded.last_event, consecutive=excluded.consecutive",
+            (*scope, last_event, consecutive),
+        )
+    return alerts
 
 
 def poll(
@@ -121,6 +157,19 @@ def poll(
                 )
                 records.append(item)
 
+            # Emit incident alerts before an optional hourly reporter can delay delivery.
+            for failure in _repeated_failures(queue, out, scope):
+                record(
+                    f"repeated_failure:{failure['id']}",
+                    "repeated_failure",
+                    event_id=failure["id"],
+                    trial_id=failure["trial_id"],
+                    attempt_id=failure["attempt_id"],
+                    status=failure["status"],
+                    failure_class=failure["failure_class"],
+                    consecutive_failures=2,
+                )
+
             digest_key = hourly_key("digest")
             rate_key = hourly_key("low_rate", f":{min_trials}")
             due = missing(digest_key)
@@ -184,8 +233,6 @@ def poll(
 
 
 def watch(database: Path, args: argparse.Namespace, emit: Callable[[Any], None]) -> None:
-    from research_swarm.swarm.agents import ask_agent
-
     database = database.resolve()
     if not math.isfinite(args.reporter_timeout) or args.reporter_timeout <= 0:
         raise ValueError("Reporter timeout must be positive and finite")
@@ -195,39 +242,59 @@ def watch(database: Path, args: argparse.Namespace, emit: Callable[[Any], None])
         zone = ZoneInfo(args.timezone)
     except ZoneInfoNotFoundError as error:
         raise ValueError(f"Unknown timezone {args.timezone}") from error
-    while True:
-        for item in poll(
-            database,
-            args.campaign,
-            zone,
-            now=time.time(),
-            target=args.score_target,
-            min_trials=args.min_trials_per_hour,
-        ):
-            if item["kind"] == "hourly_digest" and (args.reporter_model or args.fake_reporter):
-                # The measured digest is durable before model work starts. Hold no queue lock.
-                item["reporter"] = asyncio.run(
-                    ask_agent(
-                        "reporter",
-                        {**item, "purpose": "hourly digest"},
-                        model=args.reporter_model,
-                        timeout=args.reporter_timeout,
-                        jobs=database.with_name(database.name + ".agent-jobs"),
-                    )
-                )
-                journal = database.with_name(database.name + ".notifications.sqlite")
-                with closing(sqlite3.connect(journal)) as out, out:
-                    out.execute(
-                        "UPDATE notifications SET payload=? "
-                        "WHERE campaign=? AND created=? AND key=?",
-                        (
-                            json.dumps(item, allow_nan=False),
-                            item["campaign"],
-                            item["campaign_created_at"],
-                            item["key"],
-                        ),
-                    )
-            emit(item)
-        if args.once:
-            return
-        time.sleep(10)
+    asyncio.run(_watch(database, args, zone, emit))
+
+
+async def _watch(
+    database: Path, args: argparse.Namespace, zone: ZoneInfo, emit: Callable[[Any], None]
+) -> None:
+    from research_swarm.swarm.agents import ask_agent
+
+    async def report(item: dict[str, Any]) -> None:
+        item["reporter"] = await ask_agent(
+            "reporter",
+            {**item, "purpose": "hourly digest"},
+            model=args.reporter_model,
+            timeout=args.reporter_timeout,
+            jobs=database.with_name(database.name + ".agent-jobs"),
+        )
+        journal = database.with_name(database.name + ".notifications.sqlite")
+        with closing(sqlite3.connect(journal)) as out, out:
+            out.execute(
+                "UPDATE notifications SET payload=? WHERE campaign=? AND created=? AND key=?",
+                (
+                    json.dumps(item, allow_nan=False),
+                    item["campaign"],
+                    item["campaign_created_at"],
+                    item["key"],
+                ),
+            )
+        emit(item)
+
+    reporters: set[asyncio.Task[None]] = set()
+    try:
+        while True:
+            for item in poll(
+                database,
+                args.campaign,
+                zone,
+                now=time.time(),
+                target=args.score_target,
+                min_trials=args.min_trials_per_hour,
+            ):
+                if item["kind"] == "hourly_digest" and (args.reporter_model or args.fake_reporter):
+                    reporters.add(asyncio.create_task(report(item)))
+                else:
+                    emit(item)
+            if args.once:
+                await asyncio.gather(*reporters)
+                return
+            await asyncio.sleep(_POLL_SECONDS)
+            done = {task for task in reporters if task.done()}
+            for task in done:
+                task.result()
+            reporters -= done
+    finally:
+        for task in reporters:
+            task.cancel()
+        await asyncio.gather(*reporters, return_exceptions=True)
