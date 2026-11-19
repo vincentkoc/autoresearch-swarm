@@ -18,6 +18,18 @@ from research_swarm.swarm.backends.capacity import Slots
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Result
 
 
+class _TrialStreams(asyncio.subprocess.SubprocessStreamProtocol):
+    """Observe the command's exit independently of EOF on inherited pipes."""
+
+    def __init__(self) -> None:
+        super().__init__(limit=64 * 1024, loop=asyncio.get_running_loop())
+        self.exited = asyncio.Event()
+
+    def process_exited(self) -> None:
+        super().process_exited()
+        self.exited.set()
+
+
 async def _tail(stream: asyncio.StreamReader) -> str:
     tail = bytearray()
     while chunk := await stream.read(16384):
@@ -87,7 +99,8 @@ class LocalBackend:
             "SWARM_METRICS": str(metrics),
             "SWARM_USAGE": str(usage),
         }
-        process = await asyncio.create_subprocess_exec(
+        process, streams = await asyncio.get_running_loop().subprocess_exec(
+            _TrialStreams,
             *spec.command,
             cwd=spec.task_dir,
             env=env,
@@ -96,13 +109,14 @@ class LocalBackend:
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
         )
-        assert process.stdout and process.stderr
-        stdout = asyncio.create_task(_tail(process.stdout))
-        stderr = asyncio.create_task(_tail(process.stderr))
+        assert streams.stdout and streams.stderr
+        stdout = asyncio.create_task(_tail(streams.stdout))
+        stderr = asyncio.create_task(_tail(streams.stderr))
         error_message = None
         try:
             async with asyncio.timeout(spec.trial_timeout_seconds):
-                code = await process.wait()
+                await streams.exited.wait()
+                code = process.get_returncode()
                 if code:
                     error_message = f"command exited with status {code}"
         except TimeoutError:
@@ -110,8 +124,8 @@ class LocalBackend:
         finally:
             # Descendants may outlive the leader or keep its output pipes open.
             with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            await process.wait()
+                os.killpg(process.get_pid(), signal.SIGKILL)
+            await streams.exited.wait()
             logs = tuple(item for item in await asyncio.gather(stdout, stderr) if item)
 
         counters: dict[str, float] = {}
