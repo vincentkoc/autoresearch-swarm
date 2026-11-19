@@ -6,7 +6,7 @@ import asyncio
 import json
 import math
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from itertools import chain, islice, product
 from typing import Protocol, runtime_checkable
@@ -69,6 +69,23 @@ def _trial(spec: CampaignSpec, candidate: Candidate) -> Trial:
         seed=seed,
         fidelity=fidelity,
     )
+
+
+def _returned_trials(
+    spec: CampaignSpec, batch: Sequence[Candidate], room: int, remaining: Callable[[], float]
+) -> Iterator[Trial]:
+    if len(batch) > room:
+        raise ValueError("Proposer exceeded requested capacity")
+    for candidate in batch:
+        if remaining() <= 0:
+            break
+        if (
+            not isinstance(candidate, Candidate)
+            or not isinstance(candidate.candidate_id, str)
+            or not candidate.candidate_id
+        ):
+            raise ValueError("A proposal must be a candidate with a nonempty ID")
+        yield _trial(spec, candidate)
 
 
 class SeedProposer:
@@ -306,18 +323,27 @@ class SwarmLoop:
                     except TimeoutError:
                         batch = ()
                         reason = "proposal_timeout"
-                    if len(batch) > room:
-                        raise ValueError("Proposer exceeded requested capacity")
-                    for candidate in batch:
-                        if remaining_seconds() <= 0:
-                            break
-                        trial = _trial(s, candidate)
-                        if trial.trial_id in seen:
-                            self.store.submit(trial)
-                            continue
-                        if self.store.submit(trial):
-                            queued += 1
-                        seen.add(trial.trial_id)
+                    if not isinstance(batch, Sequence) or isinstance(
+                        batch, (str, bytes, bytearray)
+                    ):
+                        raise ValueError("Proposer must return a sequence of candidate entries")
+                    proposed = len(batch)
+                    if proposed or reason == "proposal_timeout":
+                        trials = _returned_trials(s, batch, room, remaining_seconds)
+                        submit_batch = getattr(self.store, "submit_proposals", None)
+                        processed = (
+                            submit_batch(
+                                s.campaign_id,
+                                proposed,
+                                trials,
+                                timed_out=reason == "proposal_timeout",
+                            )
+                            if submit_batch is not None
+                            else [(trial.trial_id, self.store.submit(trial)) for trial in trials]
+                        )
+                        for trial_id, accepted in processed:
+                            queued += int(accepted)
+                            seen.add(trial_id)
 
                 if not (queued or running or pending) and (
                     reason in {"target", "trial_limit"} or cursor == exhausted_after

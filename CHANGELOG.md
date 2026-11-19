@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Report the fraction of returned proposer candidates admitted to a new campaign,
+  including duplicate and invalid entries in the denominator. Earlier campaigns
+  retain an unavailable rate.
+
 - Show eight campaign KPIs in live snapshots and offline reports, including the
   evidence behind each value and the reason a measurement is unavailable.
 
