@@ -45,6 +45,9 @@
   campaign observations. Each request has a process deadline and live heartbeat.
   The deterministic fake runs offline.
 
+- Enforce each advisory provider's deadline inside its process so a stalled
+  model request ends even if its supervising CLI is killed.
+
 - **Breaking:** `research init` opens a private six-table campaign workspace.
   Use `research swarm run` for execution. Projects, artifacts, reports, budgets,
   HTTP campaign reads and local MCP now use `swarm.sqlite`. The SDK provides
