@@ -288,6 +288,10 @@ class SQLiteStore:
             raise ValueError("max_hours must be finite and non-negative")
         requested = asdict(spec)
         encoded = _json({**requested, "price_schema": 1})
+        for key in PRICE_FIELDS:
+            rate = requested[key]
+            if rate is not None and rate < 0:
+                raise ValueError(f"{key} must be non-negative")
         if min(spec.max_trials, spec.max_workers, spec.max_attempts) < 1:
             raise ValueError("Trial, worker and attempt limits must be positive")
         if spec.max_cost is not None:

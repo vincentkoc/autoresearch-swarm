@@ -397,6 +397,20 @@ def test_historical_zero_prices_are_ambiguous_on_reopen(tmp_path: Path) -> None:
     assert budget["missing_prices"] == ["price_per_hour", "price_per_million_output_tokens"]
 
 
+def test_negative_declared_price_leaves_existing_queue_untouched(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    queue = SQLiteStore(database)
+    queue.create_campaign(spec(price_per_hour=0))
+    invalid = spec(
+        campaign_id="new-campaign", project_id="new-project", price_per_million_output_tokens=-0.25
+    )
+    with sqlite3.connect(database) as db:
+        before = tuple(db.iterdump())
+        with pytest.raises(ValueError, match="price_per_million_output_tokens"):
+            queue.create_campaign(invalid)
+        assert tuple(db.iterdump()) == before
+
+
 def test_resume_keeps_distinct_prices_and_nonprice_json_immutable(tmp_path: Path) -> None:
     database = tmp_path / "queue.sqlite"
     campaign = spec(price_per_hour=2**53, options={"setting": 1})
