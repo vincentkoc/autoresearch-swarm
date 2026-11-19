@@ -63,9 +63,12 @@ def test_elapsed_clock_does_not_follow_wall_clock_adjustment(
     assert clock.continuous_ns() >= before
 
 
-def test_held_preparation_consumes_absolute_deadline_without_release(tmp_path: Path) -> None:
+@pytest.mark.parametrize("absolute_cap", [False, True], ids=["command-timeout", "absolute-cap"])
+def test_held_preparation_consumes_deadline_without_release(
+    tmp_path: Path, absolute_cap: bool
+) -> None:
     marker = tmp_path / "must-not-run"
-    cap = native_clock().continuous_ns() + 150_000_000
+    cap = native_clock().continuous_ns() + 150_000_000 if absolute_cap else None
 
     def delayed_release(_: object) -> bool:
         time.sleep(0.25)
@@ -73,7 +76,9 @@ def test_held_preparation_consumes_absolute_deadline_without_release(tmp_path: P
 
     result = run_native(
         command(
-            tmp_path, f"from pathlib import Path; Path({str(marker)!r}).write_text('released')"
+            tmp_path,
+            f"from pathlib import Path; Path({str(marker)!r}).write_text('released')",
+            timeout_ms=5000 if absolute_cap else 150,
         ),
         tmp_path / "output",
         hard_deadline_ns=cap,

@@ -16,6 +16,10 @@
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
 
+- Remove the retired worker journal's `launch_deadline_ns` argument from
+  `run_native`. Native commands use their timeout and optional absolute deadline
+  during both preparation and execution.
+
 - Report the fraction of returned proposer candidates admitted to a new campaign,
   including duplicate and invalid entries in the denominator. Earlier campaigns
   retain an unavailable rate.
