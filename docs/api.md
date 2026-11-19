@@ -1,133 +1,33 @@
 # Research HTTP API
 
-The HTTP adapter calls the same command service as local Python clients. The
-service owns state, idempotency, revisions, budgets, and evidence acceptance.
+`research serve` reads a local campaign database. Pass `--token-file` before
+`serve` and `--db` after it. The service binds to `127.0.0.1:8765` by default.
+The root path serves the campaign browser shell and `GET /healthz` reports
+liveness. Both are public. Campaign data requires the read bearer token.
 
-## Authentication and command identity
+## Campaign reads
 
-All research endpoints require a bearer credential. `/healthz` reports only
-process liveness and is public. `/` serves only the credential-free campaign browser shell. The credential resolves to a server-owned actor,
-workspace, and scopes. Request bodies cannot supply their own authority.
+| GET route | Result |
+| --- | --- |
+| `/v1/campaigns` | Campaign list with `cursor` and `limit` pagination |
+| `/v1/campaigns/{id}/snapshot` | Captured trial history, scores and selection |
+| `/v1/campaigns/{id}/view` | Standalone campaign HTML |
+| `/v1/campaigns/{id}/budget` | Measured usage and active dispatch estimates |
+| `/v1/events` | Events after a sequence number, optionally filtered by `campaign_id` |
 
-Credential storage contains a domain-separated token hash. Issuance returns the
-opaque token once. Tokens can expire or be revoked. Expiry uses canonical UTC
-timestamps. A scope manager cannot issue permissions beyond its own scopes or
-issue into another workspace.
+The CLI reads the same data with `report`, `budget` and `events`. Supply
+`--controller URL --token-file FILE` before the command for HTTP access.
+The Python SDK exposes `campaigns`, `snapshot`, `budget` and `events` through
+`ResearchClient` and `AsyncResearchClient`.
 
-Mutation commands use `POST /v1/commands/{operation}` with JSON and an
-`Idempotency-Key` header. Revision-sensitive operations also require
-`X-Expected-Revision`. An accepted duplicate returns the original command result.
-Reusing the key for another payload or revision returns `IDEMPOTENCY_CONFLICT`.
+## Worker access
 
-Successful command acknowledgments contain `command_id`, `disposition: accepted`,
-and `result`. A durable rejection contains that same command identity,
-`disposition: rejected`, and `error`. Replaying a stored rejection preserves its
-original command ID. Authentication, schema, and preflight refusals can happen
-before a command outcome is stored; these have no command ID or disposition.
+Enable worker routes on `serve` with `--worker-campaign`, `--worker-id` and a
+separate `--worker-token-file`. The worker uses its bearer to claim an attempt
+or requeue expired attempts. A successful claim returns a bearer scoped to that
+attempt for heartbeats, result reporting and artifact upload. The CLI handles
+this exchange with `research --controller URL --token-file FILE swarm worker
+SPEC --worker-id ID`.
 
-An `ACCEPTANCE_EXPIRED` publication rejection atomically records its conservative
-lease fence and uncertainty alongside the rejected acknowledgment. It accepts no
-result and releases no resource. This prevents an observed expiry or clock
-failure from reviving ordinary acceptance after time changes.
-
-An unavailable acknowledgment does not prove rejection. Timeout, disconnect,
-malformed response, unexpected status, or missing command identity produces SDK
-error `DELIVERY_UNCERTAIN`. Retry with the same actor, operation, payload, expected
-revision, and idempotency key. A later authentication refusal does not settle an
-earlier uncertain command. Only authorized replay can recover its acknowledgment.
-
-Query transport failure produces `TRANSPORT_UNAVAILABLE`, including the read-only
-`POST /v1/query`. Neither transport error is a resource or scientific observation.
-Upload-part uncertainty requires inspecting upload progress and replaying the
-same offset and bytes. It does not grant authority to start a second upload.
-
-`GET /v1/capabilities` lists the current commands and their schemas.
-`GET /v1/openapi.json` describes the HTTP surface. Both require read authority.
-Unknown fields, duplicate JSON keys, non-finite values, and oversized command
-bodies are rejected. The command body limit is 1 MiB.
-
-## Queries and evidence
-
-| Route | Result |
-|---|---|
-| `GET /v1/records/{kind}/{id}` | One authorized public research record |
-| `POST /v1/query` | Up to 100 summarized records and an opaque next cursor |
-| `GET /v1/campaigns` | Workspace-scoped campaign list; `limit` (1–100) and opaque `cursor` |
-| `GET /v1/campaigns/{id}/snapshot` | Read-only bounded campaign evidence; no report or event writes |
-| `GET /v1/campaigns/{id}/view` | Campaign HTML; optional explicit `comparison_digest` |
-| `GET /v1/campaigns/{id}/context` | Bounded recent evidence, lifecycle, contract, counts, and budget |
-| `GET /v1/campaigns/{id}/budget` | Exact decimal account values and availability |
-| `GET /v1/events?after=N` | Up to 1,000 events after a workspace sequence |
-| `GET /v1/events/stream?after=N` | Resumable server-sent events with sequence IDs |
-| `POST /v1/snapshot/page` | Up to 100 immutable recovery item descriptors |
-| `POST /v1/snapshot/item` | Up to 64 KiB of one frozen canonical JSON item, as base64 |
-
-List cursors bind their workspace and filters. They freeze the insertion range,
-so later insertions do not extend an in-progress page sequence. Record state is
-read at each page request. This is not a historical snapshot across pages.
-Campaign context reads its evidence and event watermark in one transaction.
-
-`POST /v1/worker/list` accepts `WorkerQuery` and `POST /v1/worker/get` accepts
-`WorkerRead`. These read-only operations normally require `worker.query`. Offer
-listing also accepts a legacy worker's workspace `read` scope; reading its own
-`worker_cache` observation requires `worker.publish`. Every variant binds the
-request to the authenticated worker principal and current session. These
-exceptions do not authorize other worker query kinds.
-Generic record, context, and event endpoints still require `read`.
-See [scoped worker discovery](https://github.com/vincentkoc/autoresearch-swarm/blob/bd82513af7ee34919a8b49658d4e7bb4cb7060c4/docs/worker-assignments.md#scoped-discovery-and-recovery).
-
-`POST /v1/worker/input` returns an assigned input's `ArtifactRef` and
-`POST /v1/worker/input/content` streams its verified bytes. Both accept
-`WorkerArtifactRead`, require `worker.inputs`, and remain read-only requests.
-Authorization binds the exact active assignment and is rechecked when retaining
-the storage generation. Generic artifact endpoints still require workspace read
-authority. See [attempt-bound inputs](https://github.com/vincentkoc/autoresearch-swarm/blob/bd82513af7ee34919a8b49658d4e7bb4cb7060c4/docs/worker-assignments.md#attempt-bound-inputs).
-
-Event streams recheck credentials between polling batches. Disconnecting does
-not delete events or acknowledge notifications. Logical stream retention and the
-permanent event ledger have separate lifecycles.
-
-## Resume an expired event cursor
-
-The event response reports the first available sequence as the event floor. If
-a saved cursor predates that floor, refresh the client view from current
-records or the campaign snapshot, then resume event reads from the returned
-watermark (the campaign snapshot's `evidence_through` field). To read just the retained history, pass the error's
-`details.resume_after` value as the next cursor.
-
-## Artifact transfer
-
-Begin an upload with `POST /v1/artifact-uploads`, declaring digest, byte size, and
-an ASCII media type without parameters. Finalize with
-`POST /v1/artifact-uploads/{id}/finalize`. Both operations use command headers.
-
-`PUT /v1/artifact-uploads/{id}/parts?offset=N` uses a separate byte-range protocol.
-It does not require or interpret an `Idempotency-Key`. Upload identity, offset,
-and bytes define replay: identical overlapping bytes are accepted and conflicting
-bytes are rejected. Each request is limited to 4 MiB. The upload owner must be
-authenticated. A changed range is new transfer progress, not a command retry.
-
-Read metadata with `GET /v1/artifacts/{id}` and bytes with
-`GET /v1/artifacts/{id}/content`. The server verifies bytes before sending success
-headers, holds a retention pin for the response lifetime, and streams an immutable
-generation in bounded chunks. It does not create a full temporary copy for every
-download. A disconnect releases the reader even when no body chunk was sent.
-
-`artifact.retain` accepts `artifact_id`, `owner_id` and `purpose` through the shared
-command endpoint. It requires `read` and `artifact.retain` scopes and returns a
-discretionary manual retention reference. `owner_id` groups the caller's hold; it
-does not create a campaign relation or scientific evidence. `artifact.release`
-accepts `reference_id` and requires `read` and `artifact.release`. It can release
-discretionary holds but cannot override required evidence retention. These commands
-also appear in SDK, CLI and MCP discovery. Neither command deletes physical bytes.
-
-## Current verification
-
-Tests use a real loopback HTTP server. They cover command replay across HTTP and
-Python, credential revocation, cross-workspace rejection, schema references,
-strict input limits, range retries, invalid metadata, and failed artifact reads.
-They also hold a reply after its database commit, force a client timeout, and
-recover the original acknowledgment without a second command or creation event.
-Local TLS tests verify trusted success, untrusted certificate rejection, and
-hostname mismatch rejection.
-The worker, SDK, CLI, and MCP surfaces have separate qualification steps.
+The retired command-service protocol is documented with its matching
+[controller revision](https://github.com/vincentkoc/autoresearch-swarm/blob/4c4a10ac104243e302bc3eb63b7150f9d9422e99/docs/api.md).

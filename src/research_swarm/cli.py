@@ -140,7 +140,9 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("path", type=Path)
         item.add_argument("--manifest", default="research.toml")
         item.add_argument("--source-revision")
-        item.add_argument("--capture-timeout-seconds", type=float, default=30)
+        item.add_argument(
+            "--capture-timeout-seconds", type=float, default=30, help="Time limit for Git reads"
+        )
         item.add_argument("--db", type=Path, help="Local swarm campaign database")
     budget = commands.add_parser("budget")
     budget.add_argument("campaign_id")
@@ -162,12 +164,9 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
-def _request(path: Path | None, *, limit: int = 1024 * 1024) -> dict[str, Any]:
-    if path is None:
-        content = sys.stdin.buffer.read(limit + 1)
-    else:
-        with path.open("rb") as stream:
-            content = stream.read(limit + 1)
+def _read_json_object(path: Path, *, limit: int) -> dict[str, Any]:
+    with path.open("rb") as stream:
+        content = stream.read(limit + 1)
     if len(content) > limit:
         raise ValueError("Command body exceeds its limit")
     value = strict_json_loads(content)
@@ -386,21 +385,20 @@ def main(argv: list[str] | None = None) -> int:
                     "Archived reports require a metric, unit, direction and comparison digest"
                 )
 
-            if args.file is not None:
-                if args.controller or args.state_dir or args.token_file:
-                    raise ValueError("Offline reports cannot mix live controller inputs")
-                if len(args.compare_file) >= MAX_RUNS:
-                    raise ValueError("At most eight reports may be plotted")
-                _emit_json(
-                    _plot_reports(
-                        [
-                            _request(path, limit=2 * 1024 * 1024)
-                            for path in [args.file, *args.compare_file]
-                        ],
-                        args,
-                    )
+            if args.controller or args.state_dir or args.token_file:
+                raise ValueError("Offline reports cannot mix live controller inputs")
+            if len(args.compare_file) >= MAX_RUNS:
+                raise ValueError("At most eight reports may be plotted")
+            _emit_json(
+                _plot_reports(
+                    [
+                        _read_json_object(path, limit=2 * 1024 * 1024)
+                        for path in [args.file, *args.compare_file]
+                    ],
+                    args,
                 )
-                return 0
+            )
+            return 0
         if args.action == "reactive":
             if args.state_dir is not None or args.controller or args.token_file is not None:
                 raise ValueError(
@@ -416,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             arguments = {}
             if args.reactive_action == "respond":
-                arguments = {"proposal": _request(args.file, limit=17408)}
+                arguments = {"proposal": _read_json_object(args.file, limit=17408)}
             elif args.reactive_action == "export":
                 arguments = {"after": args.after, "limit": args.limit, "max_bytes": args.max_bytes}
             _emit_json(decisions.dispatch(args.reactive_action, arguments))

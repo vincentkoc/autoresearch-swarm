@@ -14,14 +14,11 @@ class ErrorCode(StrEnum):
     IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT"
     REVISION_CONFLICT = "REVISION_CONFLICT"
     INVALID_TRANSITION = "INVALID_TRANSITION"
-    BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
     RESOURCE_UNAVAILABLE = "RESOURCE_UNAVAILABLE"
     TRANSPORT_UNAVAILABLE = "TRANSPORT_UNAVAILABLE"
     EXECUTION_UNKNOWN = "EXECUTION_UNKNOWN"
-    STALE_FENCE = "STALE_FENCE"
     ARTIFACT_UNVERIFIED = "ARTIFACT_UNVERIFIED"
     AUTHORIZATION_DENIED = "AUTHORIZATION_DENIED"
-    ADAPTER_CAPABILITY_UNSUPPORTED = "ADAPTER_CAPABILITY_UNSUPPORTED"
 
 
 class ResearchError(Exception):
@@ -34,22 +31,15 @@ class ResearchError(Exception):
         *,
         retryable: bool = False,
         details: dict[str, Any] | None = None,
-        command_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.retryable = retryable
         self.details = details or {}
-        self.command_id = command_id
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            **(
-                {"command_id": self.command_id, "disposition": "rejected"}
-                if self.command_id
-                else {}
-            ),
             "error": {
                 "code": self.code.value,
                 "message": self.message,

@@ -6,37 +6,33 @@ The renderer is read-only, has no extra dependency, and writes standalone SVG
 
 ## CLI
 
-Create an immutable report through the existing `report.create` command and fetch
-its full record with `research get report REPORT_ID`. Select the
-`comparison_digest` from `data.snapshot.observed_cohorts`, and the exact primary
-metric name, unit and direction from its eligible evaluations. An MCP/report
-summary is not a full snapshot.
+To plot the [quickstart campaign](../README.md#five-minute-cpu-quickstart), read
+its SQLite database. The CLI takes the metric, unit, direction and comparison
+digest from the campaign snapshot.
 
 ~~~sh
-research --state-dir .research report plot \
-  --report-id REPORT_ID \
-  --comparison-digest sha256:COMPARISON_DIGEST \
-  --metric validation_loss --unit nats --direction minimize \
-  --output hill-climb.svg
+research report plot --db .research/program.sqlite \
+  --campaign program-normalization --output hill-climb.svg
 ~~~
 
-Repeat `--compare-report OTHER_REPORT_ID` to overlay up to eight different
-campaigns. Optionally repeat `--label NAME` once per report (primary first, then
-comparisons) to name the runs. The existing `--controller` and `--token-file`
-transport options work as usual. Report IDs must already exist: export does not create reports, schedule
-trials, or change campaign state.
+For a remote campaign, specify `--controller` and `--token-file` before
+`report plot` and select the campaign with `--campaign`.
 
-For offline export, use `--file report.json` and repeat
-`--compare-file other-report.json`. Files may contain a full report record,
-report content (`snapshot` plus Markdown/digest), or the snapshot itself.
-Supplied report digests are verified before rendering; stale/tampered envelopes
-are rejected. A digest checks content integrity, not source authenticity. Plain
-snapshots are explicitly unauthenticated supplied evidence; retain the original
-report and digest for provenance. Offline and live input modes cannot
-be mixed. Each file is limited to 2 MiB, each snapshot to 52 receipt rows
-(50 recent plus two pins), and the total to eight reports.
-The output path must not exist; the CLI never overwrites files.
-Success prints a JSON acknowledgment containing the path, format and report count.
+For an archived JSON report or snapshot, supply the recorded comparison digest,
+metric, unit and direction. If a report includes a digest, the CLI checks it
+before rendering. To overlay comparable runs, repeat `--compare-file` for each
+additional input. Supply at most eight files of up to 2 MiB each. Use `--label`
+once per input to name the runs.
+
+~~~sh
+research report plot --file report.json --compare-file comparison.json \
+  --comparison-digest sha256:COMPARISON_DIGEST \
+  --metric validation_loss --unit nats --direction minimize \
+  --output comparison.svg
+~~~
+
+Choose a new output path. A successful export prints its path, format and
+number of input reports as JSON.
 
 ## Python API
 

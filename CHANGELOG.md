@@ -8,6 +8,14 @@
 - Keep finite parameter campaigns running when both default bandit operators propose
   previously tried recipes. The next available grid recipe fills the open slot.
 
+- Add a five-minute local CPU quickstart with resume and report export. Document
+  the 12 top-level CLI commands, 23 executable paths and six campaign tables.
+  Update report and MLX examples to use the current CLI.
+
+- Remove the retired controller command-ID error envelope and unused error codes.
+  Bounded JSON input for offline reports and reactive proposals now reads only
+  from their required file paths. The public CLI syntax is unchanged.
+
 - Set `proposer: research_swarm.swarm.operators.bandit:BanditProposer` to allocate
   trials between parameter mutation and crossover by observed gain per cost.
   Custom proposer factories can supply other operators. The bandit restores pending

@@ -8,18 +8,35 @@ search improvement holds on independent examples.
 Inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch).
 The implementation is original and MIT-licensed.
 
-## Start locally
+## Five-minute CPU quickstart
 
-From a source checkout with uv and Python 3.11 or newer, run the program
-campaign on CPU.
+From the root of a source checkout on Linux or macOS, use uv and Python 3.11
+or newer. This example scores three text-normalization programs on local CPU
+workers. It uses the base dependencies and needs no model download or API key.
 
 ~~~sh
-uv sync --locked --group dev
+uv sync --locked --no-dev
 uv run --no-sync python -m research_swarm swarm run benchmarks/program.yaml --db .research/program.sqlite
 ~~~
 
-The campaign calibrates its scorer, evaluates three recipes and reports its
-selected trial. Repeat the command to resume from the same queue.
+The JSON summary should show `trials: 3`, `attempts: 3` and `failed: 0`.
+Look under `selected.result.attempt.trial.candidate.candidate_id` for
+`normalized`, the program that passes every search case. Run the same command
+again to resume. The winner and attempt count stay the same.
+
+To see the scores and selection history, export the campaign to a new file
+and open `.research/program.html` in a browser.
+
+~~~sh
+uv run --no-sync research report view --db .research/program.sqlite \
+  --campaign program-normalization --output .research/program.html
+~~~
+
+`research --help` lists 12 top-level commands. Including subcommands, there are
+23 executable paths. The campaign database has six tables for projects,
+campaigns, candidates, trials, attempts and events. A panel study keeps two
+tables in its own database. An optional reactive session also has a separate
+two-table journal.
 
 [Run a campaign](docs/run-a-campaign.md) · [Operator guide](docs/operator-guide.md) · [Design](docs/design.md)
 
@@ -48,7 +65,7 @@ proposers can call local Ollama.
 | Adopt a manifest-based research project | [Project adoption](docs/project-adoption.md) · [Manifest](docs/project-manifests.md) · [Workload protocol](docs/workload-protocol.md) |
 | Configure a native training environment | [Engine profiles](docs/engines.md) · [MLX workload](docs/mlx-workload.md) |
 | Configure artifact storage | [R2 object storage](docs/r2.md) |
-| Inspect controller records | [HTTP API](docs/api.md) · [Qualification history](docs/implementation.md) |
+| Read campaign snapshots, events and budgets | [HTTP API](docs/api.md) · [Qualification history](docs/implementation.md) |
 | Publish a release | [Release guide](docs/releasing.md) |
 
 ## Explore recorded experiments
@@ -68,7 +85,7 @@ records across six research areas.
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
-uv run pytest
+uv run python -m pytest
 ~~~
 
 [Contributing](CONTRIBUTING.md)
