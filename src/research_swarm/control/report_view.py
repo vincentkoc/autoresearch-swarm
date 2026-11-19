@@ -634,6 +634,9 @@ def render_report_html(
             f"<th>Uncertain</th></tr></thead><tbody>{budget}</tbody></table>"
             + ("<p class=muted>No captured budget ledger.</p>" if not budget else "")
         )
+        cost_unit = (
+            f" (costs in {_e(meter.get('cost_unit', 'campaign currency'))})" if meter else ""
+        )
         about.append(
             f"<div class=run data-run='{index}'"
             + (" hidden>" if index else ">")
@@ -646,7 +649,7 @@ def render_report_html(
             f"{len(workers) if workers else 'unavailable'} distinct historical IDs; "
             "not live concurrency.</p>"
             f"{_campaign_kpis(snapshot)}"
-            f"<details><summary>Budget &amp; capture details</summary>"
+            f"<details><summary>Budget &amp; capture details{cost_unit}</summary>"
             f"<small>Attempts: {_e(attempt_scope)}</small>{accounting}{selection_html}"
             + "<details><summary>Capture provenance</summary>"
             f"<p class=muted>Captured {_e(run.captured_at)} · revision {run.revision} · "
