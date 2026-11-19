@@ -26,6 +26,7 @@ from research_swarm.swarm.interfaces import (
 )
 from research_swarm.swarm.panels import PanelStudy
 from research_swarm.swarm.population import Population, Ranked
+from research_swarm.swarm.spec import validate_seed
 
 
 class PanelDecision(Protocol):
@@ -345,6 +346,10 @@ class SwarmLoop:
                     ):
                         raise ValueError("Proposer must return a sequence of candidate entries")
                     proposed = len(batch)
+                    if proposed <= room:
+                        for candidate in batch:
+                            if isinstance(candidate, Candidate):
+                                validate_seed(candidate.seed)
                     if proposed or reason == "proposal_timeout":
                         trials = _returned_trials(s, batch, room, remaining_seconds)
                         submit_batch = getattr(self.store, "submit_proposals", None)
