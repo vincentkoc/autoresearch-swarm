@@ -134,7 +134,10 @@ def compare_seed(task, study, seed: int, model: str) -> dict[str, tuple[float, f
     return row
 
 
-def test_failed_proposal_uses_a_slot_without_charging_the_previous_recipe(monkeypatch, capsys):
+def test_failed_proposal_uses_a_slot_without_charging_the_previous_recipe(
+    monkeypatch, capsys, tmp_path
+):
+    from benchmarks.study import open_study
     from benchmarks.suite import Task
 
     task = Task(
@@ -156,16 +159,14 @@ def test_failed_proposal_uses_a_slot_without_charging_the_previous_recipe(monkey
     )
     monkeypatch.setattr(SearchOptions, "build", lambda self, spec: policy)
 
-    def score(recipe, seed):
+    def score(recipe, role, members, seed):
         value = float(json.loads(recipe)["x"])
-        if value == 0:
+        if role == "search" and value == 0:
             raise ValueError("initial recipe failed")
         return value
 
-    study = Mock()
-    study.search.side_effect = score
-    study.consider.return_value = Mock(promoted=True, reason="fixture")
-    study.confirmed_score.return_value = 1.0
+    study = open_study(task, tmp_path / "toy.sqlite")
+    monkeypatch.setattr(study, "evaluate", score)
     compare_seed(task, study, 23, "fixture")
     swarm = json.loads(capsys.readouterr().out.splitlines()[0].removeprefix("arm "))
     assert swarm["curve"][:3] == [None, 1, 1]
