@@ -29,6 +29,20 @@ and the panel study reuses recorded confirmation scores. Choose a new
 campaign ID for a changed spec. Use a new panel study when you change a split
 or scorer revision.
 
+## Report what the run qualifies
+
+Record the campaign ID, workload, data split, device, fidelity and budget
+with the results. Use the [operator guide](operator-guide.md#read-campaign-kpis)
+to read the campaign KPIs from the existing queue.
+
+Local tests on generated signals exercised source edits, short and full fits,
+and recovery after an interrupted run. Their search curves and independent
+confirmation scores describe fictional subjects. Acceptance on a private
+workload needs its own authorized budget, real training and calibration,
+an independent confirmation against the declared threshold, and the observed
+external portal score when the protocol requires one. Record each outstanding
+measurement as unmeasured.
+
 ## Write a task
 
 1. Specify the metric name, its direction and the comparison unit.

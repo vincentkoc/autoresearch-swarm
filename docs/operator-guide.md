@@ -23,10 +23,47 @@ Read `selected` for the incumbent. Read `top` for the ranked search
 observations. A held-out policy can reject the top-ranked recipe. Keep both
 fields when reporting the outcome.
 
+## Read campaign KPIs
+
+Export a report for the same campaign ID and queue. Choose a new output path
+for each capture. Exporting reads existing observations and writes an HTML
+file you can open offline. Expand **Campaign KPIs** in the report.
+
+~~~sh
+uv run --no-sync research report view --db .research/program.sqlite \
+  --campaign program-normalization --output .research/program-kpis.html
+~~~
+
+For machine-readable results, read the snapshot from the same queue. Each KPI
+has a value, a unit and a detail explaining the source or missing evidence.
+Keep a `null` value and its explanation when exporting a report.
+
+~~~sh
+uv run --no-sync python - <<'PYTHON'
+import json
+from pathlib import Path
+from research_swarm.swarm.reader import CampaignReader
+
+snapshot = CampaignReader(Path(".research/program.sqlite")).snapshot("program-normalization")
+print(json.dumps(snapshot["kpis"], indent=2))
+PYTHON
+~~~
+
+| KPI key | How to interpret the campaign evidence |
+| --- | --- |
+| `time_to_first_trial` | Seconds from campaign creation to the first acknowledged workload start. Queues without a launch record report `null`. For a cold-start qualification, also time preparation and provisioning before campaign creation. |
+| `trials_per_hour` | Distinct trials that reached a terminal outcome in the 60 minutes ending at capture. A failed attempt that was retried does not add another completed trial. |
+| `gpu_utilization` | Run-wide percentage requires summed busy device-seconds divided by allocated device-seconds, including idle allocation. The queue records no such time series. |
+| `cost_per_0_01_improvement` | Multiply metered campaign cost by 0.01 and divide by the positive gain from the first to the current recorded selection. Gain follows the objective direction. Missing scores, no net gain or an unpriced free run leave the value unavailable. Pending estimates are excluded. Invoiced dollars require billing evidence. |
+| `failed_attempts_by_class` | Percentages use finished attempts as the denominator. Retries are separate attempts. An unclassified failed or lost observation has no recorded cause. |
+| `proposer_acceptance_rate` | Unavailable without a campaign count of all proposals, including rejections. Submitted trials alone give no proposal denominator. |
+| `confirmation_pass_rate` | Unavailable without campaign-attributed confirmation decisions and outcomes. A shared study can pool exposures from several runs or reuse a measurement without a new look. |
+| `proxy_to_target_slope` | Fitted change in target score per unit of proxy score across calibration variants. The snapshot reports `null` without campaign-attributed calibration. Smoke runs omit calibration. A flat proxy has an undefined slope. |
+
 ## Inspect a running queue
 
-Open the queue read-only. Replace the path below if the spec uses a different
-database. Add a campaign filter when a queue contains several campaigns.
+Open the queue read-only. Set both the queue path and the campaign ID. Several
+campaigns can share a queue, including different runs of the same workload.
 
 ~~~sh
 uv run --no-sync python - <<'PYTHON'
@@ -35,16 +72,20 @@ from pathlib import Path
 import sqlite3
 
 queue = Path(".research/program.sqlite").resolve()
+campaign = "program-normalization"
 queries = [
-    "SELECT campaign_id,status,count(*) FROM swarm_trials GROUP BY campaign_id,status",
-    "SELECT id,kind,trial_id,attempt_id FROM swarm_events ORDER BY id DESC LIMIT 12",
-    """SELECT trial_id,number,worker_id,json_extract(observation,'$.status'),
-              json_extract(observation,'$.error')
-       FROM swarm_attempts ORDER BY started_at DESC LIMIT 12""",
+    """SELECT campaign_id,status,count(*) FROM swarm_trials
+       WHERE campaign_id=? GROUP BY campaign_id,status""",
+    """SELECT id,kind,trial_id,attempt_id FROM swarm_events
+       WHERE campaign_id=? ORDER BY id DESC LIMIT 12""",
+    """SELECT a.trial_id,a.number,a.worker_id,json_extract(a.observation,'$.status'),
+              json_extract(a.observation,'$.error')
+       FROM swarm_attempts a JOIN swarm_trials t USING(trial_id)
+       WHERE t.campaign_id=? ORDER BY a.started_at DESC LIMIT 12""",
 ]
 with closing(sqlite3.connect(queue.as_uri() + "?mode=ro", uri=True)) as db:
     for sql in queries:
-        for row in db.execute(sql):
+        for row in db.execute(sql, (campaign,)):
             print(*row)
 PYTHON
 ~~~
@@ -146,8 +187,11 @@ Use the backend's stop and inventory operations for the campaign it owns.
 Review the listed resources before cleanup. A failed training command
 provides diagnostic evidence for a retry.
 
-Rehearse staging, recovery and cleanup locally before measuring time to first
-trial and device utilization on hardware. [GPU qualification checklist](gpu-qualification.md)
+Local tests verify staged-input integrity, retry under the same trial ID,
+duplicate-report handling and capacity return. The SSH and managed-job tests
+use local simulations. Cold provisioning, real spot recovery, utilization
+across allocated devices and provider lifecycle events require measurements
+on the target infrastructure. [GPU qualification checklist](gpu-qualification.md)
 
 ## Read earlier records
 

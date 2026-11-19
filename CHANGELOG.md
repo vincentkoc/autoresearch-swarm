@@ -27,6 +27,9 @@
 - Correct the operator guide's panel query for the supplied YAML campaign and
   show where to read its held-out score and promotion decision.
 
+- Document the evidence behind the eight campaign KPIs and scope the operator
+  guide's queue, event and attempt queries to the requested campaign.
+
 - Apply revision-pinned source diffs to native training stages. The original
   evaluator scores the artifacts produced by the edited training code.
 
