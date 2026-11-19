@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -92,6 +93,93 @@ def _cost_efficiency(
     )
 
 
+def _panel_kpis(db: sqlite3.Connection, campaign: str) -> dict[str, Any]:
+    row = db.execute("SELECT * FROM swarm_campaigns WHERE campaign_id=?", (campaign,)).fetchone()
+    binding = dict(row).get("panel_binding")
+    calibration = db.execute(
+        "SELECT * FROM swarm_events WHERE campaign_id=? AND kind='panel_calibration'",
+        (campaign,),
+    ).fetchone()
+    evidence = json.loads(calibration["panel_evidence"]) if calibration else {}
+    missing = (
+        "No panel study identity was recorded for this campaign."
+        if not binding
+        else "No calibration outcome was captured for this campaign's bound study."
+    )
+    rate = {
+        **_metric(None, "%", missing),
+        "passes": None,
+        "decisions": None,
+        "recorded_passes": None,
+        "recorded_decisions": None,
+        "last_confirmation": None,
+    }
+    slope = {**_metric(None, "target / proxy", missing), "seed_noise": None}
+    metrics = {"confirmation_pass_rate": rate, "proxy_to_target_slope": slope}
+    if not binding or evidence.get("binding") != binding:
+        return metrics
+
+    noise = evidence["seed_noise"]
+    if noise is not None:
+        slope.update(
+            value=evidence["slope"],
+            seed_noise=noise,
+            detail=f"Bound calibration recorded target seed noise {noise:g}.",
+        )
+        if slope["value"] is None:
+            slope["detail"] += " The calibration proxy was constant, so the slope is undefined."
+
+    # An upgraded queue may have selected or rejected challengers before capture began.
+    earlier_results = db.execute(
+        "SELECT 1 FROM swarm_events e JOIN swarm_attempts a USING(attempt_id) "
+        "WHERE e.campaign_id=? AND e.id<? AND e.kind='finished' "
+        "AND json_extract(a.observation,'$.status')='ok' LIMIT 1",
+        (campaign, calibration["id"]),
+    ).fetchone()
+    passes, decisions, unknown, latest = db.execute(
+        """WITH outcomes AS (
+            SELECT id, panel_evidence, json_extract(panel_evidence,'$.reason') AS reason,
+                   json_extract(panel_evidence,'$.confirmation_gain') AS gain,
+                   json_extract(panel_evidence,'$.promoted') AS promoted
+            FROM swarm_events WHERE campaign_id=? AND kind='panel_decision'
+                AND json_extract(panel_evidence,'$.binding')=?),
+           classified AS (
+                SELECT *, CASE
+                    WHEN reason='confirmation' AND typeof(gain) IN ('real','integer')
+                        AND promoted IN (0,1) THEN 1
+                    WHEN reason IN ('selection','reference','evaluation_failed') THEN 0
+                END AS eligible FROM outcomes)
+           SELECT COUNT(*) FILTER (WHERE eligible AND promoted),
+                  COUNT(*) FILTER (WHERE eligible), COUNT(*) FILTER (WHERE eligible IS NULL),
+                  (SELECT panel_evidence FROM classified WHERE eligible ORDER BY id DESC LIMIT 1)
+           FROM classified""",
+        (campaign, binding),
+    ).fetchone()
+    rate.update(recorded_passes=passes, recorded_decisions=decisions)
+    if earlier_results:
+        rate["detail"] = (
+            "Successful trials predate decision capture. The campaign total is unknown."
+        )
+    elif unknown:
+        rate["detail"] = "A bound panel decision lacks the evidence needed to classify it."
+    else:
+        rate.update(
+            value=100 * passes / decisions if decisions else None,
+            passes=passes,
+            decisions=decisions,
+            detail=f"{passes} of {decisions} distinct measured confirmation comparisons passed."
+            if decisions
+            else "No measured confirmation comparisons were recorded for this campaign.",
+        )
+    if latest:
+        decision = json.loads(latest)
+        gain = decision["confirmation_gain"]
+        rate["last_confirmation"] = {"promoted": decision["promoted"], "confirmation_gain": gain}
+        verdict = "passed" if decision["promoted"] else "failed"
+        rate["detail"] += f" Last recorded confirmation {verdict} with gain {gain:g}."
+    return metrics
+
+
 def read_kpis(
     db: sqlite3.Connection,
     campaign: str,
@@ -158,10 +246,5 @@ def read_kpis(
             "finished_attempts": finished,
         },
         "proposer_acceptance_rate": _proposer_acceptance(db, campaign),
-        "confirmation_pass_rate": _metric(
-            None, "%", "Campaign-attributed confirmation passes and decisions are unavailable."
-        ),
-        "proxy_to_target_slope": _metric(
-            None, "target / proxy", "No campaign-attributed calibration slope was captured."
-        ),
+        **_panel_kpis(db, campaign),
     }

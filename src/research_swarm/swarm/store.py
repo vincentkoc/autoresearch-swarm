@@ -18,6 +18,7 @@ from uuid import uuid4
 from pydantic import TypeAdapter
 
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
+from research_swarm.swarm.panels import Calibration, Decision
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS swarm_projects (project_id TEXT PRIMARY KEY, snapshot TEXT);
@@ -187,6 +188,13 @@ class SQLiteStore:
             for column in ("proposed_count", "accepted_count"):
                 if column not in event_columns:
                     db.execute(f"ALTER TABLE swarm_events ADD COLUMN {column} INTEGER")
+            if "panel_evidence" not in event_columns:
+                db.execute("ALTER TABLE swarm_events ADD COLUMN panel_evidence TEXT")
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS swarm_panel_outcome ON swarm_events"
+                "(campaign_id,kind,json_extract(panel_evidence,'$.key')) "
+                "WHERE panel_evidence IS NOT NULL"
+            )
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -208,7 +216,7 @@ class SQLiteStore:
     def create_campaign(self, spec: CampaignSpec) -> None:
         self.register_panel_campaign(spec, None)
 
-    def register_panel_campaign(self, spec: CampaignSpec, policy: object | None) -> None:
+    def register_panel_campaign(self, spec: CampaignSpec, policy: object | None) -> str | None:
         if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
             raise ValueError("max_hours must be finite and non-negative")
         encoded = _json(asdict(spec))
@@ -236,7 +244,7 @@ class SQLiteStore:
                 if _json(asdict(CampaignSpec(**saved))) != encoded:
                     raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
             if policy is None:
-                return
+                return None
             expected, selected = db.execute(
                 "SELECT panel_binding, selected_trial_id FROM swarm_campaigns WHERE campaign_id=?",
                 (spec.campaign_id,),
@@ -245,7 +253,7 @@ class SQLiteStore:
             if bind is None:
                 if expected is not None:
                     raise ValueError("Campaign requires its original panel study")
-                return
+                return None
             prior: Literal["new", "started", "selected"] = "new"
             if selected is not None:
                 prior = "selected"
@@ -266,6 +274,35 @@ class SQLiteStore:
                     "UPDATE swarm_campaigns SET panel_binding=? WHERE campaign_id=?",
                     (identity, spec.campaign_id),
                 )
+            return identity
+
+    def record_panel_outcome(
+        self, campaign_id: str, binding: str, outcome: object, *, comparison: str | None = None
+    ) -> None:
+        """Attribute a policy result to the campaign that used it, including cache hits."""
+        evidence: dict[str, Any] = {"binding": binding}
+        if comparison is None:
+            kind = "panel_calibration"
+            evidence.update(key="calibration", slope=None, seed_noise=None)
+            if isinstance(outcome, Calibration):
+                evidence.update(slope=outcome.slope, seed_noise=outcome.seed_noise)
+        else:
+            kind = "panel_decision"
+            evidence.update(key=hashlib.sha256(comparison.encode()).hexdigest(), reason="unknown")
+            if isinstance(outcome, Decision):
+                evidence.update(
+                    reason=outcome.reason,
+                    promoted=outcome.promoted,
+                    confirmation_gain=outcome.confirmation_gain,
+                )
+        with self._connection(write=True) as db:
+            db.execute(
+                "INSERT INTO swarm_events(campaign_id,kind,at,panel_evidence) "
+                "SELECT campaign_id,?,?,? FROM swarm_campaigns "
+                "WHERE campaign_id=? AND panel_binding=? "
+                "ON CONFLICT DO NOTHING",
+                (kind, time.time(), _json(evidence), campaign_id, binding),
+            )
 
     @staticmethod
     def _saved_spec(db: sqlite3.Connection, campaign_id: str) -> dict[str, Any]:

@@ -23,6 +23,7 @@ from research_swarm.swarm.interfaces import (
     Trial,
     Worker,
 )
+from research_swarm.swarm.panels import PanelStudy
 from research_swarm.swarm.population import Population, Ranked
 
 
@@ -147,6 +148,7 @@ class SwarmLoop:
         self.proposer = proposer
         self.selection = selection
         self.panels = panels
+        self._panel_binding: str | None = None
         self.population = Population(spec, min_replicates=spec.min_replicates)
         self.incumbent: Ranked | None = None
         self._rejected: set[str] = set()
@@ -209,6 +211,15 @@ class SwarmLoop:
                     return
             if self.panels is not None and key != old_key:
                 decision = await asyncio.to_thread(self.panels.consider, key, old_key)
+                record = getattr(self.store, "record_panel_outcome", None)
+                if self._panel_binding and record is not None:
+                    decision_key = getattr(self.panels, "decision_key", PanelStudy.decision_key)
+                    record(
+                        self.spec.campaign_id,
+                        self._panel_binding,
+                        decision,
+                        comparison=decision_key(key, old_key),
+                    )
                 if not decision.promoted:
                     self._rejected.add(key)
                     continue
@@ -259,7 +270,7 @@ class SwarmLoop:
             )
         register_panels = getattr(self.store, "register_panel_campaign", None)
         if self.panels is not None and register_panels is not None:
-            register_panels(s, self.panels)
+            self._panel_binding = register_panels(s, self.panels)
         else:
             self.store.create_campaign(s)
         exhaustion = self.store if isinstance(self.store, _ExhaustionStore) else None
@@ -283,7 +294,10 @@ class SwarmLoop:
             or any(result.status == "ok" for result in recorded)
             or self.store.queue_depth(s.campaign_id)[1] > 0
         ):
-            await asyncio.to_thread(self.panels.calibrate)
+            calibration = await asyncio.to_thread(self.panels.calibrate)
+            record = getattr(self.store, "record_panel_outcome", None)
+            if self._panel_binding and record is not None:
+                record(s.campaign_id, self._panel_binding, calibration)
         incumbent = self.store.incumbent(s.campaign_id)
         for result in recorded:
             self.population.add(result)
