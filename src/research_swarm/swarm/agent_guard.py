@@ -15,32 +15,40 @@ from pathlib import Path
 def record_outcome(heartbeat: Path, status: str) -> None:
     """Publish one complete terminal record even if the caller and guard race at expiry."""
     try:
-        metadata = heartbeat.with_name("job.json").read_bytes()
-    except FileNotFoundError:
-        # Jobs started by an older launcher kept metadata only in the heartbeat.
-        metadata = heartbeat.read_bytes()
-        primary_timeout = False
-    else:
-        primary_timeout = status == "timed_out"
-    try:
+        try:
+            metadata = heartbeat.with_name("job.json").read_bytes()
+        except FileNotFoundError:
+            # Jobs started by an older launcher kept metadata only in the heartbeat.
+            metadata = heartbeat.read_bytes()
         job = json.loads(metadata.decode("utf-8"))
         role, deadline = job["role"], job["deadline"]
-        if primary_timeout and (
+        if status == "timed_out" and (
             role not in ("proposer", "diagnoser", "reporter")
             or type(deadline) not in (int, float)
             or not math.isfinite(deadline)
         ):
             raise ValueError("invalid launch metadata")
         outcome = {"role": role, "deadline": deadline, "status": status}
-    except (ValueError, TypeError, KeyError, OverflowError, RecursionError):
-        if not primary_timeout:
+    except (
+        FileNotFoundError,
+        ValueError,
+        TypeError,
+        KeyError,
+        OverflowError,
+        RecursionError,
+    ) as exc:
+        if status != "timed_out":
             raise
         # Expiry is known from the monotonic clock. The launch fields are unknown.
         outcome = {
             "role": None,
             "deadline": None,
             "status": status,
-            "error": "invalid_launch_metadata",
+            "error": (
+                "missing_launch_metadata"
+                if isinstance(exc, FileNotFoundError)
+                else "invalid_launch_metadata"
+            ),
         }
     staging = heartbeat.with_name(f".outcome-{os.getpid()}.tmp")
     staging.write_text(json.dumps(outcome))

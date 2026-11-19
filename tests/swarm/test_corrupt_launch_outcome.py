@@ -60,3 +60,32 @@ def test_expiry_records_unknown_launch_identity(
     assert outcome.stat().st_ino == published.st_ino
     assert json.loads(outcome.read_bytes()) == expected
     assert job.read_bytes() == primary
+
+
+@pytest.mark.parametrize(
+    ("legacy_heartbeat", "diagnostic"),
+    [
+        (None, "missing_launch_metadata"),
+        (b'{"role":"reporter","deadline":1700000110.0', "invalid_launch_metadata"),
+    ],
+)
+def test_legacy_timeout_without_usable_metadata(
+    tmp_path: Path, legacy_heartbeat: bytes | None, diagnostic: str
+) -> None:
+    heartbeat = tmp_path / "heartbeat.json"
+    outcome = tmp_path / "outcome.json"
+    if legacy_heartbeat is not None:
+        heartbeat.write_bytes(legacy_heartbeat)
+
+    with pytest.raises(FileNotFoundError if legacy_heartbeat is None else json.JSONDecodeError):
+        agent_guard.record_outcome(heartbeat, "ok")
+    assert not outcome.exists()
+
+    agent_guard.record_outcome(heartbeat, "timed_out")
+
+    assert json.loads(outcome.read_bytes()) == {
+        "role": None,
+        "deadline": None,
+        "status": "timed_out",
+        "error": diagnostic,
+    }
