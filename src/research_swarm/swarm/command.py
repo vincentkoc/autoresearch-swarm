@@ -40,9 +40,9 @@ def run_campaign(
     path: Path, database: Path, *, retry_exhausted: bool = False
 ) -> tuple[dict[str, Any], int]:
     spec = load_spec(path)
+    backend = campaign_backend(spec)
     database.parent.mkdir(parents=True, exist_ok=True)
     store = SQLiteStore(database)
-    backend = campaign_backend(spec)
     worker: Worker
     if spec.worker:
         worker = _factory(spec.worker)(spec, store, backend)

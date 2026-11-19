@@ -53,6 +53,30 @@ def test_run_reports_held_out_score_without_another_panel_look(
         assert db.execute("SELECT count(*) FROM panel_looks").fetchone() == looks
 
 
+@pytest.mark.parametrize("existing", [False, True])
+def test_refused_backend_leaves_queue_untouched(tmp_path: Path, existing: bool) -> None:
+    from research_swarm.swarm.command import run_campaign
+
+    spec = yaml.safe_load((BIGRAM / "swarm.yaml").read_text())
+    spec.update(task_dir=str(BIGRAM), options={"backend": {"data_dir": str(tmp_path / "missing")}})
+    path = tmp_path / "campaign.yaml"
+    path.write_text(yaml.safe_dump(spec))
+    queue = tmp_path / "state" / "queue.sqlite"
+    if existing:
+        queue.parent.mkdir()
+        with sqlite3.connect(queue) as db:
+            db.execute("CREATE TABLE swarm_projects (project_id TEXT PRIMARY KEY)")
+        prior = queue.read_bytes()
+
+    with pytest.raises(FileNotFoundError):
+        run_campaign(path, queue)
+
+    if existing:
+        assert queue.read_bytes() == prior
+    else:
+        assert not queue.parent.exists()
+
+
 def test_eight_processes_overlap_one_crashes_and_winner_survives_resume(tmp_path: Path) -> None:
     barrier = tmp_path / "barrier.py"
     barrier.write_text(
