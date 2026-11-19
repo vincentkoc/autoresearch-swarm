@@ -9,8 +9,12 @@ from typing import Any
 import pytest
 import yaml
 
+from research_swarm.swarm.command import campaign_backend
 from research_swarm.swarm.data_stage import hydrate, prepare, read_stage
+from research_swarm.swarm.interfaces import Candidate, Trial
+from research_swarm.swarm.spec import load_spec
 from research_swarm.swarm.store import SQLiteStore
+from research_swarm.swarm.worker import WorkerLoop
 from tests.swarm.test_campaign_gc import fake_gc_aws, gc
 from tests.swarm.test_skypilot import fake_sky
 from tests.swarm.test_ssh_pool import fake_pool_commands
@@ -29,9 +33,18 @@ def run_campaign(spec: Path, db: Path) -> dict[str, Any]:
 
 def campaign_spec(tmp_path: Path, backend: str, options: dict[str, Any]) -> Path:
     (tmp_path / "trial.py").write_text(
-        "import json, os\nfrom pathlib import Path\n"
+        "import errno, json, os\nfrom pathlib import Path\n"
         "assert os.environ['SWARM_DEVICE'] == 'cpu'\n"
-        "points = int((Path(os.environ['SWARM_DATA']) / 'points').read_text())\n"
+        "data = Path(os.environ['SWARM_DATA'])\n"
+        "assert (data.stat().st_mode | (data / 'points').stat().st_mode) & 0o222 == 0\n"
+        "if os.geteuid() != 0:\n"
+        "    try:\n"
+        "        (data / 'points').open('ab').close()\n"
+        "    except OSError as error:\n"
+        "        assert error.errno in (errno.EACCES, errno.EPERM, errno.EROFS)\n"
+        "    else:\n"
+        "        raise AssertionError('worker opened staged input for writing')\n"
+        "points = int((data / 'points').read_text())\n"
         "with Path('executions').open('a') as f: print(os.environ['SWARM_ATTEMPT_ID'], file=f)\n"
         "Path(os.environ['SWARM_METRICS']).write_text(json.dumps({'score': points}))\n"
     )
@@ -52,6 +65,21 @@ def campaign_spec(tmp_path: Path, backend: str, options: dict[str, Any]) -> Path
     )
     spec.write_text(yaml.safe_dump(config))
     return spec
+
+
+def ssh_options(
+    root: Path, monkeypatch: pytest.MonkeyPatch, data: dict[str, str]
+) -> dict[str, Any]:
+    aws, ssh = fake_pool_commands(root, monkeypatch)
+    host = dict(
+        target="demo-worker",
+        instance_id="pool",
+        region="test-region",
+        task_dir=str(root),
+        device="cpu",
+        data=data,
+    )
+    return {"hosts": [host], "ssh": ssh, "aws": aws}
 
 
 def sky_resources(tmp_path: Path) -> set[str]:
@@ -95,17 +123,8 @@ def test_backend_campaign_qualification(
     if backend == "local":
         options = {"device": "cpu", "data_dir": str(hydrate(volume, nvme, "demo", "v1"))}
     elif backend == "ssh_pool":
-        pool_aws, ssh = fake_pool_commands(tmp_path, monkeypatch)
         (tmp_path / "drop-next-ssh").touch()
-        host = dict(
-            target="demo-worker",
-            instance_id="pool",
-            region="test-region",
-            task_dir=str(tmp_path),
-            device="cpu",
-            data=data,
-        )
-        options = {"hosts": [host], "ssh": ssh, "aws": pool_aws}
+        options = ssh_options(tmp_path, monkeypatch, data)
     else:
         sky = fake_sky(tmp_path, monkeypatch, "RECOVERING")
         aws = fake_gc_aws(tmp_path)
@@ -163,3 +182,63 @@ def test_backend_campaign_qualification(
     if backend == "skypilot":
         owned, pool = json.loads((tmp_path / "ec2.json").read_text())["Instances"]
         assert [owned["State"]["Name"], pool["State"]["Name"]] == ["terminated", "running"]
+
+
+@pytest.mark.parametrize(("kind", "outcome"), [("local", "failed"), ("ssh_pool", "lost")])
+async def test_worker_retries_corrupt_cache_once_and_deduplicates_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, outcome: str
+) -> None:
+    source, volume, nvme = (tmp_path / name for name in ("source", "region", "nvme"))
+    source.mkdir()
+    (source / "points").write_bytes(b"13")
+    prepare(source, volume, "demo", "v1")
+    cache = hydrate(volume, nvme, "demo", "v1")
+    options: dict[str, Any] = {"device": "cpu", "data_dir": str(cache)}
+    if kind == "ssh_pool":
+        options = ssh_options(
+            tmp_path,
+            monkeypatch,
+            dict(
+                revision="v1", volume=str(volume), nvme=str(nvme), mount_root=str(tmp_path / "mnt")
+            ),
+        )
+    spec = load_spec(campaign_spec(tmp_path, kind, options))
+    backend = campaign_backend(spec)
+    db = tmp_path / "queue.sqlite"
+    store = SQLiteStore(db)
+    store.create_campaign(spec)
+    trial = Trial(
+        trial_id="one",
+        campaign_id="demo",
+        candidate=Candidate(candidate_id="one"),
+        seed=3,
+        fidelity=1,
+    )
+    assert store.submit(trial)
+    worker = WorkerLoop(store, backend, "worker")
+
+    points = cache / "points"
+    points.chmod(0o644)
+    points.write_bytes(b"99")
+    points.chmod(0o444)
+    assert await worker.run_once(spec)
+    (first,) = store.results("demo")
+    assert first.status == outcome and "differs" in (first.error or "")
+    assert not (tmp_path / "executions").exists() and backend.free_slots(spec) == 1
+    replay = SQLiteStore(db)
+    assert not replay.report(first) and replay.queue_depth("demo") == (1, 0)
+
+    # Restore this synthetic cache so the same resident worker can complete its retry.
+    points.chmod(0o644)
+    points.write_bytes(b"13")
+    points.chmod(0o444)
+    assert await worker.run_once(spec)
+    failed, accepted = store.results("demo")
+    assert failed == first and accepted.status == "ok" and accepted.metrics == {"score": 13}
+    assert failed.attempt.trial == accepted.attempt.trial == trial
+    assert (failed.attempt.number, accepted.attempt.number) == (1, 2)
+    assert failed.attempt.attempt_id != accepted.attempt.attempt_id
+    assert not replay.report(accepted) and not replay.report(first)
+    assert replay.results("demo") == [failed, accepted] and replay.queue_depth("demo") == (0, 0)
+    assert not await worker.run_once(spec) and backend.free_slots(spec) == 1
+    assert (tmp_path / "executions").read_text().splitlines() == [accepted.attempt.attempt_id]

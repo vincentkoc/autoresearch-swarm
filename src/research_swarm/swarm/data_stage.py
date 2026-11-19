@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -60,7 +60,8 @@ def read_stage(path: Path, *, pending_gc: bool = False) -> Stage:
     return stage
 
 
-def _copy_tree(source: Path, target: Path, threads: int) -> tuple[str, int, int]:
+def _hash_tree(source: Path, target: Path | None, threads: int) -> tuple[str, int, int]:
+    """Hash the snapshot layout and bytes, optionally copying them in the same pass."""
     if not source.is_dir() or source.is_symlink():
         raise ValueError("dataset source must be a directory")
     records: list[tuple[str, str]] = []
@@ -69,7 +70,8 @@ def _copy_tree(source: Path, target: Path, threads: int) -> tuple[str, int, int]
     directories = [Path(".")]
     while directories:
         relative = directories.pop()
-        (target / relative).mkdir()
+        if target is not None:
+            (target / relative).mkdir()
         records.append((relative.as_posix(), "directory"))
         for entry in (source / relative).iterdir():
             name = relative / entry.name
@@ -82,24 +84,66 @@ def _copy_tree(source: Path, target: Path, threads: int) -> tuple[str, int, int]
             else:
                 raise ValueError(f"dataset contains a special file: {name}")
 
-    def copy(name: Path) -> tuple[str, str, int]:
+    def hash_file(name: Path) -> tuple[str, str, int]:
         digest = hashlib.sha256()
         size = 0
-        with (source / name).open("rb") as reader, (target / name).open("xb") as writer:
+        with (
+            (source / name).open("rb") as reader,
+            (target / name).open("xb") if target is not None else nullcontext() as writer,
+        ):
+            if writer is None and os.fstat(reader.fileno()).st_mode & 0o222:
+                raise ValueError(f"staged input file is writable: {name}")
             while chunk := reader.read(1024 * 1024):
-                writer.write(chunk)
+                if writer is not None:
+                    writer.write(chunk)
                 digest.update(chunk)
                 size += len(chunk)
-        (target / name).chmod(0o444)
+        if target is not None:
+            (target / name).chmod(0o444)
         return name.as_posix(), digest.hexdigest(), size
 
     total = 0
     with ThreadPoolExecutor(max_workers=threads) as pool:
-        for filename, file_hash, size in pool.map(copy, files):
+        for filename, file_hash, size in pool.map(hash_file, files):
             records.append((filename, file_hash))
             total += size
     encoded = json.dumps(sorted(records), separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest(), len(files), total
+
+
+def _seal_directories(data: Path) -> None:
+    for _, _, _, fd in os.fwalk(data):
+        mode = os.fstat(fd).st_mode
+        if mode & 0o222:
+            os.fchmod(fd, mode & ~0o222)
+
+
+def _verify_data(data: Path, stage: Stage, threads: int) -> None:
+    if _hash_tree(data, None, threads) != (stage.sha256, stage.files, stage.size_bytes):
+        raise ValueError("staged input differs from the published digest")
+    # Older snapshots sealed files but left their directories writable.
+    _seal_directories(data)
+
+
+def local_stage(data: Path) -> Stage | None:
+    """Identify a managed data tree while allowing arbitrary local dataset layouts."""
+    marker = data.parent / "stage.json"
+    if data.name != "data" or not marker.is_file():
+        return None
+    try:
+        metadata = json.loads(marker.read_bytes())
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(metadata, dict) or metadata.get("owner") != "autoresearch-swarm":
+        return None
+    return read_stage(data.parent)
+
+
+def verify_local_stage(data: Path, stage: Stage) -> None:
+    with revision_lock(data.parent, shared=True):
+        if read_stage(data.parent) != stage:
+            raise ValueError("local stage manifest differs from the configured revision")
+        _verify_data(data, stage, threads=16)
 
 
 def _publish(source: Path, target: Path, threads: int, *, expected: Stage | None = None) -> Stage:
@@ -114,20 +158,22 @@ def _publish(source: Path, target: Path, threads: int, *, expected: Stage | None
             raise ValueError("data stage cleanup is incomplete; retry campaign gc")
         if target.exists():
             stage = read_stage(target)
+            if expected is not None and stage != expected:
+                raise ValueError("cached revision differs from the published data stage")
+            _verify_data(target / "data", stage, threads)
         else:
             with tempfile.TemporaryDirectory(prefix=".copy-", dir=target.parent) as temp:
                 snapshot = Path(temp) / "snapshot"
                 snapshot.mkdir()
-                digest, files, size = _copy_tree(source, snapshot / "data", threads)
+                digest, files, size = _hash_tree(source, snapshot / "data", threads)
                 stage = Stage(
                     target.parent.name, target.name, digest, files, size, "autoresearch-swarm"
                 )
                 if expected is not None and stage != expected:
                     raise ValueError("local copy differs from the published data stage")
+                _seal_directories(snapshot / "data")
                 (snapshot / "stage.json").write_text(json.dumps(asdict(stage)), encoding="utf-8")
                 snapshot.rename(target)
-        if expected is not None and stage != expected:
-            raise ValueError("cached revision differs from the published data stage")
         return stage
 
 
