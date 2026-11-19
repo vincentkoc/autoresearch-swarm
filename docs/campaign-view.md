@@ -42,10 +42,10 @@ captures with this API without changing training, scheduling or controller state
 
 ## Serve with the existing API
 
-Start the normal server:
+Start the server with the existing read token file and the campaign database.
 
 ~~~sh
-research --state-dir /path/to/state serve --host 127.0.0.1 --port 8765
+research --token-file /path/to/read-token serve --db .research/program.sqlite --host 127.0.0.1 --port 8765
 ~~~
 
 Open `http://127.0.0.1:8765/` and enter an existing read-scoped bearer credential.

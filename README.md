@@ -37,8 +37,8 @@ uv run --no-sync research report view --db .research/program.sqlite \
 The campaign database has six tables for projects,
 campaigns, candidates, trials, attempts and events. A panel study keeps two
 tables in its own database. An optional reactive session also has a separate
-two-table journal. The optional watcher uses one `notifications` table in
-`<campaign-db>.notifications.sqlite` for hourly digests and metric alerts.
+two-table journal. The optional watcher stores hourly digests and alerts in
+`<campaign-db>.notifications.sqlite` and records its progress through failed attempts there.
 
 [Run a campaign](docs/run-a-campaign.md) · [Operator guide](docs/operator-guide.md) · [Campaign ops](docs/campaign-ops.md) · [Design](docs/design.md)
 
@@ -66,7 +66,7 @@ proposers can call local Ollama.
 | Extend a proposer, backend or evaluator | [Swarm design](docs/design.md) |
 | Adopt a manifest-based research project | [Project adoption](docs/project-adoption.md) · [Manifest](docs/project-manifests.md) · [Workload protocol](docs/workload-protocol.md) |
 | Configure a native training environment | [Engine profiles](docs/engines.md) · [MLX workload](docs/mlx-workload.md) |
-| Configure artifact storage | [R2 object storage](docs/r2.md) |
+| Upload and retrieve local campaign artifacts | [Artifact storage](docs/r2.md) |
 | Read campaign snapshots, events and budgets | [HTTP API](docs/api.md) · [Qualification history](docs/implementation.md) |
 | Publish a release | [Release guide](docs/releasing.md) |
 

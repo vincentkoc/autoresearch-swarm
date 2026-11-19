@@ -190,10 +190,8 @@ The local backend starts a separate process group. It captures bounded output
 and kills remaining group members during teardown. A child that inherits
 the output pipe should not keep the trial alive after its deadline.
 
-The native controller worker sets its local POSIX deadline at startup. Its
-clock includes time spent suspended. Linux uses `CLOCK_BOOTTIME` and macOS
-uses `mach_continuous_time`. The supervisor caps startup and execution by the
-remaining allowance and bounds cleanup separately.
+Local engine probes use a separate POSIX supervisor with a clock that
+includes time spent suspended. [Engine profiles](engines.md)
 
 The resource pool distinguishes CPU slots, LLM slots and GPU memory.
 A worker can account for estimated token demand before it makes a claim.
@@ -301,9 +299,9 @@ Seed noise is the square root of the pooled within-recipe target variance.
 The fit uses equal numbers of seeds for each recipe. This separates changes
 between recipes from variation between repeated fits of one recipe.
 
-Calibration also reports the number of measured trials, mean seconds per
-trial and trials per second. Throughput includes scoring both calibration
-splits on the chosen device.
+Calibration counts measurements on both splits. A fresh fit reports seconds
+per trial and trials per second. A fit recovered from scores without elapsed
+times leaves both values unavailable.
 
 ### Selection and confirmation
 
@@ -385,7 +383,7 @@ A local smoke run verifies that the task can execute and emit its metric.
 Scientific comparisons require the stated evaluation protocol and enough
 independent measurements for the question being asked.
 
-[Benchmark workloads and comparison protocol](../benchmarks/README.md)
+[Benchmark workloads and comparison protocol](../benchmarks/README.md) · [Measured outcomes and outstanding qualifications](run-a-campaign.md#report-what-the-run-qualifies)
 
 ## Extension points
 
@@ -401,12 +399,9 @@ independent measurements for the question being asked.
 
 ## Compatibility
 
-The swarm queue and YAML entry point have their own trial and attempt
-records. Older controller examples use project manifests, command APIs
-and evaluator receipts. Use the interface that produced the records when
-reading an existing campaign.
+For current YAML campaigns, inspect the queue's trials, attempts and events.
+[Operator guide](operator-guide.md)
 
-Choose the versioned reference for the campaign you are reading.
-
-- Before hosted adapter retirement, use the complete [controller documentation](https://github.com/vincentkoc/autoresearch-swarm/tree/b8b44174b925483c8b202163fef12b733517fa49/docs).
-- After hosted adapter retirement, use the [control CLI](https://github.com/vincentkoc/autoresearch-swarm/blob/b64212b0fea869e166cbd954bccb273ba65ade80/docs/agent-control.md) and [gateway actions](https://github.com/vincentkoc/autoresearch-swarm/blob/b64212b0fea869e166cbd954bccb273ba65ade80/docs/orchestration.md).
+For archived controller records, use the reference from the revision that
+produced them. The hosted adapter and the later control CLI and gateway each
+have a versioned guide. [Hosted controller](https://github.com/vincentkoc/autoresearch-swarm/tree/b8b44174b925483c8b202163fef12b733517fa49/docs) · [Control CLI](https://github.com/vincentkoc/autoresearch-swarm/blob/b64212b0fea869e166cbd954bccb273ba65ade80/docs/agent-control.md) · [Gateway actions](https://github.com/vincentkoc/autoresearch-swarm/blob/b64212b0fea869e166cbd954bccb273ba65ade80/docs/orchestration.md)

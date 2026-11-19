@@ -69,6 +69,9 @@
 - Document the repeated-failure alert and when missing inputs or budget
   require an operator to stop a real-workload acceptance run.
 
+- Correct the campaign browser startup and local artifact commands. Link the
+  retired controller's R2 setup and qualification at its matching revision.
+
 - Show operators how to inspect calibration reservations before resuming an
   interrupted campaign and how to identify a saved calibration summary.
 
