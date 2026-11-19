@@ -21,6 +21,7 @@ from research_swarm.swarm.interfaces import (
 )
 from research_swarm.swarm.meter import CostMeter
 from research_swarm.swarm.resources import Allocation, Demand, ResourcePool
+from research_swarm.swarm.telemetry import observe_starts
 
 
 @runtime_checkable
@@ -150,7 +151,13 @@ class WorkerLoop:
                 # The backend has unwound and stopped its command group.
                 cost = self.meter.charge(spec, attempt, time.monotonic() - started, 0, 0)
                 self.store.report(
-                    Result(attempt=attempt, status="lost", error="worker cancelled", cost=cost)
+                    Result(
+                        attempt=attempt,
+                        status="lost",
+                        error="worker cancelled",
+                        cost=cost,
+                        failure_class="cancelled",
+                    )
                 )
                 raise
             if result is not None:
@@ -195,7 +202,8 @@ class WorkerLoop:
                     async with watchdog:
                         if before_execute is not None:
                             await before_execute(attempt)
-                        result = await backend.execute(spec, attempt)
+                        with observe_starts(getattr(self.store, "workload_started", None)):
+                            result = await backend.execute(spec, attempt)
                     if result.attempt != attempt:
                         raise ValueError("backend returned a result for a different claim")
                     cost = self.meter.charge(
@@ -223,16 +231,29 @@ class WorkerLoop:
                         raise
                     cost = self.meter.charge(spec, attempt, time.monotonic() - started, 0, 0)
                     result = Result(
-                        attempt=attempt, status="lost", error="backend cancelled", cost=cost
+                        attempt=attempt,
+                        status="lost",
+                        error="backend cancelled",
+                        cost=cost,
+                        failure_class="cancelled",
                     )
                 except Exception as exc:
-                    if isinstance(exc, TimeoutError) and watchdog.expired() and not exc.args:
+                    timed_out = (
+                        isinstance(exc, TimeoutError) and watchdog.expired() and not exc.args
+                    )
+                    if timed_out:
                         error = f"worker watchdog timed out after {timeout_seconds:g} seconds"
                     else:
                         error = f"{type(exc).__name__}: {exc}"
                     if cost is None or result is None:
                         cost = self.meter.charge(spec, attempt, time.monotonic() - started, 0, 0)
-                        result = Result(attempt=attempt, status="failed", error=error, cost=cost)
+                        result = Result(
+                            attempt=attempt,
+                            status="failed",
+                            error=error,
+                            cost=cost,
+                            failure_class="timeout" if timed_out else None,
+                        )
                     else:
                         # Invalid measurements do not erase validated usage or command logs.
                         result = replace(
@@ -242,6 +263,7 @@ class WorkerLoop:
                             cost=cost,
                             metrics={},
                             peak_vram_mib=None,
+                            failure_class="invalid_output",
                         )
                 finally:
                     pulse.cancel()

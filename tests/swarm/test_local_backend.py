@@ -87,6 +87,7 @@ async def test_invalid_metrics_are_failed_attempts(tmp_path: Path, output: str) 
     )
     result = await LocalBackend(1).execute(spec, make_attempt())
     assert result.status == "failed" and result.error and not result.metrics
+    assert result.failure_class == "invalid_output"
     assert (result.input_tokens, result.output_tokens, result.peak_vram_mib) == (100, 7, 19)
 
 
@@ -116,6 +117,7 @@ time.sleep(60)
     else:
         result = await task
         assert result.status == "failed" and "timed out" in (result.error or "")
+        assert result.failure_class == "timeout"
     await assert_child_stopped(child_pid)
     assert backend.free_slots(spec) == 1
 
@@ -176,6 +178,7 @@ async def test_local_dispatch_rejects_changed_staged_input(tmp_path: Path) -> No
     (data / "points").chmod(0o444)
     result = await backend.execute(spec, make_attempt())
     assert result.status == "failed" and "differs" in (result.error or "")
+    assert result.failure_class == "backend_setup"
     assert not (tmp_path / "started").exists() and backend.free_slots(spec) == 1
 
 

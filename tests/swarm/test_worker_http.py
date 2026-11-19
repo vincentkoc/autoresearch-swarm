@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -208,3 +209,7 @@ def test_remote_worker_cli_executes_local_argv_and_publishes(tmp_path: Path) -> 
         assert json.loads(process.stdout) == {"worker_id": "worker-1", "ran": True}
     (result,) = store.results("test")
     assert result.status == "ok" and result.metrics == {"loss": 2.0}
+    with sqlite3.connect(path) as queue:
+        assert queue.execute(
+            "SELECT attempt_id FROM swarm_events WHERE kind='workload_started'"
+        ).fetchall() == [(result.attempt.attempt_id,)]

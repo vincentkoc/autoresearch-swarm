@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS swarm_events (
     replicates INTEGER
 );
 CREATE INDEX IF NOT EXISTS swarm_event_order ON swarm_events(campaign_id, kind, id);
+CREATE UNIQUE INDEX IF NOT EXISTS swarm_workload_start ON swarm_events(attempt_id)
+    WHERE kind='workload_started';
 """
 _TRIAL = """SELECT t.*, c.payload FROM swarm_trials t JOIN swarm_candidates c
             USING (campaign_id, candidate_id)"""
@@ -364,6 +366,18 @@ class SQLiteStore:
             )
             return bool(updated.rowcount)
 
+    def workload_started(self, attempt_id: str) -> None:
+        """Timestamp the first acknowledged subprocess launch for a live claim."""
+        with self._connection(write=True) as db:
+            db.execute(
+                "INSERT INTO swarm_events(campaign_id,kind,at,trial_id,attempt_id) "
+                "SELECT t.campaign_id,'workload_started',?,t.trial_id,a.attempt_id "
+                "FROM swarm_attempts a JOIN swarm_trials t USING(trial_id) "
+                "WHERE a.attempt_id=? AND a.observation IS NULL "
+                "ON CONFLICT(attempt_id) WHERE kind='workload_started' DO NOTHING",
+                (time.time(), attempt_id),
+            )
+
     def _finish(
         self, db: sqlite3.Connection, row: sqlite3.Row, result: Result, max_attempts: int
     ) -> None:
@@ -405,7 +419,12 @@ class SQLiteStore:
                 (campaign_id, before),
             ).fetchall()
             for row in rows:
-                result = Result(attempt=_attempt(row), status="lost", error="Heartbeat expired")
+                result = Result(
+                    attempt=_attempt(row),
+                    status="lost",
+                    error="Heartbeat expired",
+                    failure_class="heartbeat_expired",
+                )
                 self._finish(db, row, result, spec["max_attempts"])
             return len(rows)
 

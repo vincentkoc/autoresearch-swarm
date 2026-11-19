@@ -4,6 +4,7 @@ import asyncio
 import math
 import multiprocessing
 import signal
+import sqlite3
 import sys
 import tempfile
 import time
@@ -254,6 +255,7 @@ async def test_backend_cancellation_and_invalid_metrics_remain_attempt_data(
     lost, failed = store.results(spec.campaign_id)
     assert seen == [lost.attempt, failed.attempt]
     assert lost.status == "lost"
+    assert (lost.failure_class, failed.failure_class) == ("cancelled", "invalid_output")
     assert (failed.status, failed.cost, failed.input_tokens) == ("failed", 0.2, 20)
     assert failed.logs == ("finished",)
     assert failed.metrics == {}
@@ -372,6 +374,12 @@ async def test_sigkill_requeues_and_completes_trial_exactly_once(tmp_path: Path)
         assert not await replacement.run_once(spec)
         lost, ok = store.results(spec.campaign_id)
         assert (lost.status, ok.status) == ("lost", "ok")
+        assert lost.failure_class == "heartbeat_expired" and ok.failure_class is None
+        with sqlite3.connect(db) as queue:
+            starts = queue.execute(
+                "SELECT attempt_id FROM swarm_events WHERE kind='workload_started' ORDER BY id"
+            ).fetchall()
+        assert starts == [(lost.attempt.attempt_id,), (ok.attempt.attempt_id,)]
         assert (lost.attempt.number, ok.attempt.number) == (1, 2)
         assert lost.attempt.trial == ok.attempt.trial == trial
         assert lost.cost >= last_observed_cost
