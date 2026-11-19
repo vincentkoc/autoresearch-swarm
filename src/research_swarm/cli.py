@@ -392,13 +392,14 @@ def main(argv: list[str] | None = None) -> int:
                 "metric": objective["name"],
                 "unit": objective["unit"],
                 "direction": objective["direction"],
-                "comparison_digest": snapshot["comparison_digest"],
             }
             for name, recorded in selectors.items():
                 requested = getattr(args, name)
                 if requested is not None and requested != recorded:
                     raise ValueError(f"{name} does not match the recorded campaign")
                 setattr(args, name, recorded)
+            if args.comparison_digest is None:
+                args.comparison_digest = snapshot["comparison_digest"]
             _emit_json(_plot_reports([snapshot], args))
             return 0
         if args.action == "report":

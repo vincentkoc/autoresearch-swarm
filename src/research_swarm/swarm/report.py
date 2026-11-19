@@ -71,7 +71,7 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
         spec = json.loads(row["spec"])
         captured_at = datetime.now(UTC)
         objective = {"name": spec["metric"], "unit": "unspecified", "direction": spec["direction"]}
-        cohort = f"campaign:{campaign}"
+        declared_fidelity = float(spec.get("fidelity", 1.0))
         events = db.execute(
             "SELECT MAX(id), MIN(CASE WHEN kind='created' THEN at END), "
             "COUNT(*) FILTER (WHERE kind='finished') FROM swarm_events WHERE campaign_id=?",
@@ -79,14 +79,16 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
         ).fetchone()
         meter = _usage(db, campaign, spec)
         finished = db.execute(
-            "SELECT e.id,e.at,t.trial_id,t.candidate_id,t.seed,a.attempt_id,a.observation "
+            "SELECT e.id,e.at,t.trial_id,t.candidate_id,t.seed,t.fidelity,"
+            "a.attempt_id,a.observation "
             "FROM swarm_events e JOIN swarm_trials t USING(trial_id) "
             "JOIN swarm_attempts a ON a.attempt_id=e.attempt_id "
             "WHERE e.campaign_id=? AND e.kind='finished' ORDER BY e.id DESC LIMIT 50",
             (campaign,),
         ).fetchall()
         selected_rows = db.execute(
-            "SELECT e.*,t.candidate_id FROM swarm_events e JOIN swarm_trials t USING(trial_id) "
+            "SELECT e.*,t.candidate_id,t.fidelity FROM swarm_events e "
+            "JOIN swarm_trials t USING(trial_id) "
             "WHERE e.campaign_id=? AND e.kind='selected' ORDER BY e.id DESC LIMIT 50",
             (campaign,),
         ).fetchall()
@@ -122,10 +124,23 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             "ORDER BY a.rowid DESC LIMIT 50",
             (campaign,),
         ).fetchall()
+    fidelities = {item["fidelity"] for item in (*finished, *selected_rows)} or {declared_fidelity}
+    # Keep the original campaign selector for its declared fidelity. Other rungs
+    # have stable selectors even before the declared fidelity has a receipt.
+    campaign_digest = f"campaign:{campaign}"
+    cohorts = {
+        fidelity: (
+            campaign_digest
+            if fidelity == declared_fidelity
+            else f"fidelity:{fidelity}:{campaign_digest}"
+        )
+        for fidelity in sorted(fidelities, key=lambda f: (f == declared_fidelity, f), reverse=True)
+    }
     history = [
         {
             "trial_id": fields["trial_id"],
             "candidate_id": fields["candidate_id"],
+            "comparison_digest": cohorts[fields["fidelity"]],
             "score": fields.get("score"),
             "replicates": fields.get("replicates"),
             "recorded_at": _iso(fields["at"]),
@@ -144,13 +159,14 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             {
                 "id": attempt["attempt_id"],
                 "eligible": result["status"] == "ok" and value is not None,
-                "comparison_digest": cohort,
+                "comparison_digest": cohorts[attempt["fidelity"]],
                 "primary_metric": {**objective, "value": value} if value is not None else None,
                 "commit_event": {"sequence": attempt["id"], "recorded_at": _iso(attempt["at"])},
                 "data": {
                     "trial_id": attempt["trial_id"],
                     "candidate_id": attempt["candidate_id"],
                     "observed_seed": attempt["seed"],
+                    "fidelity": attempt["fidelity"],
                     "status": result["status"],
                 },
             }
@@ -173,7 +189,11 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
         "evidence_through": events[0],
         "captured_at": captured_at.isoformat(),
         "campaign_created_at": _iso(events[1]) if events[1] is not None else None,
-        "comparison_digest": cohort,
+        "comparison_digest": next(iter(cohorts.values())),
+        "observed_cohorts": [
+            {"comparison_digest": digest, "fidelity": fidelity}
+            for fidelity, digest in cohorts.items()
+        ],
         "evaluation_count": events[2],
         "evaluation_window": {"complete": len(finished) == events[2]},
         "recent_evaluations": observations,

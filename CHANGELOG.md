@@ -13,6 +13,9 @@
   including duplicate and invalid entries in the denominator. Earlier campaigns
   retain an unavailable rate.
 
+- Plot and rank campaign trial scores by fidelity. Screening scores and
+  recorded selections stay on the rung where the trial ran.
+
 - Show eight campaign KPIs in live snapshots and offline reports, including the
   evidence behind each value and the reason a measurement is unavailable.
 

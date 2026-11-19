@@ -62,16 +62,17 @@ def campaign_app(
 
     @app.get("/v1/campaigns/{campaign_id:path}/snapshot", dependencies=protected)
     def snapshot(campaign_id: str) -> dict[str, Any]:
-        result = reader.snapshot(campaign_id)
-        return {**result, "observed_cohorts": [{"comparison_digest": result["comparison_digest"]}]}
+        return reader.snapshot(campaign_id)
 
     @app.get(
         "/v1/campaigns/{campaign_id:path}/view", dependencies=protected, response_class=HTMLResponse
     )
     def view(campaign_id: str, comparison_digest: str | None = None) -> HTMLResponse:
         result = reader.snapshot(campaign_id)
-        cohort = result["comparison_digest"]
-        if comparison_digest is not None and comparison_digest != cohort:
+        if comparison_digest is None and len(result["observed_cohorts"]) > 1:
+            raise ValueError("Select a comparison_digest from the campaign snapshot")
+        cohort = result["comparison_digest"] if comparison_digest is None else comparison_digest
+        if not any(item["comparison_digest"] == cohort for item in result["observed_cohorts"]):
             raise ValueError("Unknown campaign comparison cohort")
         metric = MetricDefinition.model_validate(result["research"]["objective"]["primary_metric"])
         return HTMLResponse(

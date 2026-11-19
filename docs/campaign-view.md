@@ -59,7 +59,12 @@ The browser follows every page of the workspace-scoped campaign list. A
 single campaign loads directly; multiple campaigns appear in the picker.
 An empty store shows an empty state. Select a campaign to update the entire
 workspace, not just its graph. If captured evidence contains multiple comparison
-cohorts, a second selector keeps their scores separate.
+cohorts, a second selector keeps their scores separate. For a multi-fidelity
+campaign, choose a fidelity to see its trial scores, running best, leaderboard
+and recorded selections. The browser and local report command initially use the
+campaign’s declared fidelity when it appears in the capture. Otherwise they use
+the highest captured fidelity. Earlier archived snapshots retain their recorded
+cohort.
 
 Refresh reads current evidence. It does not start jobs, create immutable reports,
 append events, or change the campaign. Each render uses a bounded capture and

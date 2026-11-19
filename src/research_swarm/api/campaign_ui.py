@@ -33,7 +33,9 @@ async function showCampaign() {
     const snapshot = await read('v1/campaigns/' + encodeURIComponent(picker.value) + '/snapshot');
     if (current !== generation) return;
     for (const cohort of snapshot.observed_cohorts) {
-      cohorts.add(new Option(cohort.comparison_digest, cohort.comparison_digest));
+      const label = cohort.fidelity == null
+        ? cohort.comparison_digest : 'Fidelity ' + cohort.fidelity;
+      cohorts.add(new Option(label, cohort.comparison_digest));
     }
     cohorts.hidden = cohorts.options.length < 2;
     await showView(current);

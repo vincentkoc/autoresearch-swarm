@@ -15,6 +15,7 @@ from research_swarm.control.report_plot import (
     MAX_OBSERVATIONS,
     PlotRun,
     _embedded_time_chart,
+    cohort_selection,
     project_hill_climb,
 )
 from research_swarm.domain.experiments import MetricDefinition
@@ -588,7 +589,8 @@ def render_report_html(
         label = labels[index] if labels is not None else str(snapshot["campaign_id"])
         research = snapshot["research"]
         # A local copy supplies the selector, without mutating report evidence.
-        view = {**snapshot, "_view_comparison": comparison_digest}
+        selection = cohort_selection(snapshot, comparison_digest)
+        view = {**snapshot, "_view_comparison": comparison_digest, "recorded_selection": selection}
         selected, claim = _leaders(view, run, metric)
         objective = research.get("objective") or {}
         attempts, attempt_scope = _page(research, "attempts")
@@ -600,7 +602,6 @@ def render_report_html(
             f"<td class=number>{_e(item.get('uncertain', 'unknown'))}</td></tr>"
             for item in snapshot.get("budget", [])
         )
-        selection = snapshot.get("recorded_selection")
         selection_html = ""
         if selection:
             selection_html = (
