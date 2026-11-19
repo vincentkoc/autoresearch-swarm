@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 from filelock import FileLock
 
@@ -150,6 +151,58 @@ class PanelStudy:
                 yield db
         finally:
             db.close()
+
+    def bind_campaign(
+        self,
+        campaign_id: str,
+        spec_digest: str,
+        expected: str | None,
+        prior: Literal["new", "started", "selected"],
+    ) -> str:
+        """Match the queue to this study and the search plan before exposing any panels."""
+        key = f"campaign:{campaign_id}"
+        with self._db() as db:
+            # Serialize binding metadata without taking the scorer's evaluation lock.
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT value FROM panel_state WHERE key=?", (key,)).fetchone()
+            if row is not None:
+                identity, saved_digest = json.loads(row[0])
+                if expected is not None and expected != identity:
+                    raise ValueError("Campaign panel study identity changed")
+                if saved_digest != spec_digest:
+                    raise ValueError("Panel study already recorded a different campaign spec")
+            else:
+                if expected is not None:
+                    raise ValueError("Campaign panel study identity changed")
+                confirmed = db.execute(
+                    "SELECT 1 FROM panel_looks WHERE role='confirmation' LIMIT 1"
+                ).fetchone()
+                if prior == "selected" and confirmed is None:
+                    raise ValueError("Existing incumbent requires its original confirmation study")
+                if (
+                    prior == "new"
+                    and confirmed is not None
+                    and db.execute(
+                        "SELECT 1 FROM panel_state WHERE key GLOB 'campaign:*' LIMIT 1"
+                    ).fetchone()
+                    is None
+                ):
+                    raise ValueError(
+                        "A fresh campaign cannot claim an unbound confirmation history"
+                    )
+                identity = uuid4().hex
+                db.execute(
+                    "INSERT INTO panel_state(key,value) VALUES(?,?)",
+                    (key, json.dumps([identity, spec_digest])),
+                )
+            if expected is None and prior != "new":
+                warnings.warn(
+                    "Legacy queue has no recorded panel study identity; binding the supplied study "
+                    "for future restarts. Its historical association cannot be verified.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            return str(identity)
 
     def _state(self, key: str) -> str | None:
         with self._db() as db:

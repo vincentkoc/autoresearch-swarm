@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from benchmarks.suite import (
     PANEL_SEEDS,
@@ -113,6 +113,15 @@ class WorkerPanelPolicy:
 
     def calibrate(self) -> Calibration:
         return self.study.calibrate()
+
+    def bind_campaign(
+        self,
+        campaign_id: str,
+        spec_digest: str,
+        expected: str | None,
+        prior: Literal["new", "started", "selected"],
+    ) -> str:
+        return self.study.bind_campaign(campaign_id, spec_digest, expected, prior)
 
     def record_search(self, candidate_key: str, seed: int) -> None:
         self.study.record_search(self._recipe(candidate_key), seed)

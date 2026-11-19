@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -11,7 +12,7 @@ from contextlib import closing, contextmanager
 from dataclasses import asdict, replace
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import TypeAdapter
@@ -174,6 +175,8 @@ class SQLiteStore:
                 db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
             if "exhausted_after" not in columns:
                 db.execute("ALTER TABLE swarm_campaigns ADD COLUMN exhausted_after INTEGER")
+            if "panel_binding" not in columns:
+                db.execute("ALTER TABLE swarm_campaigns ADD COLUMN panel_binding TEXT")
             event_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_events)")}
             if "score" not in event_columns:
                 db.execute("ALTER TABLE swarm_events ADD COLUMN score REAL")
@@ -198,6 +201,9 @@ class SQLiteStore:
             )
 
     def create_campaign(self, spec: CampaignSpec) -> None:
+        self.register_panel_campaign(spec, None)
+
+    def register_panel_campaign(self, spec: CampaignSpec, policy: object | None) -> None:
         if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
             raise ValueError("max_hours must be finite and non-negative")
         encoded = _json(asdict(spec))
@@ -216,10 +222,41 @@ class SQLiteStore:
             )
             if insert.rowcount:
                 _event(db, spec.campaign_id, "created")
+            else:
+                saved = self._saved_spec(db, spec.campaign_id)
+                if _json(asdict(CampaignSpec(**saved))) != encoded:
+                    raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
+            if policy is None:
                 return
-            saved = self._saved_spec(db, spec.campaign_id)
-            if _json(asdict(CampaignSpec(**saved))) != encoded:
-                raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
+            expected, selected = db.execute(
+                "SELECT panel_binding, selected_trial_id FROM swarm_campaigns WHERE campaign_id=?",
+                (spec.campaign_id,),
+            ).fetchone()
+            bind = getattr(policy, "bind_campaign", None)
+            if bind is None:
+                if expected is not None:
+                    raise ValueError("Campaign requires its original panel study")
+                return
+            prior: Literal["new", "started", "selected"] = "new"
+            if selected is not None:
+                prior = "selected"
+            elif (
+                expected is None
+                and not insert.rowcount
+                and db.execute(
+                    "SELECT 1 FROM swarm_trials WHERE campaign_id=? LIMIT 1", (spec.campaign_id,)
+                ).fetchone()
+            ):
+                prior = "started"
+            digest = hashlib.sha256(encoded.encode()).hexdigest()
+            identity = bind(spec.campaign_id, digest, expected, prior)
+            if not isinstance(identity, str) or not identity or expected not in (None, identity):
+                raise ValueError("Campaign panel study identity changed")
+            if expected is None:
+                db.execute(
+                    "UPDATE swarm_campaigns SET panel_binding=? WHERE campaign_id=?",
+                    (identity, spec.campaign_id),
+                )
 
     @staticmethod
     def _saved_spec(db: sqlite3.Connection, campaign_id: str) -> dict[str, Any]:
