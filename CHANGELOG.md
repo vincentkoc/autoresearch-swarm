@@ -16,6 +16,9 @@
   lost. A successful attempt resets the streak. Concurrent and restarted
   watchers share the same alert and hourly digest journal.
 
+- End a local trial's process group when its worker is killed, so an orphaned
+  workload does not keep running alongside its retry.
+
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
 

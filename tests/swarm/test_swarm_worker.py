@@ -329,19 +329,36 @@ def _run_doomed_worker(db: Path, spec: CampaignSpec, observed: Connection) -> No
 
 
 async def test_sigkill_requeues_and_completes_trial_exactly_once(tmp_path: Path) -> None:
+    # Both original processes hold the device witness. The retry checks it at entry.
     (tmp_path / "task.py").write_text(
-        "import os, time\n"
-        "from pathlib import Path\n"
-        "try:\n"
-        "    Path('started').touch(exist_ok=False)\n"
-        "except FileExistsError:\n"
-        "    pass\n"
-        "else:\n"
-        "    deadline = time.monotonic() + 20\n"
-        "    while not Path('release').exists() and time.monotonic() < deadline:\n"
-        "        time.sleep(0.02)\n"
-        "    Path('original-finished').touch()\n"
-        "Path(os.environ['SWARM_METRICS']).write_text('{\"loss\": 7}')\n"
+        """
+import fcntl, json, os, subprocess, sys, time
+from pathlib import Path
+import psutil
+
+with Path("device.lock").open("a") as device:
+    fcntl.flock(device, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    if not Path("started").exists():
+        helper = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(15)"],
+            pass_fds=(device.fileno(),),
+        )
+        original = [(p.pid, p.create_time()) for p in
+                    [psutil.Process(), psutil.Process(helper.pid)]]
+        Path("started").write_text(json.dumps(original))
+        time.sleep(15)
+    else:
+        states = {}
+        for pid, birth in json.loads(Path("started").read_text()):
+            try:
+                prior = psutil.Process(pid)
+                states[pid] = prior.status() if prior.create_time() == birth else "pid reused"
+            except psutil.NoSuchProcess:
+                states[pid] = "absent"
+        assert set(states.values()) <= {"absent", "pid reused", psutil.STATUS_ZOMBIE}
+        Path("replacement-checked").write_text(json.dumps(states))
+    Path(os.environ["SWARM_METRICS"]).write_text('{"loss": 7}')
+"""
     )
     spec = replace(_campaign(tmp_path), price_per_hour=3.6)
     db = tmp_path / "queue.db"
@@ -373,6 +390,7 @@ async def test_sigkill_requeues_and_completes_trial_exactly_once(tmp_path: Path)
                 await asyncio.sleep(0.02)
         assert not await replacement.run_once(spec)
         lost, ok = store.results(spec.campaign_id)
+        assert (tmp_path / "replacement-checked").is_file(), (ok.error, ok.logs)
         assert (lost.status, ok.status) == ("lost", "ok")
         assert lost.failure_class == "heartbeat_expired" and ok.failure_class is None
         with sqlite3.connect(db) as queue:
@@ -393,8 +411,3 @@ async def test_sigkill_requeues_and_completes_trial_exactly_once(tmp_path: Path)
         if process.is_alive():
             process.kill()
         process.join(timeout=5)
-        (tmp_path / "release").touch()
-        if (tmp_path / "started").exists():
-            async with asyncio.timeout(5):
-                while not (tmp_path / "original-finished").exists():
-                    await asyncio.sleep(0.02)
