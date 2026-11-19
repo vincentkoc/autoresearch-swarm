@@ -9,12 +9,14 @@ import os
 import re
 import signal
 import tempfile
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from copy import copy
 from dataclasses import asdict
 from pathlib import Path
 
 from research_swarm.swarm.backends.capacity import Slots
+from research_swarm.swarm.backends.gpu_time import GPU_UUID, GPUTimeStore, sample_allocation
 from research_swarm.swarm.data_stage import Stage, local_stage, verify_local_stage
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, FailureClass, Result
 from research_swarm.swarm.telemetry import workload_started
@@ -54,24 +56,63 @@ def _numbers(path: Path) -> dict[str, float]:
 
 
 def _device_env(device: str) -> dict[str, str]:
+    if GPU_UUID.fullmatch(device):
+        return {"CUDA_VISIBLE_DEVICES": device, "SWARM_DEVICE": "cuda:0"}
     if device == "cuda":
         return {"SWARM_DEVICE": device}
     if re.fullmatch(r"cuda:[0-9]+", device):
         return {"CUDA_VISIBLE_DEVICES": device.split(":")[1], "SWARM_DEVICE": "cuda:0"}
     if device in {"mps", "cpu"}:
         return {"CUDA_VISIBLE_DEVICES": "", "SWARM_DEVICE": device}
-    raise ValueError("device must be cpu, mps, cuda or cuda:N")
+    raise ValueError("device must be cpu, mps, cuda, cuda:N or a full GPU UUID")
 
 
 class LocalBackend:
-    def __init__(self, slots: int, *, device: str = "cpu", data_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        slots: int,
+        *,
+        device: str = "cpu",
+        data_dir: Path | None = None,
+        sample_gpu_time: bool = False,
+    ) -> None:
         self._slots = Slots(slots)
         self._env = _device_env(device)
+        if type(sample_gpu_time) is not bool or (
+            sample_gpu_time and not GPU_UUID.fullmatch(device)
+        ):
+            raise ValueError(
+                "sample_gpu_time requires a dedicated local CUDA device by full GPU UUID"
+            )
+        self._sample_gpu_time = sample_gpu_time
         self._stage: Stage | None = None
         if data_dir is not None:
             data = data_dir.resolve(strict=True)
             self._env["SWARM_DATA"] = str(data)
             self._stage = local_stage(data)
+
+    @contextmanager
+    def monitor_gpu_allocation(
+        self, spec: CampaignSpec, store: GPUTimeStore, worker: object
+    ) -> Iterator[None]:
+        if not self._sample_gpu_time:
+            yield
+            return
+        device = self._env["CUDA_VISIBLE_DEVICES"]
+        devices = tuple(spec.options.get("resources", {}).get("devices_mib", {})) or (device,)
+        worker_id = getattr(worker, "worker_id", None)
+        if (
+            spec.resource != "gpu"
+            or device not in devices
+            or not all(GPU_UUID.fullmatch(name) for name in devices)
+            or not isinstance(worker_id, str)
+            or not worker_id
+        ):
+            raise ValueError(
+                "GPU sampling requires a local GPU worker and dedicated devices by full UUID"
+            )
+        with sample_allocation(store, spec.campaign_id, worker_id, devices):
+            yield
 
     def for_device(self, device: str) -> LocalBackend:
         backend = copy(self)
@@ -188,7 +229,12 @@ class LocalBackend:
 
 
 def from_spec(spec: CampaignSpec) -> LocalBackend:
-    """Bind a local device and data directory from campaign options.backend."""
+    """Bind a local device and data directory from campaign options.backend.
+
+    Setting sample_gpu_time declares the full UUID device (or devices_mib set)
+    dedicated to this controller from first dispatch until drain. Shared devices
+    and capacity already allocated outside that window require allocator telemetry.
+    """
     options = dict(getattr(spec, "options", {}).get("backend", {}))
     data = options.pop("data_dir", None)
     if spec.resource == "gpu" and options.get("device", "cpu") == "cpu":

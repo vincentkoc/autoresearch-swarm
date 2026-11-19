@@ -6,6 +6,8 @@ import json
 import sqlite3
 from typing import Any
 
+from research_swarm.swarm.gpu_kpi import gpu_utilization
+
 KPI_LABELS = {
     "time_to_first_trial": "Time to first trial",
     "trials_per_hour": "Trials per hour",
@@ -225,9 +227,7 @@ def read_kpis(
             "trials/h",
             "Distinct terminal trials in the 60 minutes ending at report capture.",
         ),
-        "gpu_utilization": _metric(
-            None, "%", "Busy and allocated GPU device-seconds are unavailable."
-        ),
+        "gpu_utilization": gpu_utilization(db, campaign, spec),
         "cost_per_0_01_improvement": _cost_efficiency(
             db, campaign, spec, meter["measured_cost"], current_score
         ),
