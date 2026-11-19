@@ -52,6 +52,10 @@
   An interrupted selection look stays consumed. A different comparison gets
   its own paired measurements.
 
+- SQLite campaigns using a panel study remember which study supplied their
+  calibration and confirmation. Restarting with a different study or reusing
+  a campaign ID with a changed search plan is rejected before evaluation.
+
 - `research swarm notify` journals hourly digests, selected-score targets and low
   trial throughput in the operator's timezone. Concurrent watchers share the journal.
 

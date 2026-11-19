@@ -240,7 +240,11 @@ class SwarmLoop:
             raise ValueError(
                 "Smoke campaigns use direct metrics and cannot declare evaluation panels"
             )
-        self.store.create_campaign(s)
+        register_panels = getattr(self.store, "register_panel_campaign", None)
+        if self.panels is not None and register_panels is not None:
+            register_panels(s, self.panels)
+        else:
+            self.store.create_campaign(s)
         exhaustion = self.store if isinstance(self.store, _ExhaustionStore) else None
         exhausted_after = (
             exhaustion.exhausted_after(s.campaign_id)
