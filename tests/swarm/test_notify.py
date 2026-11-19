@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, datetime
@@ -80,6 +83,63 @@ def test_concurrent_watchers_restart_and_dst_fold(
     assert check(first + 3600)[0]["at"].endswith("01:15:00-05:00")
     with closing(sqlite3.connect(str(database) + ".notifications.sqlite")) as journal:
         assert journal.execute("SELECT count(*) FROM notifications").fetchone() == (4,)
+
+
+def test_restart_recovers_alert_after_stdout_pipe_breaks(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    queue = SQLiteStore(database)
+    queue.create_campaign(spec())
+    queue.submit(trial(1))
+    attempt = queue.claim("test", "local")
+    assert attempt and queue.report(Result(attempt=attempt, status="ok", metrics={"loss": 1.5}))
+    queue.select("test", "test-1", score=1.5)
+    cmd = [
+        sys.executable,
+        "-u",
+        "-m",
+        "research_swarm",
+        "swarm",
+        "notify",
+        "test",
+        "--db",
+        str(database),
+        "--score-target",
+        "2",
+        "--once",
+    ]
+    with closing(sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)) as campaign:
+        version = campaign.execute("PRAGMA data_version").fetchone()
+        (event_id,) = campaign.execute(
+            "SELECT id FROM swarm_events WHERE kind='selected'"
+        ).fetchone()
+        read_fd, write_fd = os.pipe()
+        os.close(read_fd)  # The first write must fail, regardless of scheduling.
+        with os.fdopen(write_fd, "wb") as pipe:
+            failed = subprocess.run(cmd, stdout=pipe, stderr=subprocess.PIPE, timeout=15)
+        assert failed.returncode != 0 and b"BrokenPipeError" in failed.stderr
+
+        journal_uri = (tmp_path / "queue.sqlite.notifications.sqlite").as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(journal_uri, uri=True)) as journal:
+            query = "SELECT payload FROM notifications WHERE campaign='test' ORDER BY rowid"
+            original = [json.loads(row[0]) for row in journal.execute(query)]
+            digest, alert = original
+            assert (digest["kind"], digest["selected_score"]) == ("hourly_digest", 1.5)
+            assert (alert["kind"], alert["trial_id"], alert["score"], alert["event_id"]) == (
+                "score_target",
+                "test-1",
+                1.5,
+                event_id,
+            )
+
+            restarted = subprocess.run(cmd, capture_output=True, check=True, timeout=15)
+            emitted = [json.loads(line) for line in restarted.stdout.splitlines()]
+            recovered = [json.loads(row[0]) for row in journal.execute(query)]
+            # A restart across the clock hour may legitimately emit a new digest.
+            assert all(
+                item["kind"] == "hourly_digest" and item["key"] != digest["key"] for item in emitted
+            )
+            assert recovered == original + emitted
+        assert campaign.execute("PRAGMA data_version").fetchone() == version
 
 
 def test_invalid_input_and_warmup(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

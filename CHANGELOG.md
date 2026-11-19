@@ -40,6 +40,9 @@
 - Add an optional bounded reporter to hourly digests and a CPU campaign
   [operations runbook](docs/campaign-ops.md) for notification, diagnosis and recovery.
 
+- Verify that a watcher with a broken stdout pipe preserves its digest and score
+  alert in the notification journal, and that restarting it does not repeat the alert.
+
 - Remove the old controller dispatcher, historical-import API and controller
   benchmark harness. Archived benchmark results and standalone project receipt
   readers remain available.
