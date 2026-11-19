@@ -5,6 +5,9 @@
 - Stabilize the offline SkyPilot reconnect test by launching its synthetic CLI
   through the current Python interpreter.
 
+- Publish the three-workload CPU comparison of the operator portfolio and ASHA
+  against random and greedy search, with paired held-out scores and trial records.
+
 - Keep finite parameter campaigns running when both default bandit operators propose
   previously tried recipes. The next available grid recipe fills the open slot.
 
