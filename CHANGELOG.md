@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reject a benchmark campaign paired with an incompatible open panel study
+  before reusing a score or spending a look.
+
 - Resume partial panel calibration using the recorded proxy and target scores
   for each recipe and seed. An unscored reservation stays spent and stops the
   fit. Recovered fits report unavailable throughput when earlier timing is unknown.

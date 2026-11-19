@@ -25,7 +25,7 @@ def recipe_key(candidate: Candidate) -> str:
     return json.dumps(candidate, sort_keys=True, separators=(",", ":"))
 
 
-def open_study(task: Task, path: Path) -> PanelStudy:
+def _protocol(task: Task) -> tuple[PanelSplit, tuple[str, ...], tuple[int, ...], str]:
     first = task.initial
     mid_rate, high_rate = ("0.005", "0.02") if task.protocol == "v1" else ("0.004", "0.016")
     if task.name == "program":
@@ -42,6 +42,14 @@ def open_study(task: Task, path: Path) -> PanelStudy:
             "rate": f"base_lr = {high_rate}",
         }
     panels = PanelSplit(**{role: task.members(role) for role in PANEL_SEEDS})
+    variants = tuple(recipe_key(c) for c in (first, partial, full))
+    seeds = comparison_seeds(task.protocol, calibration=True)
+    revision = f"{task.name}/{task.metric}/{task.device}/{task.size}/{task.protocol[1:]}"
+    return panels, variants, seeds, revision
+
+
+def open_study(task: Task, path: Path) -> PanelStudy:
+    panels, variants, seeds, revision = _protocol(task)
 
     def evaluate(key: str, role: Role, members: tuple[str, ...], seed: int) -> float:
         if members != task.members(role):
@@ -51,11 +59,11 @@ def open_study(task: Task, path: Path) -> PanelStudy:
     return PanelStudy(
         path,
         panels=panels,
-        variants=[recipe_key(c) for c in (first, partial, full)],
-        seeds=comparison_seeds(task.protocol, calibration=True),
+        variants=variants,
+        seeds=seeds,
         evaluate=evaluate,
         direction=task.direction,
-        revision=f"{task.name}/{task.metric}/{task.device}/{task.size}/{task.protocol[1:]}",
+        revision=revision,
         look_limits={"search": 120, "selection": 36, "confirmation": 6},
     )
 
@@ -69,6 +77,9 @@ class Arm:
 
 
 def run_campaign(task: Task, study: PanelStudy, proposer: Policy, *, budget: int, seed: int) -> Arm:
+    protocol = (study.panels, study.variants, study.seeds, study.revision)
+    if study.direction != task.direction or protocol != _protocol(task):
+        raise ValueError("study configuration changed; campaign requires a matching panel study")
     study.calibrate()
     trials = run_search(
         task,

@@ -98,6 +98,7 @@ class PanelStudy:
         self.seeds = tuple(seeds)
         self.evaluate = evaluate
         self.direction = direction
+        self._revision = revision
         self.look_limits = dict(look_limits)
         self.min_gain = min_gain
         self.noise_multiplier = noise_multiplier
@@ -142,6 +143,10 @@ class PanelStudy:
                 != config
             ):
                 raise ValueError("study configuration changed; use a new study file and calibrate")
+
+    @property
+    def revision(self) -> str:
+        return self._revision
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
