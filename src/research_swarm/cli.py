@@ -55,6 +55,9 @@ def parser() -> argparse.ArgumentParser:
     remote_worker.add_argument("spec", type=Path)
     remote_worker.add_argument("--worker-id", required=True)
     remote_worker.add_argument("--once", action="store_true", help="Attempt one claim and exit")
+    from research_swarm.swarm import advice
+
+    advice.add_arguments(swarm_commands.add_parser("advise", help="Request campaign advice"))
     commands.add_parser("init", help="Initialize a private campaign database")
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
@@ -317,6 +320,14 @@ def main(argv: list[str] | None = None) -> int:
             result, code = asyncio.run(collect(args, args.state_dir or default_state_directory()))
             _emit_json(result)
             return code
+        if args.action == "swarm" and args.swarm_action == "advise":
+            from research_swarm.swarm.advice import advise
+
+            if args.controller or args.token_file:
+                raise ValueError("Campaign advice reads a local campaign database")
+            result = asyncio.run(advise(_database(args), args))
+            _emit_json(result)
+            return 0 if result["status"] == "ok" else 3
         if args.action == "swarm" and args.swarm_action == "worker":
             from research_swarm.swarm.http_worker import run_worker
 
