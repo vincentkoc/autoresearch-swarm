@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show eight campaign KPIs in live snapshots and offline reports, including the
+  evidence behind each value and the reason a measurement is unavailable.
+
 - Pass the dispatched trial fidelity to native workload stages so training can
   use the budget assigned by the campaign scheduler.
 

@@ -25,9 +25,13 @@ def test_browser_keeps_its_database_private_and_renders_read_only(tmp_path: Path
         page = http.get("/v1/campaigns").json()
         assert [item["id"] for item in page["items"]] == ["private/campaign"]
         assert http.get("/v1/campaigns/other-campaign/snapshot").status_code == 404
+        kpis = http.get("/v1/campaigns/private%2Fcampaign/snapshot").json()["kpis"]
+        assert len(kpis) == 8 and kpis["gpu_utilization"]["value"] is None
         for _ in range(2):
             view = http.get("/v1/campaigns/private%2Fcampaign/view")
             assert view.status_code == 200 and view.headers["cache-control"] == "no-store"
             assert "data-panel=lineage" in view.text and "data-tab=score" in view.text
             assert "<select data-run-selector" not in view.text
+            assert "Campaign KPIs" in view.text and "GPU utilization" in view.text
+            assert "Unavailable" in view.text
     assert reader.events() == before

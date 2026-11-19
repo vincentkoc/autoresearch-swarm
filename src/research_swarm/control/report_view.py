@@ -19,6 +19,7 @@ from research_swarm.control.report_plot import (
 )
 from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.domain.types import JsonObject
+from research_swarm.swarm.kpis import KPI_LABELS
 
 _STYLE = """
 :root{color-scheme:light;--paper:#fafaf8;--ink:#21272a;--muted:#7e8588;--line:#e9eae8;
@@ -55,6 +56,7 @@ button,select{font:inherit;font-size:10px;color:inherit;border:0;background:tran
 padding:4px 10px;border-radius:3px;cursor:pointer}
 button[aria-selected=true]{background:#fff;box-shadow:0 1px 3px #00000012}
 select{border:1px solid var(--line);max-width:180px}.accent{color:var(--teal)}
+.kpis dt{margin-top:10px}.kpis dd{margin:2px 0}.kpis small{color:var(--muted)}
 .badge{font-size:10px;color:var(--muted)}details{margin:10px 0}summary{cursor:pointer;color:
 var(--muted);font-size:10px}[hidden]{display:none!important}.run+.run{border-top:1px solid
 var(--line);margin-top:18px;padding-top:8px}.leader{display:grid;grid-template-columns:22px
@@ -187,6 +189,33 @@ _SCRIPT = PANEL_SCRIPT + _SCRIPT
 
 def _e(value: object) -> str:
     return escape(str(value), quote=True)
+
+
+def _campaign_kpis(snapshot: JsonObject) -> str:
+    metrics = snapshot.get("kpis") or {}
+    rows = []
+    for key, label in KPI_LABELS.items():
+        metric = metrics.get(key) or {}
+        value = metric.get("value")
+        unit = metric.get("unit", "")
+        if isinstance(value, dict):
+            display = (
+                ", ".join(f"{cause} {percent:.3g}%" for cause, percent in value.items()) or "0%"
+            )
+        elif isinstance(value, (int, float)):
+            display = f"{value:.4g} {unit}"
+        else:
+            display = "Unavailable"
+        detail = metric.get("detail", "This archive did not capture this KPI.")
+        rows.append(
+            f"<dt>{_e(label)}</dt><dd><strong>{_e(display)}</strong><br>"
+            f"<small>{_e(detail)}</small></dd>"
+        )
+    return (
+        "<details open><summary>Campaign KPIs</summary><dl class=kpis>"
+        + "".join(rows)
+        + "</dl></details>"
+    )
 
 
 def _page(research: JsonObject, name: str) -> tuple[list[JsonObject], str]:
@@ -601,6 +630,7 @@ def render_report_html(
             f"<p class=badge>{_e(claim)}</p><p>Captured workers: "
             f"{len(workers) if workers else 'unavailable'} distinct historical IDs; "
             "not live concurrency.</p>"
+            f"{_campaign_kpis(snapshot)}"
             f"<details><summary>Budget &amp; capture details</summary>"
             f"<small>Attempts: {_e(attempt_scope)}</small>{accounting}{selection_html}"
             + "<details><summary>Capture provenance</summary>"
