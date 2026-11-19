@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a generated raw-window example that fits per-user channel statistics on
+  unlabeled reference windows and applies the saved state at inference.
+
 - Reject a benchmark campaign paired with an incompatible open panel study
   before reusing a score or spending a look.
 
