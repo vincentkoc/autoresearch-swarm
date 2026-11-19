@@ -21,6 +21,9 @@
   Custom proposer factories can supply other operators. The bandit restores pending
   recipes on resume and returns completed siblings when a model proposal times out.
 
+- `research swarm notify` journals hourly digests, selected-score targets and low
+  trial throughput in the operator's timezone. Concurrent watchers share the journal.
+
 - Make the local SSH keeper test record its shutdown command with a native executable
   while checking activity locking, the idle deadline, and rejection of new work.
 

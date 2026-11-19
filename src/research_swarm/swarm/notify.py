@@ -1,0 +1,161 @@
+"""Observe a local campaign and journal hourly digests and metric alerts."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sqlite3
+import time
+from collections.abc import Callable
+from contextlib import closing
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from research_swarm.swarm.report import _read, _usage
+
+
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("campaign")
+    parser.add_argument("--db", type=Path, help="Local swarm campaign database")
+    parser.add_argument("--timezone", default="UTC", help="IANA timezone for hourly digests")
+    parser.add_argument(
+        "--score-target", type=float, help="Alert at the first selected target score"
+    )
+    parser.add_argument("--min-trials-per-hour", type=int, help="Alert on low hourly completions")
+    parser.add_argument("--once", action="store_true", help="Poll once and exit")
+
+
+def poll(
+    database: Path,
+    campaign: str,
+    zone: ZoneInfo,
+    *,
+    now: float,
+    target: float | None = None,
+    min_trials: int | None = None,
+) -> list[dict[str, Any]]:
+    if target is not None and not math.isfinite(target):
+        raise ValueError("Score target must be finite")
+    if min_trials is not None and min_trials <= 0:
+        raise ValueError("Minimum trials per hour must be positive")
+    database = database.resolve()
+    when = datetime.fromtimestamp(now, zone)
+    hour = str(int(when.replace(minute=0, second=0, microsecond=0).timestamp()))
+    records: list[dict[str, Any]] = []
+    with _read(database) as queue:
+        row = queue.execute(
+            "SELECT c.spec, e.at FROM swarm_campaigns c JOIN swarm_events e USING(campaign_id) "
+            "WHERE c.campaign_id=? AND e.kind='created'",
+            (campaign,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Unknown campaign {campaign}")
+        spec = json.loads(row["spec"])
+        journal = database.with_name(database.name + ".notifications.sqlite")
+        if journal.exists() and journal.samefile(database):
+            raise ValueError("Notification journal must be separate from the campaign queue")
+        os.close(os.open(journal, os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600))
+        with closing(sqlite3.connect(journal)) as out, out:
+            out.execute("BEGIN IMMEDIATE")
+            out.execute(
+                "CREATE TABLE IF NOT EXISTS notifications "
+                "(campaign TEXT, created REAL, key TEXT, payload TEXT, "
+                "PRIMARY KEY(campaign,created,key))"
+            )
+            scope = (campaign, row["at"])
+
+            def missing(key: str) -> bool:
+                return (
+                    out.execute(
+                        "SELECT 1 FROM notifications WHERE campaign=? AND created=? AND key=?",
+                        (*scope, key),
+                    ).fetchone()
+                    is None
+                )
+
+            def record(key: str, kind: str, **fields: Any) -> None:
+                item = dict(kind=kind, campaign=campaign, at=when.isoformat(), **fields)
+                out.execute(
+                    "INSERT INTO notifications VALUES (?,?,?,?)",
+                    (*scope, key, json.dumps(item, allow_nan=False)),
+                )
+                records.append(item)
+
+            digest_key = "digest:" + hour
+            rate_key = f"low_rate:{hour}:{min_trials}"
+            due = missing(digest_key)
+            check_rate = min_trials is not None and now - row["at"] >= 3600 and missing(rate_key)
+            if due or check_rate:
+                completed = queue.execute(
+                    "SELECT count(*) FROM swarm_events e JOIN swarm_attempts a USING(attempt_id) "
+                    "WHERE e.campaign_id=? AND e.kind='finished' AND e.at>? AND e.at<=? "
+                    "AND (json_extract(a.observation,'$.status')='ok' OR a.number>=?)",
+                    (campaign, now - 3600, now, spec["max_attempts"]),
+                ).fetchone()[0]
+                if due:
+                    selected = queue.execute(
+                        "SELECT * FROM swarm_events WHERE campaign_id=? AND kind='selected' "
+                        "ORDER BY id DESC LIMIT 1",
+                        (campaign,),
+                    ).fetchone()
+                    record(
+                        digest_key,
+                        "hourly_digest",
+                        metric=spec["metric"],
+                        selected_score=dict(selected).get("score") if selected else None,
+                        completed_trials_last_hour=completed,
+                        meter=_usage(queue, campaign, spec),
+                    )
+                if check_rate and min_trials is not None and completed < min_trials:
+                    record(
+                        rate_key,
+                        "low_trial_rate",
+                        completed_trials_last_hour=completed,
+                        minimum=min_trials,
+                    )
+            target_key = f"score_target:{target}"
+            if target is not None and missing(target_key):
+                compare = "<=" if spec["direction"] == "minimize" else ">="
+                columns = {r["name"] for r in queue.execute("PRAGMA table_info(swarm_events)")}
+                if "score" in columns:
+                    hit = queue.execute(
+                        f"SELECT * FROM swarm_events WHERE campaign_id=? AND kind='selected' "
+                        f"AND score {compare} ? ORDER BY id LIMIT 1",
+                        (campaign, target),
+                    ).fetchone()
+                    if hit is not None:
+                        record(
+                            target_key,
+                            "score_target",
+                            metric=spec["metric"],
+                            target=target,
+                            score=hit["score"],
+                            trial_id=hit["trial_id"],
+                            event_id=hit["id"],
+                            selected_at=datetime.fromtimestamp(hit["at"], zone).isoformat(),
+                        )
+    return records
+
+
+def watch(database: Path, args: argparse.Namespace, emit: Callable[[Any], None]) -> None:
+    try:
+        zone = ZoneInfo(args.timezone)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(f"Unknown timezone {args.timezone}") from error
+    while True:
+        for item in poll(
+            database,
+            args.campaign,
+            zone,
+            now=time.time(),
+            target=args.score_target,
+            min_trials=args.min_trials_per_hour,
+        ):
+            emit(item)
+        if args.once:
+            return
+        time.sleep(10)
