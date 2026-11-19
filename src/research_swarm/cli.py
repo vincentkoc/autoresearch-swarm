@@ -47,6 +47,9 @@ def parser() -> argparse.ArgumentParser:
     swarm_run = swarm_commands.add_parser("run", help="Run or resume a YAML campaign")
     swarm_run.add_argument("spec", type=Path, help="Campaign YAML file")
     swarm_run.add_argument(
+        "--retry-exhausted", action="store_true", help="Ask the proposer again after exhaustion"
+    )
+    swarm_run.add_argument(
         "--db", type=Path, help="SQLite queue (default: swarm.sqlite beside spec)"
     )
     remote_worker = swarm_commands.add_parser(
@@ -362,7 +365,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.state_dir or args.spec.parent, project_directory=args.state_dir is None
             )
             try:
-                result, code = run_campaign(args.spec, database)
+                result, code = run_campaign(
+                    args.spec, database, retry_exhausted=args.retry_exhausted
+                )
             except ValueError as error:
                 raise ResearchError(ErrorCode.PROJECT_CONTRACT_INVALID, str(error)) from error
             _emit_json(result)

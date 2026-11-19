@@ -162,6 +162,7 @@ async def test_idle_proposer_timeout_and_no_affordable_claim_finish(tmp_path: Pa
         2,
     )
     assert timed_out.reason == "proposal_timeout" and timed_out.attempts == 0
+    assert store.exhausted_after("refill") is None
     capped = campaign(
         campaign_id="capped",
         candidates=(Candidate(candidate_id="fast"),),
@@ -170,6 +171,47 @@ async def test_idle_proposer_timeout_and_no_affordable_claim_finish(tmp_path: Pa
     )
     denied = await asyncio.wait_for(SwarmLoop(capped, store, backend, worker).run(), 2)
     assert denied.reason == "dispatch_unavailable" and denied.selected is None
+
+
+@pytest.mark.asyncio
+async def test_exhausted_resume_reuses_history_until_a_retry_or_new_observation(
+    tmp_path: Path,
+) -> None:
+    class Empty(Producer):
+        async def ask(
+            self, spec: CampaignSpec, archive: Sequence[Result], k: int
+        ) -> Sequence[Candidate]:
+            self.requests.append(len(archive))
+            return []
+
+    spec = campaign(max_workers=1)
+    path = tmp_path / "queue"
+    producer = Empty()
+
+    def reopen() -> SwarmLoop:
+        store, backend = SQLiteStore(path), Backend()
+        return SwarmLoop(
+            spec, store, backend, WorkerLoop(store, backend, "worker"), proposer=producer
+        )
+
+    first = await reopen().run()
+    assert first.reason == "exhausted" and producer.requests == [0]
+    assert await reopen().run() == first and producer.requests == [0]
+    assert await reopen().run(retry_exhausted=True) == first and producer.requests == [0, 0]
+    store = SQLiteStore(path)
+    store.submit(
+        Trial(
+            trial_id="external",
+            campaign_id=spec.campaign_id,
+            candidate=Candidate(candidate_id="external"),
+            seed=1,
+            fidelity=1.0,
+        )
+    )
+    resumed = await reopen().run()
+    assert resumed.attempts == 1 and resumed.selected and producer.requests == [0, 0, 1]
+    store.mark_exhausted(spec.campaign_id, 0)
+    assert await reopen().run() == resumed and producer.requests == [0, 0, 1]
 
 
 @pytest.mark.asyncio

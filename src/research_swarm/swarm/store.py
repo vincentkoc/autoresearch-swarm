@@ -170,6 +170,8 @@ class SQLiteStore:
             columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_campaigns)")}
             if "ranking" not in columns:
                 db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
+            if "exhausted_after" not in columns:
+                db.execute("ALTER TABLE swarm_campaigns ADD COLUMN exhausted_after INTEGER")
             event_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_events)")}
             if "score" not in event_columns:
                 db.execute("ALTER TABLE swarm_events ADD COLUMN score REAL")
@@ -443,6 +445,21 @@ class SQLiteStore:
 
     def outstanding(self, campaign_id: str) -> int:
         return sum(self.queue_depth(campaign_id))
+
+    def exhausted_after(self, campaign_id: str) -> int | None:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT exhausted_after FROM swarm_campaigns WHERE campaign_id=?", (campaign_id,)
+            ).fetchone()
+        return row[0] if row is not None else None
+
+    def mark_exhausted(self, campaign_id: str, observations: int) -> None:
+        with self._connection(write=True) as db:
+            db.execute(
+                "UPDATE swarm_campaigns SET exhausted_after=? WHERE campaign_id=? "
+                "AND (exhausted_after IS NULL OR exhausted_after < ?)",
+                (observations, campaign_id, observations),
+            )
 
     def incumbent(self, campaign_id: str) -> tuple[str, float | None, int] | None:
         with self._connection() as db:
