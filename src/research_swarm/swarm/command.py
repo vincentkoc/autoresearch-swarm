@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, cast
 
-from research_swarm.swarm.backends.local import LocalBackend
+from research_swarm.swarm.backends.local import from_spec as local_backend
 from research_swarm.swarm.interfaces import Backend, CampaignSpec, Worker
 from research_swarm.swarm.loop import SwarmLoop
 from research_swarm.swarm.spec import load_spec
@@ -33,9 +33,7 @@ def _factory(name: str) -> Callable[..., Any]:
 def campaign_backend(spec: CampaignSpec) -> Backend:
     if spec.backend:
         return cast(Backend, _factory(spec.backend)(spec))
-    if spec.resource == "gpu":
-        raise ValueError("Configure a device-aware backend for GPU campaigns")
-    return LocalBackend(spec.max_workers)
+    return local_backend(spec)
 
 
 def run_campaign(path: Path, database: Path) -> tuple[dict[str, Any], int]:
