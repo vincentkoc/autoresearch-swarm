@@ -26,7 +26,12 @@ class _Observation(BaseModel):
     data: JsonObject
 
 
+class _Cohort(BaseModel):
+    comparison_digest: str
+
+
 class _Selected(BaseModel):
+    comparison_digest: str | None = None
     trial_id: str
     recorded_at: str
     event_sequence: int = Field(strict=True, gt=0)
@@ -47,6 +52,7 @@ class _Snapshot(BaseModel):
     recent_evaluations: list[_Observation] = Field(max_length=MAX_OBSERVATIONS)
     evaluation_window: JsonObject
     research: JsonObject
+    observed_cohorts: list[_Cohort] = Field(default_factory=list)
     selection_history: list[_Selected] = Field(default_factory=list, max_length=50)
 
 
@@ -112,7 +118,8 @@ def project_hill_climb(
         identities.add(snapshot.campaign_id)
         if snapshot.schema_version == "swarm-campaign-1":
             objective = snapshot.research["objective"]["primary_metric"]
-            if raw.get("comparison_digest") != comparison_digest or (
+            digests = {cohort.comparison_digest for cohort in snapshot.observed_cohorts}
+            if comparison_digest not in (digests or {raw.get("comparison_digest", "")}) or (
                 objective["name"],
                 objective["unit"],
                 objective["direction"],
@@ -172,6 +179,8 @@ def project_hill_climb(
             raise ValueError("Captured receipt count exceeds total")
         selections = []
         for item in snapshot.selection_history:
+            if item.comparison_digest is not None and item.comparison_digest != comparison_digest:
+                continue
             recorded = _time(item.recorded_at)
             if (
                 origin is not None
@@ -219,6 +228,16 @@ def project_hill_climb(
             )
         )
     return tuple(runs)
+
+
+def cohort_selection(snapshot: JsonObject, comparison_digest: str) -> JsonObject | None:
+    selection = snapshot.get("recorded_selection")
+    if (
+        isinstance(selection, dict)
+        and selection.get("comparison_digest", comparison_digest) == comparison_digest
+    ):
+        return selection
+    return None
 
 
 def _clean(value: object) -> str:
@@ -509,7 +528,7 @@ def render_hill_climb_svg(
             font_size=12,
             fill="#627280",
         )
-        selection = snapshots[index].get("recorded_selection")
+        selection = cohort_selection(snapshots[index], comparison_digest)
         if selection:
             _text(
                 group,

@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
+from research_swarm.api.campaign import campaign_app
 from research_swarm.cli import main
+from research_swarm.control.report_plot import project_hill_climb
+from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.swarm.interfaces import Result
 from research_swarm.swarm.reader import CampaignReader
 from research_swarm.swarm.report import capture
@@ -126,6 +131,9 @@ def test_kpis_reopen_queue_and_replay_archive(tmp_path: Path) -> None:
     for name in ("current", "legacy"):
         if name == "legacy":
             snapshot.pop("kpis")
+            snapshot.pop("observed_cohorts")
+            for receipt in snapshot["recent_evaluations"]:
+                receipt["data"].pop("fidelity")
         archive.write_text(json.dumps(snapshot))
         output = tmp_path / f"{name}.html"
         assert (
@@ -178,3 +186,68 @@ def test_efficiency_uses_full_selection_history_and_requires_priced_usage(tmp_pa
         assert snapshot["kpis"]["failed_attempts_by_class"]["value"] == {}
         queue.select(campaign, attempt.trial.trial_id, score=-1)
         assert capture(database, campaign)["kpis"]["cost_per_0_01_improvement"]["value"] is None
+
+
+def test_reports_keep_screening_observations_and_selections_in_their_rung(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    queue = SQLiteStore(database)
+    queue.create_campaign(spec())
+    reader = CampaignReader(database)
+    full = "campaign:test"
+    screen = "fidelity:0.5:campaign:test"
+    for trial_id, fidelity, loss in ((1, 0.5, 0.01), (2, 1.0, 4.0)):
+        queue.submit(replace(trial(trial_id), fidelity=fidelity))
+        attempt = queue.claim("test", "worker")
+        assert attempt and queue.report(
+            Result(attempt=attempt, status="ok", metrics={"loss": loss})
+        )
+        queue.select("test", attempt.trial.trial_id, score=loss, replicates=1)
+        if trial_id == 1:
+            assert reader.snapshot("test")["comparison_digest"] == screen
+
+    snapshot = reader.snapshot("test")
+    assert snapshot["comparison_digest"] == full
+    assert snapshot["observed_cohorts"] == [
+        {"comparison_digest": full, "fidelity": 1.0},
+        {"comparison_digest": screen, "fidelity": 0.5},
+    ]
+    metric = MetricDefinition.model_validate(snapshot["research"]["objective"]["primary_metric"])
+    for digest, score, trial_id in ((screen, 0.01, "test-1"), (full, 4.0, "test-2")):
+        (run,) = project_hill_climb([snapshot], comparison_digest=digest, metric=metric)
+        assert [p.value for p in run.points] == [score]
+        assert [(value, trial) for _, value, trial in run.selections] == [(score, trial_id)]
+
+    client = TestClient(campaign_app(reader, "reader"), headers={"Authorization": "Bearer reader"})
+    path = "/v1/campaigns/test"
+    assert client.get(f"{path}/snapshot").json()["observed_cohorts"] == snapshot["observed_cohorts"]
+    assert client.get(f"{path}/view").status_code == 400
+    for digest, selected in ((full, True), (screen, False)):
+        response = client.get(f"{path}/view", params={"comparison_digest": digest})
+        assert response.status_code == 200
+        assert ("Selected trial <code>test-2</code>" in response.text) is selected
+        assert response.text.count("data-evaluation=") == 1
+        score = "4" if selected else "0.01"
+        assert response.text.count("class='leader-score number'") == 1
+        assert f"class='leader-score number'>{score}</span>" in response.text
+    assert client.get(f"{path}/view", params={"comparison_digest": "missing"}).status_code == 404
+
+    output = tmp_path / "screen.svg"
+    assert (
+        main(
+            [
+                "report",
+                "plot",
+                "--db",
+                str(database),
+                "--campaign",
+                "test",
+                "--comparison-digest",
+                screen,
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    svg = output.read_text()
+    assert svg.count("data-evaluation=") == 1 and "Selected trial test-2" not in svg
