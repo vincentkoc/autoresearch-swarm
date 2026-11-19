@@ -241,7 +241,9 @@ def _page(research: JsonObject, name: str) -> tuple[list[JsonObject], str]:
     return rows, f"{len(rows)}/{total} captured; {status}"
 
 
-def _leaders(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> tuple[set[str], str]:
+def _leaders(
+    snapshot: JsonObject, ranked: list[tuple[str, float]], metric: MetricDefinition
+) -> tuple[set[str], str]:
     selection = snapshot.get("recorded_selection")
     if snapshot.get("schema_version") == "swarm-campaign-1" and selection:
         return {selection["candidate_id"]}, "Recorded campaign selection"
@@ -264,18 +266,23 @@ def _leaders(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition) -> tu
                 and cohort.get("comparison_digest") == snapshot.get("_view_comparison")
             ):
                 return {selected["candidate_id"]}, "Confirmed current selection"
-    if not run.points:
+    if not ranked:
         return set(), "No eligible timed observations; no winner claim"
-    best = (min if metric.direction == "minimize" else max)(p.value for p in run.points)
     return (
-        {p.candidate_id for p in run.points if p.value == best},
+        {candidate for candidate, score in ranked if score == ranked[0][1]},
         "Best observed path (ties retained); no confirmed winner",
     )
 
 
-def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition, run_index: int) -> str:
-    rows, scope = _page(snapshot["research"], "candidates")
-    selected, claim = _leaders(snapshot, run, metric)
+def _lineage(
+    research: JsonObject,
+    metric: MetricDefinition,
+    run_index: int,
+    values: dict[str, float],
+    selected: set[str],
+    claim: str,
+) -> str:
+    rows, scope = _page(research, "candidates")
     by_id: dict[str, JsonObject] = {}
     for row in rows:
         identifier = row.get("id")
@@ -319,12 +326,6 @@ def _lineage(snapshot: JsonObject, run: PlotRun, metric: MetricDefinition, run_i
         depth.update(dict.fromkeys(pending, 0))
     # The horizontal axis is captured candidate order, not invented execution time.
     # A separate rail keeps unscored/failed branches visible without assigning a score.
-    values: dict[str, float] = {}
-    extremum = min if metric.direction == "minimize" else max
-    for point in run.points:
-        values[point.candidate_id] = extremum(
-            values.get(point.candidate_id, point.value), point.value
-        )
     # Normalize before subtraction: opposite finite extremes must not yield NaN positions.
     scale = max((abs(value) for value in values.values()), default=1.0) or 1.0
     normalized = [value / scale for value in values.values()]
@@ -585,16 +586,29 @@ def render_report_html(
     ):
         raise ValueError("Supply one nonempty label per report, or omit labels")
     about, lineage, hill_climb, leaderboard, activity = [], [], [], [], []
+    all_workers: set[str] = set()
+    trial_count = 0
     for index, (snapshot, run) in enumerate(zip(snapshots, runs, strict=True)):
         label = labels[index] if labels is not None else str(snapshot["campaign_id"])
         research = snapshot["research"]
         # A local copy supplies the selector, without mutating report evidence.
         selection = cohort_selection(snapshot, comparison_digest)
         view = {**snapshot, "_view_comparison": comparison_digest, "recorded_selection": selection}
-        selected, claim = _leaders(view, run, metric)
+        candidates: dict[str, float] = {}
+        extremum = min if metric.direction == "minimize" else max
+        for point in run.points:
+            candidates[point.candidate_id] = extremum(
+                candidates.get(point.candidate_id, point.value), point.value
+            )
+        ordered = sorted(
+            candidates.items(),
+            key=lambda item: (item[1] if metric.direction == "minimize" else -item[1], item[0]),
+        )
+        selected, claim = _leaders(view, ordered, metric)
         objective = research.get("objective") or {}
         attempts, attempt_scope = _page(research, "attempts")
         workers = {row["worker_id"] for row in attempts if row.get("worker_id")}
+        all_workers.update(workers)
         budget = "".join(
             f"<tr><td>{_e(item.get('dimension', 'unknown'))}</td>"
             f"<td class=number>{_e(item.get('consumed', 'unknown'))}</td>"
@@ -641,7 +655,7 @@ def render_report_html(
         lineage.append(
             f"<div data-run='{index}'"
             + (" hidden>" if index else ">")
-            + _lineage(view, run, metric, index)
+            + _lineage(research, metric, index, candidates, selected, claim)
             + "</div>"
         )
         hill_climb.append(
@@ -649,16 +663,6 @@ def render_report_html(
             + (" hidden>" if index else ">")
             + _hill_climb(run, metric)
             + "</div>"
-        )
-        candidates: dict[str, float] = {}
-        extremum = min if metric.direction == "minimize" else max
-        for point in run.points:
-            candidates[point.candidate_id] = extremum(
-                candidates.get(point.candidate_id, point.value), point.value
-            )
-        ordered = sorted(
-            candidates.items(),
-            key=lambda item: (item[1] if metric.direction == "minimize" else -item[1], item[0]),
         )
         rows = "".join(
             f"<div class='leader{' selected' if identifier in selected else ''}'>"
@@ -700,6 +704,7 @@ def render_report_html(
             + "</div>"
         )
         trials, trial_scope = _page(research, "trials")
+        trial_count += len(trials)
         trial_rows = "".join(
             f"<tr><td><code>{_e(row.get('id', 'unknown'))}</code></td>"
             f"<td>{_e(row.get('execution_outcome', 'unknown'))}</td>"
@@ -746,13 +751,6 @@ def render_report_html(
         f"<option value='{i}'>{_e(labels[i] if labels else runs[i].campaign_id)}</option>"
         for i in range(len(runs))
     )
-    workers = {
-        row["worker_id"]
-        for snapshot in snapshots
-        for row in _page(snapshot["research"], "attempts")[0]
-        if row.get("worker_id")
-    }
-    trial_count = sum(len(_page(snapshot["research"], "trials")[0]) for snapshot in snapshots)
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -767,7 +765,7 @@ def render_report_html(
         "aria-expanded=true aria-controls=about-rail>About</button>"
         "<button class=rail-toggle data-toggle=right aria-expanded=true "
         "aria-controls=activity-rail>Leaderboard / activity</button><span class=header-meta>"
-        f"{len(workers)} captured worker IDs · {trial_count} captured trials"
+        f"{len(all_workers)} captured worker IDs · {trial_count} captured trials"
         " · read-only capture</span></div></header>"
         "<main><aside class=sidebar id=about-rail><div class=sidebar-section><h2>About</h2>"
         + project_link
