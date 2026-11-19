@@ -129,7 +129,8 @@ queries = [
     """SELECT id,kind,trial_id,attempt_id FROM swarm_events
        WHERE campaign_id=? ORDER BY id DESC LIMIT 12""",
     """SELECT a.trial_id,a.number,a.worker_id,json_extract(a.observation,'$.status'),
-              json_extract(a.observation,'$.error')
+              json_extract(a.observation,'$.error'), a.attempt_id,
+              json_extract(a.observation,'$.failure_class')
        FROM swarm_attempts a JOIN swarm_trials t USING(trial_id)
        WHERE t.campaign_id=? ORDER BY a.started_at DESC LIMIT 12""",
 ]
@@ -151,7 +152,8 @@ The heartbeat and accrued cost fields give the latest recorded progress.
 | --- | --- |
 | Nonzero task exit | Read the attempt's diagnostic output. Reproduce the same recipe, seed and fidelity locally. |
 | Missing objective | Check the metric name and the JSON written to `SWARM_METRICS`. |
-| Timeout | Compare elapsed time with the declared trial deadline. Inspect the last task output. |
+| Trial timeout | Check the attempt's `failure_class`, `error` and any saved `logs` against `trial_timeout_seconds` in the YAML (default 300 seconds). A retry uses the same trial ID. |
+| Proposal timeout | Look for a `proposal_timeout` queue event. The YAML field `proposal_timeout_seconds` defaults to 10 seconds. That call adds no candidates. Already submitted trials can finish. |
 | Lost attempt | Inspect the heartbeat and backend status. Check the remaining retry allowance. |
 | Capacity unavailable | Inspect active slots and device allocations. Compare estimated cost with the available budget. |
 | No selected candidate | Check for successful finite metrics, enough distinct seeds and a passing held-out decision. |
@@ -160,10 +162,23 @@ An attempt failure belongs to that attempt. A late report from an expired
 claim cannot overwrite its replacement. Use a new attempt under the
 configured retry rule when another execution is needed.
 
-For a changed workload or budget, create a new campaign spec and ID.
-Keep the previous measurements accessible for comparison.
-Resume with the original spec, queue and panel study. If the coordinator
-stopped during calibration, inspect the study before restarting.
+For `research swarm advise`, inspect the status of each reply. A hard
+`--timeout` (default 10 seconds) returns `timed_out`. A provider can return
+`failed` before that deadline. Either outcome gives exit status 3. For an
+abandoned job, inspect `outcome.json` beside its heartbeat. [Advisory diagnostics](campaign-ops.md#get-bounded-advice)
+
+## Stop and resume a local run
+
+Press Ctrl-C in the terminal running the foreground campaign. The command
+exits with status 130. Inspect the queue for interrupted attempts, then
+repeat the original run command with the same spec and queue path.
+Eligible trials retry within `max_attempts` (default 2, including the first).
+
+Resume a calibrated campaign with its original bound study. If calibration
+was interrupted, use the panel query below before restarting. A changed
+workload or budget needs a new campaign ID. A changed scorer revision,
+split, calibration recipe or decision rule needs a new campaign ID and study.
+Keep the original measurements for comparison.
 
 ## Inspect the panel study
 
@@ -256,9 +271,11 @@ An SSH pool uses explicitly configured hosts. Its keeper can stop an idle
 host. Managed jobs can retry placement through the provider integration.
 Check the campaign inventory and job identity before changing remote state.
 
-Use the backend's stop and inventory operations for the campaign it owns.
-Review the listed resources before cleanup. A failed training command
-provides diagnostic evidence for a retry.
+`research campaign gc CAMPAIGN_ID` lists resource inventory by default.
+It can query a provider for recorded managed jobs. Use `--volume` to include
+a prepared data volume. Cleanup requires `--apply`. Use `--keep ID` to
+preserve a listed resource. For a local interruption, follow the
+[stop and resume instructions](#stop-and-resume-a-local-run).
 
 Local tests verify staged-input integrity, retry under the same trial ID,
 duplicate-report handling and capacity return. The SSH and managed-job tests
