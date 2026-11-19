@@ -309,11 +309,20 @@ class SQLiteStore:
                 )
             else:
                 saved = self._saved_spec(db, spec.campaign_id)
-                if not saved.pop("price_schema", None):
-                    # Older queues persisted omitted rates as zero. Either spelling can resume.
-                    for key in PRICE_FIELDS:
-                        if saved.get(key) in (None, 0) and requested[key] in (None, 0):
-                            requested[key] = saved.get(key)
+                legacy_prices = not saved.pop("price_schema", None)
+                for key in PRICE_FIELDS:
+                    stored_rate, resumed_rate = saved.get(key), requested[key]
+                    if legacy_prices:
+                        # Older queues persisted an omitted rate as zero.
+                        stored_rate = 0 if stored_rate is None else stored_rate
+                        resumed_rate = 0 if resumed_rate is None else resumed_rate
+                    if (
+                        type(stored_rate) in (int, float)
+                        and type(resumed_rate) in (int, float)
+                        and stored_rate == resumed_rate
+                    ):
+                        # Compare the rest of the spec using the original JSON spelling.
+                        requested[key] = saved.get(key)
                 if _json(asdict(CampaignSpec(**saved))) != _json(requested):
                     raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
             if policy is None:

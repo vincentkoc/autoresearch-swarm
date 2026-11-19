@@ -316,7 +316,13 @@ def test_report_distinguishes_known_subtotal_from_total(
 
     reopened = SQLiteStore(database)
     reopened.create_campaign(campaign)
-    assert reopened.campaign_spec("test").price_per_million_output_tokens == output_rate
+    restored = reopened.campaign_spec("test")
+    assert type(restored.price_per_hour) is float and restored.price_per_hour == 36.0
+    assert restored.price_per_million_output_tokens == output_rate
+    reopened.create_campaign(restored)
+    opposite = 0.0 if output_rate is None else None
+    with pytest.raises(ValueError, match="different spec"):
+        reopened.create_campaign(replace(restored, price_per_million_output_tokens=opposite))
     reader = CampaignReader(database)
     snapshot = reader.snapshot("test")
     budget = reader.budget("test")
@@ -378,6 +384,31 @@ def test_historical_zero_prices_are_ambiguous_on_reopen(tmp_path: Path) -> None:
     reopened = SQLiteStore(database)
     reopened.create_campaign(campaign)
     reopened.create_campaign(replace(campaign, price_per_hour=0, price_per_million_output_tokens=0))
+    restored = reopened.campaign_spec("test")
+    assert type(restored.price_per_million_input_tokens) is float
+    reopened.create_campaign(restored)
+    reopened.create_campaign(
+        replace(restored, price_per_hour=None, price_per_million_output_tokens=None)
+    )
+    with pytest.raises(ValueError, match="different spec"):
+        reopened.create_campaign(replace(restored, price_per_million_input_tokens=1001))
     budget = CampaignReader(database).budget("test")
     assert budget["measured_cost"] == 0.01 and budget["total_cost"] is None
     assert budget["missing_prices"] == ["price_per_hour", "price_per_million_output_tokens"]
+
+
+def test_resume_keeps_distinct_prices_and_nonprice_json_immutable(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    campaign = spec(price_per_hour=2**53, options={"setting": 1})
+    SQLiteStore(database).create_campaign(campaign)
+    reopened = SQLiteStore(database)
+    restored = reopened.campaign_spec("test")
+    with sqlite3.connect(database) as db:
+        before = tuple(db.iterdump())
+        reopened.create_campaign(restored)
+        # The next integer shares this float representation but is a different price.
+        with pytest.raises(ValueError, match="different spec"):
+            reopened.create_campaign(replace(restored, price_per_hour=2**53 + 1))
+        with pytest.raises(ValueError, match="different spec"):
+            reopened.create_campaign(replace(restored, options={"setting": 1.0}))
+        assert tuple(db.iterdump()) == before
