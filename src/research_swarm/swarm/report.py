@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from research_swarm.swarm.kpis import read_kpis
+
 
 def _iso(seconds: float) -> str:
     return datetime.fromtimestamp(seconds, UTC).isoformat()
@@ -67,6 +69,7 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
         if row is None:
             raise ValueError(f"Unknown campaign {campaign}")
         spec = json.loads(row["spec"])
+        captured_at = datetime.now(UTC)
         objective = {"name": spec["metric"], "unit": "unspecified", "direction": spec["direction"]}
         cohort = f"campaign:{campaign}"
         events = db.execute(
@@ -87,6 +90,20 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
             "WHERE e.campaign_id=? AND e.kind='selected' ORDER BY e.id DESC LIMIT 50",
             (campaign,),
         ).fetchall()
+        current_score = (
+            dict(selected_rows[0]).get("score")
+            if selected_rows and selected_rows[0]["trial_id"] == row["selected_trial_id"]
+            else None
+        )
+        kpis = read_kpis(
+            db,
+            campaign,
+            spec,
+            meter,
+            created_at=events[1],
+            captured_at=captured_at.timestamp(),
+            current_score=current_score,
+        )
         candidates = db.execute(
             "SELECT candidate_id, json_extract(payload,'$.parents') AS parents, "
             "count(*) OVER () AS total FROM swarm_candidates WHERE campaign_id=? "
@@ -154,7 +171,7 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
         "campaign_id": campaign,
         "campaign_revision": events[0],
         "evidence_through": events[0],
-        "captured_at": datetime.now(UTC).isoformat(),
+        "captured_at": captured_at.isoformat(),
         "campaign_created_at": _iso(events[1]) if events[1] is not None else None,
         "comparison_digest": cohort,
         "evaluation_count": events[2],
@@ -181,4 +198,5 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
         "recorded_selection": selection,
         "selection_history": history,
         "meter": meter,
+        "kpis": kpis,
     }
