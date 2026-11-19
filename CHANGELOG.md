@@ -11,6 +11,9 @@
 - Stabilize the offline SkyPilot reconnect test by launching its synthetic CLI
   through the current Python interpreter.
 
+- Document the remaining MLP search gap and freeze a search-only comparison
+  of coordinate coverage around the incumbent.
+
 - Schedule one-coordinate finite search moves by the campaign trial budget,
   counting screened and promoted trials once each.
 
