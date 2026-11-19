@@ -338,11 +338,15 @@ class PanelStudy:
             raise PanelEvaluationError("confirmation look consumed without a result")
         return float(row[0])
 
+    @staticmethod
+    def decision_key(challenger_key: str, incumbent_key: str | None) -> str:
+        return json.dumps(["consider", challenger_key, incumbent_key])
+
     def consider(self, challenger_key: str, incumbent_key: str | None) -> Decision:
         """Only a gain on selection and confirmation can replace the reference."""
         calibration = self._calibration()
         reference = self.variants[0] if incumbent_key is None else incumbent_key
-        decision_key = json.dumps(["consider", challenger_key, incumbent_key])
+        decision_key = self.decision_key(challenger_key, incumbent_key)
         sign = 1 if self.direction == "maximize" else -1
         with self.lock:
             previous = self._state(decision_key)

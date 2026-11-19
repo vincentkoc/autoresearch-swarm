@@ -9,6 +9,9 @@
 - Show eight campaign KPIs in live snapshots and offline reports, including the
   evidence behind each value and the reason a measurement is unavailable.
 
+- Report calibration slope, target seed noise and confirmation pass counts from
+  the panel outcomes recorded for each campaign, counting replayed comparisons once.
+
 - Pass the dispatched trial fidelity to native workload stages so training can
   use the budget assigned by the campaign scheduler.
 
