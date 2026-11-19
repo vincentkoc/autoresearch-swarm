@@ -122,5 +122,37 @@ def test_ambiguous_legacy_scores_cannot_be_chosen_for_a_partial_fit(tmp_path):
     assert looks(tmp_path) == before and (tmp_path / "calls.jsonl").read_bytes() == calls
 
 
+def test_duplicate_target_seed_cannot_dilute_noise_on_a_complete_grid(tmp_path):
+    study = PanelStudy(
+        tmp_path / "panels.sqlite",
+        panels=PanelSplit(("t",), ("s",), ("v",), ("c",), ("p",), ("y",)),
+        variants=("base", "left", "right"),
+        seeds=(0, 1),
+        evaluate=lambda *args: pytest.fail("all declared observations are preloaded"),
+        direction="maximize",
+        revision="generated",
+        look_limits={},
+    )
+    rows = []
+    for index, recipe in enumerate(study.variants):
+        for seed in study.seeds:
+            rows.append(("calibration_proxy", recipe, seed, index))
+            rows.append(("calibration_target", recipe, seed, 2 * index + seed))
+    # Counting this identical score twice would dilute pooled noise from sqrt(1/2) to 2/3.
+    rows.append(("calibration_target", "base", 0, 0))
+    with sqlite3.connect(study.path) as db:
+        db.executemany("INSERT INTO panel_looks(role,candidate,seed,score) VALUES (?,?,?,?)", rows)
+    before = looks(tmp_path)
+
+    with pytest.raises(PanelEvaluationError, match="Multiple calibration_target looks"):
+        study.calibrate()
+
+    assert looks(tmp_path) == before
+    with sqlite3.connect(study.path) as db:
+        assert (
+            db.execute("SELECT value FROM panel_state WHERE key='calibration'").fetchone() is None
+        )
+
+
 if __name__ == "__main__":
     child(Path(sys.argv[1]), sys.argv[2])
