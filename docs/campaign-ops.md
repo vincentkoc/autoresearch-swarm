@@ -20,6 +20,15 @@ The rate alert starts after the first campaign hour and fires at most once per
 local clock hour per configured minimum. Retried attempts count when their
 trial reaches its final outcome.
 
+The watcher also emits `repeated_failure` on the second consecutive
+finished attempt with status `failed` or `lost` in the same campaign.
+It counts attempts in finish-event order and emits one alert per streak.
+A successful attempt resets the count. Use the alert's
+`event_id`, `trial_id` and `attempt_id` to find the triggering finish.
+Concurrent or restarted watchers store one incident in the shared journal.
+A stalled hourly reporter can time out while the watcher delivers the alert
+and healthy trials continue.
+
 The example uses an offline reporter. Use `--reporter-model MODEL` to add
 prose from an installed Ollama model, or omit the provider flag for a numeric
 digest. Set its deadline with `--reporter-timeout SECONDS`. The numeric digest

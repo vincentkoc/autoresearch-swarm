@@ -35,13 +35,37 @@ Record the campaign ID, workload, data split, device, fidelity and budget
 with the results. Use the [operator guide](operator-guide.md#read-campaign-kpis)
 to read the campaign KPIs from the existing queue.
 
-Local tests on generated signals exercised source edits, short and full fits,
-and recovery after an interrupted run. Their search curves and independent
-confirmation scores describe fictional subjects. Acceptance on a private
-workload needs its own authorized budget, real training and calibration,
-an independent confirmation against the declared threshold, and the observed
-external portal score when the protocol requires one. Record each outstanding
-measurement as unmeasured.
+| Acceptance check | Recorded outcome |
+| --- | --- |
+| Search quality | **Failed.** Each workload must beat random and greedy at the same trial budget. Only nanoGPT beat both on mean confirmed score in the installed CLI comparison. The separate v2 comparison missed on nanoGPT. [CLI results](search-quality.md) · [v2 results](../benchmarks/protocol-v2.md#recorded-comparison) |
+| Evaluation integrity | **Passed on synthetic cases.** The challenger improved on search and selection, then lost on independent confirmation. The study kept the baseline. [Overfit regression](../tests/benchmarks/test_panels.py) |
+| Campaign restart, KPI reporting and incident alerts | **Passed locally.** The supervised campaign resumed and its status view showed recorded KPIs. The watcher delivered an alert while the hourly reporter stalled. The notifier change passed the full local gate in 35 seconds. [KPI guide](operator-guide.md#read-campaign-kpis) · [Watcher and agent deadlines](campaign-ops.md) · [Notifier qualification](https://github.com/vincentkoc/autoresearch-swarm/pull/133) |
+| Physical GPU utilization and provider billing | **Unmeasured.** The generated device records exercise accounting. The target above 80% requires busy and allocated device-seconds for a complete hardware run. Actual charges require billing records. [GPU qualification](gpu-qualification.md) |
+| Workload acceptance | **Generated rehearsal passed. Real workload unmeasured.** Source edits, short and full fits, and recovery ran on generated signals. Their scores describe fictional subjects. [Native workload fidelity](https://github.com/vincentkoc/autoresearch-swarm/pull/117) |
+
+Compare hill-climb scores within one fidelity. If a report groups all rungs
+in one campaign curve, read the running best per rung from the trial records.
+[Recorded example](../benchmarks/results/v1-cli-cpu-small.jsonl)
+
+The prospective MLP comparison has approval for local CPU search only. Its
+four arms share three frozen seeds and a total cap of 144 trials. Report the
+paired full-fidelity search accuracies. Selection and confirmation require
+separate authorization. [Frozen protocol](mlp-local-search-protocol.md)
+
+### Before a real-workload acceptance run
+
+Check the original training revision, allowed edit paths, readable training
+inputs for that revision, and the intended device and runtime. Obtain the
+owner's explicit budget and independent evaluation procedure. If any item is
+missing, stop before creating or resuming the queue. Record the missing item
+and leave the real result unmeasured. An approved zero-cost budget is valid.
+Use a separate campaign ID for any generated-input rehearsal.
+
+Once authorized, check fast-path training, calibrate the proxy on real
+inputs, and run the approved input-path edits at the declared fidelities.
+Record the hill-climb curve and compare the selected recipe against the
+declared threshold on independent confirmation. If the protocol requires an
+external portal check, record the observed result under its own authorization.
 
 ## Write a task
 

@@ -44,6 +44,9 @@
   the 12 top-level CLI commands, 23 executable paths and six campaign tables.
   Update report and MLX examples to use the current CLI.
 
+- Document the repeated-failure alert and when missing inputs or budget
+  require an operator to stop a real-workload acceptance run.
+
 - Document how to reconcile proposal, confirmation, calibration and GPU time
   in a campaign report with its recorded queue evidence.
 
