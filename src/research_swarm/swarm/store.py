@@ -180,6 +180,14 @@ class SQLiteStore:
             if "panel_binding" not in columns:
                 db.execute("ALTER TABLE swarm_campaigns ADD COLUMN panel_binding TEXT")
             event_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_events)")}
+            if "gpu_time" not in event_columns:
+                db.execute("ALTER TABLE swarm_events ADD COLUMN gpu_time TEXT")
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS swarm_gpu_sequence ON swarm_events("
+                "campaign_id,json_extract(gpu_time,'$.allocation_id'),"
+                "json_extract(gpu_time,'$.sequence')) "
+                "WHERE gpu_time IS NOT NULL"
+            )
             if "score" not in event_columns:
                 db.execute("ALTER TABLE swarm_events ADD COLUMN score REAL")
             if "replicates" not in event_columns:
@@ -196,6 +204,64 @@ class SQLiteStore:
             if write:
                 db.execute("BEGIN IMMEDIATE")
             yield db
+
+    def record_gpu_time(self, campaign: str, kind: str, sample: dict[str, Any]) -> None:
+        """Replay a device allocation event once, preserving conflicting evidence."""
+        sequence = sample["sequence"]
+        allocation = sample["allocation_id"]
+        if (
+            type(sequence) is not int
+            or sequence < 0
+            or not all(
+                isinstance(sample[key], str) and sample[key]
+                for key in ("allocation_id", "device", "worker_id")
+            )
+            or kind
+            not in {"gpu_allocation_started", "gpu_device_interval", "gpu_allocation_finished"}
+            or (sequence == 0) != (kind == "gpu_allocation_started")
+        ):
+            raise ValueError("Invalid GPU allocation event")
+        if kind == "gpu_device_interval":
+            allocated, busy = sample["allocated_device_seconds"], sample["busy_device_seconds"]
+            if (
+                type(allocated) not in (int, float)
+                or not 0 < allocated < math.inf
+                or (
+                    busy is not None
+                    and (type(busy) not in (int, float) or not 0 <= busy <= allocated)
+                )
+            ):
+                raise ValueError("Invalid GPU device-seconds")
+        payload = _json(sample)
+        with self._connection(write=True) as db:
+            prior = db.execute(
+                "SELECT kind,gpu_time FROM swarm_events WHERE campaign_id=? "
+                "AND gpu_time IS NOT NULL AND json_extract(gpu_time,'$.allocation_id')=? "
+                "AND json_extract(gpu_time,'$.sequence')<=? "
+                "ORDER BY json_extract(gpu_time,'$.sequence') DESC LIMIT 1",
+                (campaign, allocation, sequence),
+            ).fetchone()
+            if prior is not None:
+                previous = json.loads(prior["gpu_time"])
+                if previous["sequence"] == sequence:
+                    if tuple(prior) == (kind, payload):
+                        return
+                    raise ValueError("Conflicting GPU allocation event")
+                if (
+                    previous["sequence"] != sequence - 1
+                    or prior["kind"] == "gpu_allocation_finished"
+                    or (
+                        kind == "gpu_allocation_finished" and prior["kind"] != "gpu_device_interval"
+                    )
+                    or any(previous[k] != sample[k] for k in ("device", "worker_id"))
+                ):
+                    raise ValueError("GPU allocation events must be contiguous and share an owner")
+            elif sequence:
+                raise ValueError("GPU allocation must start before its samples")
+            db.execute(
+                "INSERT INTO swarm_events(campaign_id,kind,at,gpu_time) VALUES(?,?,?,?)",
+                (campaign, kind, time.time(), payload),
+            )
 
     def register_project(self, project_id: str, snapshot: dict[str, Any]) -> None:
         with self._connection(write=True) as db:

@@ -7,6 +7,7 @@ import json
 import math
 import time
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from itertools import chain, islice, product
 from typing import Protocol, runtime_checkable
@@ -303,6 +304,8 @@ class SwarmLoop:
         cursor += len(recorded)
         pending: set[asyncio.Task[bool]] = set()
         no_claim = False
+        allocations = ExitStack()
+        monitor = getattr(self.backend, "monitor_gpu_allocation", None)
         try:
             while True:
                 cursor = await self._observe(proposer, cursor)
@@ -365,6 +368,9 @@ class SwarmLoop:
                     await asyncio.sleep(min(delay, remaining_seconds()))
                     no_claim = False
                     continue
+                if monitor is not None and ((slots > 0 and queued) or (running and not pending)):
+                    allocations.enter_context(monitor(s, self.store, self.worker))
+                    monitor = None
                 for _ in range(min(slots, queued)):
                     pending.add(asyncio.create_task(self._run_worker()))
                 if pending:
@@ -384,7 +390,10 @@ class SwarmLoop:
         finally:
             for task in pending:
                 task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
+            try:
+                await asyncio.gather(*pending, return_exceptions=True)
+            finally:
+                allocations.close()
 
         await self._observe(proposer, cursor)
         archive = self.population.archive
