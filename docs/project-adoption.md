@@ -17,6 +17,13 @@ project. Its manifest declares the workload contract. Its stage commands read
    order, coverage, units and sufficient statistics. Record elapsed time for each
    run separately. Preserve original receipts when interpreting older formats.
 
+For a native campaign using the `llm-code-diff` operator, set its `revision`
+to the captured source tree digest or, for a Git capture, the captured commit.
+The native worker uses Git to apply each candidate's unified diff to a private
+copy and checks every changed path against the manifest's mutation policy.
+Training uses the edited source. Evaluation uses the original source and reads
+the artifacts produced by that candidate.
+
 The [synthetic pose example](../examples/synthetic_pose/README.md) runs real
 CPU training and protected evaluation on fictional data. Its fit receipt binds the
 checkpoint, injected seed and input identities. Its two endpoint formats retain

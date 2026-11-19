@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import difflib
 import json
 import shutil
 import sys
+from dataclasses import asdict
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -12,6 +16,8 @@ from research_swarm.projects.capture import capture_project
 from research_swarm.projects.manifest import resolve_project
 from research_swarm.swarm.command import run_campaign
 from research_swarm.swarm.interfaces import Result
+from research_swarm.swarm.operators.llm import CodeDiff
+from research_swarm.swarm.spec import load_spec
 from research_swarm.swarm.store import SQLiteStore
 from tests.paths import REPO_ROOT
 
@@ -64,6 +70,80 @@ def run_native_example(example: str, metric: str, root: Path, *, registered: boo
     assert run_campaign(path, queue)[1] == 0
     assert store.results("test") == [result]
     return result
+
+
+def test_native_code_diff_changes_training_and_preserves_evaluator(tmp_path: Path) -> None:
+    path = native_campaign("synthetic_pose", "macro_mae_deg", tmp_path, registered=False)
+    spec = load_spec(path)
+    project = Path(spec.task_dir)
+    source = (project / "train.py").read_text()
+    base = capture_project(project, tmp_path / "base.zip")
+
+    async def edit(prompt: str, schema: dict[str, object], seed: int) -> str:
+        return json.dumps(
+            {
+                "before": "LEARNING_RATE = 0.08",
+                "after": "LEARNING_RATE = 0.0",
+                "rationale": "Measure the untrained baseline.",
+            }
+        )
+
+    op = CodeDiff(
+        edit, "measure training", path="train.py", source=source, revision=base.tree_digest
+    )
+    (candidate,) = asyncio.run(op.propose(spec, spec.candidates, 1))
+    config = json.loads(path.read_text())
+    config["candidates"].append(asdict(candidate))
+    config["max_trials"] = 2
+    path.write_text(json.dumps(config))
+    db = tmp_path / "queue.sqlite"
+    assert run_campaign(path, db)[1] == 0
+    results = {r.attempt.trial.candidate.candidate_id: r for r in SQLiteStore(db).results("test")}
+    edited = results[candidate.candidate_id]
+    attempt_dir = tmp_path / "outputs" / str(UUID(edited.attempt.attempt_id))
+    assert (attempt_dir / "stage-0/project/train.py").read_text() == source.replace(
+        " = 0.08", " = 0.0"
+    )
+    assert (attempt_dir / "stage-1/project/train.py").read_text() == source
+    assert (project / "train.py").read_text() == source
+    assert edited.metrics["macro_mae_deg"] > results["baseline"].metrics["macro_mae_deg"]
+    before_resume = SQLiteStore(db).results("test")
+    assert run_campaign(path, db)[1] == 0
+    assert SQLiteStore(db).results("test") == before_resume
+
+
+@pytest.mark.parametrize(
+    ("name", "stale", "message"),
+    [
+        ("evaluate.py", False, "protected or undeclared source paths"),
+        ("train.py", True, "does not match the captured source revision"),
+    ],
+)
+def test_native_rejects_invalid_diff_before_training(
+    tmp_path: Path, name: str, stale: bool, message: str
+) -> None:
+    path = native_campaign("synthetic_pose", "macro_mae_deg", tmp_path, registered=False)
+    config = json.loads(path.read_text())
+    source = Path(config["task_dir"])
+    base = capture_project(source, tmp_path / "base.zip")
+    lines = (source / name).read_text().splitlines(keepends=True)
+    config["candidates"] = [
+        {
+            "candidate_id": "edit",
+            "source_revision": "previous-revision" if stale else base.tree_digest,
+            "diff": "".join(
+                difflib.unified_diff(
+                    lines, [*lines, "# candidate edit\n"], f"a/{name}", f"b/{name}"
+                )
+            ),
+        }
+    ]
+    path.write_text(json.dumps(config))
+    db = tmp_path / "queue.sqlite"
+    assert run_campaign(path, db)[1] != 0
+    (result,) = SQLiteStore(db).results("test")
+    assert result.status == "failed" and any(message in line for line in result.logs)
+    assert not list((tmp_path / "outputs").glob("*/stage-*"))
 
 
 def test_native_stage_score_survives_campaign_resume(tmp_path: Path) -> None:

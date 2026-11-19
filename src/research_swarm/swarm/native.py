@@ -20,8 +20,8 @@ from research_swarm.domain.experiments import ResourceRequirements
 from research_swarm.engines import execution
 from research_swarm.engines.registration import read_registration
 from research_swarm.projects.capture import capture_project
-from research_swarm.projects.manifest import resolve_project
-from research_swarm.projects.source import extract_bundle
+from research_swarm.projects.manifest import ResolvedProject, resolve_project
+from research_swarm.projects.source import bundle_directory, extract_bundle, validate_mutation
 from research_swarm.projects.workload import (
     WorkloadContext,
     WorkloadInput,
@@ -29,8 +29,44 @@ from research_swarm.projects.workload import (
     verify_outputs,
 )
 from research_swarm.reactive.admission import training_parameters
-from research_swarm.swarm.interfaces import Trial
+from research_swarm.swarm.interfaces import Candidate, Trial
 from research_swarm.workers.supervision import base_environment
+
+
+def _candidate_bundle(
+    project: ResolvedProject, bundle: Path, candidate: Candidate
+) -> tuple[Path, str]:
+    base = project.source
+    if candidate.diff is None:
+        return bundle, base.tree_digest
+    if not candidate.source_revision or candidate.source_revision not in (
+        base.base_revision,
+        base.tree_digest,
+    ):
+        raise ValueError("Candidate diff does not match the captured source revision")
+
+    with TemporaryDirectory(dir=bundle.parent) as workspace:
+        source = Path(workspace) / "project"
+        extract_bundle(bundle, source, expected_tree_digest=base.tree_digest)
+        subprocess.run(
+            ["git", "apply", "--whitespace=nowarn", "-"],
+            input=candidate.diff.encode("utf-8"),
+            cwd=source,
+            env={
+                **base_environment(),
+                "GIT_CEILING_DIRECTORIES": str(source.parent.resolve()),
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_NOSYSTEM": "1",
+            },
+            check=True,
+        )
+        edited = bundle.with_name("candidate.zip")
+        snapshot = bundle_directory(source, edited, paths=("**",))
+        if not validate_mutation(
+            base, snapshot, project.manifest.mutation, protected_paths=project.protected_paths
+        ):
+            raise ValueError("Candidate diff did not change any project source")
+    return edited, snapshot.tree_digest
 
 
 def run(
@@ -60,13 +96,14 @@ def run(
     contract = manifest.evaluation
     if contract.measurement_trust != "authenticated" or contract.expected_members is None:
         raise ValueError("Native evaluation requires the declared authenticated member set")
+    candidate_bundle, candidate_digest = _candidate_bundle(project, bundle, trial.candidate)
     trial_id = str(uuid5(NAMESPACE_URL, json.dumps([trial.campaign_id, trial.trial_id])))
     digest = record_digest(
         "research.swarm-native-trial",
         {
             "trial": TypeAdapter(Trial).dump_python(trial, mode="json"),
             "protocol": project.protocol_digest,
-            "source": project.source.tree_digest,
+            "source": candidate_digest,
         },
     )
     stages = {stage.id: stage for stage in manifest.stages}
@@ -96,7 +133,10 @@ def run(
         stage_root = root / f"stage-{index}"
         stage_root.mkdir(mode=0o700)
         source = stage_root / "project"
-        extract_bundle(bundle, source, expected_tree_digest=project.source.tree_digest)
+        if stage.kind == "evaluate":
+            extract_bundle(bundle, source, expected_tree_digest=project.source.tree_digest)
+        else:
+            extract_bundle(candidate_bundle, source, expected_tree_digest=candidate_digest)
         output = stage_root / "outputs"
         output.mkdir(mode=0o700)
         parameters: dict[str, Any] = {

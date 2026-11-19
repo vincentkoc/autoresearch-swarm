@@ -15,6 +15,9 @@
   the 12 top-level CLI commands, 23 executable paths and six campaign tables.
   Update report and MLX examples to use the current CLI.
 
+- Apply revision-pinned source diffs to native training stages. The original
+  evaluator scores the artifacts produced by the edited training code.
+
 - Remove the retired controller command-ID error envelope and unused error codes.
   Bounded JSON input for offline reports and reactive proposals now reads only
   from their required file paths. The public CLI syntax is unchanged.
