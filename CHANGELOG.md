@@ -13,6 +13,9 @@
   lost. A successful attempt resets the streak. Concurrent and restarted
   watchers share the same alert and hourly digest journal.
 
+- Enforce each advisory job's process-group deadline after its caller exits and
+  retain a terminal status beside the abandoned heartbeat.
+
 - Report the fraction of returned proposer candidates admitted to a new campaign,
   including duplicate and invalid entries in the denominator. Earlier campaigns
   retain an unavailable rate.
