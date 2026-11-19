@@ -59,6 +59,33 @@ async def test_finite_mutation_explores_unseen_levels_before_first_promotion(see
     assert not operator.data  # Proxy scores must not fit the target-fidelity model.
 
 
+@pytest.mark.parametrize("seed", [11, 23, 47])
+async def test_finite_mutation_polishes_at_midpoint_of_multi_fidelity_budget(seed: int) -> None:
+    spec = replace(SPEC, seed=seed, max_trials=12)
+    space = dict.fromkeys(("x", "y", "z"), ("0", "1", "2", "3"))
+    operator = FiniteMutation(spec, space)
+    # Only the promoted origin has a target score. All six trials used budget.
+    for index, point in enumerate(("000", "111", "222", "000", "333", "012")):
+        params = dict(zip(space, point, strict=True))
+        candidate = Candidate(candidate_id=str(index), params=params)
+        trial = Trial(
+            trial_id=str(index),
+            campaign_id=spec.campaign_id,
+            candidate=candidate,
+            seed=seed,
+            fidelity=1.0 if index == 3 else 0.5,
+        )
+        attempt = Attempt(
+            attempt_id=str(index), trial=trial, number=1, worker_id="cpu", started_at=0
+        )
+        result = Result(attempt=attempt, status="ok", metrics={spec.metric: 0.0})
+        operator.tell(result)
+    # Redelivery of the last cheap observation must not advance the trial clock.
+    operator.tell(result)
+    (proposal,) = await operator.propose(spec, [], 1)
+    assert sum(value != "0" for value in proposal.params.values()) == 1
+
+
 async def test_lineage_and_recipe_operators() -> None:
     other = replace(PARENT, candidate_id="b", params={"width": 16, "activation": "tanh"})
     third = replace(PARENT, candidate_id="c", params={"width": 32, "activation": "tanh"})

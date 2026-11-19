@@ -11,6 +11,9 @@
 - Stabilize the offline SkyPilot reconnect test by launching its synthetic CLI
   through the current Python interpreter.
 
+- Schedule one-coordinate finite search moves by the campaign trial budget,
+  counting screened and promoted trials once each.
+
 - Count categorical levels explored at lower fidelities when the finite mutation
   operator proposes its next recipe in a multi-fidelity campaign.
 

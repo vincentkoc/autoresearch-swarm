@@ -121,3 +121,22 @@ We replayed the installed campaign CLI with finite mutation and crossover, the s
 | MLP accuracy | 47 | 0.929688 | 0.910156 | -0.019531 | 0.945313 | 0.933594 |
 
 Mean program search pass rate rose from 0.791667 to 1.000000. Mean MLP search accuracy rose from 0.904948 to 0.910156, still below random (0.942708) and greedy (0.933594). Before its first promotion, the MLP portfolio covered five distinct coordinate levels on each seed. After the fix it covered six. Broader early coverage helped one seed and hurt another. The original held-out acceptance result stands. This diagnosis made zero new selection or confirmation measurements.
+
+## MLP search after the coverage correction
+
+The coverage correction left an unreachable step in finite mutation. The operator was designed to alternate global proposals with one-coordinate changes to its best full-fidelity recipe after half the trial budget. It compared the midpoint (six trials) with the number of distinct full-fidelity recipes. ASHA produced at most three of those recipes per run. In the first scheduled local move, trial 7, the operator changed two, three and two coordinates on seeds 11, 23 and 47, respectively.
+
+**Recipe discovery accounted for the original seed-47 regression.** Before the coverage correction, the swarm screened and promoted a 64-wide ReLU model with learning rate 0.05, scoring 0.929688. Afterward, it never proposed that recipe. Its best screened recipe was a 16-wide ReLU model at the same learning rate, scoring 0.910156. We checked all 27 screened recipes from the corrected-coverage runs at full fidelity on the original search cases. The archive supplied 17 measurements and we made ten additional CPU search evaluations outside the trial budgets. On all three seeds ASHA promoted a best screened recipe. None of the six frozen random or greedy finalists appeared among those screens.
+
+The operator now counts distinct observed campaign trial IDs to decide when local search is due. Repeated delivery of the same trial counts once. A successful target-fidelity observation supplies the incumbent. On a flat generated 4 × 4 × 4 grid, the original implementation missed the one-coordinate requirement on all three seeds after five screens and one promotion. The corrected implementation satisfied it on all three, including after duplicate delivery.
+
+We predeclared one change and compared it with the three retained coverage-corrected queues. The installed CLI used the same CPU-small evaluator, search cases, starting recipe, seeds, operators, worker count and 12-trial budget. Each run had nine screens and three promotions. The first six observations matched the control exactly on every seed. All nine scheduled local proposals across the three runs changed one coordinate. [Search traces and retrospective full scores](../benchmarks/results/v1-mlp-trial-budget.jsonl)
+
+| Search seed | Coverage correction | Trial-count correction | Change | Frozen random | Frozen greedy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 11 | 0.894531 | 0.894531 | 0.000000 | 0.945313 | 0.925781 |
+| 23 | 0.925781 | 0.925781 | 0.000000 | 0.937500 | 0.941406 |
+| 47 | 0.910156 | 0.933594 | +0.023438 | 0.945313 | 0.933594 |
+| Mean | 0.910156 | 0.917969 | +0.007813 | 0.942708 | 0.933594 |
+
+On seed 47, trial 9 increased the incumbent's width from 16 to 32. Trial 12 promoted that recipe, tying greedy. On seed 11, random's winning recipe differed from the swarm incumbent only in learning rate. On seed 23, it differed only in width. The three local proposals on each seed sampled other neighbors. The measured mean gain came entirely from seed 47. The swarm still trails both baselines in mean search accuracy. The original failed acceptance remains recorded. This experiment used zero new selection or confirmation evaluations.

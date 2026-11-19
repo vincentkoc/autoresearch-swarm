@@ -34,6 +34,7 @@ class FiniteMutation:
             raise ValueError("expected distinct levels for every coordinate")
         self.rng = random.Random(spec.seed)
         self.data: dict[tuple[str, ...], list[float]] = defaultdict(list)
+        self._observed_trials: set[str] = set()
         self._issued: set[tuple[str, ...]] = set()
         self._coverage: Counter[tuple[int, str]] = Counter()
 
@@ -44,8 +45,11 @@ class FiniteMutation:
 
     def tell(self, result: Result) -> None:
         trial = result.attempt.trial
+        if trial.campaign_id != self.spec.campaign_id:
+            return
+        self._observed_trials.add(trial.trial_id)
         params = trial.candidate.params
-        if trial.campaign_id != self.spec.campaign_id or not all(
+        if not all(
             params.get(key) in domain for key, domain in zip(self.keys, self.domains, strict=True)
         ):
             return
@@ -112,7 +116,8 @@ class FiniteMutation:
         # Alternate global moves with a local polish once half the evaluation
         # budget has been observed. This disentangles levels whose effects a
         # sparse factorial design could only estimate jointly.
-        if len(self.data) >= spec.max_trials / 2 and len(self.data) % 2 == 0:
+        observed = len(self._observed_trials)
+        if self.data and observed >= spec.max_trials / 2 and observed % 2 == 0:
             incumbent = max(self.data, key=lambda p: fmean(self.data[p]))
             nearby = [
                 p for p in pool if sum(a != b for a, b in zip(p, incumbent, strict=True)) == 1
