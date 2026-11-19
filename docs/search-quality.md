@@ -97,3 +97,27 @@ uv run --no-sync python -m benchmarks.cli_acceptance cli-acceptance-repeat --por
 ~~~
 
 To replay with the exact measured runtime, install the tested revision, run from its root and point its Python interpreter at the comparison driver from this report's checkout. Set `PYTHONPATH` to the runtime root so the driver imports the measured scorers. Timing and gain-per-cost bandit choices can vary between runs.
+
+## Diagnosis of the program and MLP results
+
+ASHA promoted a best full-fidelity recipe among the nine it screened in **every** original program and MLP arm. We checked all 54 screened recipes at their original search seed. The retained trials supplied 28 full-fidelity scores. We evaluated the other 26 on the same search cases, outside the original trial budget. Three promotions consumed trial slots, leaving nine distinct recipes for the swarm to screen per seed.
+
+- **Program.** At seeds 23 and 47, random and the swarm each found a perfect recipe. At seed 11, their different recipes tied at 0.375 on search and 0.395833 on confirmation. The fixed-case evaluator has no training randomness. Proposal coverage and the score ceiling explain the ties.
+- **MLP.** Neither baseline's winning recipe appeared among the swarm's nine screened recipes at any seed. Random sampled 11, 10 and 9 distinct recipes across the three seeds. Greedy tried 12 each time. All nine arm nominees passed the original held-out decision. Initialization still mattered. Among 22 recipes evaluated at full fidelity on more than one search seed, the largest accuracy range was 0.144531. Calibration estimated pooled seed noise at 0.046348. That estimate describes within-recipe variability. The three paired seeds cannot establish a population-wide advantage.
+
+### Correction to finite mutation
+
+The finite mutation operator reserved a screened recipe, but its exploration bonus counted only recipes with target-fidelity scores. On a flat two-coordinate grid with `(0, A)` already screened, the unique point covering both unseen levels is `(1, B)`. At seed 11 the old operator chose `(0, B)`. It chose the maximal-coverage point on two of three seeds before the correction and on all three afterward. The fix counts the features of each distinct recipe once when the operator issues it or observes a result. Promotions and repeated measurements of that recipe keep the same coverage count. Only successful target-fidelity scores enter the predictor.
+
+We replayed the installed campaign CLI with finite mutation and crossover, the same starting recipes, search streams, seeds, budget and ASHA rungs. The model-free control reproduced all 72 archived program and MLP trials in order, including recipes, operators, fidelities and scores. The only algorithm change in the second run was the coverage count. Both runs scored the search panel only. For this search-only replay, set `evaluation_mode: smoke`, use `python -m benchmarks.cli_acceptance score TASK` as the worker command and omit the panel and selection factories. The table shows the best full-fidelity search score at trial 12. The baseline columns come from the original queues. [Before revision](https://github.com/vincentkoc/autoresearch-swarm/commit/901c8a39ee48e637dc271e613230634a69314a04) · [Screened recipes and trial records](../benchmarks/results/v1-finite-coverage.jsonl)
+
+| Metric | Seed | Before | After | Change | Random | Greedy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Program pass rate | 11 | 0.375000 | 1.000000 | +0.625000 | 0.375000 | 0.125000 |
+| Program pass rate | 23 | 1.000000 | 1.000000 | 0.000000 | 1.000000 | 0.375000 |
+| Program pass rate | 47 | 1.000000 | 1.000000 | 0.000000 | 1.000000 | 0.375000 |
+| MLP accuracy | 11 | 0.859375 | 0.894531 | +0.035156 | 0.945313 | 0.925781 |
+| MLP accuracy | 23 | 0.925781 | 0.925781 | 0.000000 | 0.937500 | 0.941406 |
+| MLP accuracy | 47 | 0.929688 | 0.910156 | -0.019531 | 0.945313 | 0.933594 |
+
+Mean program search pass rate rose from 0.791667 to 1.000000. Mean MLP search accuracy rose from 0.904948 to 0.910156, still below random (0.942708) and greedy (0.933594). Before its first promotion, the MLP portfolio covered five distinct coordinate levels on each seed. After the fix it covered six. Broader early coverage helped one seed and hurt another. The original held-out acceptance result stands. This diagnosis made zero new selection or confirmation measurements.

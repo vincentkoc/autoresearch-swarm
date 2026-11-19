@@ -28,6 +28,7 @@ from research_swarm.swarm.operators import (
     Range,
     TextRewrite,
 )
+from research_swarm.swarm.operators.factorial import FiniteMutation
 
 SPEC = CampaignSpec(
     campaign_id="test",
@@ -40,6 +41,22 @@ SPEC = CampaignSpec(
 PARENT = Candidate(
     candidate_id="a", params={"width": 8, "activation": "relu"}, family="mlp", seed=1, fidelity=0.25
 )
+
+
+@pytest.mark.parametrize("seed", [11, 23, 47])
+async def test_finite_mutation_explores_unseen_levels_before_first_promotion(seed: int) -> None:
+    spec = replace(SPEC, seed=seed)
+    parent = Candidate(candidate_id="initial", params={"x": "0", "y": "A"})
+    operator = FiniteMutation(spec, {"x": ("0", "1"), "y": ("A", "B")})
+    trial = Trial(
+        trial_id="screen", campaign_id=spec.campaign_id, candidate=parent, seed=seed, fidelity=0.5
+    )
+    attempt = Attempt(attempt_id="one", trial=trial, number=1, worker_id="cpu", started_at=0)
+    operator.tell(Result(attempt=attempt, status="ok", metrics={spec.metric: 0.0}))
+
+    (proposal,) = await operator.propose(spec, [parent], 1)
+    assert proposal.params == {"x": "1", "y": "B"}
+    assert not operator.data  # Proxy scores must not fit the target-fidelity model.
 
 
 async def test_lineage_and_recipe_operators() -> None:
