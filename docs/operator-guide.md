@@ -146,6 +146,13 @@ Several attempts can belong to one trial. Active attempts have empty
 observation fields.
 The heartbeat and accrued cost fields give the latest recorded progress.
 
+Match a `repeated_failure` or `score_target` alert's `event_id` to `swarm_events.id`
+in the same campaign. The queue stores the event time in `swarm_events.at` as Unix
+seconds. In the notification journal and on stdout, `at` gives the time of the
+watcher's poll. A `score_target` alert also gives the original selection time in
+`selected_at`. Both notification timestamps include the offset for `--timezone`,
+which defaults to UTC.
+
 ## Diagnose failures
 
 | Symptom | Action |
