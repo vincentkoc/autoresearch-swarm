@@ -119,6 +119,34 @@ def test_default_worker_honors_permanent_token_denial(tmp_path: Path) -> None:
     assert code == 3 and result["reason"] == "dispatch_unavailable" and result["attempts"] == 0
 
 
+def test_local_gpu_campaign_binds_device_from_yaml(tmp_path: Path) -> None:
+    import pytest
+
+    from research_swarm.swarm.command import run_campaign
+
+    data = yaml.safe_load((BIGRAM / "swarm.yaml").read_text())
+    data.update(
+        resource="gpu",
+        command=[
+            sys.executable,
+            "-c",
+            "import os, json; from pathlib import Path; "
+            "assert os.environ['SWARM_DEVICE'] == 'mps'; "
+            "Path(os.environ['SWARM_METRICS']).write_text(json.dumps({'loss': 1.0}))",
+        ],
+        metric="loss",
+        task_dir=".",
+        max_trials=1,
+    )
+    path = tmp_path / "gpu.yaml"
+    path.write_text(yaml.safe_dump(data))
+    with pytest.raises(ValueError, match="options.backend.device"):
+        run_campaign(path, tmp_path / "queue.sqlite")
+    path.write_text(yaml.safe_dump({**data, "options": {"backend": {"device": "mps"}}}))
+    result, code = run_campaign(path, tmp_path / "queue.sqlite")
+    assert code == 0 and result["selected"]["score"] == 1.0
+
+
 def test_cli_resumes_expired_campaign_without_claiming_queued_work(tmp_path: Path) -> None:
     data = yaml.safe_load((BIGRAM / "swarm.yaml").read_text())
     data.update(max_hours=1, max_workers=1, target=100, task_dir=str(BIGRAM))

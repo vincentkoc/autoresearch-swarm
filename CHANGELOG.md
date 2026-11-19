@@ -43,6 +43,9 @@
   Archived report JSON still verifies its original digest. The controller
   signing keys, legacy funding ledger and schema migration code are retired.
 
+- Local campaigns honor `options.backend` directly. Set `options.backend.device`
+  to `mps` or `cuda` for GPU workers.
+
 - Serve a campaign worker with a separate private bearer and a fixed campaign
   and worker identity. Claimed attempts can heartbeat, publish observations,
   and upload immutable artifacts through the same SQLite queue.
