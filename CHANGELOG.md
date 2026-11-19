@@ -22,6 +22,9 @@
 - Report time-weighted GPU utilization for opt-in dedicated local CUDA devices,
   including coverage gaps, idle intervals and allocation recovery evidence.
 
+- Preserve managed-job preemption evidence across worker restarts so the retry
+  uses on-demand placement even if the first worker exited before polling.
+
 - Stabilize the offline SkyPilot reconnect test by launching its synthetic CLI
   through the current Python interpreter.
 
