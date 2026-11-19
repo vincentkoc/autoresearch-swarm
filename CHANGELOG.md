@@ -13,6 +13,9 @@
   including duplicate and invalid entries in the denominator. Earlier campaigns
   retain an unavailable rate.
 
+- Calculate campaign cost per 0.01 improvement from selections at the current
+  trial fidelity, including the measured cost of screening trials.
+
 - Plot and rank campaign trial scores by fidelity. Screening scores and
   recorded selections stay on the rung where the trial ran.
 
