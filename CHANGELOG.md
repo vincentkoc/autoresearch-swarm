@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Pass the dispatched trial fidelity to native workload stages so training can
+  use the budget assigned by the campaign scheduler.
+
 - Stabilize the offline SkyPilot reconnect test by launching its synthetic CLI
   through the current Python interpreter.
 

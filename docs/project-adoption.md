@@ -17,6 +17,10 @@ project. Its manifest declares the workload contract. Its stage commands read
    order, coverage, units and sufficient statistics. Record elapsed time for each
    run separately. Preserve original receipts when interpreting older formats.
 
+Native stages receive the dispatched trial fidelity in the sealed workload
+context at `parameters.fidelity`. Multi-fidelity training code maps this value
+to an amount of work, such as an update count or a fraction of the training set.
+
 For a native campaign using the `llm-code-diff` operator, set its `revision`
 to the captured source tree digest or, for a Git capture, the captured commit.
 The native worker uses Git to apply each candidate's unified diff to a private

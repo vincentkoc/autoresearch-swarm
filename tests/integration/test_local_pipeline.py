@@ -72,6 +72,40 @@ def run_native_example(example: str, metric: str, root: Path, *, registered: boo
     return result
 
 
+def test_native_training_consumes_dispatched_fidelity(tmp_path: Path) -> None:
+    path = native_campaign("synthetic_pose", "macro_mae_deg", tmp_path, registered=False)
+    config = json.loads(path.read_text())
+    project = tmp_path / "project"
+    shutil.copytree(config["task_dir"], project)
+    train = project / "train.py"
+    train.write_text(
+        train.read_text().replace(
+            "UPDATES = 120", 'UPDATES = int(context()["parameters"]["fidelity"])'
+        )
+    )
+    config.update(
+        task_dir=str(project),
+        max_trials=2,
+        candidates=[{"candidate_id": "baseline", "fidelity": value} for value in (8, 64)],
+    )
+    path.write_text(json.dumps(config))
+    queue = tmp_path / "queue.sqlite"
+    assert run_campaign(path, queue)[1] == 0
+    scores = {}
+    for result in SQLiteStore(queue).results("test"):
+        assert result.status == "ok", result.logs
+        trial = result.attempt.trial
+        attempt = tmp_path / "outputs" / str(UUID(result.attempt.attempt_id))
+        fit = json.loads((attempt / "stage-0/outputs/fit_receipt.json").read_text())
+        assert fit["updates"] == trial.fidelity
+        assert (attempt / "stage-1/project/evaluate.py").read_bytes() == (
+            project / "evaluate.py"
+        ).read_bytes()
+        scores[fit["updates"]] = result.metrics["macro_mae_deg"]
+    assert scores.keys() == {8, 64}
+    assert scores[64] < scores[8]
+
+
 def test_native_code_diff_changes_training_and_preserves_evaluator(tmp_path: Path) -> None:
     path = native_campaign("synthetic_pose", "macro_mae_deg", tmp_path, registered=False)
     spec = load_spec(path)
