@@ -33,12 +33,14 @@ uv run --no-sync research report view --db .research/program.sqlite \
 ~~~
 
 `research --help` lists 12 top-level commands. Including subcommands, there are
-23 executable paths. The campaign database has six tables for projects,
+25 executable paths, including `swarm notify` and `swarm advise`.
+The campaign database has six tables for projects,
 campaigns, candidates, trials, attempts and events. A panel study keeps two
 tables in its own database. An optional reactive session also has a separate
-two-table journal.
+two-table journal. The optional watcher uses one `notifications` table in
+`<campaign-db>.notifications.sqlite` for hourly digests and metric alerts.
 
-[Run a campaign](docs/run-a-campaign.md) · [Operator guide](docs/operator-guide.md) · [Design](docs/design.md)
+[Run a campaign](docs/run-a-campaign.md) · [Operator guide](docs/operator-guide.md) · [Campaign ops](docs/campaign-ops.md) · [Design](docs/design.md)
 
 ## Benchmarks
 

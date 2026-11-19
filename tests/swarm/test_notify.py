@@ -94,3 +94,28 @@ def test_invalid_input_and_warmup(tmp_path: Path, capsys: pytest.CaptureFixture[
         assert main(args + invalid) == 2
     assert main(args + ["--min-trials-per-hour", "10"]) == 0
     assert json.loads(capsys.readouterr().out)["kind"] == "hourly_digest"
+
+
+@pytest.mark.parametrize("timeout,status", [("10", "ok"), ("0.001", "timed_out")])
+def test_hourly_reporter_preserves_numeric_digest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], timeout: str, status: str
+) -> None:
+    db = tmp_path / "queue.sqlite"
+    SQLiteStore(db).create_campaign(spec())
+    args = [
+        "swarm",
+        "notify",
+        "test",
+        "--db",
+        str(db),
+        "--once",
+        "--fake-reporter",
+        "--reporter-timeout",
+        timeout,
+    ]
+    assert main(args) == 0
+    item = json.loads(capsys.readouterr().out)
+    assert item["completed_trials_last_hour"] == 0 and item["reporter"]["status"] == status
+    with closing(sqlite3.connect(str(db) + ".notifications.sqlite")) as out:
+        assert json.loads(out.execute("SELECT payload FROM notifications").fetchone()[0]) == item
+    assert main(args) == 0 and capsys.readouterr().out == ""

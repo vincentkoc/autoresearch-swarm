@@ -34,6 +34,9 @@
   worker journals and controller promotion commands are retired. The workload,
   engine and reactive guides now show how to launch these stages from campaign YAML.
 
+- Add an optional bounded reporter to hourly digests and a CPU campaign
+  [operations runbook](docs/campaign-ops.md) for notification, diagnosis and recovery.
+
 - Remove the old controller dispatcher, historical-import API and controller
   benchmark harness. Archived benchmark results and standalone project receipt
   readers remain available.
