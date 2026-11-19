@@ -18,6 +18,7 @@ from uuid import uuid4
 from pydantic import TypeAdapter
 
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
+from research_swarm.swarm.meter import PRICE_FIELDS
 from research_swarm.swarm.panels import Calibration, Decision
 
 _SCHEMA = """
@@ -285,7 +286,8 @@ class SQLiteStore:
     def register_panel_campaign(self, spec: CampaignSpec, policy: object | None) -> str | None:
         if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
             raise ValueError("max_hours must be finite and non-negative")
-        encoded = _json(asdict(spec))
+        requested = asdict(spec)
+        encoded = _json({**requested, "price_schema": 1})
         if min(spec.max_trials, spec.max_workers, spec.max_attempts) < 1:
             raise ValueError("Trial, worker and attempt limits must be positive")
         if spec.max_cost is not None:
@@ -307,7 +309,12 @@ class SQLiteStore:
                 )
             else:
                 saved = self._saved_spec(db, spec.campaign_id)
-                if _json(asdict(CampaignSpec(**saved))) != encoded:
+                if not saved.pop("price_schema", None):
+                    # Older queues persisted omitted rates as zero. Either spelling can resume.
+                    for key in PRICE_FIELDS:
+                        if saved.get(key) in (None, 0) and requested[key] in (None, 0):
+                            requested[key] = saved.get(key)
+                if _json(asdict(CampaignSpec(**saved))) != _json(requested):
                     raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
             if policy is None:
                 return None
@@ -384,7 +391,8 @@ class SQLiteStore:
     def campaign_spec(self, campaign_id: str) -> CampaignSpec:
         with self._connection() as db:
             saved = self._saved_spec(db, campaign_id)
-            return TypeAdapter(CampaignSpec).validate_json(_json(saved), strict=True)
+            saved.pop("price_schema", None)
+        return TypeAdapter(CampaignSpec).validate_json(_json(saved), strict=True)
 
     @contextmanager
     def worker_attempt(

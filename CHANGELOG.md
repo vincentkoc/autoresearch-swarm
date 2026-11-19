@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Report the known cost subtotal and missing rates when recorded usage is only
+  partly priced. Cost per improvement stays unavailable until the total is known.
+
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 

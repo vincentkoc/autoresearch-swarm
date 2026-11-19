@@ -61,9 +61,9 @@ def load_spec(path: Path) -> CampaignSpec:
     if (
         min(
             spec.min_delta,
-            spec.price_per_hour,
-            spec.price_per_million_input_tokens,
-            spec.price_per_million_output_tokens,
+            spec.price_per_hour or 0.0,
+            spec.price_per_million_input_tokens or 0.0,
+            spec.price_per_million_output_tokens or 0.0,
             spec.estimated_input_tokens,
             spec.estimated_output_tokens,
             spec.max_cost if spec.max_cost is not None else 0,

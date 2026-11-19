@@ -12,8 +12,10 @@ from fastapi.testclient import TestClient
 from research_swarm.api.campaign import campaign_app
 from research_swarm.cli import main
 from research_swarm.control.report_plot import project_hill_climb
+from research_swarm.control.report_view import render_report_html
 from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.swarm.interfaces import Result
+from research_swarm.swarm.meter import CostMeter
 from research_swarm.swarm.reader import CampaignReader
 from research_swarm.swarm.report import capture
 from research_swarm.swarm.store import SQLiteStore
@@ -276,3 +278,106 @@ def test_reports_keep_screening_observations_and_selections_in_their_rung(tmp_pa
     )
     svg = output.read_text()
     assert svg.count("data-evaluation=") == 1 and "Selected trial test-2" not in svg
+
+
+@pytest.mark.parametrize(
+    ("output_rate", "tokens", "total", "kpi"),
+    [
+        (None, 6, None, None),  # Consumed output units with unknown price.
+        (0.0, 6, 0.3, 0.003),  # Explicitly free.
+        (None, 0, 0.3, 0.003),  # No output units to price.
+        (25_000.0, 6, 0.6, 0.006),
+    ],
+)
+def test_report_distinguishes_known_subtotal_from_total(
+    tmp_path: Path, output_rate: float | None, tokens: int, total: float | None, kpi: float | None
+) -> None:
+    database = tmp_path / "queue.sqlite"
+    campaign = spec(price_per_hour=36, price_per_million_output_tokens=output_rate)
+    queue = SQLiteStore(database)
+    queue.create_campaign(campaign)
+    for index, seconds in enumerate((10, 20), start=1):
+        job = trial(index)
+        assert queue.submit(job)
+        attempt = queue.claim("test", "fixture")
+        assert attempt is not None
+        cost = CostMeter().charge(campaign, attempt, seconds, 0, tokens)
+        score = 5 - index
+        assert queue.report(
+            Result(
+                attempt=attempt,
+                status="ok",
+                metrics={"loss": score},
+                cost=cost,
+                output_tokens=tokens,
+            )
+        )
+        queue.select("test", job.trial_id, score=score)
+
+    reopened = SQLiteStore(database)
+    reopened.create_campaign(campaign)
+    assert reopened.campaign_spec("test").price_per_million_output_tokens == output_rate
+    reader = CampaignReader(database)
+    snapshot = reader.snapshot("test")
+    budget = reader.budget("test")
+    assert snapshot["meter"] == budget
+    assert budget["measured_cost"] == pytest.approx(total if total is not None else 0.3)
+    assert budget["missing_prices"] == (
+        ["price_per_million_output_tokens"] if total is None else []
+    )
+    efficiency = snapshot["kpis"]["cost_per_0_01_improvement"]
+    if total is None:
+        assert budget["total_cost"] is None and efficiency["value"] is None
+        metric = MetricDefinition.model_validate(
+            snapshot["research"]["objective"]["primary_metric"]
+        )
+        html = render_report_html(
+            [snapshot], comparison_digest=snapshot["comparison_digest"], metric=metric
+        )
+        assert "Known cost subtotal: " in html
+        assert "Total cost: Unavailable (missing price_per_million_output_tokens)" in html
+        assert "<dt>Cost per 0.01 improvement</dt><dd><strong>Unavailable</strong>" in html
+        # Previously exported snapshots could contain a ratio without any price coverage.
+        archive = {
+            **snapshot,
+            "meter": {"measured_cost": 0.3, "pending_estimate": 0, "trials": 2, "max_trials": 2},
+            "kpis": {
+                **snapshot["kpis"],
+                "cost_per_0_01_improvement": {**efficiency, "value": 0.003},
+            },
+        }
+        historical = render_report_html(
+            [archive], comparison_digest=archive["comparison_digest"], metric=metric
+        )
+        assert "Total cost: Unavailable (price coverage was not recorded)" in historical
+        assert "<dt>Cost per 0.01 improvement</dt><dd><strong>Unavailable</strong>" in historical
+    else:
+        assert kpi is not None
+        assert budget["total_cost"] == pytest.approx(total)
+        assert efficiency["value"] == pytest.approx(kpi)
+
+
+def test_historical_zero_prices_are_ambiguous_on_reopen(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    campaign = spec(price_per_million_input_tokens=1000)
+    queue = SQLiteStore(database)
+    queue.create_campaign(campaign)
+    assert queue.submit(trial(1))
+    attempt = queue.claim("test", "fixture")
+    assert attempt is not None
+    assert queue.report(
+        Result(attempt=attempt, status="failed", cost=0.01, input_tokens=10, output_tokens=2)
+    )
+
+    with sqlite3.connect(database) as db:
+        saved = json.loads(db.execute("SELECT spec FROM swarm_campaigns").fetchone()[0])
+        saved.pop("price_schema")
+        saved.update(price_per_hour=0.0, price_per_million_output_tokens=0.0)
+        db.execute("UPDATE swarm_campaigns SET spec=?", (json.dumps(saved),))
+
+    reopened = SQLiteStore(database)
+    reopened.create_campaign(campaign)
+    reopened.create_campaign(replace(campaign, price_per_hour=0, price_per_million_output_tokens=0))
+    budget = CampaignReader(database).budget("test")
+    assert budget["measured_cost"] == 0.01 and budget["total_cost"] is None
+    assert budget["missing_prices"] == ["price_per_hour", "price_per_million_output_tokens"]
