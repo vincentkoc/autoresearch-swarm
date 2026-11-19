@@ -12,8 +12,9 @@ uv run --no-sync research swarm notify "$campaign" --db "$db" --timezone Europe/
   --score-target 8 --min-trials-per-hour 2 --fake-reporter --once
 ~~~
 
-The first poll prints a JSON digest. It includes the selected score, the number
-of trials completed in the preceding 60 minutes, and measured and reserved cost.
+The watcher records one JSON digest per observed local hour. It includes the
+selected score, the number of trials completed in the preceding 60 minutes,
+and measured and reserved cost.
 The score alert identifies the first recorded selection that meets the target in
 the campaign's optimization direction. Each configured target fires once.
 The rate alert starts after the first campaign hour and fires at most once per
@@ -40,17 +41,25 @@ campaign ends. Restart with the same queue and timezone. The watcher resumes
 at the current local hour. The UTC offset distinguishes repeated hours when the
 clocks go back. Time spent stopped does not generate backdated hourly digests.
 
-## Retrieve an alert after a restart
+## Recover a missed digest or alert
 
 The watcher commits each record beside the queue before writing it to stdout.
-Watchers using the same queue share this journal, including across restarts.
-A crash or broken pipe can interrupt stdout after the record was committed.
-Read the journal to recover the original numeric evidence.
+A crash or broken pipe can interrupt that write. On restart with the same
+queue, the watcher skips keys already in the journal, including a digest or
+alert whose write to stdout failed.
+
+Read the saved JSON for your campaign. Replace the example campaign ID in the
+query if needed.
 
 ~~~sh
 sqlite3 -readonly "$db.notifications.sqlite" \
   "SELECT payload FROM notifications WHERE campaign='cpu-bigram-smoothing' ORDER BY rowid"
 ~~~
+
+Find the digest or alert by its `kind` and local `at` timestamp, including the
+UTC offset. If you captured stdout for that run, compare the record's `key`
+with the keys in the capture. Use the saved JSON payload to recover the
+missing output.
 
 ## Get bounded advice
 
