@@ -38,6 +38,17 @@ def make_spec(tmp_path: Path, program: str) -> CampaignSpec:
     )
 
 
+async def assert_child_stopped(pid: int) -> None:
+    async with asyncio.timeout(3):
+        while psutil.pid_exists(pid):
+            try:
+                if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
+                    return
+            except psutil.NoSuchProcess:
+                return
+            await asyncio.sleep(0.01)
+
+
 @pytest.mark.parametrize(
     ("device", "visible", "expected"),
     [("cpu", "", "cpu"), ("mps", "", "mps"), ("cuda:2", "2", "cuda:0")],
@@ -104,15 +115,33 @@ time.sleep(60)
     else:
         result = await task
         assert result.status == "failed" and "timed out" in (result.error or "")
-    async with asyncio.timeout(3):
-        while psutil.pid_exists(child_pid):
-            try:
-                if psutil.Process(child_pid).status() == psutil.STATUS_ZOMBIE:
-                    break
-            except psutil.NoSuchProcess:
-                break
-            await asyncio.sleep(0.01)
+    await assert_child_stopped(child_pid)
     assert backend.free_slots(spec) == 1
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+async def test_leader_exit_finishes_trial_with_inherited_output_pipes(
+    tmp_path: Path, exit_code: int
+) -> None:
+    program = """
+import os, subprocess, sys
+from pathlib import Path
+helper = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+Path('helper.pid').write_text(str(helper.pid))
+Path(os.environ['SWARM_METRICS']).write_text('{"gain": 2}')
+print('trial finished')
+print('last diagnostic', file=sys.stderr)
+"""
+    spec = make_spec(tmp_path, program + f"\nsys.exit({exit_code})")
+    backend = LocalBackend(1)
+    result = await backend.execute(spec, make_attempt())
+    assert result.status == ("failed" if exit_code else "ok"), result.error
+    assert result.error == (f"command exited with status {exit_code}" if exit_code else None)
+    assert result.metrics == ({} if exit_code else {"gain": 2})
+    assert result.logs == ("trial finished\n", "last diagnostic\n")
+    assert backend.free_slots(spec) == 1
+    pid = int((tmp_path / "helper.pid").read_text())
+    await assert_child_stopped(pid)
 
 
 async def test_crash_does_not_stop_sibling_and_output_is_bounded(tmp_path: Path) -> None:

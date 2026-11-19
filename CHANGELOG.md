@@ -262,6 +262,9 @@
 - Run swarm trials in bounded local subprocess slots with CPU, MPS, and CUDA
   device selection. Timeout and cancellation clean up the attempt's process group.
 
+- Finish local trials when the workload command exits. Helpers that inherit
+  its output pipes are stopped, preserving the command's metric or exit status.
+
 - Add Hill climb / Graph tabs within the resizable campaign workspace. Hill climb
   retains chronological receipts and a separate running best per selected comparable
   campaign. Graph arrows use explicit parent IDs only, fade older generations and
