@@ -315,6 +315,10 @@ class SwarmLoop:
                             queued += 1
                         seen.add(trial.trial_id)
 
+                if not (queued or running or pending) and (
+                    reason in {"target", "trial_limit"} or cursor == exhausted_after
+                ):
+                    break
                 if remaining_seconds() <= 0:
                     reason = "time_limit"
                     slots = 0
