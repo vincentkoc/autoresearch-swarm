@@ -13,6 +13,8 @@
   fit. Recovered fits report unavailable throughput when earlier timing is unknown.
   Preserve tiny seed deviations and recover underflowed noise from stored target
   scores before new comparisons. Recorded decisions keep their original outcomes.
+  New comparisons check retained target rows against the declared recipes and seeds
+  before using a cached positive noise estimate.
 
 - Validate the selected backend before creating or migrating the campaign queue.
   A rejected backend configuration leaves the queue untouched.
