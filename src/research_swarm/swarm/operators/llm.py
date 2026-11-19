@@ -113,6 +113,12 @@ class TextRewrite:
     async def _one(
         self, spec: CampaignSpec, parent: Candidate, sequence: int, failure: Result | None
     ) -> Candidate | None:
+        # Worker results can include held-out measurements alongside the search metric.
+        recent = []
+        for row in tuple(self._recent.get(spec.campaign_id, ())):
+            metrics = row["metrics"]
+            search_metrics = {spec.metric: metrics[spec.metric]} if spec.metric in metrics else {}
+            recent.append({**row, "metrics": search_metrics})
         context: dict[str, Any] = {
             "objective": self.objective,
             "metric": spec.metric,
@@ -120,7 +126,7 @@ class TextRewrite:
             "operator": self.name,
             "recipe": asdict(parent),
             "source": self._source(parent),
-            "recent_results": list(self._recent.get(spec.campaign_id, ())),
+            "recent_results": recent,
             "instruction": self.instruction,
         }
         diagnoses = tuple(self._diagnoses.get(spec.campaign_id, ()))
