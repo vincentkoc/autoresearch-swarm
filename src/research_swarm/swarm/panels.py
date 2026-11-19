@@ -58,8 +58,8 @@ class Calibration:
     intercept: float | None
     seed_noise: float
     trials: int
-    seconds_per_trial: float
-    trials_per_second: float
+    seconds_per_trial: float | None
+    trials_per_second: float | None
 
 
 @dataclass(frozen=True)
@@ -270,6 +270,27 @@ class PanelStudy:
         with self._db() as db:
             return dict(db.execute("SELECT role, count(*) FROM panel_looks GROUP BY role"))
 
+    def _recorded_calibration_scores(self) -> dict[tuple[str, str, int], float]:
+        scores: dict[tuple[str, str, int], float] = {}
+        with self._db() as db:
+            for role, candidate, seed, score in db.execute(
+                "SELECT role, candidate, seed, score FROM panel_looks "
+                "WHERE role IN ('calibration_proxy', 'calibration_target')"
+            ):
+                slot = (role, candidate, seed)
+                if score is None:
+                    raise PanelEvaluationError(
+                        f"{role} look consumed without a result (seed {seed})"
+                    )
+                if slot in scores:
+                    raise PanelEvaluationError(
+                        f"Multiple {role} looks for the same recipe and seed"
+                    )
+                if not math.isfinite(score):
+                    raise PanelEvaluationError(f"non-finite {role} score")
+                scores[slot] = score
+        return scores
+
     def calibrate(self) -> Calibration:
         """Pair proxy and target measurements by recipe and seed before dispatch."""
         with self.lock:
@@ -277,12 +298,18 @@ class PanelStudy:
             if previous is not None:
                 return Calibration(**json.loads(previous))
             start = time.perf_counter()
+            recorded = self._recorded_calibration_scores()
+
+            def score(role: Role, key: str, seed: int) -> float:
+                saved = recorded.get((role, key, seed))
+                return self._measure(role, key, seed) if saved is None else saved
+
             proxy_means, target_means, target_variances = [], [], []
             for key in self.variants:
                 proxy, target = [], []
                 for seed in self.seeds:
-                    proxy.append(self._measure("calibration_proxy", key, seed))
-                    target.append(self._measure("calibration_target", key, seed))
+                    proxy.append(score("calibration_proxy", key, seed))
+                    target.append(score("calibration_target", key, seed))
                 proxy_means.append(statistics.mean(proxy))
                 target_means.append(statistics.mean(target))
                 target_variances.append(statistics.variance(target))
@@ -296,8 +323,9 @@ class PanelStudy:
                 intercept,
                 math.sqrt(statistics.mean(target_variances)),
                 trials,
-                elapsed / trials,
-                trials / elapsed,
+                # Earlier processes persisted scores but not their elapsed scoring time.
+                None if recorded else elapsed / trials,
+                None if recorded else trials / elapsed,
             )
             self._put("calibration", result)
             return result
