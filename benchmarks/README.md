@@ -81,3 +81,5 @@ search space and seeds. Each protocol uses its own default study file.
 The `confirmed_score` field reads the selected recipe's stored measurement.
 
 [Confirmatory comparison protocol](protocol-v2.md)
+
+[Campaign CLI comparison on fresh v1 panels](../docs/search-quality.md)
