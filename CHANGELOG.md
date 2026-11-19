@@ -70,6 +70,9 @@
   observations arrive. Pass `research swarm run --retry-exhausted` to explicitly
   request another proposal against the same observations.
 
+- Completed campaigns keep their stop reason when reopened after the wall-clock
+  deadline. The deadline still prevents dispatching queued work or requesting a retry.
+
 - Serve authenticated campaign reads from SQLite with `serve --db`, inspect
   a selected database with `mcp --db`, or query it through `CampaignReader`.
 

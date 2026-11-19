@@ -39,6 +39,33 @@ async def test_wall_time_drains_claimed_work_then_stops_proposing(
     assert summary.selected and summary.selected.score == 2
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("max_trials", "target", "reason"),
+    [(1, None, "trial_limit"), (2, 1.0, "target"), (2, None, "exhausted")],
+)
+async def test_completed_run_keeps_its_reason_after_the_deadline(
+    tmp_path: Path, max_trials: int, target: float | None, reason: str
+) -> None:
+    spec = campaign(
+        max_hours=1,
+        max_trials=max_trials,
+        target=target,
+        candidates=(Candidate(candidate_id="first"),),
+    )
+    path = tmp_path / "queue"
+    store, backend = SQLiteStore(path), Backend()
+    worker = WorkerLoop(store, backend, "worker")
+    first = await SwarmLoop(spec, store, backend, worker).run()
+    assert first.reason == reason and first.attempts == 1
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE swarm_events SET at=at-7200 WHERE kind='created'")
+    assert await SwarmLoop(spec, store, backend, worker).run() == first
+    if reason == "exhausted":
+        retry = await SwarmLoop(spec, store, backend, worker).run(retry_exhausted=True)
+        assert retry.reason == "time_limit" and retry.attempts == 1
+
+
 def campaign(**changes: object) -> CampaignSpec:
     return replace(
         CampaignSpec(
