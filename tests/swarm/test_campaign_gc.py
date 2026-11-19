@@ -99,6 +99,43 @@ with (root / 'calls').open('a') as f:
     return str(exe)
 
 
+def fake_gc_aws(tmp_path: Path) -> str:
+    return fake_cli(
+        tmp_path,
+        "aws",
+        """
+path = root / 'ec2.json'
+data = json.loads(path.read_text())
+assert 'test-region' in args
+op = args[1]
+if op == 'describe-instances':
+    print(json.dumps({'Reservations': [{'Instances': data['Instances']}]}))
+elif op == 'describe-volumes':
+    vols = data['Volumes']
+    if 'Name=volume-id,Values=retagged' in args:
+        for v in vols:
+            if v['VolumeId'] == 'retagged':
+                v['Tags'] = []
+        path.write_text(json.dumps(data))
+    print(json.dumps({'Volumes': vols}))
+elif op == 'terminate-instances':
+    assert args[args.index('--instance-ids') + 1] == 'owned'
+    data['Instances'][0]['State']['Name'] = 'terminated'
+    path.write_text(json.dumps(data))
+elif op == 'wait':
+    assert args[2:5] == ['instance-terminated', '--instance-ids', 'owned']
+elif op == 'delete-volume':
+    assert args[args.index('--volume-id') + 1] == 'disk'
+    if not (root / 'allow-delete').exists():
+        sys.exit(2)
+    data['Volumes'] = [v for v in data['Volumes'] if v['VolumeId'] != 'disk']
+    path.write_text(json.dumps(data))
+else:
+    raise AssertionError(args)
+""",
+    )
+
+
 def test_gc_fences_exact_job_and_rechecks_tags_before_each_delete(tmp_path: Path) -> None:
     registry = Inventory(tmp_path)
     job, _ = registry.reserve("demo", "t", "a", ["test-region"])
@@ -142,40 +179,7 @@ else:
     raise AssertionError(args)
 """,
     )
-    aws = fake_cli(
-        tmp_path,
-        "aws",
-        """
-path = root / 'ec2.json'
-data = json.loads(path.read_text())
-assert 'test-region' in args
-op = args[1]
-if op == 'describe-instances':
-    print(json.dumps({'Reservations': [{'Instances': data['Instances']}]}))
-elif op == 'describe-volumes':
-    vols = data['Volumes']
-    if 'Name=volume-id,Values=retagged' in args:
-        for v in vols:
-            if v['VolumeId'] == 'retagged':
-                v['Tags'] = []
-        path.write_text(json.dumps(data))
-    print(json.dumps({'Volumes': vols}))
-elif op == 'terminate-instances':
-    assert args[args.index('--instance-ids') + 1] == 'owned'
-    data['Instances'][0]['State']['Name'] = 'terminated'
-    path.write_text(json.dumps(data))
-elif op == 'wait':
-    assert args[2:5] == ['instance-terminated', '--instance-ids', 'owned']
-elif op == 'delete-volume':
-    assert args[args.index('--volume-id') + 1] == 'disk'
-    if not (root / 'allow-delete').exists():
-        sys.exit(2)
-    data['Volumes'] = [v for v in data['Volumes'] if v['VolumeId'] != 'disk']
-    path.write_text(json.dumps(data))
-else:
-    raise AssertionError(args)
-""",
-    )
+    aws = fake_gc_aws(tmp_path)
     args = ("--sky", sky, "--aws", aws)
     code, entries = gc(tmp_path, *args)
     assert code == 0 and set(entries) == {f"sky:{job.name}", "owned", "disk", "retagged"}

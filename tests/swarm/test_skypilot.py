@@ -42,6 +42,12 @@ if action == 'launch':
     status = os.environ['FIRST_STATUS'] if not jobs else 'SUCCEEDED'
     logs = io.StringIO()
     if status == 'SUCCEEDED':
+        def fake_bind(data, mountpoint):
+            mountpoint.parent.mkdir(parents=True, exist_ok=True)
+            if not mountpoint.is_symlink():
+                mountpoint.symlink_to(data, target_is_directory=True)
+            assert mountpoint.resolve() == data.resolve()
+        remote.mount_readonly = fake_bind
         os.chdir(task['workdir'])
         with contextlib.redirect_stdout(logs):
             asyncio.run(remote.run(request))

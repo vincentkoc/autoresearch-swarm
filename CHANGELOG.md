@@ -359,6 +359,9 @@
   same trial ID. A superseded worker cannot replace the accepted result.
   Use the original release for inactive legacy workspaces.
 
+- Add a local campaign dry run for the local, SSH pool and SkyPilot backends
+  and a [real-GPU qualification checklist](docs/gpu-qualification.md).
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance

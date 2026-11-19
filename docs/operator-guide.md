@@ -123,6 +123,9 @@ Use the backend's stop and inventory operations for the campaign it owns.
 Review the listed resources before cleanup. A failed training command
 provides diagnostic evidence for a retry.
 
+Rehearse staging, recovery and cleanup locally before measuring time to first
+trial and device utilization on hardware. [GPU qualification checklist](gpu-qualification.md)
+
 ## Read earlier records
 
 The native controller SQLite adapter supports `Database.backup(destination)`.
