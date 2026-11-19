@@ -136,13 +136,14 @@ async def ask_agent(
     jobs.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=role + "-", dir=jobs) as temporary:
         heartbeat = Path(temporary) / "heartbeat.json"
+        deadline = time.monotonic() + timeout
         heartbeat.write_text(json.dumps({"role": role, "deadline": time.time() + timeout}))
-        deadline = asyncio.get_running_loop().time() + timeout
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
             "research_swarm.swarm.agents",
             str(heartbeat),
+            str(deadline),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -150,8 +151,10 @@ async def ask_agent(
         )
         completed = False
         try:
-            async with asyncio.timeout_at(deadline):
+            async with asyncio.timeout(deadline - time.monotonic()):
                 stdout, stderr = await process.communicate(payload)
+            if process.returncode == -signal.SIGALRM:
+                raise TimeoutError
             completed = True
             if process.returncode:
                 return {
@@ -171,6 +174,10 @@ async def ask_agent(
 
 if __name__ == "__main__":
     try:
+        # The caller may be killed while the provider is blocked inside model code.
+        signal.signal(signal.SIGALRM, signal.SIG_DFL)
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGALRM})
+        signal.setitimer(signal.ITIMER_REAL, max(1e-6, float(sys.argv[2]) - time.monotonic()))
         asyncio.run(_reply(Path(sys.argv[1])))
     except Exception as exc:
         # Provider output may contain task data. Report the error class without echoing it.
