@@ -157,9 +157,14 @@ def test_failed_confirmation_remains_consumed(tmp_path):
     assert reopened.consider("one", "base").promoted
 
 
-def test_restart_after_exit_cannot_repeat_an_unfinished_confirmation(tmp_path):
+@pytest.mark.parametrize(
+    "interrupted_role,selection_looks", [("selection", 3), ("confirmation", 4)]
+)
+def test_restart_after_exit_cannot_repeat_a_held_out_look(
+    tmp_path, interrupted_role, selection_looks
+):
     def crash(key, role, members, seed):
-        if role == "confirmation":
+        if key == "two" and role == interrupted_role and (role == "confirmation" or seed == 1):
             raise SystemExit
         return measure(key, role, members, seed)
 
@@ -167,10 +172,50 @@ def test_restart_after_exit_cannot_repeat_an_unfinished_confirmation(tmp_path):
     interrupted.calibrate()
     with pytest.raises(SystemExit):
         interrupted.consider("two", "base")
+    before = interrupted.look_counts()
+    assert before["selection"] == selection_looks
     resumed = study(tmp_path, measure)
     refused = resumed.consider("two", "base")
     assert not refused.promoted and "consumed" in refused.error
-    assert resumed.look_counts()["confirmation"] == 1
+    assert resumed.look_counts() == before
+    assert resumed.consider("one", "base").promoted
+    assert resumed.look_counts()["selection"] == selection_looks + 4
+
+
+def test_resume_finishes_a_scored_comparison_without_more_looks(tmp_path, monkeypatch):
+    interrupted = study(tmp_path, measure)
+    interrupted.calibrate()
+
+    def exit_before_decision_is_saved(*args):
+        raise SystemExit
+
+    monkeypatch.setattr(interrupted, "_put", exit_before_decision_is_saved)
+    with pytest.raises(SystemExit):
+        interrupted.consider("two", "base")
+    before = interrupted.look_counts()
+    resumed = study(tmp_path, measure)
+    assert resumed.consider("two", "base").promoted
+    assert resumed.look_counts() == before
+
+
+def test_legacy_unfinished_confirmation_skips_selection_on_resume(tmp_path):
+    original = study(tmp_path, measure)
+    original.calibrate()
+    # Prior ledgers identified the confirmation recipe but not the selection pair.
+    with sqlite3.connect(original.path) as db:
+        db.executemany(
+            "INSERT INTO panel_looks(role, candidate, seed, score) VALUES (?, ?, ?, ?)",
+            [
+                ("selection", key, seed, float(key == "two"))
+                for seed in (0, 1)
+                for key in ("two", "base")
+            ]
+            + [("confirmation", "two", 0, None)],
+        )
+    before = original.look_counts()
+    resumed = study(tmp_path, measure)
+    assert resumed.consider("two", "base").reason == "evaluation_failed"
+    assert resumed.look_counts() == before
 
 
 def test_benchmark_entry_point_calibrates_shares_holdouts_and_resumes(tmp_path):

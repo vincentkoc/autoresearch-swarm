@@ -36,6 +36,10 @@
 - Model editors receive only the campaign's declared search metric in proposal
   history. Worker results retain their auxiliary measurements for reporting.
 
+- Resuming a held-out comparison reuses its completed selection measurements.
+  An interrupted selection look stays consumed. A different comparison gets
+  its own paired measurements.
+
 - `research swarm notify` journals hourly digests, selected-score targets and low
   trial throughput in the operator's timezone. Concurrent watchers share the journal.
 

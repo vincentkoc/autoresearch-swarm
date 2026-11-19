@@ -163,7 +163,7 @@ class PanelStudy:
                 (key, json.dumps(asdict(value), allow_nan=False)),
             )
 
-    def _reserve(self, role: Role, key: str, seed: int) -> int:
+    def _reserve(self, role: Role, key: str, seed: int, replay_key: str | None = None) -> int:
         with self._db() as db:
             row = db.execute(
                 "INSERT INTO panel_looks(role, candidate, seed) VALUES (?, ?, ?) RETURNING id",
@@ -171,6 +171,8 @@ class PanelStudy:
             ).fetchone()
             assert row is not None
             look_id = int(row[0])
+            if replay_key is not None:
+                db.execute("INSERT INTO panel_state VALUES (?, ?)", (replay_key, str(look_id)))
             limit = self.look_limits.get(role)
             if limit is not None:
                 count = db.execute(
@@ -182,8 +184,25 @@ class PanelStudy:
             )
         return look_id
 
-    def _measure(self, role: Role, key: str, seed: int) -> float:
-        look_id = self._reserve(role, key, seed)
+    def _measure(
+        self, role: Role, key: str, seed: int, *, comparison: tuple[str, str] | None = None
+    ) -> float:
+        replay_key = None
+        if comparison is not None:
+            # The comparison lock spans lookup, reservation and evaluation. Store the
+            # reservation with the look so a restart can distinguish it from a new pair.
+            replay_key = json.dumps([role, *comparison, key, seed])
+            with self._db() as db:
+                row = db.execute(
+                    """SELECT l.score FROM panel_state s JOIN panel_looks l ON l.id = s.value
+                       WHERE s.key = ?""",
+                    (replay_key,),
+                ).fetchone()
+            if row is not None:
+                if row[0] is None:
+                    raise PanelEvaluationError(f"{role} look consumed without a result")
+                return float(row[0])
+        look_id = self._reserve(role, key, seed, replay_key)
         try:
             score = float(self.evaluate(key, role, self.panels.members(role), seed))
         except Exception as exc:
@@ -288,9 +307,23 @@ class PanelStudy:
             return result
 
     def _compare(self, key: str, reference: str, sign: int, calibration: Calibration) -> Decision:
+        pair = (key, reference)
+        # Older interrupted studies may have consumed confirmation before they
+        # recorded which comparison opened the selection looks.
+        with self._db() as db:
+            unfinished = db.execute(
+                """SELECT 1 FROM panel_looks WHERE role = 'confirmation' AND score IS NULL
+                   AND candidate IN (?, ?) LIMIT 1""",
+                pair,
+            ).fetchone()
+        if unfinished is not None:
+            raise PanelEvaluationError("confirmation look consumed without a result")
         gains = [
             sign
-            * (self._measure("selection", key, seed) - self._measure("selection", reference, seed))
+            * (
+                self._measure("selection", key, seed, comparison=pair)
+                - self._measure("selection", reference, seed, comparison=pair)
+            )
             for seed in self.seeds
         ]
         selection_gain = statistics.mean(gains)
