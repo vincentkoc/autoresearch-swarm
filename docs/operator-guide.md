@@ -75,21 +75,44 @@ Resume an interrupted campaign with its original spec and queue.
 
 ## Inspect the panel study
 
-The benchmark CLI returns `calibration`, `panel_looks` and `finalists`.
-Its default file lives under `.research/benchmarks/`. A worker panel policy
-uses a campaign-specific file under `.research/panels/` in the task directory.
+The supplied YAML campaign uses `benchmarks.study:worker_policy`. Its study
+lives under `.research/panels/` in the task directory. The filename is the
+SHA-256 digest of the campaign ID followed by `.sqlite`.
 
 A look reservation counts an exposure even if evaluation later fails.
 Read the cumulative counts for overuse and check the reason for each
 promotion decision. A rejected selection saves the confirmation cases.
 Confirmation can also reject a candidate that passed selection.
 
-Use the exact study path for a read-only query.
+Run this from the repository root after the supplied program campaign. It
+prints the exposure counts and each stored promotion decision with its recipe.
 
 ~~~sh
-sqlite3 -readonly .research/benchmarks/program-cpu-small.sqlite \
-  'SELECT role,count(*) FROM panel_looks GROUP BY role;'
+uv run --no-sync python - <<'PYTHON'
+from contextlib import closing
+from hashlib import sha256
+import json
+from pathlib import Path
+import sqlite3
+
+campaign = "program-normalization"
+filename = sha256(campaign.encode()).hexdigest() + ".sqlite"
+study = (Path(".research/panels") / filename).resolve()
+with closing(sqlite3.connect(study.as_uri() + "?mode=ro", uri=True)) as db:
+    for role, count in db.execute("SELECT role,count(*) FROM panel_looks GROUP BY role"):
+        print(role, count)
+    for recipe, decision in db.execute("""
+        SELECT json_extract(key, '$[1]'), value FROM panel_state
+        WHERE json_type(value, '$.promoted') IS NOT NULL ORDER BY rowid
+    """):
+        print(json.dumps({"recipe": json.loads(recipe), "decision": json.loads(decision)}))
+PYTHON
 ~~~
+
+Standalone benchmark comparisons report `calibration`, `panel_looks` and
+`finalists` in their JSON output. Their studies live under
+`.research/benchmarks/`. The default v1 program comparison uses
+`program-cpu-small.sqlite` in that directory.
 
 An unreadable result after a confirmation reservation leaves that look
 consumed. Preserve its study file. Inspect the failed scoring operation
@@ -127,11 +150,6 @@ Rehearse staging, recovery and cleanup locally before measuring time to first
 trial and device utilization on hardware. [GPU qualification checklist](gpu-qualification.md)
 
 ## Read earlier records
-
-The native controller SQLite adapter supports `Database.backup(destination)`.
-Choose a new destination path. The operation writes a consistent image of
-the database and refuses an existing file. Back up external artifacts
-separately. Preserve the swarm queue and its panel study as separate stores.
 
 Older controller commands use receipts and a separate event model. Open
 their versioned reference when inspecting an existing manifest-based run.

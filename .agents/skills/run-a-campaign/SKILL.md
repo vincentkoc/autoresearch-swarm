@@ -8,7 +8,9 @@ checkout. Use the requested task, device, panel split and budget. For a local
 interface check, run the included program campaign.
 
 Preserve the campaign ID, spec, queue and panel history when resuming.
-Report the stop reason, completed trials, failed or lost attempts and selected
-candidate. Report the held-out decision when the campaign uses panels.
-Use the [operator guide](../../../docs/operator-guide.md) to diagnose a failed
+Report the stop reason, submitted trials, failed or lost attempts and selected
+candidate from the CLI summary. Use the queue status counts for completed
+trials. Report the search score and the measured `confirmed_score` separately.
+For the supplied panel policy, the [operator guide](../../../docs/operator-guide.md)
+shows how to read the stored held-out decision. Use it to diagnose a failed
 attempt or a campaign that cannot dispatch.

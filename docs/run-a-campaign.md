@@ -19,7 +19,10 @@ and confirmation cases before changing the selected trial.
 Inspect the JSON output. `trials` counts submitted trials. `attempts` includes
 retries. `failed` and `lost` count unsuccessful observations. `selected`
 identifies the chosen recipe, its search score and the number of replicates.
-The normalized program should pass all search cases.
+`confirmed_score` reports the selected recipe's stored held-out measurement
+when the panel policy supplies one. The normalized program should pass all
+search cases. To inspect its promotion decision and exposure counts, use the
+[operator guide's panel query](operator-guide.md#inspect-the-panel-study).
 
 Run the same command again to resume. The queue restores completed trials,
 and the panel study reuses recorded confirmation scores. Choose a new

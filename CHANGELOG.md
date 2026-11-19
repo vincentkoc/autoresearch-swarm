@@ -15,6 +15,9 @@
   the 12 top-level CLI commands, 23 executable paths and six campaign tables.
   Update report and MLX examples to use the current CLI.
 
+- Correct the operator guide's panel query for the supplied YAML campaign and
+  show where to read its held-out score and promotion decision.
+
 - Apply revision-pinned source diffs to native training stages. The original
   evaluator scores the artifacts produced by the edited training code.
 
