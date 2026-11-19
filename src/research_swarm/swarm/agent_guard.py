@@ -13,7 +13,12 @@ from pathlib import Path
 
 def record_outcome(heartbeat: Path, status: str) -> None:
     """Publish one complete terminal record even if the caller and guard race at expiry."""
-    job = json.loads(heartbeat.read_text())
+    try:
+        metadata = heartbeat.with_name("job.json").read_text()
+    except FileNotFoundError:
+        # Jobs started by an older launcher kept metadata only in the heartbeat.
+        metadata = heartbeat.read_text()
+    job = json.loads(metadata)
     outcome = {"role": job["role"], "deadline": job["deadline"], "status": status}
     staging = heartbeat.with_name(f".outcome-{os.getpid()}.tmp")
     staging.write_text(json.dumps(outcome))
