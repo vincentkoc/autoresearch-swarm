@@ -26,6 +26,9 @@
 - Share committed-manifest resolution between explicit and manifest-selected
   Git revisions in project capture and registration.
 
+- Use the same exclusive output and disk-sync handling when capturing source
+  bundles from Git and from a working directory.
+
 - Report the fraction of returned proposer candidates admitted to a new campaign,
   including duplicate and invalid entries in the denominator. Earlier campaigns
   retain an unavailable rate.

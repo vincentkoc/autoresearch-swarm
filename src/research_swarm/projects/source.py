@@ -254,6 +254,21 @@ def _selected_files(root: Path, patterns: tuple[str, ...]) -> Iterable[tuple[str
                 yield relative, path
 
 
+@contextmanager
+def _bundle_output(destination: Path) -> Iterator[IO[bytes]]:
+    created = False
+    try:
+        with destination.open("xb") as output:
+            created = True
+            yield output
+            output.flush()
+            os.fsync(output.fileno())
+    except BaseException:
+        if created:
+            destination.unlink(missing_ok=True)
+        raise
+
+
 def bundle_directory(root: Path, destination: Path, *, paths: tuple[str, ...]) -> SourceManifest:
     """Capture explicitly selected working files; no Git revision is inferred."""
     from research_swarm.projects.native_files import SourceReader
@@ -261,39 +276,29 @@ def bundle_directory(root: Path, destination: Path, *, paths: tuple[str, ...]) -
     root = root.resolve(strict=True)
     if not root.is_dir() or destination.resolve().is_relative_to(root):
         raise ValueError("Bundle destination must be outside the source directory")
-    created = False
-    try:
-        with destination.open("xb") as output:
-            created = True
-            with (
-                SourceReader(root) as reader,
-                zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive,
-            ):
-                writer = _BundleWriter(archive)
-                for relative, path in sorted(_selected_files(root, paths)):
-                    before = path.lstat()
-                    if not stat.S_ISREG(before.st_mode):
-                        raise ValueError("Source entries must be regular files")
-                    with reader.open(relative) as source:
-                        opened = os.fstat(source.fileno())
-                        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
-                            raise ValueError("Source changed before it was read")
-                        writer.add(relative, source, opened.st_size, bool(opened.st_mode & 0o111))
-                        after = os.fstat(source.fileno())
-                        if (opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns) != (
-                            after.st_size,
-                            after.st_mtime_ns,
-                            after.st_ctime_ns,
-                        ):
-                            raise ValueError("Source changed while it was read")
-                manifest = writer.finish(None)
-            output.flush()
-            os.fsync(output.fileno())
-        return manifest
-    except BaseException:
-        if created:
-            destination.unlink(missing_ok=True)
-        raise
+    with (
+        _bundle_output(destination) as output,
+        SourceReader(root) as reader,
+        zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive,
+    ):
+        writer = _BundleWriter(archive)
+        for relative, path in sorted(_selected_files(root, paths)):
+            before = path.lstat()
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("Source entries must be regular files")
+            with reader.open(relative) as source:
+                opened = os.fstat(source.fileno())
+                if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                    raise ValueError("Source changed before it was read")
+                writer.add(relative, source, opened.st_size, bool(opened.st_mode & 0o111))
+                after = os.fstat(source.fileno())
+                if (opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns) != (
+                    after.st_size,
+                    after.st_mtime_ns,
+                    after.st_ctime_ns,
+                ):
+                    raise ValueError("Source changed while it was read")
+        return writer.finish(None)
 
 
 def _git_read(root: Path, arguments: list[str], *, limit: int, deadline: float) -> bytes:
@@ -423,25 +428,14 @@ def bundle_git(
         if size > 64 * CHUNK_SIZE or total > MAX_SOURCE_BYTES or len(selected) >= MAX_SOURCE_FILES:
             raise ValueError("Selected Git source exceeds its size or file-count limit")
         selected.append((name, raw_identifier.decode("ascii"), size, mode == b"100755"))
-    created = False
-    try:
-        with destination.open("xb") as output:
-            created = True
-            with zipfile.ZipFile(output, "w") as archive:
-                writer = _BundleWriter(archive)
-                for name, identifier, size, executable in sorted(selected):
-                    content = _git_read(
-                        root, ["cat-file", "blob", identifier], limit=size, deadline=deadline
-                    )
-                    writer.add(name, io.BytesIO(content), size, executable)
-                manifest = writer.finish(resolved)
-            output.flush()
-            os.fsync(output.fileno())
-        return manifest
-    except BaseException:
-        if created:
-            destination.unlink(missing_ok=True)
-        raise
+    with _bundle_output(destination) as output, zipfile.ZipFile(output, "w") as archive:
+        writer = _BundleWriter(archive)
+        for name, identifier, size, executable in sorted(selected):
+            content = _git_read(
+                root, ["cat-file", "blob", identifier], limit=size, deadline=deadline
+            )
+            writer.add(name, io.BytesIO(content), size, executable)
+        return writer.finish(resolved)
 
 
 @contextmanager
