@@ -21,6 +21,42 @@ def _metric(value: float | dict[str, float] | None, unit: str, detail: str) -> d
     return {"value": value, "unit": unit, "detail": detail}
 
 
+def _proposer_acceptance(db: sqlite3.Connection, campaign: str) -> dict[str, Any]:
+    # A pre-accounting campaign can have trials but no evidence of its rejected proposals.
+    created = db.execute(
+        "SELECT * FROM swarm_events WHERE campaign_id=? AND kind='created' ORDER BY id LIMIT 1",
+        (campaign,),
+    ).fetchone()
+    if created is None or dict(created).get("proposed_count") is None:
+        return {
+            **_metric(None, "%", "Proposal accounting was unavailable at campaign creation."),
+            "proposed": None,
+            "accepted": None,
+            "rejected": None,
+            "fraction": None,
+        }
+    proposed, accepted = db.execute(
+        "SELECT COALESCE(SUM(proposed_count),0), COALESCE(SUM(accepted_count),0) "
+        "FROM swarm_events WHERE campaign_id=? AND kind='proposal_batch'",
+        (campaign,),
+    ).fetchone()
+    fraction = accepted / proposed if proposed else None
+    rejected = proposed - accepted
+    return {
+        **_metric(
+            fraction * 100 if fraction is not None else None,
+            "%",
+            f"{accepted} accepted and {rejected} rejected out of {proposed} returned candidates."
+            if proposed
+            else "No candidates were returned for admission.",
+        ),
+        "proposed": proposed,
+        "accepted": accepted,
+        "rejected": rejected,
+        "fraction": fraction,
+    }
+
+
 def _cost_efficiency(
     db: sqlite3.Connection,
     campaign: str,
@@ -121,9 +157,7 @@ def read_kpis(
             "counts": failures,
             "finished_attempts": finished,
         },
-        "proposer_acceptance_rate": _metric(
-            None, "%", "The total number of proposals, including rejections, is unavailable."
-        ),
+        "proposer_acceptance_rate": _proposer_acceptance(db, campaign),
         "confirmation_pass_rate": _metric(
             None, "%", "Campaign-attributed confirmation passes and decisions are unavailable."
         ),

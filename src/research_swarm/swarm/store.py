@@ -7,7 +7,7 @@ import json
 import math
 import sqlite3
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import asdict, replace
 from decimal import Decimal
@@ -64,7 +64,9 @@ CREATE TABLE IF NOT EXISTS swarm_events (
     trial_id TEXT REFERENCES swarm_trials,
     attempt_id TEXT REFERENCES swarm_attempts,
     score REAL,
-    replicates INTEGER
+    replicates INTEGER,
+    proposed_count INTEGER,
+    accepted_count INTEGER
 );
 CREATE INDEX IF NOT EXISTS swarm_event_order ON swarm_events(campaign_id, kind, id);
 CREATE UNIQUE INDEX IF NOT EXISTS swarm_workload_start ON swarm_events(attempt_id)
@@ -182,6 +184,9 @@ class SQLiteStore:
                 db.execute("ALTER TABLE swarm_events ADD COLUMN score REAL")
             if "replicates" not in event_columns:
                 db.execute("ALTER TABLE swarm_events ADD COLUMN replicates INTEGER")
+            for column in ("proposed_count", "accepted_count"):
+                if column not in event_columns:
+                    db.execute(f"ALTER TABLE swarm_events ADD COLUMN {column} INTEGER")
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
@@ -221,7 +226,11 @@ class SQLiteStore:
                 (spec.campaign_id, spec.project_id, encoded),
             )
             if insert.rowcount:
-                _event(db, spec.campaign_id, "created")
+                db.execute(
+                    "INSERT INTO swarm_events(campaign_id,kind,at,proposed_count,accepted_count) "
+                    "VALUES(?, 'created', ?, 0, 0)",
+                    (spec.campaign_id, time.time()),
+                )
             else:
                 saved = self._saved_spec(db, spec.campaign_id)
                 if _json(asdict(CampaignSpec(**saved))) != encoded:
@@ -300,38 +309,85 @@ class SQLiteStore:
         with self._connection() as db:
             return _deadline(db, campaign_id, _spec(db, campaign_id).get("max_hours"))
 
-    def submit(self, trial: Trial) -> bool:
+    @staticmethod
+    def _submit(db: sqlite3.Connection, trial: Trial) -> bool:
         # Seed and fidelity hints belong to the trial, not the candidate's identity.
         candidate = replace(trial.candidate, seed=None, fidelity=None)
         encoded = _json(asdict(candidate))
         if not math.isfinite(trial.fidelity) or trial.fidelity <= 0:
             raise ValueError("Fidelity must be positive and finite")
+        existing = db.execute(_TRIAL + " WHERE trial_id=?", (trial.trial_id,)).fetchone()
+        if existing is not None:
+            if _trial(existing) != replace(trial, candidate=candidate):
+                raise ValueError(f"Conflicting trial {trial.trial_id}")
+            return False
+        spec = _spec(db, trial.campaign_id)
+        count = db.execute(
+            "SELECT count(*) FROM swarm_trials WHERE campaign_id=?", (trial.campaign_id,)
+        ).fetchone()[0]
+        if count >= spec["max_trials"]:
+            raise ValueError("Trial budget exhausted")
+        key = (trial.campaign_id, candidate.candidate_id)
+        db.execute("INSERT OR IGNORE INTO swarm_candidates VALUES(?,?,?)", (*key, encoded))
+        saved = db.execute(
+            "SELECT payload FROM swarm_candidates WHERE campaign_id=? AND candidate_id=?", key
+        ).fetchone()[0]
+        if saved != encoded:
+            raise ValueError(f"Conflicting candidate {candidate.candidate_id}")
+        db.execute(
+            "INSERT INTO swarm_trials(trial_id,campaign_id,candidate_id,seed,fidelity) "
+            "VALUES(?,?,?,?,?)",
+            (trial.trial_id, *key, trial.seed, trial.fidelity),
+        )
+        _event(db, trial.campaign_id, "submitted", trial.trial_id)
+        return True
+
+    def submit(self, trial: Trial) -> bool:
         with self._connection(write=True) as db:
-            existing = db.execute(_TRIAL + " WHERE trial_id=?", (trial.trial_id,)).fetchone()
-            if existing is not None:
-                if _trial(existing) != replace(trial, candidate=candidate):
-                    raise ValueError(f"Conflicting trial {trial.trial_id}")
-                return False
-            spec = _spec(db, trial.campaign_id)
-            count = db.execute(
-                "SELECT count(*) FROM swarm_trials WHERE campaign_id=?", (trial.campaign_id,)
-            ).fetchone()[0]
-            if count >= spec["max_trials"]:
-                raise ValueError("Trial budget exhausted")
-            key = (trial.campaign_id, candidate.candidate_id)
-            db.execute("INSERT OR IGNORE INTO swarm_candidates VALUES(?,?,?)", (*key, encoded))
-            saved = db.execute(
-                "SELECT payload FROM swarm_candidates WHERE campaign_id=? AND candidate_id=?", key
-            ).fetchone()[0]
-            if saved != encoded:
-                raise ValueError(f"Conflicting candidate {candidate.candidate_id}")
+            return self._submit(db, trial)
+
+    def submit_proposals(
+        self,
+        campaign: str,
+        proposed: int,
+        trials: Iterable[Trial],
+        *,
+        timed_out: bool,
+    ) -> list[tuple[str, bool]]:
+        """Commit one returned batch and its admissions together, including a valid prefix."""
+        if proposed < 0 or (timed_out and proposed):
+            raise ValueError("Invalid returned candidate count for this ask")
+        processed: list[tuple[str, bool]] = []
+        error: Exception | None = None
+        with self._connection(write=True) as db:
+            db.execute("SAVEPOINT candidate")
+            try:
+                for trial in trials:
+                    if trial.campaign_id != campaign:
+                        raise ValueError("Proposal belongs to a different campaign")
+                    processed.append((trial.trial_id, self._submit(db, trial)))
+                    db.execute("RELEASE candidate")
+                    db.execute("SAVEPOINT candidate")
+            except (TypeError, ValueError, OverflowError, sqlite3.IntegrityError) as exc:
+                db.execute("ROLLBACK TO candidate")
+                error = exc
+            db.execute("RELEASE candidate")
+            if len(processed) > proposed:
+                raise ValueError("Admissions exceeded the returned batch size")
             db.execute(
-                "INSERT INTO swarm_trials(trial_id,campaign_id,candidate_id,seed,fidelity) "
+                "INSERT INTO swarm_events(campaign_id,kind,at,proposed_count,accepted_count) "
                 "VALUES(?,?,?,?,?)",
-                (trial.trial_id, *key, trial.seed, trial.fidelity),
+                (
+                    campaign,
+                    "proposal_timeout" if timed_out else "proposal_batch",
+                    time.time(),
+                    proposed,
+                    sum(accepted for _, accepted in processed),
+                ),
             )
-            _event(db, trial.campaign_id, "submitted", trial.trial_id)
-            return True
+        if error is not None:
+            raise error
+        return processed
 
     def claim(
         self,
