@@ -119,10 +119,15 @@ class ResourcePool:
                             raise ValueError("GPU utilisation must be a fraction from 0 to 1")
                         if utilisation >= self._target:
                             continue
-                    used = sum(a.vram_mib for a in self._active if a.device == name)
+                    # A sibling can report a higher peak while comparable fits are still active.
+                    used = sum(
+                        max(a.vram_mib, a.fits * self._peaks.get((name, a.demand.gpu_profile), 0))
+                        for a in self._active
+                        if a.device == name and a.demand.gpu_profile is not None
+                    )
                     peak = self._peaks.get((name, demand.gpu_profile), capacity)
                     count = min(fits, (capacity - used) // peak) if peak else 0
-                    if count:
+                    if count > 0:
                         # Prefer the largest batch, then the tightest fit.
                         placements.append((-count, capacity - used - count * peak, name, peak))
                 if not placements:
