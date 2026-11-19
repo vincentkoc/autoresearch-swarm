@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Stabilize the offline SkyPilot reconnect test by launching its synthetic CLI
+  through the current Python interpreter.
+
 - Keep finite parameter campaigns running when both default bandit operators propose
   previously tried recipes. The next available grid recipe fills the open slot.
 

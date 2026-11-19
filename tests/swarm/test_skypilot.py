@@ -168,14 +168,17 @@ async def test_reconnect_never_resubmits_same_attempt_and_restores_capacity(
     sky = fake_sky(tmp_path, monkeypatch, "RUNNING")
 
     def backend() -> SkyPilotBackend:
-        return SkyPilotBackend(
+        instance = SkyPilotBackend(
             state=tmp_path,
-            sky=sky,
+            sky=sys.executable,
             placements=["aws/us-west-2"],
             idle_minutes=7,
             poll_seconds=0.05,
             max_workers=1,
         )
+        # Start the generated fake CLI with the existing interpreter.
+        instance.cli.argv.append(sky)
+        return instance
 
     owner = backend()
     spec, trial = campaign(tmp_path)
