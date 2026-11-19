@@ -171,6 +171,22 @@ def validate_mutation(
     return changed
 
 
+def _copy_entry(
+    source: IO[bytes], output: IO[bytes] | None, size: int, overflow_message: str
+) -> str | None:
+    """Return the digest of an exact-size stream, or None for an early EOF."""
+    digest = hashlib.sha256()
+    remaining = size
+    while block := source.read(CHUNK_SIZE):
+        remaining -= len(block)
+        if remaining < 0:
+            raise ValueError(overflow_message)
+        digest.update(block)
+        if output is not None:
+            output.write(block)
+    return "sha256:" + digest.hexdigest() if remaining == 0 else None
+
+
 class _BundleWriter:
     def __init__(self, archive: zipfile.ZipFile) -> None:
         self.archive = archive
@@ -190,24 +206,12 @@ class _BundleWriter:
         info = zipfile.ZipInfo(path, date_time=(1980, 1, 1, 0, 0, 0))
         info.create_system = 3
         info.external_attr = (stat.S_IFREG | (0o755 if executable else 0o644)) << 16
-        digest = hashlib.sha256()
-        copied = 0
         with self.archive.open(info, "w") as target:
-            while block := source.read(CHUNK_SIZE):
-                copied += len(block)
-                if copied > size:
-                    raise ValueError("Source changed while creating its bundle")
-                digest.update(block)
-                target.write(block)
-        if copied != size:
+            digest = _copy_entry(source, target, size, "Source changed while creating its bundle")
+        if digest is None:
             raise ValueError("Source changed while creating its bundle")
         self.entries.append(
-            SourceEntry(
-                path=path,
-                digest="sha256:" + digest.hexdigest(),
-                size_bytes=size,
-                executable=executable,
-            )
+            SourceEntry(path=path, digest=digest, size_bytes=size, executable=executable)
         )
         self.total += size
 
@@ -486,17 +490,11 @@ def inspect_bundle(bundle: Path | bytes) -> SourceManifest:
 
 
 def _verified_entry(archive: zipfile.ZipFile, entry: SourceEntry, output: IO[bytes] | None) -> None:
-    digest = hashlib.sha256()
-    copied = 0
     with archive.open(entry.path) as source:
-        while block := source.read(CHUNK_SIZE):
-            copied += len(block)
-            if copied > entry.size_bytes:
-                raise ValueError("Source entry exceeds its declared size")
-            digest.update(block)
-            if output is not None:
-                output.write(block)
-    if copied != entry.size_bytes or "sha256:" + digest.hexdigest() != entry.digest:
+        digest = _copy_entry(
+            source, output, entry.size_bytes, "Source entry exceeds its declared size"
+        )
+    if digest is None or digest != entry.digest:
         raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Source entry digest mismatch")
 
 
