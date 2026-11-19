@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Emit one campaign alert when two consecutive finished attempts fail or are
+  lost. A successful attempt resets the streak. Concurrent and restarted
+  watchers share the same alert and hourly digest journal.
+
 - Report the fraction of returned proposer candidates admitted to a new campaign,
   including duplicate and invalid entries in the denominator. Earlier campaigns
   retain an unavailable rate.
