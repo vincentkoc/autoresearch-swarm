@@ -52,63 +52,18 @@ uv pip install --python .research/mlx/venv/bin/python --require-hashes \
   -r examples/cpu_bigram/mlx-macos-cp312.lock
 ```
 
-This SDK example resolves the environment contract without creating a preliminary
-project, registers the selected interpreter, and starts one bounded campaign:
+Use the [engine registration procedure](engines.md#register-an-environment)
+with profile `mlx-metal`, the MLX interpreter (`--python`), and the environment
+contract from `research project register examples/cpu_bigram --manifest research_mlx.toml`.
+Pass `--memory-bytes 1073741824` to admit 1 GiB, as in the qualification test.
+The [registered MLX test](../tests/projects/test_mlx_workload.py) provides the
+campaign configuration and checks the outputs of both stages.
 
-```python
-import asyncio
-from pathlib import Path
-from tempfile import TemporaryDirectory
-
-from research_swarm import ResearchClient
-from research_swarm.engines.registration import register_environment
-from research_swarm.orchestration.bootstrap import RunOptions
-from research_swarm.orchestration.run import run_project
-from research_swarm.projects.capture import capture_project
-from research_swarm.projects.manifest import resolve_project
-
-source = Path("examples/cpu_bigram")
-root = Path(".research/mlx").absolute()
-with TemporaryDirectory() as temporary:
-    bundle = Path(temporary) / "source.zip"
-    capture_project(source, bundle, manifest_path="research_mlx.toml")
-    resolved = resolve_project(bundle, manifest_path="research_mlx.toml")
-
-registration = register_environment(
-    root / "engine.json",
-    profile="mlx-metal",
-    executable=root / "venv/bin/python",
-    environment_contracts=(resolved.environment_contract_digest,),
-    memory_bytes=1024 * 1024 * 1024,
-    probe_directory=root / "probes",
-)
-with ResearchClient.local(root / "state") as client:
-    result = asyncio.run(
-        run_project(
-            client,
-            source,
-            key="mlx-baseline",
-            options=RunOptions(manifest_path="research_mlx.toml", seed=7, max_trials=1),
-            registration=registration,
-        )
-    )
-    print(result.model_dump_json(indent=2))
-```
-
-The default machine registry remains shared across installations. A conflicting
-existing admission is a refusal, not permission to create another independent
-device pool. Registered capacity is scheduling admission, not an OS memory limit
-or a claim that unrelated native workloads are absent.
-
-The result remains `awaiting_completion`: an agent or operator selects its baseline
-and completes the campaign through the same API used by every other project.
-After setup, resume through the CLI with the same state, key, options and registration:
-
-```sh
-uv run research --state-dir .research/mlx/state run examples/cpu_bigram \
-  --manifest research_mlx.toml --key mlx-baseline --seed 7 --max-trials 1 \
-  --registration .research/mlx/engine.json
-```
+The campaign uses `resource: gpu`, the local backend with device `mps`, and
+`python -m research_swarm.swarm.native --manifest research_mlx.toml --registration FILE`
+as its workload command. The registration path is resolved from the workload
+directory. Run the saved campaign YAML with `research swarm run CAMPAIGN.yaml
+--db .research/mlx/campaign.sqlite`. Repeat the command to resume.
 
 ## Local qualification
 
@@ -117,7 +72,7 @@ interpreter. Default CPU CI does not import or install MLX:
 
 ```sh
 RESEARCH_MLX_TESTS=1 RESEARCH_MLX_PYTHON="$PWD/.research/mlx/venv/bin/python" \
-  uv run pytest -q -s tests/projects/test_mlx_workload.py
+  uv run python -m pytest -q -s tests/projects/test_mlx_workload.py
 ```
 
 Local verification on 2026-10-30 used an Apple M5 Max, macOS 26.4, Python 3.12.13,
