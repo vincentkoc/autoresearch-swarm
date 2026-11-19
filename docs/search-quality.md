@@ -140,3 +140,5 @@ We predeclared one change and compared it with the three retained coverage-corre
 | Mean | 0.910156 | 0.917969 | +0.007813 | 0.942708 | 0.933594 |
 
 On seed 47, trial 9 increased the incumbent's width from 16 to 32. Trial 12 promoted that recipe, tying greedy. On seed 11, random's winning recipe differed from the swarm incumbent only in learning rate. On seed 23, it differed only in width. The three local proposals on each seed sampled other neighbors. The measured mean gain came entirely from seed 47. The swarm still trails both baselines in mean search accuracy. The original failed acceptance remains recorded. This experiment used zero new selection or confirmation evaluations.
+
+The prospective protocol tests whether distributing local proposals across eligible coordinates improves the remaining MLP search gap. [Frozen protocol and retained evidence](mlp-local-search-protocol.md)
