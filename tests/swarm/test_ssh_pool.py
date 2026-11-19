@@ -24,9 +24,7 @@ def executable(directory: Path, name: str, body: str) -> str:
     return str(path)
 
 
-async def test_pool_resumes_protected_host_and_runs_again_after_failed_trial(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def fake_pool_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[str, str]:
     monkeypatch.setenv("FIXTURE", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
     aws = executable(
@@ -54,6 +52,10 @@ from research_swarm.swarm.backends import ssh_pool
 root = Path(os.environ["FIXTURE"])
 assert sys.argv[-2] == "demo-worker"
 assert sys.argv[-1] == "python3 -m research_swarm.swarm.backends.ssh_pool run"
+drop = root / "drop-next-ssh"
+if drop.exists():
+    drop.unlink()
+    sys.exit(255)
 def fake_bind(data, mountpoint):
     mountpoint.mkdir(parents=True, exist_ok=True)
     if not (mountpoint / "points").exists():
@@ -71,6 +73,13 @@ assert sys.argv[1:] == ["is-active", "--quiet", "research-swarm-keeper.service"]
 """,
     )
     (tmp_path / "activity").touch()
+    return aws, ssh
+
+
+async def test_pool_resumes_protected_host_and_runs_again_after_failed_trial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    aws, ssh = fake_pool_commands(tmp_path, monkeypatch)
     source = tmp_path / "source"
     source.mkdir()
     (source / "points").write_text("13")
