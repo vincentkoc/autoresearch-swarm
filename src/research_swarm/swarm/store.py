@@ -331,8 +331,9 @@ class SQLiteStore:
                     raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
             if policy is None:
                 return None
-            expected, selected = db.execute(
-                "SELECT panel_binding, selected_trial_id FROM swarm_campaigns WHERE campaign_id=?",
+            stored_spec, expected, selected = db.execute(
+                "SELECT spec, panel_binding, selected_trial_id FROM swarm_campaigns "
+                "WHERE campaign_id=?",
                 (spec.campaign_id,),
             ).fetchone()
             bind = getattr(policy, "bind_campaign", None)
@@ -351,7 +352,7 @@ class SQLiteStore:
                 ).fetchone()
             ):
                 prior = "started"
-            digest = hashlib.sha256(encoded.encode()).hexdigest()
+            digest = hashlib.sha256(stored_spec.encode()).hexdigest()
             identity = bind(spec.campaign_id, digest, expected, prior)
             if not isinstance(identity, str) or not identity or expected not in (None, identity):
                 raise ValueError("Campaign panel study identity changed")

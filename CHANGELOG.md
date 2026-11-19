@@ -4,7 +4,8 @@
 
 - Report the known cost subtotal and missing rates when recorded usage is only
   partly priced. Cost per improvement stays unavailable until the total is known.
-  Reopening a campaign accepts equal integer and floating-point price rates.
+  Reopening a campaign accepts equal integer and floating-point price rates
+  and preserves the original panel study binding.
   Direct campaign registration rejects negative prices before writing to the queue.
 
 - Add a generated raw-window example that fits per-user channel statistics on
