@@ -65,6 +65,32 @@ def test_atomic_concurrent_admission_across_devices() -> None:
     assert pool.acquire(Demand(gpu_profile="p")) is None
 
 
+@pytest.mark.parametrize("active_fits", [1, 2])
+def test_rising_peak_reduces_headroom_for_all_new_fits(active_fits: int) -> None:
+    pool = ResourcePool(devices_mib={"device": 100}, target=0.8)
+    model, other = Demand(gpu_profile="model"), Demand(gpu_profile="other")
+    for demand, peak in ((model, 20), (other, 10)):
+        calibration = pool.acquire(demand)
+        assert calibration is not None
+        pool.release(calibration, peak_vram_mib=peak)
+
+    sibling = pool.acquire(model, max_fits=active_fits)
+    measured = pool.acquire(model)
+    assert sibling is not None and sibling.fits == active_fits and measured is not None
+    pool.release(measured, peak_vram_mib=50)
+    assert pool.acquire(model) is None
+    spare = pool.acquire(other, max_fits=8)
+    if active_fits == 1:
+        assert spare is not None and (spare.fits, spare.vram_mib) == (3, 30)
+        pool.release(spare)
+    else:
+        assert spare is None
+
+    pool.release(sibling, peak_vram_mib=20)
+    next_fit = pool.acquire(model, max_fits=8)
+    assert next_fit is not None and (next_fit.fits, next_fit.vram_mib) == (1, 50)
+
+
 def test_invalid_requests_and_measurements() -> None:
     with pytest.raises(ValueError):
         Demand()

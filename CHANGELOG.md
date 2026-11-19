@@ -310,6 +310,9 @@
 - Add atomic CPU and LLM slot admission and GPU packing based on observed per-fit
   VRAM, with a utilisation target and a batch size for multi-fit workloads.
 
+- When a fit reports a higher peak VRAM, count that peak for comparable fits
+  still running on the same device before admitting more work.
+
 - Report the watchdog timeout duration when a swarm worker stops a stalled attempt.
 
 - **Breaking:** Retire `research evaluation advance` and its evaluator-token option.
