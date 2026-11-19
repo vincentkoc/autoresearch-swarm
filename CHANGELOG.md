@@ -38,6 +38,10 @@
   benchmark harness. Archived benchmark results and standalone project receipt
   readers remain available.
 
+- `research swarm advise` runs a local proposer, diagnoser or reporter against
+  campaign observations. Each request has a process deadline and live heartbeat.
+  The deterministic fake runs offline.
+
 - **Breaking:** `research init` opens a private six-table campaign workspace.
   Use `research swarm run` for execution. Projects, artifacts, reports, budgets,
   HTTP campaign reads and local MCP now use `swarm.sqlite`. The SDK provides
