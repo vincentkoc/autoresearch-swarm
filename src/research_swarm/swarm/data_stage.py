@@ -171,7 +171,7 @@ def _publish(source: Path, target: Path, threads: int, *, expected: Stage | None
                 )
                 if expected is not None and stage != expected:
                     raise ValueError("local copy differs from the published data stage")
-                _seal_directories(snapshot / "data")
+                _verify_data(snapshot / "data", stage, threads)
                 (snapshot / "stage.json").write_text(json.dumps(asdict(stage)), encoding="utf-8")
                 snapshot.rename(target)
         return stage
