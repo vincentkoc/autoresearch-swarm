@@ -5,7 +5,7 @@
 From the repository root with development dependencies installed, run:
 
 ```sh
-uv run --locked --offline pytest -q tests/swarm/test_backend_qualification.py
+uv run --locked --offline python -m pytest -q tests/swarm/test_backend_qualification.py
 ```
 
 | Backend | Injected condition | Expected evidence |
