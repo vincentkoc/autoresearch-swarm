@@ -1,0 +1,3300 @@
+{
+  "protocol_sha256": "d55bdd42cbf1e936a277568d71bfa5687ca138f40720c6d98240e34799ff8818",
+  "control_revision": "158d29f8af81790ef697473e90cca180a18dd610",
+  "implementation_revision": "ea9f8b03b613432ce53972a1310647dc239d2c53",
+  "python": "3.12.14",
+  "torch": "2.15.0",
+  "device": "cpu",
+  "torch_threads": 1,
+  "training_stream": 17,
+  "search_stream": 3413209931,
+  "seeds": [
+    3884184493,
+    237053528,
+    4205356979
+  ],
+  "trials_per_arm": 12,
+  "complete": true,
+  "comparisons": {
+    "control": {
+      "paired_differences": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "mean_difference": 0.0
+    },
+    "random": {
+      "paired_differences": [
+        0.0,
+        0.05859375,
+        -0.01953125
+      ],
+      "mean_difference": 0.013020833333333334
+    },
+    "greedy": {
+      "paired_differences": [
+        0.00390625,
+        0.12890625,
+        -0.02734375
+      ],
+      "mean_difference": 0.03515625
+    }
+  },
+  "prediction_passed": false,
+  "implementation_file_sha256": "50b7e0c3f75ea72096813ab78fd9a8e9325950b0df87896605c592cf6a1c7276",
+  "arm_records": [
+    {
+      "arm": "control",
+      "seed": 3884184493,
+      "seconds": 43.3773744169157,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 9,
+      "rung_counts": {
+        "0.5": 9,
+        "1.0": 3
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 180,
+      "best_full_search_accuracy": 0.91796875,
+      "local_moves": [
+        {
+          "after_trials": 6,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "16"
+          },
+          "candidate_id": "67795ff64df5444797b98d49138da29a"
+        },
+        {
+          "after_trials": 8,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "learning_rate": 1
+          },
+          "chosen_coordinate": "activation",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "candidate_id": "149471b757254645ab20b984d3fc52f1"
+        },
+        {
+          "after_trials": 10,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "learning_rate": 1,
+            "activation": 1
+          },
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "candidate_id": "c107f87b9d384b12b4ddd7f63d0026f7"
+        }
+      ],
+      "trials": [
+        {
+          "trial_id": "1cd906cf84c2584985f5225a49704244",
+          "candidate_id": "initial",
+          "attempt_id": "67a22ba17c88426c82f5da97311fc191",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.484375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "08275c6c6e4057179f8625dfac501b5e",
+          "candidate_id": "9f7a63e7511342c49c2f09ff79d80512",
+          "attempt_id": "de5eecb4caff40e2861f366a61d2ada7",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.83203125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "141e14120fa753debd91578a6fe32301",
+          "candidate_id": "4654b3f21629433983a2e3bdbbe502c1",
+          "attempt_id": "369ccd0999c840ee9c100a24dc90fecd",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "8"
+          },
+          "operator": "crossover",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.70703125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "5b558b81b65f569782d23dbf473f04bb",
+          "candidate_id": "573d754042b641e58569eb600e117484",
+          "attempt_id": "580397c1910c40889ea04bf7bacd4421",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.91796875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "83838baad06f54628220ffadbb257dea",
+          "candidate_id": "f37a4a81b7354ebabfe9793a753fc711",
+          "attempt_id": "ce87f837aca446269c66d47c52998aa5",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.66015625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "e6b01dc673755e24a864d8e5d68bc2c8",
+          "candidate_id": "0fca921d8b32493398e9110386265eea",
+          "attempt_id": "c8e7bf9bea404fa7b4c2de1cc3ad7ee0",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.609375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "5e73cbdd27ed5d46855e5a9ac1f4063f",
+          "candidate_id": "67795ff64df5444797b98d49138da29a",
+          "attempt_id": "db923118b08b4cf99484f7b642599cbb",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.59765625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "8aa15ed6cdac5fe5a8c893881eed6ca5",
+          "candidate_id": "e091b8b24a694888a2745cd4294f09be",
+          "attempt_id": "71675c0628f34b26b05fe7e8d4e14023",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "8"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.76953125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "24264e9ca7b95bc289d774297d52a388",
+          "candidate_id": "149471b757254645ab20b984d3fc52f1",
+          "attempt_id": "eb076c77e1ca4cee8688d1af8441f55a",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.83984375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "571b31e7f8315ba2a33226b1c4344a11",
+          "candidate_id": "27c3dee7e4574360b1392561d4e25978",
+          "attempt_id": "eba27e3834934a258f444dbcfce420ff",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.001",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.6015625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "6d4d21c6081951e1be738a6830e2fd55",
+          "candidate_id": "c107f87b9d384b12b4ddd7f63d0026f7",
+          "attempt_id": "f6a0a497ec094e59b66f5d445cdf1de4",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.7734375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "8fbb933bfa37583daf888cb3674ee876",
+          "candidate_id": "c6c9881b7c1a44138730b06231d50edc",
+          "attempt_id": "02f68cc231474e259ed897746542aef0",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.91796875,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        null,
+        null,
+        null,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875
+      ]
+    },
+    {
+      "arm": "challenger",
+      "seed": 3884184493,
+      "seconds": 42.793306500068866,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 9,
+      "rung_counts": {
+        "0.5": 9,
+        "1.0": 3
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 180,
+      "best_full_search_accuracy": 0.91796875,
+      "local_moves": [
+        {
+          "after_trials": 6,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "16"
+          },
+          "candidate_id": "e7e59478415b4dc2a4af16a058fe87ad"
+        },
+        {
+          "after_trials": 8,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "learning_rate": 1
+          },
+          "chosen_coordinate": "activation",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "candidate_id": "18c76f42b34340e28e67ef900b7082c4"
+        },
+        {
+          "after_trials": 10,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "learning_rate": 1,
+            "activation": 1
+          },
+          "chosen_coordinate": "width",
+          "issued_recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "candidate_id": "09d731edc54249a594b8f8c099f46ef2"
+        }
+      ],
+      "trials": [
+        {
+          "trial_id": "43904656005f52229252918c0ec597e2",
+          "candidate_id": "initial",
+          "attempt_id": "729f9fd930b9400e8fda40b506bd1fe2",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.484375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "931e1bdddd1f598bb353dbcc63ed35ef",
+          "candidate_id": "58070bd3ab984553a224950c1eefaecf",
+          "attempt_id": "aa39e0ff01e24a5d98865af59941a2d8",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.83203125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "aa1496fa79cd5a7db9c7cd9a376c8caf",
+          "candidate_id": "59ce13cec14842ee8c46d50c36f44f82",
+          "attempt_id": "b29b2c8a4e5a438396f7846f92513276",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "8"
+          },
+          "operator": "crossover",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.70703125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "7f52dea209a558dba4508ddb1a67a93c",
+          "candidate_id": "c3a5383c482445f8b044feaf2776ba6a",
+          "attempt_id": "bc62baa593af47da84b73c8536171249",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.91796875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "544a860726125bd78b6b75f3185cefba",
+          "candidate_id": "c53ec3fb9d594ee58378dd17fdfd74d5",
+          "attempt_id": "32e6c959126f4ff4967a93bddb11243f",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.66015625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "c19b47f05942530eb0e41be4088b6056",
+          "candidate_id": "575f40508a9145efbeed6124e6fbaf76",
+          "attempt_id": "d650a07797c0475c9d7fc2803d6a78d7",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.609375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "923355a18f085370840e57741dae4200",
+          "candidate_id": "e7e59478415b4dc2a4af16a058fe87ad",
+          "attempt_id": "7d7870b338534edab6575d668cd84eb6",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.59765625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "ff59f4932ed15056b38dbc201a9a6a85",
+          "candidate_id": "a4bb06322ab74463aec5313d47492c68",
+          "attempt_id": "bf3f7db8352d4ca3a90244f5207a2c37",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "8"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.76953125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "bf1bc25691d1587f8a2763a7f13a89e0",
+          "candidate_id": "18c76f42b34340e28e67ef900b7082c4",
+          "attempt_id": "7970d417239648349351f9374bfc7320",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.83984375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "e95363bafcae5b22bc77d4c018c589da",
+          "candidate_id": "3a51d9e06c224ae8ad6837c78edb675b",
+          "attempt_id": "1bfdad8ed1394b6887b129013cda81bf",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.001",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.6015625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "571b603374bf5ab98663c8998b16fea3",
+          "candidate_id": "09d731edc54249a594b8f8c099f46ef2",
+          "attempt_id": "abdf8730de8b4712893d4d0ac4e32154",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.8515625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "52a03080da1c56ffa7539e192ed99e6a",
+          "candidate_id": "634ac6e538f145e8ad89cb25b90a587a",
+          "attempt_id": "584bf4b5e1f74ec6a9b06351a8b4c563",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.89453125,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        null,
+        null,
+        null,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875
+      ]
+    },
+    {
+      "arm": "random",
+      "seed": 3884184493,
+      "seconds": 43.62183895800263,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 11,
+      "rung_counts": {
+        "1.0": 12
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 288,
+      "best_full_search_accuracy": 0.91796875,
+      "local_moves": [],
+      "trials": [
+        {
+          "trial_id": "cfe964bad5255a8aa2177c10d6fb7262",
+          "candidate_id": "draw-0",
+          "attempt_id": "c68e60a827764c74a8504467570b735f",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.4921875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "90438f8b342e5238ba92d2904408b4f1",
+          "candidate_id": "draw-1",
+          "attempt_id": "ee3b6f0425514785894c1ea038e212b4",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.4921875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "a11463a8c3db58b3baa2e082485c9268",
+          "candidate_id": "draw-2",
+          "attempt_id": "15108de21ac44011bd81570d943ae0ad",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.53515625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "a20273ea7cb454968e82d980ed2eb702",
+          "candidate_id": "draw-3",
+          "attempt_id": "6a5b04b3e5794598a087b28ed3813c6d",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.59765625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "67b2578fa0265ced8bde21e191a968c2",
+          "candidate_id": "draw-4",
+          "attempt_id": "2ed377440c624dce9cf2c7777b1197b2",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.578125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "ef4101f51e3b527c9c96c8c2ab65e8b3",
+          "candidate_id": "draw-5",
+          "attempt_id": "5def8f29d4f1431fbb3da9b21e91afa5",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.4921875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "e378edf422d651c88aa8703217ecbc40",
+          "candidate_id": "draw-6",
+          "attempt_id": "64a4b47f1e664721b55a8e5cb98432c2",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.86328125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "d8a07f7ae02a50b3b1e63ab2a838dfdb",
+          "candidate_id": "draw-7",
+          "attempt_id": "efc23276f7614c5aa1902f00c6b659e7",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.69921875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "798aa38beb345e03b545a088535a5f4e",
+          "candidate_id": "draw-8",
+          "attempt_id": "7baaee10307a4b36878864c3dcd7762d",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5078125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "a01c139598095f4fa7e1976245305594",
+          "candidate_id": "draw-9",
+          "attempt_id": "a3e24345247d45329032992148829305",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.9140625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "60aadecfaa47580b96539c1b0df9076d",
+          "candidate_id": "draw-10",
+          "attempt_id": "7a7d85cc80ef4a57ad7aa81b3b3e7058",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.91796875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "57fae8ec48bb512183126a16625b5ce6",
+          "candidate_id": "draw-11",
+          "attempt_id": "03d80be1030a430c8e5b43f195791ec7",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.67578125,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        0.4921875,
+        0.4921875,
+        0.53515625,
+        0.59765625,
+        0.59765625,
+        0.59765625,
+        0.86328125,
+        0.86328125,
+        0.86328125,
+        0.9140625,
+        0.91796875,
+        0.91796875
+      ]
+    },
+    {
+      "arm": "greedy",
+      "seed": 3884184493,
+      "seconds": 41.97857991605997,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 12,
+      "rung_counts": {
+        "1.0": 12
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 288,
+      "best_full_search_accuracy": 0.9140625,
+      "local_moves": [],
+      "trials": [
+        {
+          "trial_id": "7652064878be5eaa97b3f3d830911f02",
+          "candidate_id": "draw-0",
+          "attempt_id": "1613e6468b0d4a2fbbe716f353113f8e",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.4921875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "25be41d7652655ebad8a3f039dc03a0d",
+          "candidate_id": "draw-1",
+          "attempt_id": "581413310f5046779fc88f89d951333f",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.54296875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "2a85e59a8954564092c0909fca933b04",
+          "candidate_id": "draw-2",
+          "attempt_id": "292d4f7490c943e4970820c7779905ad",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.578125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "324626984f5f5813874f176bba63c097",
+          "candidate_id": "draw-3",
+          "attempt_id": "2588ede4a2334ace8d576dee808fe2b5",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.65625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "d225cb93fd3e53f3a10a5222f1806d09",
+          "candidate_id": "draw-4",
+          "attempt_id": "ad328eadd77643b0ab48a8c40b2f5fb0",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.90625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "6614591c133c596aacfe4a045a3d2054",
+          "candidate_id": "draw-5",
+          "attempt_id": "6af65deb282a486b9293225f9c296dae",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.9140625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "e53fd6c37c695e1b8bbc54799474227d",
+          "candidate_id": "draw-6",
+          "attempt_id": "ed5c02f7eae94bdc947f606b1020fce2",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.87890625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "cff47d0b53135c80bd4521ba06182650",
+          "candidate_id": "draw-7",
+          "attempt_id": "957d82a54a084142a337cdb5d36f1e14",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.81640625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "f45fbaf6592f566e8d2f9365f52429ad",
+          "candidate_id": "draw-8",
+          "attempt_id": "1668906316be4b56a81873a050ec55bb",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.86328125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "7ff9ac19806751a2b0403839b144ec3d",
+          "candidate_id": "draw-9",
+          "attempt_id": "75f5364bcd1c4856bdd97dfefade05e4",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "85f5d460302f5969848de5ca4e11a156",
+          "candidate_id": "draw-10",
+          "attempt_id": "7105a525b1d64ff78aa97bd0e364805e",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.75390625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "2bbb8dd53fb75a8a972a1fa87faee8bd",
+          "candidate_id": "draw-11",
+          "attempt_id": "ed1efcf86a9e4f4790453ada287f2e72",
+          "attempt_number": 1,
+          "seed": 3884184493,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5859375,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        0.4921875,
+        0.54296875,
+        0.578125,
+        0.65625,
+        0.90625,
+        0.9140625,
+        0.9140625,
+        0.9140625,
+        0.9140625,
+        0.9140625,
+        0.9140625,
+        0.9140625
+      ]
+    },
+    {
+      "arm": "control",
+      "seed": 237053528,
+      "seconds": 42.361515957978554,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 9,
+      "rung_counts": {
+        "0.5": 9,
+        "1.0": 3
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 180,
+      "best_full_search_accuracy": 0.9609375,
+      "local_moves": [
+        {
+          "after_trials": 6,
+          "incumbent": {
+            "width": "16",
+            "activation": "gelu",
+            "learning_rate": "0.02"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "candidate_id": "8ff2a6037f334230a9c69a6dae58355f"
+        },
+        {
+          "after_trials": 8,
+          "incumbent": {
+            "width": "64",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "candidate_id": "5701754623e146a7941ce2e51246956c"
+        },
+        {
+          "after_trials": 10,
+          "incumbent": {
+            "width": "64",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "learning_rate": 1
+          },
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "64"
+          },
+          "candidate_id": "1de6a605ac614f30acc7817835c78db1"
+        }
+      ],
+      "trials": [
+        {
+          "trial_id": "56b00617dfac5640959c2f6c2a74fb67",
+          "candidate_id": "initial",
+          "attempt_id": "b841d278129a4b5b91bc9ea7426d887d",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.58203125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "a4a7a924b5e559b0972a2f983fc9d94a",
+          "candidate_id": "3abb3f41c6c244549ef2eccbf41071fd",
+          "attempt_id": "2667401b98734592ac909c08e5d0b13c",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.69921875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "ba8cb135ae37560f963acaf22346a497",
+          "candidate_id": "b0e6ce8f57bc4daea53f2e33d6c619ff",
+          "attempt_id": "e4438c4c0e624b0ab2cc4158200513ac",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "8"
+          },
+          "operator": "crossover",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.6171875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "8d56980001975f6cb3181a66ed1753cf",
+          "candidate_id": "5e4720da31c149a4a9b748c771a6088f",
+          "attempt_id": "53ab74347d6648c0a9ca8c2548735ea3",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.8125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "a0fb3090c1f5508c93cb632129fda32a",
+          "candidate_id": "8e8372f388a44b42ae804f897b1143e8",
+          "attempt_id": "78d3c694967c483eb308a79a97df6436",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.84375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "05f6b528c8be53729a8e180e6a9743f9",
+          "candidate_id": "2822ba36961f481aa4194ce0579fb877",
+          "attempt_id": "4f0d3079992f42ec937aa9da80239ecc",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.56640625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "4e6071d949825ebaaa1cf3e1a0185fa6",
+          "candidate_id": "8ff2a6037f334230a9c69a6dae58355f",
+          "attempt_id": "dc41928da91a4c4fb78bc7fc40497288",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.828125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "39d3db288e7554c9ad418f50294c34cf",
+          "candidate_id": "db6c66ee906f481ba29ebcbeececf8cf",
+          "attempt_id": "7348421c2daf4936afc0a0103c05e19c",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.9609375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "4b1f6a39d9b759c1808fee090871240f",
+          "candidate_id": "5701754623e146a7941ce2e51246956c",
+          "attempt_id": "195350dadb8d4bb4bb727d928598704b",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.578125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "21d66b1dd9645e95bdee15a74f8f3b2f",
+          "candidate_id": "c2b8e179b60d4b38b3f809d31d01c8b9",
+          "attempt_id": "d7365d6727c04289be603727b09dcc3f",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.8828125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "bfb8a9cc6a2c5a269f9ea6b252c73035",
+          "candidate_id": "1de6a605ac614f30acc7817835c78db1",
+          "attempt_id": "a0a87c1e362c48aca7dc157c5a538c6a",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.66796875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "4745443498615c039b4d1a6a8c302b60",
+          "candidate_id": "3e3ed67eb633436db3bd2ca5fe601140",
+          "attempt_id": "51525d85400e4295a4202fda95266aa5",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.8984375,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        null,
+        null,
+        null,
+        0.8125,
+        0.8125,
+        0.8125,
+        0.8125,
+        0.9609375,
+        0.9609375,
+        0.9609375,
+        0.9609375,
+        0.9609375
+      ]
+    },
+    {
+      "arm": "challenger",
+      "seed": 237053528,
+      "seconds": 41.767413915949874,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 9,
+      "rung_counts": {
+        "0.5": 9,
+        "1.0": 3
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 180,
+      "best_full_search_accuracy": 0.9609375,
+      "local_moves": [
+        {
+          "after_trials": 6,
+          "incumbent": {
+            "width": "16",
+            "activation": "gelu",
+            "learning_rate": "0.02"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "candidate_id": "3bc42811912347d59bdb94c2757707c8"
+        },
+        {
+          "after_trials": 8,
+          "incumbent": {
+            "width": "64",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "learning_rate",
+          "issued_recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "candidate_id": "9ac0e210a10346a09564db225c7d539b"
+        },
+        {
+          "after_trials": 10,
+          "incumbent": {
+            "width": "64",
+            "activation": "relu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "learning_rate": 1
+          },
+          "chosen_coordinate": "activation",
+          "issued_recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "candidate_id": "46b9706b8ddd4b85823a2747e53c7fcf"
+        }
+      ],
+      "trials": [
+        {
+          "trial_id": "2e6fcfa92b6b54bbae996dd9f8dc2042",
+          "candidate_id": "initial",
+          "attempt_id": "238d4cf892f4473ca0e98a497616a594",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.58203125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "551c31f7d1ea5c5aa806f70af311f8ca",
+          "candidate_id": "7bbc1dd236eb44439c075c3ab1066e1e",
+          "attempt_id": "da74025660c1430b8ef478fc45bada86",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.69921875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "093be369bfb25bdeafd1ae8faae7c247",
+          "candidate_id": "9efa0aa6b5314a76a9951ba9dbd25334",
+          "attempt_id": "41e46293ad6f48bd97e023cfbd36b10e",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "8"
+          },
+          "operator": "crossover",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.6171875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "eea1d58ea8a358348e78b2fc7858532e",
+          "candidate_id": "15e6c0ce5c7246c282f651558ba165fc",
+          "attempt_id": "2f62eeb08a144e889eb937d8b868e19d",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.8125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "e077ae89665a55f3b0efd3d2e7f6c7de",
+          "candidate_id": "1059b9c47473468daf6aee58fc94ddd3",
+          "attempt_id": "12d6103724044a0b93ff1aa78cf5d4d5",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.84375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "a99fb0de99935eacaa71fc9dbd068a6d",
+          "candidate_id": "af4a6aa1a8b74d6f8172fe782bf5298e",
+          "attempt_id": "15b3db13e28e488a9043bc24f11a12e2",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.56640625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "b04daecc84045454bf86cf660b0b08cc",
+          "candidate_id": "3bc42811912347d59bdb94c2757707c8",
+          "attempt_id": "2adfd9ebba1b4d949fa04adeb4e0a9a9",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.828125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "1a33b6b73a53532da60af24d3df63c5d",
+          "candidate_id": "8aecefdf91014bf48be8dc0e3b645940",
+          "attempt_id": "c9c210b517ec400bb23ebd1a7ccc7a37",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.9609375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "d707930c2f265768adbc882e429faee5",
+          "candidate_id": "9ac0e210a10346a09564db225c7d539b",
+          "attempt_id": "59f806afac9c4d18b2fbe579b95503a8",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.578125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "1362d89ca8c55d858c0e37311a4d639f",
+          "candidate_id": "1a3c81435e6d4479ac3b8ef5b0a16b08",
+          "attempt_id": "6f98127b579541c0838a625a82802520",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.8828125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "6a59134dd0bf52368a4dceff0fd35226",
+          "candidate_id": "46b9706b8ddd4b85823a2747e53c7fcf",
+          "attempt_id": "cf50ffc36fd44707ba188aeef82a515f",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.6171875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "a6645013dc3250b8bf25996069b72c50",
+          "candidate_id": "aacb6edba73b41feb8680e69f9ee9093",
+          "attempt_id": "5c164d0c20954c9da3555db24a2baac4",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.8984375,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        null,
+        null,
+        null,
+        0.8125,
+        0.8125,
+        0.8125,
+        0.8125,
+        0.9609375,
+        0.9609375,
+        0.9609375,
+        0.9609375,
+        0.9609375
+      ]
+    },
+    {
+      "arm": "random",
+      "seed": 237053528,
+      "seconds": 41.74448474997189,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 9,
+      "rung_counts": {
+        "1.0": 12
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 288,
+      "best_full_search_accuracy": 0.90234375,
+      "local_moves": [],
+      "trials": [
+        {
+          "trial_id": "3e621636d5c1590b876ed37a55f9d5e0",
+          "candidate_id": "draw-0",
+          "attempt_id": "b0b1088cd40c4f8091989a1fe682dd6b",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.55859375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "240c396ca7cb59858ae9e7ed60ac905e",
+          "candidate_id": "draw-1",
+          "attempt_id": "37ebb367ab1a426db05c4bd7334007b0",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.6640625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "9938f4cc58ec56fb95bbbde360f6c9e0",
+          "candidate_id": "draw-2",
+          "attempt_id": "8fcdd77616bf4f1389bebf6307bcbd2c",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.546875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "35c3dd5cd908504a9cd58946dd9c4967",
+          "candidate_id": "draw-3",
+          "attempt_id": "e56758cf7179422e9451df8370b1a250",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.890625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "b704d7f6e99f5aad99b3ebe7817eda17",
+          "candidate_id": "draw-4",
+          "attempt_id": "85575d97065a41fc9eb51d94b7896f26",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.90234375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "aa7f578e704a5abab716782daab3d6b1",
+          "candidate_id": "draw-5",
+          "attempt_id": "711981ef7edc471f8fea07605a45d395",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.6015625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "df892bcce2a459cab999e54a3c5c2603",
+          "candidate_id": "draw-6",
+          "attempt_id": "cac141a92ff443ecabe60b4c77b77e9b",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5078125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "0517dee490aa52858cfb894f4c6ed0fb",
+          "candidate_id": "draw-7",
+          "attempt_id": "31aab8e2e6b6498f804d7934e03ea8f4",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.55859375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "fb757c402d1457d1bda621c8d41a44d8",
+          "candidate_id": "draw-8",
+          "attempt_id": "d89a45b46dbe4118a2e80b48a494b82c",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5078125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "9c46048fe9205befa6a6081c2d04d3e4",
+          "candidate_id": "draw-9",
+          "attempt_id": "f90afe1691d240bebc92281fd0430e34",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.8984375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "512e32c4590056289cfb7ecbb351d899",
+          "candidate_id": "draw-10",
+          "attempt_id": "92a3a847da3d441d98ed21e36d66aa32",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.890625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "27f9fb5c6c7a56828d46f69e810fdd7e",
+          "candidate_id": "draw-11",
+          "attempt_id": "7fae94e33e5a43d79af98892712a5ac4",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.88671875,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        0.55859375,
+        0.6640625,
+        0.6640625,
+        0.890625,
+        0.90234375,
+        0.90234375,
+        0.90234375,
+        0.90234375,
+        0.90234375,
+        0.90234375,
+        0.90234375,
+        0.90234375
+      ]
+    },
+    {
+      "arm": "greedy",
+      "seed": 237053528,
+      "seconds": 41.899909624946304,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 12,
+      "rung_counts": {
+        "1.0": 12
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 288,
+      "best_full_search_accuracy": 0.83203125,
+      "local_moves": [],
+      "trials": [
+        {
+          "trial_id": "993bafd1030054318c674cc534b562de",
+          "candidate_id": "draw-0",
+          "attempt_id": "c51b5aa0cbbf468b95aab9d86bbf09aa",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.55859375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "ee426c8d390c5cb7afaf1d7cef36b0a5",
+          "candidate_id": "draw-1",
+          "attempt_id": "a49cc466b6164169a1a5e6b2be46db80",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.49609375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "8d90ed502340558d8e73b33dc5c9ce42",
+          "candidate_id": "draw-2",
+          "attempt_id": "605bbabeca99407091235382ff93159b",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.515625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "331008e8e87d5e2c88fa9c93d6fff33b",
+          "candidate_id": "draw-3",
+          "attempt_id": "3607aec069ce41a5a55a8351180241d1",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5546875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "8ad3d74ad63a55be9562d5c4d1e4c3b6",
+          "candidate_id": "draw-4",
+          "attempt_id": "3b9d253c7cb84b40bac2cfc2c51b1e02",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5078125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "daf65f55f14951a694b800e5758218f1",
+          "candidate_id": "draw-5",
+          "attempt_id": "deb1fbafde154913a1d5ebb1f5d3d531",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.56640625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "f81484a264ad5f5d818c7cb88604a7ed",
+          "candidate_id": "draw-6",
+          "attempt_id": "cd7bcc94dec5487baf54fbdb539d6484",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.6015625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "20b0e887e0a95329b5776a7b0fe151ad",
+          "candidate_id": "draw-7",
+          "attempt_id": "b9bd9af142e54d6b815d0d299c8ea61b",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.7109375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "3c236337039c593eb07aa2b03c191006",
+          "candidate_id": "draw-8",
+          "attempt_id": "5920b29a51e843a88e1f846f25d75121",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.83203125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "4f4c09a3942052d4832ac51bc6f2304d",
+          "candidate_id": "draw-9",
+          "attempt_id": "5bf8aacc5d564c4cb9805ee90f4934ee",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.828125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "163c81c3539d579ead2912d7670d6925",
+          "candidate_id": "draw-10",
+          "attempt_id": "b0a329ba771f4b54ad9dd8221f15a6c2",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.6640625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "cc3ab34aee8d545e9d443545324eb746",
+          "candidate_id": "draw-11",
+          "attempt_id": "e9b80230b05e49b3a0b44d81372e5b43",
+          "attempt_number": 1,
+          "seed": 237053528,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.60546875,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        0.55859375,
+        0.55859375,
+        0.55859375,
+        0.55859375,
+        0.55859375,
+        0.56640625,
+        0.6015625,
+        0.7109375,
+        0.83203125,
+        0.83203125,
+        0.83203125,
+        0.83203125
+      ]
+    },
+    {
+      "arm": "control",
+      "seed": 4205356979,
+      "seconds": 41.668682874995284,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 9,
+      "rung_counts": {
+        "0.5": 9,
+        "1.0": 3
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 180,
+      "best_full_search_accuracy": 0.890625,
+      "local_moves": [
+        {
+          "after_trials": 6,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.02"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "activation",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "candidate_id": "fa1704ef9dc8442cb5bda57c70b8a267"
+        },
+        {
+          "after_trials": 8,
+          "incumbent": {
+            "width": "32",
+            "activation": "gelu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "width",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "candidate_id": "7714c433613040b0b908b865a6782b90"
+        },
+        {
+          "after_trials": 10,
+          "incumbent": {
+            "width": "32",
+            "activation": "gelu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "width": 1
+          },
+          "chosen_coordinate": "activation",
+          "issued_recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "candidate_id": "a32fb82566894bc08d60363982da470c"
+        }
+      ],
+      "trials": [
+        {
+          "trial_id": "741f95a70f0452c7a3ca50a203414072",
+          "candidate_id": "initial",
+          "attempt_id": "78a5636e2d5a4688bf2a2c3b67fd9105",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.5703125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "44827f875e9b51c3ab245aadbd31830f",
+          "candidate_id": "3569db8d642e42cb8f4c2e2111dce7b6",
+          "attempt_id": "911a35894130426ea1636490bf60b8f4",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.62109375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "81b0ca3b69075972863d9179dc0968be",
+          "candidate_id": "4462978504e74e3d836c41b59ea6d412",
+          "attempt_id": "6767cb05ffca4424a8bc54678a238fc7",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "crossover",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.5625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "587d4d802e4a5a3786999eb8aa70cdeb",
+          "candidate_id": "098a2086eaa3458ca6ecf15173878d95",
+          "attempt_id": "a057182c452f42e8a192457af7973c5f",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.75,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "eb90e563eaa7509c9e57ece157426bc1",
+          "candidate_id": "f026d04beacd4abaaf6222d323477568",
+          "attempt_id": "c76763192d3047c69936988fba6f30ab",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.8046875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "540d07e02338530fb1ff86b1fff0b775",
+          "candidate_id": "7827a69cc0c04fdf92e363303d483ac8",
+          "attempt_id": "a9cddba3c6a64afaa7fe9a13b7284067",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.47265625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "087df9270276574a914b2e1e4714fedc",
+          "candidate_id": "fa1704ef9dc8442cb5bda57c70b8a267",
+          "attempt_id": "d146cc71050c48acb4ad005feed7f023",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.62890625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "0783f4e2b65b567b93a2e73c3e7e6a63",
+          "candidate_id": "078d858baa6e49acaefdb40bd636442e",
+          "attempt_id": "aaa4f5f5d40f4162946ed02b00974696",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.890625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "d65c899c1b1b5dff93350f6f4f75bd5b",
+          "candidate_id": "7714c433613040b0b908b865a6782b90",
+          "attempt_id": "d0874c05bc0a46e89df98c3e88d674b1",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.79296875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "5531326c14ba51ce835f2696f47aad12",
+          "candidate_id": "98a94322a43f4f82bfbccf591f96fdbc",
+          "attempt_id": "55f0bfdac0224b01bb1610650c3f8bec",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.56640625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "cba72c745c1d5e34aec958905bc9706d",
+          "candidate_id": "a32fb82566894bc08d60363982da470c",
+          "attempt_id": "3c0af418cf28463bb183214ee9da6524",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.55859375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "d5c7a49e226c571581fcc4dfaeda437e",
+          "candidate_id": "74827da04b2d4321b966bb6da305a545",
+          "attempt_id": "0b29633811594e2684c59dc8f5781202",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.890625,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        null,
+        null,
+        null,
+        0.75,
+        0.75,
+        0.75,
+        0.75,
+        0.890625,
+        0.890625,
+        0.890625,
+        0.890625,
+        0.890625
+      ]
+    },
+    {
+      "arm": "challenger",
+      "seed": 4205356979,
+      "seconds": 41.65272970905062,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 9,
+      "rung_counts": {
+        "0.5": 9,
+        "1.0": 3
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 180,
+      "best_full_search_accuracy": 0.890625,
+      "local_moves": [
+        {
+          "after_trials": 6,
+          "incumbent": {
+            "width": "16",
+            "activation": "relu",
+            "learning_rate": "0.02"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "activation",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "candidate_id": "806870f1eb6241d39af7fe536ea99e63"
+        },
+        {
+          "after_trials": 8,
+          "incumbent": {
+            "width": "32",
+            "activation": "gelu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {},
+          "chosen_coordinate": "width",
+          "issued_recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "candidate_id": "ab76287a186b45ab9f1d034ea6fe80ae"
+        },
+        {
+          "after_trials": 10,
+          "incumbent": {
+            "width": "32",
+            "activation": "gelu",
+            "learning_rate": "0.05"
+          },
+          "eligible_coordinates": [
+            "activation",
+            "learning_rate",
+            "width"
+          ],
+          "prior_local_counts": {
+            "width": 1
+          },
+          "chosen_coordinate": "activation",
+          "issued_recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "candidate_id": "79731d9a043c474cbb082cbbf8f9afdf"
+        }
+      ],
+      "trials": [
+        {
+          "trial_id": "1573b7d74a4f5e0fa34e46ad7613b464",
+          "candidate_id": "initial",
+          "attempt_id": "ff51785af7c642dab2464fbbe4976cf1",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.5703125,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "2c3e57aff20f50f9a1654f2f257b155a",
+          "candidate_id": "6ce38534d4ce4ef09d31a66d79d3a280",
+          "attempt_id": "b6c7378179a940d1a2ec98a4450ac5c2",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.62109375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "6f291a9fb8095ff8893daa8d6c2948af",
+          "candidate_id": "63307aceb2344b759c2773ecbe1516db",
+          "attempt_id": "a63fbb4678464d63a05d3ade027b8f4d",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "crossover",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.5625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "610472b5b2ce517998498be54bcdfad7",
+          "candidate_id": "60d8fc83f0f94c2b82de858f8602efb5",
+          "attempt_id": "228633d59cf848cda361ef8bf4ec3301",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.75,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "dbb9ee931306505da425517f28529b08",
+          "candidate_id": "c169a64aef824c58b39de77e3a638881",
+          "attempt_id": "1fd3427b6b964c26b04e0490b047815d",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.8046875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "b06942f050d754f69bfc09c6b55caad7",
+          "candidate_id": "b98d67dc44b34e93b0177d8b9f673819",
+          "attempt_id": "1dbd53f1c4804a608ea84ab138a3d066",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.47265625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "f884dc9c8cb950edaea8d607fa949ec5",
+          "candidate_id": "806870f1eb6241d39af7fe536ea99e63",
+          "attempt_id": "1620b787d8484bd5991f8b1c64bb4598",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.62890625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "bede92d5e8a15b64b123249e593876a2",
+          "candidate_id": "501cf4c14fd04ea195f9e8e7757d7177",
+          "attempt_id": "b35f8f4a9b504c78a9309785c6a3ebcf",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.890625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "da4f031a1dee5865a197f06f3fe852a6",
+          "candidate_id": "ab76287a186b45ab9f1d034ea6fe80ae",
+          "attempt_id": "286e0348c2c94ed6a4d23eed4b9a09a1",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.79296875,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "46f246da125a575a88df3d85535f291f",
+          "candidate_id": "eff53d139325477591e4b7e79433b22a",
+          "attempt_id": "7522f39b198240179beb10e91725cb93",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.56640625,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "0942c606ed3a5c88ac356631070418c5",
+          "candidate_id": "79731d9a043c474cbb082cbbf8f9afdf",
+          "attempt_id": "d3a8aa6c8602439f9ea214374f094dcb",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "param-mutate",
+          "fidelity": 0.5,
+          "status": "ok",
+          "accuracy": 0.55859375,
+          "completed_updates": 12
+        },
+        {
+          "trial_id": "b624ba245d1b5de5b86d784b762a524a",
+          "candidate_id": "a19a32016ece4149be592957272dc4b5",
+          "attempt_id": "6a4e0bca7843476683cb028ebf56b0bd",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "asha",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.890625,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        null,
+        null,
+        null,
+        0.75,
+        0.75,
+        0.75,
+        0.75,
+        0.890625,
+        0.890625,
+        0.890625,
+        0.890625,
+        0.890625
+      ]
+    },
+    {
+      "arm": "random",
+      "seed": 4205356979,
+      "seconds": 41.6827492499724,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 11,
+      "rung_counts": {
+        "1.0": 12
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 288,
+      "best_full_search_accuracy": 0.91015625,
+      "local_moves": [],
+      "trials": [
+        {
+          "trial_id": "f0275d5484425d37a6011f1260c2cf48",
+          "candidate_id": "draw-0",
+          "attempt_id": "2700da6ebabc43c5b5d72cec76de2763",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.578125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "2d2efaf5e0515d68bfd8cdeeac4e63a6",
+          "candidate_id": "draw-1",
+          "attempt_id": "09e3fbb333264628bd1ce0a2ecd60a16",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.005",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.578125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "43798c310e1f57bbb899e66095669652",
+          "candidate_id": "draw-2",
+          "attempt_id": "d0971b548a324a9eb76d9a3f13ee5754",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.91015625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "a4963ffae6ae508f9c931c2c4c774a51",
+          "candidate_id": "draw-3",
+          "attempt_id": "bc959d700a074259807c2f9f951bd63e",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.85546875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "b9d90845deac5061ac941c1039adbc1d",
+          "candidate_id": "draw-4",
+          "attempt_id": "2ec02732060741e7adf6cefd6c7b361e",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.02",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.56640625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "e991999d03b5584d954f314696851cd2",
+          "candidate_id": "draw-5",
+          "attempt_id": "68166a65f8cb4fb89ec052058b6800c2",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.6015625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "ba7ab553ed1f5a2cb59b7c2c8fb5ef5f",
+          "candidate_id": "draw-6",
+          "attempt_id": "e3e9061c916a44398f10eba6e4f51b62",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5546875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "59215eb0abf857d49987d2a266bad6b4",
+          "candidate_id": "draw-7",
+          "attempt_id": "4e3b4d48ef134cefa98b857c1672284c",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.7421875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "2516416de5b5502585968a303be7eaf2",
+          "candidate_id": "draw-8",
+          "attempt_id": "4ca1a4197213479faedd332a564d5493",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.7265625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "fdfac93674bd58f29966eebe4c25e4d2",
+          "candidate_id": "draw-9",
+          "attempt_id": "0db723fef5794ec2919aeefd68075a77",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.02",
+            "width": "16"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.7421875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "6968d5a6e00b5fd9bf9ac14814439c92",
+          "candidate_id": "draw-10",
+          "attempt_id": "782555e40d454a82a291bdf2358542d6",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.85546875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "d54148befe9f572bae5fcbe70ecef0d7",
+          "candidate_id": "draw-11",
+          "attempt_id": "faaafc921a6a4699915e0c14e19ad8a5",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.54296875,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        0.578125,
+        0.578125,
+        0.91015625,
+        0.91015625,
+        0.91015625,
+        0.91015625,
+        0.91015625,
+        0.91015625,
+        0.91015625,
+        0.91015625,
+        0.91015625,
+        0.91015625
+      ]
+    },
+    {
+      "arm": "greedy",
+      "seed": 4205356979,
+      "seconds": 41.62016770802438,
+      "cli_exit": 0,
+      "attempts": 12,
+      "distinct_recipes": 12,
+      "rung_counts": {
+        "1.0": 12
+      },
+      "statuses": {
+        "ok": 12
+      },
+      "known_completed_updates": 288,
+      "best_full_search_accuracy": 0.91796875,
+      "local_moves": [],
+      "trials": [
+        {
+          "trial_id": "ce9a31cc359c5c8383011ba8109fefc1",
+          "candidate_id": "draw-0",
+          "attempt_id": "7f572c13d4b94d7e9a1c6e1a8017a996",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "8"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.578125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "59c4f3e6738d5bcc9057b8564a9c59cc",
+          "candidate_id": "draw-1",
+          "attempt_id": "7fddba0cc6304d2c89b00ec633ff82e3",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.6015625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "13067addc4585690a970ff795d260c23",
+          "candidate_id": "draw-2",
+          "attempt_id": "8b0dfaeb225f4f4b9d2623c7b485ec7f",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.005",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.55859375,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "2ec3fa91e98b5fe386bd63f1f62f5714",
+          "candidate_id": "draw-3",
+          "attempt_id": "2e8062cd32644d94a578959714cbac7d",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.50390625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "705513db420856ddadd7c625523d85d1",
+          "candidate_id": "draw-4",
+          "attempt_id": "075dc3164e8c4281868de7e11f8863a6",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.65625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "28d0ff2e8c2d51e0b0b6de803ec6615a",
+          "candidate_id": "draw-5",
+          "attempt_id": "02ef758b4ba64072829171b4e2f1250e",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "64"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.91015625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "d48c64635647572cbae8d71f962e2904",
+          "candidate_id": "draw-6",
+          "attempt_id": "31192e5bca5f42acbb1e6a3091c0308e",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.91796875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "9328dc3c7716532993ad28c1d556bc31",
+          "candidate_id": "draw-7",
+          "attempt_id": "66085698497d438b8b8b38405f2343de",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "gelu",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.890625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "7bf49689f26359e1b485af8bc90d2a04",
+          "candidate_id": "draw-8",
+          "attempt_id": "b244b0ac52834383962e4d4e20d9e207",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.001",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.5546875,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "307e9e936d32553ba313824c6f9fedb3",
+          "candidate_id": "draw-9",
+          "attempt_id": "48fbbe1f79ed48c690bbb66d5813eeb2",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "tanh",
+            "learning_rate": "0.05",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.64453125,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "c32daba8a62656d9b862acbda2e3c553",
+          "candidate_id": "draw-10",
+          "attempt_id": "adfa7c9cb2e14151817ace007f514cd0",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.005",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.7265625,
+          "completed_updates": 24
+        },
+        {
+          "trial_id": "69d8a7960fb05157b30d7a78809317c0",
+          "candidate_id": "draw-11",
+          "attempt_id": "6e384298318049eb8e9b02b42e132b3c",
+          "attempt_number": 1,
+          "seed": 4205356979,
+          "recipe": {
+            "activation": "relu",
+            "learning_rate": "0.02",
+            "width": "32"
+          },
+          "operator": "seed",
+          "fidelity": 1.0,
+          "status": "ok",
+          "accuracy": 0.85546875,
+          "completed_updates": 24
+        }
+      ],
+      "running_best_full_search_accuracy": [
+        0.578125,
+        0.6015625,
+        0.6015625,
+        0.6015625,
+        0.65625,
+        0.91015625,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875,
+        0.91796875
+      ]
+    }
+  ]
+}
