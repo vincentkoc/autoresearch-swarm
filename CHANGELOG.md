@@ -36,7 +36,8 @@
   during both preparation and execution.
 
 - Preserve the original advisory role and deadline in the timeout report if the
-  heartbeat file disappears.
+  heartbeat file disappears. If the launch record is corrupt at expiry, the
+  timeout report marks the role and deadline unknown and records the error.
 
 - Share committed-manifest resolution between explicit and manifest-selected
   Git revisions in project capture and registration.
