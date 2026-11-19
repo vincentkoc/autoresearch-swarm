@@ -81,6 +81,11 @@ def _remove_stage(path: Path, expected: Stage) -> str:
             elif (path / "stage.json").exists():
                 return "changed"
             if data.exists():
+                # GC holds the revision lock and has ruled out active mounts.
+                for _, _, _, fd in os.fwalk(data):
+                    mode = os.fstat(fd).st_mode
+                    if not mode & 0o200:
+                        os.fchmod(fd, mode | 0o200)
                 shutil.rmtree(data)
             namespace.unlink(missing_ok=True)
             path.rmdir()

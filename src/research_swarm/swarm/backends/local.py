@@ -15,6 +15,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from research_swarm.swarm.backends.capacity import Slots
+from research_swarm.swarm.data_stage import Stage, local_stage, verify_local_stage
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Result
 
 
@@ -65,8 +66,11 @@ class LocalBackend:
     def __init__(self, slots: int, *, device: str = "cpu", data_dir: Path | None = None) -> None:
         self._slots = Slots(slots)
         self._env = _device_env(device)
+        self._stage: Stage | None = None
         if data_dir is not None:
-            self._env["SWARM_DATA"] = str(data_dir.resolve(strict=True))
+            data = data_dir.resolve(strict=True)
+            self._env["SWARM_DATA"] = str(data)
+            self._stage = local_stage(data)
 
     def for_device(self, device: str) -> LocalBackend:
         backend = copy(self)
@@ -81,6 +85,10 @@ class LocalBackend:
     async def execute(self, spec: CampaignSpec, attempt: Attempt) -> Result:
         async with self._slots.claim(spec):
             try:
+                if self._stage is not None:
+                    await asyncio.to_thread(
+                        verify_local_stage, Path(self._env["SWARM_DATA"]), self._stage
+                    )
                 with tempfile.TemporaryDirectory(prefix="swarm-trial-") as temp:
                     return await self._run(spec, attempt, Path(temp))
             except (OSError, ValueError, OverflowError) as error:

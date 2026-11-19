@@ -273,6 +273,10 @@
 - Stage a campaign dataset revision once per location. Workers copy it in parallel
   to local storage, verify the content digest, and bind it read-only on Linux.
 
+- Recheck the bytes of cached dataset revisions before reuse and before local
+  dispatch with managed stage inputs. Staged directories now protect their
+  entries against accidental creation, replacement and removal.
+
 - Refresh selected graph connection visibility annotations when search or category
   filters change, including when filters are cleared.
 

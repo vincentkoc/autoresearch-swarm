@@ -9,6 +9,7 @@ import psutil
 import pytest
 
 from research_swarm.swarm.backends.local import LocalBackend
+from research_swarm.swarm.data_stage import hydrate, prepare
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Trial
 
 
@@ -156,3 +157,37 @@ async def test_crash_does_not_stop_sibling_and_output_is_bounded(tmp_path: Path)
     assert failed.status == "failed" and failed.error == "command exited with status 9"
     assert 0 < len(failed.logs[0]) <= 16384
     assert ok.status == "ok" and backend.free_slots(good) == 2
+
+
+async def test_local_dispatch_rejects_changed_staged_input(tmp_path: Path) -> None:
+    source, volume, nvme = (tmp_path / name for name in ("source", "region", "nvme"))
+    source.mkdir()
+    (source / "points").write_bytes(b"13")
+    prepare(source, volume, "test", "v1")
+    data = hydrate(volume, nvme, "test", "v1")
+    backend = LocalBackend(1, data_dir=data)
+    spec = make_spec(
+        tmp_path,
+        "import os; from pathlib import Path; Path('started').touch(); "
+        "Path(os.environ['SWARM_METRICS']).write_text('{\"gain\":1}')",
+    )
+    (data / "points").chmod(0o644)
+    (data / "points").write_bytes(b"99")
+    (data / "points").chmod(0o444)
+    result = await backend.execute(spec, make_attempt())
+    assert result.status == "failed" and "differs" in (result.error or "")
+    assert not (tmp_path / "started").exists() and backend.free_slots(spec) == 1
+
+
+async def test_ordinary_local_dataset_keeps_its_permissions(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    (tmp_path / "stage.json").write_text('{"owner":"another-tool"}')
+    initial_mode = data.stat().st_mode
+    spec = make_spec(
+        tmp_path,
+        "import os; from pathlib import Path; "
+        "Path(os.environ['SWARM_METRICS']).write_text('{\"gain\":1}')",
+    )
+    result = await LocalBackend(1, data_dir=data).execute(spec, make_attempt())
+    assert result.status == "ok" and data.stat().st_mode == initial_mode

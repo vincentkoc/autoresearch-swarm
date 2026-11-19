@@ -60,6 +60,7 @@ def fake_bind(data, mountpoint):
     mountpoint.mkdir(parents=True, exist_ok=True)
     if not (mountpoint / "points").exists():
         (mountpoint / "points").symlink_to(data / "points")
+    mountpoint.chmod(0o555)
 ssh_pool.remote.mount_readonly = fake_bind
 asyncio.run(ssh_pool.run_on_host(json.load(sys.stdin), root / "activity"))
 """,

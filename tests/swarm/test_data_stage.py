@@ -24,14 +24,14 @@ def test_workers_copy_together_while_gc_waits(
     stage = prepare(source, volume, "demo", "v1")
     path = stage_path(volume, "demo", "v1")
     readers, release = Barrier(3), Event()
-    copy = data_stage._copy_tree
+    copy = data_stage._hash_tree
 
     def gated_copy(source: Path, target: Path, threads: int) -> tuple[str, int, int]:
         readers.wait(timeout=10)
         assert release.wait(timeout=10)
         return copy(source, target, threads)
 
-    monkeypatch.setattr(data_stage, "_copy_tree", gated_copy)
+    monkeypatch.setattr(data_stage, "_hash_tree", gated_copy)
     with ThreadPoolExecutor(max_workers=3) as clients:
         copies = [
             clients.submit(hydrate, volume, tmp_path / str(i), "demo", "v1") for i in range(2)
@@ -88,6 +88,41 @@ def test_failed_copy_can_retry_without_publishing_partial_data(tmp_path: Path) -
     with pytest.raises(ValueError, match="differs"):
         hydrate(volume, tmp_path / "nvme", "demo", "v1")
     assert not stage_path(tmp_path / "nvme", "demo", "v1").exists()
+
+
+def test_cached_worker_bytes_must_match_the_published_digest(tmp_path: Path) -> None:
+    source, volume, nvme = (tmp_path / name for name in ("source", "region", "nvme"))
+    source.mkdir()
+    (source / "points").write_bytes(b"13")
+    prepare(source, volume, "demo", "v1")
+    cached = hydrate(volume, nvme, "demo", "v1") / "points"
+    cached.chmod(0o644)
+    cached.write_bytes(b"99")
+    cached.chmod(0o444)
+    with pytest.raises(ValueError, match="differs"):
+        hydrate(volume, nvme, "demo", "v1")
+    assert cached.read_bytes() == b"99"
+
+
+def test_staged_directories_and_files_are_read_only(tmp_path: Path) -> None:
+    source, volume, nvme = (tmp_path / name for name in ("source", "region", "nvme"))
+    (source / "batch").mkdir(parents=True)
+    (source / "batch/points").write_bytes(b"13")
+    prepare(source, volume, "demo", "v1")
+    for data in (volume / "demo/v1/data", hydrate(volume, nvme, "demo", "v1")):
+        for entry in (data, data / "batch", data / "batch/points"):
+            assert entry.stat().st_mode & 0o222 == 0
+        if os.geteuid() != 0:
+            with pytest.raises(PermissionError):
+                (data / "batch/extra").touch()
+            with pytest.raises(PermissionError):
+                (data / "batch/points").write_bytes(b"99")
+
+    # Valid caches created before directory sealing can still be reused.
+    cached = nvme / "demo/v1/data"
+    (cached / "batch").chmod(0o755)
+    assert hydrate(volume, nvme, "demo", "v1") == cached
+    assert (cached / "batch").stat().st_mode & 0o222 == 0
 
 
 def test_source_and_stage_are_disjoint_and_scoped(tmp_path: Path) -> None:
