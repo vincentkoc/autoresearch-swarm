@@ -41,6 +41,9 @@ def parser() -> argparse.ArgumentParser:
     commands = root.add_subparsers(dest="action", required=True)
     swarm = commands.add_parser("swarm", help="Run a capacity-driven research campaign")
     swarm_commands = swarm.add_subparsers(dest="swarm_action", required=True)
+    from research_swarm.swarm import notify
+
+    notify.add_arguments(swarm_commands.add_parser("notify", help="Watch campaign metrics"))
     swarm_run = swarm_commands.add_parser("run", help="Run or resume a YAML campaign")
     swarm_run.add_argument("spec", type=Path, help="Campaign YAML file")
     swarm_run.add_argument(
@@ -329,6 +332,13 @@ def main(argv: list[str] | None = None) -> int:
                     f"Worker request returned HTTP {error.response.status_code}"
                 ) from error
             _emit_json({"worker_id": args.worker_id, "ran": ran})
+            return 0
+        if args.action == "swarm" and args.swarm_action == "notify":
+            from research_swarm.swarm.notify import watch
+
+            if args.controller or args.token_file:
+                raise ValueError("The notifier reads a local campaign database")
+            watch(_database(args), args, _emit_json)
             return 0
         if args.action == "swarm":
             from research_swarm.swarm.command import run_campaign
