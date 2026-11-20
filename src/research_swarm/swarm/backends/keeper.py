@@ -11,11 +11,12 @@ import argparse
 import fcntl
 import math
 import os
-import subprocess
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+
+from research_swarm.swarm.process import run as run_command
 
 ACTIVITY = Path("/run/research-swarm/activity")
 
@@ -56,7 +57,7 @@ def keep(lockfile: Path, idle_seconds: float, poweroff: Sequence[str]) -> None:
                         stream.write("stopping")
                         stream.flush()
                         try:
-                            subprocess.run(poweroff, check=True)
+                            run_command(poweroff, check=True)
                         except BaseException:
                             stream.seek(0)
                             stream.truncate()
