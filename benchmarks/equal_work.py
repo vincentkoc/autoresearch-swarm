@@ -5,7 +5,6 @@ import json
 import math
 import os
 import platform
-import sqlite3
 import subprocess
 import sys
 import time
@@ -17,6 +16,7 @@ from benchmarks.cli_acceptance import MODEL, MODEL_DIGEST, Baseline, full_rung
 from benchmarks.model_meter import measure_requests, verify_model
 from benchmarks.study import WorkerPanelPolicy, open_study, recipe_key
 from benchmarks.suite import comparison_seeds, get_task
+from research_swarm.swarm.db import connection
 from research_swarm.swarm.interfaces import CampaignSpec
 from research_swarm.swarm.operators.config import SearchOptions
 from research_swarm.swarm.store import SQLiteStore
@@ -268,8 +268,7 @@ def run_arm(task, seed, arm, directory, remote_port):
     nominee = winner.attempt.trial.candidate.params
     reference = None if nominee == task.initial else recipe_key(task.initial)
     key = study.decision_key(recipe_key(nominee), reference)
-    uri = Path(spec["options"]["study"]).as_uri() + "?mode=ro"
-    with sqlite3.connect(uri, uri=True) as db:
+    with connection(Path(spec["options"]["study"]), read_only=True) as db:
         saved = db.execute("SELECT value FROM panel_state WHERE key=?", (key,)).fetchone()
     if saved is None:
         raise ValueError("Missing recorded finalist decision")

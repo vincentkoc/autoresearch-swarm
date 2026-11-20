@@ -84,9 +84,9 @@ def test_instrumented_run_packs_retries_and_replays(tmp_path, monkeypatch):
     set_sample_windows(monkeypatch, 1.0, 0.5)
     driver = Mock(wraps=subprocess)
     driver.run.return_value = subprocess.CompletedProcess(
-        ["nvidia-smi"], 0, stdout=f"{GPU_A}, 100\n{GPU_B}, 20\n"
+        ["nvidia-smi"], 0, stdout=f"{GPU_A}, 100\n{GPU_B}, 20\n".encode()
     )
-    monkeypatch.setattr(gpu_time, "subprocess", driver)
+    monkeypatch.setattr(gpu_time, "run_command", driver.run)
     workload = """
 import json, os
 from pathlib import Path

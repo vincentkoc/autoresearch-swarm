@@ -301,24 +301,23 @@ def test_directory_swap_is_rejected_before_reading_outside_content(
     assert (outside / "train.py").read_text() == "private outside source"
 
 
+def install_fake_git(root: Path, monkeypatch: pytest.MonkeyPatch, program: str) -> None:
+    git = root / "git"
+    git.write_text(f"#!{sys.executable}\n{program}\n")
+    git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(root))
+
+
 def test_git_reader_bounds_output_and_entire_child_lifetime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original = subprocess.Popen
-
-    def fake_git(*args, **kwargs):
-        return original([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
-
-    monkeypatch.setattr(subprocess, "Popen", fake_git)
+    install_fake_git(tmp_path, monkeypatch, "import time; time.sleep(30)")
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         source_module._git_read(tmp_path, [], limit=32, deadline=started + 0.2)
     assert time.monotonic() - started < 5
 
-    def noisy_git(*args, **kwargs):
-        return original([sys.executable, "-c", "print('x' * 10000)"], **kwargs)
-
-    monkeypatch.setattr(subprocess, "Popen", noisy_git)
+    install_fake_git(tmp_path, monkeypatch, "print('x' * 10000)")
     with pytest.raises(ValueError, match="bound"):
         source_module._git_read(tmp_path, [], limit=32, deadline=time.monotonic() + 5)
 
@@ -326,17 +325,13 @@ def test_git_reader_bounds_output_and_entire_child_lifetime(
 def test_inherited_git_output_does_not_extend_deadline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original = subprocess.Popen
     program = (
         "import subprocess, sys, time; "
         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
         "time.sleep(30)"
     )
 
-    def fake_git(*args, **kwargs):
-        return original([sys.executable, "-c", program], **kwargs)
-
-    monkeypatch.setattr(subprocess, "Popen", fake_git)
+    install_fake_git(tmp_path, monkeypatch, program)
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         source_module._git_read(tmp_path, [], limit=32, deadline=started + 0.5)
@@ -346,16 +341,12 @@ def test_inherited_git_output_does_not_extend_deadline(
 def test_git_reads_disable_implicit_fetch_and_ambient_repository_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original = subprocess.Popen
     program = (
         "import os; print(os.getenv('GIT_NO_LAZY_FETCH'), "
         "os.getenv('GIT_NO_REPLACE_OBJECTS'), os.getenv('GIT_DIR'))"
     )
 
-    def fake_git(*args, **kwargs):
-        return original([sys.executable, "-c", program], **kwargs)
-
-    monkeypatch.setattr(subprocess, "Popen", fake_git)
+    install_fake_git(tmp_path, monkeypatch, program)
     monkeypatch.setenv("GIT_DIR", str(tmp_path / "wrong-project"))
     result = source_module._git_read(tmp_path, [], limit=64, deadline=time.monotonic() + 5)
     assert result.strip() == b"1 1 None"

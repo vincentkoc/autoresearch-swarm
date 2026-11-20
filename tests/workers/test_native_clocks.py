@@ -13,11 +13,10 @@ import pytest
 
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.workers import clocks
-from research_swarm.workers.clocks import (
-    native_clock,
-)
+from research_swarm.workers._posix import PosixChild
+from research_swarm.workers.clocks import native_clock
 from research_swarm.workers.contracts import ProcessClosure
-from research_swarm.workers.supervision import run_native
+from research_swarm.workers.supervision import base_environment, run_native
 from tests.workers.test_supervision import command, require_closed
 
 
@@ -123,6 +122,48 @@ def test_expired_absolute_cap_never_becomes_a_new_positive_allowance(tmp_path: P
     )
     assert result.reason == "not_started" and result.released_at is None
     assert result.closure.scope_closed
+
+
+def test_command_status_precedes_guard_exit_and_preserves_term_output(tmp_path: Path) -> None:
+    child = PosixChild(
+        command(
+            tmp_path,
+            "import signal, sys\n"
+            "def stopped(*_):\n"
+            " print('stopping', file=sys.stderr)\n"
+            " sys.exit(23)\n"
+            "signal.signal(signal.SIGTERM, stopped)\n"
+            "print('ready', flush=True)\n"
+            "signal.pause()",
+        ),
+        base_environment(),
+    )
+    deadline = time.monotonic() + 5
+    try:
+        with child.owner.dup():
+            child.release()
+            ready = None
+            while ready is None and time.monotonic() < deadline:
+                ready = child.read(child.stdout, 64)
+                if ready is None:
+                    time.sleep(0.01)
+            assert ready == b"ready\n"
+            child.stop(force=False)
+            while child.active():
+                assert time.monotonic() < deadline, "Command did not report its TERM status"
+                time.sleep(0.01)
+            assert child.read(child.stderr, 64) == b"stopping\n"
+            assert child.closure().scope_closed
+            # The duplicate keeps the real guard alive after workload closure.
+            assert child.active()
+            assert child.exit_code() is None
+            assert child.process.returncode is None
+        while child.active() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert child.exit_code() == 23
+        assert child.read(child.stdout, 64) == child.read(child.stderr, 64) == b""
+    finally:
+        child.close()
 
 
 def test_watchdog_is_armed_before_release_can_block(

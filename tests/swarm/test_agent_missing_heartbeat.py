@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from research_swarm.swarm import agent_guard, agents
+from research_swarm.swarm import _process_guard, agent_guard, agents, process
 
 
 @pytest.mark.parametrize("timeout_owner", ["caller", "guard"])
@@ -72,15 +72,17 @@ async def test_missing_heartbeat_at_launch_and_expiry(
         getpid=lambda: 900001, getsid=lambda _: 900001, killpg=intercept_expiry, link=os.link
     )
     monkeypatch.setattr(agents, "time", clock)
-    monkeypatch.setattr(agent_guard, "time", clock)
+    monkeypatch.setattr(_process_guard, "time", clock)
     monkeypatch.setattr(agents.tempfile, "TemporaryDirectory", lambda **kw: nullcontext(tmp_path))
     monkeypatch.setattr(agents.asyncio, "create_subprocess_exec", launch)
     monkeypatch.setattr(agents.asyncio, "timeout", caller_wait)
     monkeypatch.setattr(
-        agent_guard.subprocess, "Popen", lambda *a, **kw: SimpleNamespace(communicate=provider_wait)
+        _process_guard.subprocess,
+        "Popen",
+        lambda *a, **kw: SimpleNamespace(wait=provider_wait),
     )
-    monkeypatch.setattr(agent_guard, "os", process_ops)
-    monkeypatch.setattr(agents, "os", process_ops)
+    monkeypatch.setattr(_process_guard, "os", process_ops)
+    monkeypatch.setattr(process, "os", process_ops)
 
     reply = await agents.ask_agent("reporter", {}, model=None, jobs=tmp_path, timeout=10)
 

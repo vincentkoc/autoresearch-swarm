@@ -12,7 +12,6 @@ import argparse
 import asyncio
 import json
 import shlex
-import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -23,6 +22,7 @@ from research_swarm.swarm.backends.capacity import Slots
 from research_swarm.swarm.backends.keeper import ACTIVITY, active
 from research_swarm.swarm.backends.remote import BootData as BootData
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, FailureClass, Result
+from research_swarm.swarm.process import run as run_command
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -170,9 +170,7 @@ def from_spec(spec: CampaignSpec) -> SSHPoolBackend:
 
 
 async def run_on_host(payload: dict[str, Any], activity: Path = ACTIVITY) -> None:
-    subprocess.run(
-        ["systemctl", "is-active", "--quiet", "research-swarm-keeper.service"], check=True
-    )
+    run_command(["systemctl", "is-active", "--quiet", "research-swarm-keeper.service"], check=True)
     with active(activity):
         await remote.run(payload)
 

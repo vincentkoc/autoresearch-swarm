@@ -97,7 +97,7 @@ def observe_engine(
                 environment=base_environment(),
                 on_held=custody.held,
             )
-        except BaseException:
+        except Exception:
             raise custody.unknown() from None
         custody.observed(outcome)
         try:

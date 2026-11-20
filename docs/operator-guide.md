@@ -42,7 +42,7 @@ Keep a `null` value and its explanation when exporting a report.
 uv run --no-sync python - <<'PYTHON'
 import json
 from pathlib import Path
-from research_swarm.swarm.reader import CampaignReader
+from research_swarm.swarm.report import CampaignReader
 
 snapshot = CampaignReader(Path(".research/program.sqlite")).snapshot("program-normalization")
 print(json.dumps(snapshot["kpis"], indent=2))

@@ -22,6 +22,8 @@ from pathlib import Path
 
 from filelock import FileLock
 
+from research_swarm.swarm.process import run as run_command
+
 
 @dataclass(frozen=True)
 class Stage:
@@ -246,12 +248,12 @@ def mount_readonly(data: Path, mountpoint: Path) -> None:
                 raise ValueError("data stage is exposed in another mount namespace")
             marker.write_text(identity)
         if not os.path.samefile(data, mountpoint):
-            mounted = subprocess.run(
+            mounted = run_command(
                 ["findmnt", "--mountpoint", str(mountpoint)], stdout=subprocess.DEVNULL
             )
             if mounted.returncode != 1 or any(mountpoint.iterdir()):
                 raise ValueError("mountpoint is already in use")
-            subprocess.run(["mount", "-o", "bind,ro", "--", str(data), str(mountpoint)], check=True)
+            run_command(["mount", "-o", "bind,ro", "--", str(data), str(mountpoint)], check=True)
         if (
             not os.path.samefile(data, mountpoint)
             or not os.statvfs(mountpoint).f_flag & os.ST_RDONLY

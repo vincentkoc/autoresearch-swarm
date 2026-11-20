@@ -5,16 +5,29 @@
 - The standalone R2 adapter verifies and opens stored blobs through the same
   generation check. Existing storage imports and staging directories are supported.
 
+- Trainer requests, manual responses and completed policy calls share the same
+  run-binding and control revision checks. Existing reactive journals reopen as before.
+
 - Campaigns can set `full_fidelity_work` and `max_search_work` with `max_attempts: 1`
   to cap search work across rungs. Each admitted trial reserves the rounded-up
   cost of a fresh fit, including the initial recipe and promotions. Queued and
   completed trials keep their reservations across resume.
+
+- Interrupting a native run closes the owned workload and propagates the
+  interruption. A cancelled proposal or an unexpected operator error reaches
+  the caller. Completed providers release their slots before the next request.
+  A malformed model response still counts as a rejected response.
 
 - Campaign and artifact storage now share the same durable directory sync. Private
   file handling moves from `state.private_files` to `swarm.private_files`.
 
 - Update the locked versions of FastAPI, filelock, boto3 and botocore, along
   with Ruff, Hypothesis, pytest-asyncio and the psutil type stubs.
+
+- Run local workloads, transport commands and native project stages in owned
+  process groups. A command can finish even when a descendant holds its output
+  pipes open. Native runs wait for their guard to exit within the cleanup deadline
+  before reporting closure. Advisory jobs retain their independent deadline and terminal report.
 
 - Report the known cost subtotal and missing rates when recorded usage is only
   partly priced. Cost per improvement stays unavailable until the total is known.
@@ -28,12 +41,15 @@
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 
+- Project capture and manifest resolution now share one implementation. A read in
+  progress finishes on its original bundle if a newer capture replaces the path.
+
 - Compare the three benchmark policies at equal executed search work. Record
   program cases, optimizer steps, held-out evaluations and local model usage.
 
 - Use a common WAL connection policy for the queue, panel studies and journals.
   Concurrent writers share a busy timeout, and schema upgrades commit atomically.
-  Campaign reports continue to open existing databases read-only.
+  Campaign reports and equal-work benchmark finalist checks open existing databases read-only.
 
 - Reject a benchmark campaign paired with an incompatible open panel study
   before reusing a score or spending a look.

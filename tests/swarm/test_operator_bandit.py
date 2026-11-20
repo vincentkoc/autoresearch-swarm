@@ -3,12 +3,19 @@ import json
 import sqlite3
 import subprocess
 import sys
+import threading
+from concurrent.futures import Future
 from dataclasses import replace
 from pathlib import Path
 
+import httpx
+import pytest
+
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
+from research_swarm.swarm.operators import llm
 from research_swarm.swarm.operators.bandit import BanditProposer
 from research_swarm.swarm.operators.llm import TextRewrite
+from research_swarm.swarm.operators.portfolio import SearchPortfolio
 
 SPEC = CampaignSpec(
     campaign_id="allocation",
@@ -93,6 +100,73 @@ async def test_silent_local_model_keeps_fast_sibling_and_does_not_hold_loop():
         children = await policy.ask(spec, [result("seed", "baseline", 0, 0)], 2)
     assert [c.operator for c in children] == ["fast"]
     assert model.timeouts == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        None,
+        asyncio.CancelledError("provider cancelled"),
+        KeyboardInterrupt("provider interrupted"),
+        SystemExit("provider exited"),
+        AssertionError("operator defect"),
+        ValueError("provider defect"),
+        FileNotFoundError("provider configuration missing"),
+    ],
+)
+@pytest.mark.parametrize("proposer", [BanditProposer, SearchPortfolio])
+async def test_completed_provider_delivers_outcome_and_releases_slot(error, monkeypatch, proposer):
+    release_publisher = threading.Event()
+
+    class PausedPublisher(Future):
+        def set_result(self, value):
+            super().set_result(value)
+            release_publisher.wait(timeout=5)
+
+        def set_exception(self, exc):
+            super().set_exception(exc)
+            # Keep publication on the worker's stack through the caller's next ask.
+            release_publisher.wait(timeout=5)
+
+    monkeypatch.setattr(llm, "Future", PausedPublisher)
+
+    async def interrupted(prompt, schema, seed):
+        if seed == SPEC.seed + 1 and error is not None:
+            raise error
+        return json.dumps({"content": str(seed), "rationale": "rewrite"})
+
+    model = TextRewrite(interrupted, "rewrite the text", concurrency=1)
+    policy = proposer(SPEC, {model.name: model})
+    archive = [result("seed", "baseline", 0, 0)]
+    try:
+        if error is None:
+            (first,) = await policy.ask(SPEC, archive, 1)
+            assert first.text == str(SPEC.seed + 1)
+        else:
+            with pytest.raises(type(error), match=str(error)):
+                await policy.ask(SPEC, archive, 1)
+        (child,) = await policy.ask(SPEC, archive, 1)
+        assert child.text == str(SPEC.seed + 2)
+    finally:
+        release_publisher.set()
+    assert model.errors == model.timeouts == 0
+
+
+async def test_expected_provider_failures_keep_healthy_siblings():
+    async def mixed(prompt, schema, seed):
+        if seed == SPEC.seed + 1:
+            raise TimeoutError()
+        if seed == SPEC.seed + 2:
+            raise httpx.ConnectError("provider unavailable")
+        if seed == SPEC.seed + 3:
+            return '{"content":false}'
+        return '{"content":"healthy","rationale":"rewrite"}'
+
+    model = TextRewrite(mixed, "rewrite the text")
+    policy = BanditProposer(SPEC, {model.name: model})
+    (child,) = await policy.ask(SPEC, [result("seed", "baseline", 0, 0)], 4)
+    assert child.text == "healthy"
+    assert (model.timeouts, model.errors) == (1, 2)
 
 
 async def test_custom_operators_control_exhaustion_even_with_a_declared_grid():

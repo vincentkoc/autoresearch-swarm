@@ -13,6 +13,8 @@ from threading import Event
 from typing import Any, Protocol
 from uuid import uuid4
 
+from research_swarm.swarm.process import run as run_command
+
 GPU_UUID = re.compile(r"GPU-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 PERIOD_SECONDS = 1.0
 
@@ -24,17 +26,18 @@ class GPUTimeStore(Protocol):
 def _busy_fractions() -> dict[str, float]:
     """Read the driver's sampled engine activity, keyed by full physical UUID."""
     try:
-        query = subprocess.run(
+        query = run_command(
             ["nvidia-smi", "--query-gpu=uuid,utilization.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             timeout=PERIOD_SECONDS,
             check=True,
         )
+        lines = query.stdout.decode().splitlines()
     except (OSError, UnicodeError, subprocess.SubprocessError):
         return {}
     values = {}
-    for line in query.stdout.splitlines():
+    for line in lines:
         device, _, percent = line.partition(",")
         try:
             fraction = float(percent) / 100

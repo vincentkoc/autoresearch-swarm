@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from research_swarm.swarm.agent_guard import Role as Role
 from research_swarm.swarm.agent_guard import record_outcome
+from research_swarm.swarm.process import guard_session
 
 
 class Advice(BaseModel):
@@ -144,54 +145,40 @@ async def ask_agent(
         job_metadata = json.dumps({"role": role, "deadline": time.time() + timeout})
         heartbeat.with_name("job.json").write_text(job_metadata)
         heartbeat.write_text(job_metadata)
-        process = await asyncio.create_subprocess_exec(
+        guard = [
             sys.executable,
             "-m",
             "research_swarm.swarm.agent_guard",
             str(heartbeat),
             str(deadline),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
-        completed = False
+        ]
         try:
-            async with asyncio.timeout(deadline - time.monotonic()):
-                stdout, stderr = await process.communicate(payload)
-            if process.returncode == -signal.SIGALRM:
-                raise TimeoutError
-            completed = True
-            if process.returncode == -signal.SIGKILL:
-                outcome = heartbeat.with_name("outcome.json")
-                if outcome.is_file() and json.loads(outcome.read_text())["status"] == "timed_out":
-                    return {"role": role, "status": "timed_out", "timeout_seconds": timeout}
-            if process.returncode:
-                return {
-                    "role": role,
-                    "status": "failed",
-                    "error": stderr.decode(errors="replace").strip()[:512] or "Provider exited",
-                }
-            return {"role": role, "status": "ok", "advice": json.loads(stdout)}
-        except TimeoutError:
-            record_outcome(heartbeat, "timed_out")
-            return {"role": role, "status": "timed_out", "timeout_seconds": timeout}
-        finally:
-            if not completed:
+            async with guard_session(guard) as process:
                 try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                except PermissionError as error:
-                    # Darwin may return EPERM while the guard's own SIGKILL is taking effect.
-                    # An actual permission failure on a live group must still surface.
-                    try:
-                        exit_code = await asyncio.wait_for(process.wait(), timeout=1)
-                    except TimeoutError:
-                        raise error from None
-                    if exit_code != -signal.SIGKILL:
-                        raise
-                await process.wait()
+                    async with asyncio.timeout(deadline - time.monotonic()):
+                        stdout, stderr = await process.communicate(payload)
+                    if process.returncode == -signal.SIGALRM:
+                        raise TimeoutError
+                except TimeoutError:
+                    # Commit the terminal record before cancellation closes the owned group.
+                    record_outcome(heartbeat, "timed_out")
+                    raise
+        except TimeoutError:
+            return {"role": role, "status": "timed_out", "timeout_seconds": timeout}
+        status = "ok" if process.returncode == 0 else "failed"
+        if process.returncode == -signal.SIGKILL:
+            outcome = heartbeat.with_name("outcome.json")
+            if outcome.is_file():
+                status = json.loads(outcome.read_text())["status"]
+        if status == "timed_out":
+            return {"role": role, "status": status, "timeout_seconds": timeout}
+        if status != "ok":
+            return {
+                "role": role,
+                "status": "failed",
+                "error": stderr.decode(errors="replace").strip()[:512] or "Provider exited",
+            }
+        return {"role": role, "status": "ok", "advice": json.loads(stdout)}
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
