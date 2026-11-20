@@ -19,9 +19,14 @@ Connected clusters is the default. Select Symmetric ring for the README example,
 or try Category groups and Spread-out force. Selection, search and the inspector
 work on the same data in every layout.
 
-The browser smoke script regenerates this atlas and captures the README view:
+The browser smoke script regenerates this atlas and captures the README view.
+Run it from the repository root with Node.js 22 or newer and Google Chrome.
+It looks for `google-chrome` on PATH. For a standard macOS installation,
+run `export CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+in the same shell.
 
 ```bash
+uv sync --locked --group dev
 node tests/visual/experiment-graph-smoke.mjs
 ```
 

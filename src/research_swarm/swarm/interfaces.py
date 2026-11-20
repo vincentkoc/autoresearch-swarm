@@ -71,9 +71,9 @@ class CampaignSpec:
     proposal_timeout_seconds: float = 10.0
     max_cost: float | None = None
     max_hours: float | None = None
-    price_per_hour: float = 0.0
-    price_per_million_input_tokens: float = 0.0
-    price_per_million_output_tokens: float = 0.0
+    price_per_hour: float | None = None
+    price_per_million_input_tokens: float | None = None
+    price_per_million_output_tokens: float | None = None
     estimated_input_tokens: int = 0
     estimated_output_tokens: int = 0
     search_panel: str | None = None

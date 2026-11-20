@@ -10,7 +10,15 @@ from typing import Any
 import yaml
 from pydantic import TypeAdapter
 
+from research_swarm.domain.canonical import MAX_SAFE_INTEGER
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate
+
+
+def validate_seed(seed: int | None) -> None:
+    if seed is not None and (type(seed) is not int or abs(seed) > MAX_SAFE_INTEGER):
+        raise ValueError(
+            f"Trial seed must be an integer between {-MAX_SAFE_INTEGER} and {MAX_SAFE_INTEGER}"
+        )
 
 
 def _check_fields(value: Any, record: type[CampaignSpec] | type[Candidate]) -> None:
@@ -35,6 +43,7 @@ def load_spec(path: Path) -> CampaignSpec:
     except (ValueError, TypeError) as exc:
         raise ValueError("Campaign values must be finite JSON data") from exc
     spec = TypeAdapter(CampaignSpec).validate_json(encoded, strict=True)
+    validate_seed(spec.seed)
     if spec.max_hours is not None and spec.max_hours < 0:
         raise ValueError("max_hours must be non-negative")
     if (
@@ -61,9 +70,9 @@ def load_spec(path: Path) -> CampaignSpec:
     if (
         min(
             spec.min_delta,
-            spec.price_per_hour,
-            spec.price_per_million_input_tokens,
-            spec.price_per_million_output_tokens,
+            spec.price_per_hour or 0.0,
+            spec.price_per_million_input_tokens or 0.0,
+            spec.price_per_million_output_tokens or 0.0,
             spec.estimated_input_tokens,
             spec.estimated_output_tokens,
             spec.max_cost if spec.max_cost is not None else 0,
@@ -77,6 +86,7 @@ def load_spec(path: Path) -> CampaignSpec:
         raise ValueError("Search space dimensions require at least one value")
     recipes: dict[str, Candidate] = {}
     for candidate in spec.candidates:
+        validate_seed(candidate.seed)
         if not candidate.candidate_id or (
             candidate.fidelity is not None and candidate.fidelity <= 0
         ):

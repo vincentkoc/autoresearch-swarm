@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Report the known cost subtotal and missing rates when recorded usage is only
+  partly priced. Cost per improvement stays unavailable until the total is known.
+  Reopening a campaign accepts equal integer and floating-point price rates
+  and preserves the original panel study binding.
+  Direct campaign registration rejects negative prices before writing to the queue.
+
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 
@@ -19,6 +25,9 @@
 - Validate the selected backend before creating or migrating the campaign queue.
   A rejected backend configuration leaves the queue untouched.
 
+- Reject trial seeds outside the signed interoperable JSON integer range on
+  campaign admission, proposal submission and resume, before recording new work.
+
 - Emit one campaign alert when two consecutive finished attempts fail or are
   lost. A successful attempt resets the streak. Concurrent and restarted
   watchers share the same alert and hourly digest journal.
@@ -32,12 +41,22 @@
 - Document how to stop and resume a local campaign with its original queue
   and panel study, and where to find trial, proposal and advisory timeout diagnostics.
 
+- Correct the quickstart help command and graph smoke prerequisites. Fix the
+  reactive CPU example's test command and live training journal path.
+
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
+
+- Report advisory responses received at or after the job deadline as timed out
+  and discard their advice.
 
 - Remove the retired worker journal's `launch_deadline_ns` argument from
   `run_native`. Native commands use their timeout and optional absolute deadline
   during both preparation and execution.
+
+- Preserve the original advisory role and deadline in the timeout report if the
+  heartbeat file disappears. If the launch record is corrupt at expiry, the
+  timeout report marks the role and deadline unknown and records the error.
 
 - Share committed-manifest resolution between explicit and manifest-selected
   Git revisions in project capture and registration.
