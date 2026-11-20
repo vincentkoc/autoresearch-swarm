@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 from collections import Counter, deque
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -289,11 +290,19 @@ def _inputs(database: Path, args: argparse.Namespace) -> dict[str, Any]:
 
 
 async def advise(database: Path, args: argparse.Namespace) -> dict[str, Any]:
+    return await _advise(database, args, ask_agent)
+
+
+async def _advise(
+    database: Path,
+    args: argparse.Namespace,
+    provider: Callable[..., Awaitable[dict[str, Any]]],
+) -> dict[str, Any]:
     context = _inputs(database, args)
     jobs = database.with_name(database.name + ".agent-jobs")
     replies = await asyncio.gather(
         *(
-            ask_agent(
+            provider(
                 args.role,
                 context,
                 model=args.model,

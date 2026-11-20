@@ -39,6 +39,23 @@ async def test_legacy_advice_uses_the_same_provider_and_preserves_batch_order(
     assert [call.kwargs["seed"] for call in provider.await_args_list] == [9, 10]
 
 
+async def test_legacy_provider_override_is_local_to_its_caller(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    SQLiteStore(database).create_campaign(spec())
+    parser = argparse.ArgumentParser()
+    advice.add_arguments(parser)
+    args = parser.parse_args(["reporter", "test", "--model", "fixture"])
+    legacy_reply = {"status": "ok", "advice": {"summary": "legacy provider"}}
+    canonical_reply = {"status": "ok", "advice": {"summary": "canonical provider"}}
+    canonical = AsyncMock(return_value=canonical_reply)
+    legacy = AsyncMock(return_value=legacy_reply)
+    with patch.object(agents, "ask_agent", canonical), patch.object(advice, "ask_agent", legacy):
+        replies = await asyncio.gather(advice.advise(database, args), agents.advise(database, args))
+    assert replies == [legacy_reply, canonical_reply]
+    legacy.assert_awaited_once()
+    canonical.assert_awaited_once()
+
+
 def test_all_three_roles_read_campaign_without_dispatch(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
