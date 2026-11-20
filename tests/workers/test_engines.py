@@ -32,7 +32,7 @@ from research_swarm.engines.registration import (
     register_environment,
     verify_registration,
 )
-from research_swarm.state.private_files import write_private
+from research_swarm.swarm.private_files import write_private
 
 CONTRACT = content_digest(b"synthetic environment contract")
 

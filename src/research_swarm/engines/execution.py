@@ -11,7 +11,7 @@ from research_swarm.domain.experiments import ResourceRequirements, StageSpec
 from research_swarm.engines.adapter import launch_adapter_digest
 from research_swarm.engines.registration import EnvironmentRegistration
 from research_swarm.projects.source import portable_path
-from research_swarm.state.private_files import private_state_directory, read_private, write_private
+from research_swarm.swarm.private_files import private_state_directory, read_private, write_private
 
 
 def demand(
