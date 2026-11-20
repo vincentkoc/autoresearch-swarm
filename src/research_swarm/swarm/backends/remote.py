@@ -15,7 +15,7 @@ from research_swarm.swarm.backends.local import LocalBackend
 from research_swarm.swarm.data_stage import hydrate, mount_readonly, stage_path
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
 from research_swarm.swarm.process import read_all, run_async
-from research_swarm.swarm.telemetry import observe_starts, workload_started
+from research_swarm.swarm.resources import observe_starts, workload_started
 
 RESULT_PREFIX = "SWARM_RESULT "
 START_PREFIX = "SWARM_STARTED "

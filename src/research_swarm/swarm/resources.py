@@ -1,12 +1,18 @@
-"""Slot admission for a scheduler that owns a disjoint set of devices and quotas."""
+"""Reserve worker resources, observe dispatch and price measured usage."""
 
 from __future__ import annotations
 
+import math
 import time
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
+from decimal import Decimal
 from threading import Lock
+
+from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Trial
 
 
 @dataclass(frozen=True)
@@ -162,3 +168,69 @@ class ResourcePool:
             if not dispatched and allocation.demand.llm_tokens:
                 self._tokens = deque(entry for entry in self._tokens if entry[1] is not allocation)
             self._active.remove(allocation)
+
+
+PRICE_FIELDS = (
+    "price_per_hour",
+    "price_per_million_input_tokens",
+    "price_per_million_output_tokens",
+)
+
+
+def price_rates(spec: CampaignSpec) -> tuple[float, ...]:
+    return tuple(getattr(spec, field) or 0.0 for field in PRICE_FIELDS)
+
+
+def _price(spec: CampaignSpec, seconds: float, input_tokens: int, output_tokens: int) -> float:
+    rates = price_rates(spec)
+    if any(not math.isfinite(n) or n < 0 for n in (*rates, seconds)):
+        raise ValueError("elapsed time and prices must be finite and nonnegative")
+    if any(type(n) is not int or n < 0 for n in (input_tokens, output_tokens)):
+        raise ValueError("token counts must be nonnegative integers")
+    hourly, input_rate, output_rate = (Decimal(str(n)) for n in rates)
+    compute = hourly * Decimal(str(seconds)) / 3600
+    tokens = (input_rate * input_tokens + output_rate * output_tokens) / 1_000_000
+    total = float(compute + tokens)
+    if not math.isfinite(total):
+        raise ValueError("attempt cost exceeds the supported range")
+    return total
+
+
+class CostMeter:
+    """Use the configured hourly rate per billable slot and per-million token prices."""
+
+    def estimate(self, spec: CampaignSpec, trial: Trial) -> float:
+        return _price(
+            spec,
+            spec.trial_timeout_seconds,
+            spec.estimated_input_tokens,
+            spec.estimated_output_tokens,
+        )
+
+    def charge(
+        self,
+        spec: CampaignSpec,
+        attempt: Attempt,
+        wall_seconds: float,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> float:
+        return _price(spec, wall_seconds, input_tokens, output_tokens)
+
+
+_observer: ContextVar[Callable[[str], None] | None] = ContextVar("workload_start", default=None)
+
+
+@contextmanager
+def observe_starts(observer: Callable[[str], None] | None) -> Iterator[None]:
+    token = _observer.set(observer)
+    try:
+        yield
+    finally:
+        _observer.reset(token)
+
+
+def workload_started(attempt_id: str) -> None:
+    observer = _observer.get()
+    if observer is not None:
+        observer(attempt_id)

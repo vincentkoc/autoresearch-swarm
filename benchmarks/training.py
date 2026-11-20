@@ -64,7 +64,7 @@ Clip = Callable[[nn.Module], None]
 def _training_code(candidate: Candidate, protocol: str = "v1") -> tuple[Configure, Loss, Clip]:
     # Only checked-in lines can enter this function. External model output selects
     # the edits. The search history retains their exact text for replay.
-    space = TRAINING_SPACE if protocol == "v1" else TRAINING_V2
+    space = TRAINING_SPACE if protocol != "v2" else TRAINING_V2
     if candidate.keys() != space.keys() or any(
         candidate[key] not in lines for key, lines in space.items()
     ):
@@ -109,6 +109,7 @@ def mlp_accuracy(
     fidelity: float,
     *,
     protocol: str = "v1",
+    on_work: Callable[[], None] | None = None,
 ) -> float:
     steps = 24 if size == "small" else 192
     count = panel_size("mlp", size, "train")
@@ -122,7 +123,7 @@ def mlp_accuracy(
     lr = float(candidate["learning_rate"])
     decay = float(candidate.get("weight_decay", "0"))
     optimizer: torch.optim.Optimizer
-    if protocol == "v1":
+    if protocol != "v2":
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     elif candidate["optimizer"] == "SGD":
         optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=decay, momentum=0.9)
@@ -135,6 +136,8 @@ def mlp_accuracy(
         optimizer.zero_grad()
         torch.autograd.backward(F.cross_entropy(model(x[indices]), y[indices]))
         optimizer.step()
+        if on_work is not None:
+            on_work()
     with torch.inference_mode():
         x, y = _points(panel_seed(protocol, panel), panel_size("mlp", size, panel), device)
         return float((model(x).argmax(dim=-1) == y).float().mean().item())
@@ -191,6 +194,7 @@ def nanogpt_loss(
     fidelity: float,
     *,
     protocol: str = "v1",
+    on_work: Callable[[], None] | None = None,
 ) -> float:
     context, width, steps, batch_size = (12, 24, 12, 16) if size == "small" else (48, 96, 160, 64)
     torch.manual_seed(seed)
@@ -209,6 +213,8 @@ def nanogpt_loss(
         torch.autograd.backward(_next_token_loss(model, train[indices], loss_fn))
         clip(model)
         optimizer.step()
+        if on_work is not None:
+            on_work()
     with torch.inference_mode():
         validation = _sequences(
             panel_seed(protocol, panel), panel_size("nanogpt", size, panel), context, device

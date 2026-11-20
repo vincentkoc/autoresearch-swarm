@@ -20,7 +20,7 @@ from research_swarm.swarm.backends.gpu_time import GPU_UUID, GPUTimeStore, sampl
 from research_swarm.swarm.data_stage import Stage, local_stage, verify_local_stage
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, FailureClass, Result
 from research_swarm.swarm.process import run_async
-from research_swarm.swarm.telemetry import workload_started
+from research_swarm.swarm.resources import workload_started
 
 
 async def _tail(stream: asyncio.StreamReader) -> bytes:

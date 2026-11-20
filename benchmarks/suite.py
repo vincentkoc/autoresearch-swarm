@@ -27,20 +27,26 @@ PANEL_SEEDS = {
 }
 
 
-def registered_seed(label: str) -> int:
-    digest = hashlib.sha256(f"ars-bench-v2/{label}".encode()).digest()
+def registered_seed(label: str, *, prefix: str = "ars-bench-v2") -> int:
+    digest = hashlib.sha256(f"{prefix}/{label}".encode()).digest()
     return int.from_bytes(digest[:4], "big")
 
 
 def panel_seed(protocol: str, panel: str) -> int:
-    return PANEL_SEEDS[panel] if protocol == "v1" else registered_seed(f"data/{panel}")
+    if protocol == "v1":
+        return PANEL_SEEDS[panel]
+    return registered_seed(f"data/{panel}", prefix=seed_prefix(protocol))
+
+
+def seed_prefix(protocol: str) -> str:
+    return "ars-cli-equal-work-v1" if protocol == "v3" else "ars-bench-v2"
 
 
 def comparison_seeds(protocol: str, *, calibration: bool = False) -> tuple[int, ...]:
     if protocol == "v1":
         return (11, 23, 47)
     label = "calibration-seed" if calibration else "search-seed"
-    return tuple(registered_seed(f"{label}/{i}") for i in range(3))
+    return tuple(registered_seed(f"{label}/{i}", prefix=seed_prefix(protocol)) for i in range(3))
 
 
 def panel_size(name: str, size: str, role: str) -> int:
@@ -181,6 +187,7 @@ def _slug_score(
     fidelity: float,
     *,
     protocol: str = "v1",
+    on_work: Callable[[], None] | None = None,
 ) -> float:
     stream = panel_seed(protocol, panel)
     rng = random.Random(stream)
@@ -203,11 +210,20 @@ def _slug_score(
             value = operations[candidate[key]](value)
         expected = "-".join([*(word.lower() for word in words), suffix])
         scores.append(value == expected)
+        if on_work is not None:
+            on_work()
     return statistics.mean(scores)
 
 
-def get_task(name: str, device: str = "cpu", size: str = "small", *, protocol: str = "v1") -> Task:
-    if protocol not in ("v1", "v2"):
+def get_task(
+    name: str,
+    device: str = "cpu",
+    size: str = "small",
+    *,
+    protocol: str = "v1",
+    on_work: Callable[[], None] | None = None,
+) -> Task:
+    if protocol not in ("v1", "v2", "v3"):
         raise ValueError("unknown benchmark protocol")
     if size not in ("small", "full") or device not in ("cpu", "mps", "cuda"):
         raise ValueError("unknown size or device")
@@ -221,7 +237,7 @@ def get_task(name: str, device: str = "cpu", size: str = "small", *, protocol: s
             "pass_rate",
             "maximize",
             PROGRAM_SPACE,
-            partial(_slug_score, protocol=protocol),
+            partial(_slug_score, protocol=protocol, on_work=on_work),
             device,
             size,
             protocol,
@@ -241,8 +257,8 @@ def get_task(name: str, device: str = "cpu", size: str = "small", *, protocol: s
             "Classify synthetic points by quadrant parity.",
             "accuracy",
             "maximize",
-            MLP_SPACE if protocol == "v1" else MLP_V2,
-            partial(mlp_accuracy, protocol=protocol),
+            MLP_V2 if protocol == "v2" else MLP_SPACE,
+            partial(mlp_accuracy, protocol=protocol, on_work=on_work),
             device,
             size,
             protocol,
@@ -254,8 +270,8 @@ def get_task(name: str, device: str = "cpu", size: str = "small", *, protocol: s
             "loop to minimize next-token validation loss.",
             "val_loss",
             "minimize",
-            TRAINING_SPACE if protocol == "v1" else TRAINING_V2,
-            partial(nanogpt_loss, protocol=protocol),
+            TRAINING_V2 if protocol == "v2" else TRAINING_SPACE,
+            partial(nanogpt_loss, protocol=protocol, on_work=on_work),
             device,
             size,
             protocol,

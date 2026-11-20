@@ -27,26 +27,11 @@ from research_swarm.reactive.journal_records import (
     JournalEvent,
     SessionState,
 )
+from research_swarm.swarm.db import JournalConflict as JournalConflict
+from research_swarm.swarm.db import connection
 
 if TYPE_CHECKING:
     from research_swarm.reactive.session import TrainingSession
-
-_APPLICATION_ID = 0x52585331
-_SCHEMA = """
-CREATE TABLE session (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
-CREATE TABLE events (
-    sequence INTEGER PRIMARY KEY, request_id TEXT, payload TEXT NOT NULL
-);
-CREATE INDEX events_request ON events(request_id,sequence);
-CREATE TRIGGER events_no_update BEFORE UPDATE ON events
-BEGIN SELECT RAISE(ABORT, 'Reactive events are append-only'); END;
-CREATE TRIGGER events_no_delete BEFORE DELETE ON events
-BEGIN SELECT RAISE(ABORT, 'Reactive events are append-only'); END;
-"""
-
-
-class JournalConflict(ValueError):
-    """The submitted identity or transition does not match persisted evidence."""
 
 
 class DecisionJournal:
@@ -68,20 +53,10 @@ class DecisionJournal:
         state = SessionState(
             id=new_id(), binding=binding, contract=contract, controls=contract.initial_controls()
         )
-        connection = sqlite3.connect(path, isolation_level=None)
-        try:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA synchronous=FULL")
-            connection.executescript(_SCHEMA)
-            connection.execute(f"PRAGMA application_id={_APPLICATION_ID}")
-            connection.execute("PRAGMA user_version=1")
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute("INSERT INTO session VALUES (1,?)", (state.model_dump_json(),))
+        with connection(path, schema="reactive", write=True) as db:
+            db.execute("INSERT INTO session VALUES (1,?)", (state.model_dump_json(),))
             event = JournalEvent(sequence=0, kind="created", session=state)
-            connection.execute("INSERT INTO events VALUES (0,NULL,?)", (event.model_dump_json(),))
-            connection.commit()
-        finally:
-            connection.close()
+            db.execute("INSERT INTO events VALUES (0,NULL,?)", (event.model_dump_json(),))
         return cls(path, state.id)
 
     @classmethod
@@ -94,26 +69,10 @@ class DecisionJournal:
 
     @contextmanager
     def _connect(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(
-            self.path.as_uri() + "?mode=rw", uri=True, isolation_level=None, timeout=5
-        )
-        try:
-            if (
-                connection.execute("PRAGMA application_id").fetchone()[0] != _APPLICATION_ID
-                or connection.execute("PRAGMA user_version").fetchone()[0] != 1
-            ):
-                raise JournalConflict("Unsupported reactive journal")
-            connection.execute("PRAGMA synchronous=FULL")
-            connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
-            if self.identity and self._state(connection).id != self.identity:
+        with connection(self.path, schema="reactive", existing=True, write=write) as db:
+            if self.identity and self._state(db).id != self.identity:
                 raise JournalConflict("Reactive session identity changed")
-            yield connection
-            connection.commit()
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+            yield db
 
     @staticmethod
     def _state(connection: sqlite3.Connection) -> SessionState:

@@ -27,7 +27,7 @@ def recipe_key(candidate: Candidate) -> str:
 
 def _protocol(task: Task) -> tuple[PanelSplit, tuple[str, ...], tuple[int, ...], str]:
     first = task.initial
-    mid_rate, high_rate = ("0.005", "0.02") if task.protocol == "v1" else ("0.004", "0.016")
+    mid_rate, high_rate = ("0.005", "0.02") if task.protocol != "v2" else ("0.004", "0.016")
     if task.name == "program":
         partial = {**first, "line1": "lower", "line2": "strip"}
         full = {**partial, "line2": "hyphenate", "line3": "trim-hyphens"}
