@@ -202,3 +202,6 @@ def test_independent_store_instances_publish_once_and_preserve_existing_destinat
     with pytest.raises(ResearchError) as missing:
         second.verify(workspace_id, results[0])
     assert missing.value.code == ErrorCode.ARTIFACT_UNVERIFIED
+    with pytest.raises(ResearchError) as missing_read, second.reader(workspace_id, results[0]):
+        pytest.fail("An absent generation cannot yield a reader")
+    assert missing_read.value.code == missing.value.code

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The standalone R2 adapter verifies and opens stored blobs through the same
+  generation check. Existing storage imports and staging directories are supported.
+
 - Campaigns can set `full_fidelity_work` and `max_search_work` with `max_attempts: 1`
   to cap search work across rungs. Each admitted trial reserves the rounded-up
   cost of a fresh fit, including the initial recipe and promotions. Queued and
