@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
-from research_swarm.projects.workload import WorkloadContext
-from research_swarm.reactive.contracts import ReactiveContract, RunBinding
+from research_swarm.swarm.projects.workload import WorkloadContext
+from research_swarm.swarm.reactive.contracts import ReactiveContract, RunBinding
 from research_swarm.swarm.records import StageSpec
 
 if TYPE_CHECKING:
-    from research_swarm.reactive.journal import DecisionJournal
+    from research_swarm.swarm.reactive.journal import DecisionJournal
 
 
 def training_parameters(
@@ -41,7 +41,7 @@ def context_declaration(
 
 
 def create_session(context: WorkloadContext, *, path: Path | None = None) -> DecisionJournal:
-    from research_swarm.reactive.journal import DecisionJournal
+    from research_swarm.swarm.reactive.journal import DecisionJournal
 
     root, binding, contract = context_declaration(context)
     return DecisionJournal.create(path or root / "reactive.sqlite", binding, contract)

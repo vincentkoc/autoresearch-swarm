@@ -199,9 +199,11 @@ def test_watchdog_is_armed_before_release_can_block(
     require_closed(result.closure.identity.pid)
 
 
+@pytest.mark.parametrize("signal_raced_with_guard", [False, True])
 def test_watchdog_closes_a_held_child_while_authorization_is_blocked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    signal_raced_with_guard: bool,
 ) -> None:
     from research_swarm.workers import supervision
 
@@ -213,8 +215,13 @@ def test_watchdog_closes_a_held_child_while_authorization_is_blocked(
         stop = child.stop
 
         def observed_stop(*, force: bool) -> None:
-            stop(force=force)
-            stopped.set()
+            try:
+                stop(force=force)
+                if force and signal_raced_with_guard and not stopped.is_set():
+                    raise PermissionError("fixture-owned guard closed during deadline stop")
+            finally:
+                if force:
+                    stopped.set()
 
         monkeypatch.setattr(child, "stop", observed_stop)
         return child
@@ -229,9 +236,11 @@ def test_watchdog_closes_a_held_child_while_authorization_is_blocked(
         tmp_path / "output",
         on_held=blocked_authorization,
     )
-    assert result.reason == "not_started" and result.released_at is None
+    assert result.reason == "not_started" and result.released_at is None, result.closure.findings
     assert result.closure.scope_closed and stopped.is_set()
     require_closed(result.closure.identity.pid)
+    if signal_raced_with_guard:
+        assert "Deadline termination request failed: PermissionError" in result.closure.findings
 
 
 @pytest.mark.parametrize("eventually_available", [False, True])

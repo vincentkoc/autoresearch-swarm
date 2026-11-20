@@ -10,8 +10,10 @@ from types import TracebackType
 from typing import Literal, Protocol, Self
 
 from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes
-from research_swarm.projects.workload import WorkloadContext
-from research_swarm.reactive.contracts import (
+from research_swarm.swarm.projects.workload import WorkloadContext
+from research_swarm.swarm.reactive.admission import context_declaration, create_session
+from research_swarm.swarm.reactive.contracts import (
+    ApplicationIntent,
     ApplicationReceipt,
     DecisionRequest,
     NumericValue,
@@ -21,10 +23,8 @@ from research_swarm.reactive.contracts import (
     Step,
     ordered,
 )
-from research_swarm.reactive.journal import DecisionJournal, JournalConflict
-from research_swarm.reactive.journal_records import ApplicationIntent
-from research_swarm.reactive.transcript import ControlTranscript
-from research_swarm.swarm.reactive.admission import context_declaration, create_session
+from research_swarm.swarm.reactive.journal import DecisionJournal, JournalConflict
+from research_swarm.swarm.reactive.transcript import ControlTranscript
 from research_swarm.swarm.records import Digest, VersionedRecord, new_id
 
 

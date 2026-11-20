@@ -32,6 +32,8 @@ from research_swarm.engines.registration import (
     register_environment,
     verify_registration,
 )
+from research_swarm.swarm import engines as swarm_engines
+from research_swarm.swarm.engines import registration as swarm_registration
 from research_swarm.swarm.private_files import write_private
 
 CONTRACT = content_digest(b"synthetic environment contract")
@@ -373,6 +375,35 @@ def cpu_registration(tmp_path: Path) -> EnvironmentRegistration:
         tmp_path / "registration" / "environment.json",
         profile="python-cpu",
         environment_contracts=(CONTRACT,),
+    )
+
+
+def test_registration_without_launch_binding_retains_its_original_fingerprint(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "executable": "/opt/synthetic/python",
+        "probe_directory": "/opt/probe",
+        "interpreter": {
+            "executable": "/opt/synthetic/python",
+            "prefix": "/opt/synthetic",
+            "base_prefix": "/opt/synthetic",
+        },
+        "descriptor": descriptor().model_dump(mode="json"),
+        "environment_contracts": [CONTRACT],
+        "cpu_slots": 1,
+        "executable_digest": content_digest(b"exe"),
+    }
+    path = tmp_path / "environment.json"
+    write_private(path, canonical_bytes(payload))
+    saved = swarm_registration.read_registration(path)
+    assert isinstance(saved, EnvironmentRegistration)
+    assert type(saved.descriptor) is swarm_engines.EngineDescriptor is EngineDescriptor
+    assert "launch_adapter_digest" not in saved.model_dump(mode="json")
+    assert saved.profile.features == frozenset()
+    assert saved.profile.execution_fingerprint == (
+        "sha256:148b2772cd08480ac9a0265f83e13c92aa9a0af755e3d2637e10e8f2b9812b07"
     )
 
 

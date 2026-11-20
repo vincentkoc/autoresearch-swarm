@@ -3,7 +3,7 @@
 import base64
 import hashlib
 
-from research_swarm.control.report_view import _SCRIPT as REPORT_SCRIPT
+from research_swarm.swarm.report.view import _SCRIPT as REPORT_SCRIPT
 
 _SCRIPT = """
 const login = document.querySelector('form');

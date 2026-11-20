@@ -170,6 +170,21 @@ def test_tree_extreme_finite_scores_have_finite_ordered_geometry(
     assert ">inf<" not in html and ">nan<" not in html
 
 
+def test_embedded_observation_keeps_its_id_and_normalizes_xml_title_lines() -> None:
+    source = evidence()
+    observation = source["recent_evaluations"][0]
+    observation["id"] = "item\r\n<&>"
+    observation["data"]["trial_id"] = "first\r\nsecond\rthird"
+    tags = Tags()
+    tags.feed(render_report_html([source], comparison_digest="synthetic-cohort", metric=METRIC))
+    [dot] = [
+        attrs
+        for tag, attrs in tags.tags
+        if tag == "circle" and attrs.get("data-observation") == observation["id"]
+    ]
+    assert "Trial first\nsecond\nthird;" in (dot["aria-label"] or "")
+
+
 def test_campaign_picker_scopes_both_views_and_all_panels() -> None:
     first, second = evidence(), evidence()
     second["campaign_id"] = "second-campaign"

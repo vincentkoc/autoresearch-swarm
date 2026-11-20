@@ -15,7 +15,7 @@ from research_swarm.client import ResearchClient
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import read_private
-from research_swarm.swarm.reader import CampaignReader
+from research_swarm.swarm.report import CampaignReader
 from research_swarm.swarm.store import LegacyDatabaseError
 
 
@@ -185,8 +185,8 @@ def _read_json_object(path: Path, *, limit: int) -> dict[str, Any]:
 
 
 def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
-    from research_swarm.control.report_plot import render_hill_climb_svg
     from research_swarm.domain.experiments import MetricDefinition
+    from research_swarm.swarm.report.plot import render_hill_climb_svg
 
     snapshots = []
     for report in reports:
@@ -205,7 +205,7 @@ def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> di
     renderer = render_hill_climb_svg
     output_format = "svg"
     if args.report_action == "view":
-        from research_swarm.control.report_view import render_report_html
+        from research_swarm.swarm.report.view import render_report_html
 
         renderer = render_report_html
         output_format = "html"
@@ -403,7 +403,7 @@ def main(argv: list[str] | None = None) -> int:
             _emit_json(_plot_reports([snapshot], args))
             return 0
         if args.action == "report":
-            from research_swarm.control.report_plot import MAX_RUNS
+            from research_swarm.swarm.report.plot import MAX_RUNS
 
             if args.campaign or not all(
                 (args.metric, args.unit, args.direction, args.comparison_digest)
@@ -451,8 +451,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(
                     "Engine registration is a local operation without controller state"
                 )
-            from research_swarm.engines import ENGINE_DEFINITIONS, probe_engine
-            from research_swarm.engines.registration import (
+            from research_swarm.swarm.engines import ENGINE_DEFINITIONS, probe_engine
+            from research_swarm.swarm.engines.registration import (
                 ExecutionPolicy,
                 read_registration,
                 register_environment,
