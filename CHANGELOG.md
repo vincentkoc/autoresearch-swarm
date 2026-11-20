@@ -5,10 +5,21 @@
 - Bundle extraction verifies and reads one open archive. Workload outputs share
   their byte allowance across files, including zero-byte outputs.
 
+- The standalone R2 adapter verifies and opens stored blobs through the same
+  generation check. Existing storage imports and staging directories are supported.
+
+- Trainer requests, manual responses and completed policy calls share the same
+  run-binding and control revision checks. Existing reactive journals reopen as before.
+
 - Campaigns can set `full_fidelity_work` and `max_search_work` with `max_attempts: 1`
   to cap search work across rungs. Each admitted trial reserves the rounded-up
   cost of a fresh fit, including the initial recipe and promotions. Queued and
   completed trials keep their reservations across resume.
+
+- Interrupting a native run closes the owned workload and propagates the
+  interruption. A cancelled proposal or an unexpected operator error reaches
+  the caller. Completed providers release their slots before the next request.
+  A malformed model response still counts as a rejected response.
 
 - Campaign and artifact storage now share the same durable directory sync. Private
   file handling moves from `state.private_files` to `swarm.private_files`.
@@ -41,7 +52,7 @@
 
 - Use a common WAL connection policy for the queue, panel studies and journals.
   Concurrent writers share a busy timeout, and schema upgrades commit atomically.
-  Campaign reports continue to open existing databases read-only.
+  Campaign reports and equal-work benchmark finalist checks open existing databases read-only.
 
 - Reject a benchmark campaign paired with an incompatible open panel study
   before reusing a score or spending a look.

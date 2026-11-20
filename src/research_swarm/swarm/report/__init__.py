@@ -6,6 +6,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -71,23 +72,26 @@ def _usage(db: sqlite3.Connection, campaign: str, spec: dict[str, Any]) -> dict[
     }
 
 
+def _campaign_row(
+    db: sqlite3.Connection, campaign: str, *, include_selection: bool = False
+) -> sqlite3.Row:
+    columns = "spec,selected_trial_id" if include_selection else "spec"
+    row: sqlite3.Row | None = db.execute(
+        f"SELECT {columns} FROM swarm_campaigns WHERE campaign_id=?", (campaign,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"Unknown campaign {campaign}")
+    return row
+
+
 def read_meter(database: Path, campaign: str) -> dict[str, Any]:
     with _read(database) as db:
-        row = db.execute(
-            "SELECT spec FROM swarm_campaigns WHERE campaign_id=?", (campaign,)
-        ).fetchone()
-        if row is None:
-            raise ValueError(f"Unknown campaign {campaign}")
-        return _usage(db, campaign, json.loads(row["spec"]))
+        return _usage(db, campaign, json.loads(_campaign_row(db, campaign)["spec"]))
 
 
 def capture(database: Path, campaign: str) -> dict[str, Any]:
     with _read(database) as db:
-        row = db.execute(
-            "SELECT spec,selected_trial_id FROM swarm_campaigns WHERE campaign_id=?", (campaign,)
-        ).fetchone()
-        if row is None:
-            raise ValueError(f"Unknown campaign {campaign}")
+        row = _campaign_row(db, campaign, include_selection=True)
         spec = json.loads(row["spec"])
         captured_at = datetime.now(UTC)
         objective = {"name": spec["metric"], "unit": "unspecified", "direction": spec["direction"]}
@@ -240,3 +244,56 @@ def capture(database: Path, campaign: str) -> dict[str, Any]:
         "meter": meter,
         "kpis": kpis,
     }
+
+
+def _limit(limit: int) -> int:
+    if not 1 <= limit <= 100:
+        raise ValueError("Page size must be between 1 and 100")
+    return limit
+
+
+@dataclass(frozen=True)
+class CampaignReader:
+    database: Path
+
+    def campaigns(self, cursor: str | None = None, limit: int = 100) -> dict[str, Any]:
+        with _read(self.database) as db:
+            rows = db.execute(
+                "SELECT campaign_id, project_id FROM swarm_campaigns WHERE campaign_id > ? "
+                "ORDER BY campaign_id LIMIT ?",
+                (cursor or "", _limit(limit) + 1),
+            ).fetchall()
+        page = rows[:limit]
+        return {
+            "items": [
+                {
+                    "id": row["campaign_id"],
+                    "data": {"name": row["campaign_id"], "project_id": row["project_id"]},
+                }
+                for row in page
+            ],
+            "next_cursor": page[-1]["campaign_id"] if len(rows) > limit else None,
+        }
+
+    def snapshot(self, campaign_id: str) -> dict[str, Any]:
+        return capture(self.database, campaign_id)
+
+    def budget(self, campaign_id: str) -> dict[str, Any]:
+        return read_meter(self.database, campaign_id)
+
+    def events(
+        self, after: int = 0, limit: int = 100, campaign_id: str | None = None
+    ) -> dict[str, Any]:
+        if after < 0:
+            raise ValueError("Event cursor must be nonnegative")
+        with _read(self.database) as db:
+            rows = db.execute(
+                "SELECT * FROM swarm_events WHERE id > ? AND (? IS NULL OR campaign_id=?) "
+                "ORDER BY id LIMIT ?",
+                (after, campaign_id, campaign_id, _limit(limit) + 1),
+            ).fetchall()
+        page = rows[:limit]
+        return {
+            "items": [dict(row) for row in page],
+            "next_cursor": page[-1]["id"] if len(rows) > limit else None,
+        }

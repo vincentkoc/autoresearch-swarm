@@ -145,6 +145,7 @@ class ReactiveHook:
 
     def _apply(self, intent: ApplicationIntent) -> BoundaryResult:
         detail = "control_read_failed"
+        verified = False
         try:
             before = self._read()
             if before != intent.request.current_controls:
@@ -158,12 +159,15 @@ class ReactiveHook:
             if after != intent.target:
                 detail = "readback_mismatch"
                 raise ValueError("Control readback differs from the requested values")
-        except BaseException as error:
-            receipt = self._receipt(intent, None)
-            self._uncertain = True
-            self.session.record_application(receipt, detail=detail)
-            if not isinstance(error, Exception):
-                raise
+            verified = True
+        except (OSError, RuntimeError, ValueError):
+            pass  # A target error can leave a partially applied control.
+        finally:
+            if not verified:
+                self._uncertain = True
+                receipt = self._receipt(intent, None)
+                self.session.record_application(receipt, detail=detail)
+        if not verified:
             return BoundaryResult(status="uncertain", receipt=receipt)
         receipt = self._receipt(intent, after)
         # A failed journal write after mutation leaves a durable applying intent.

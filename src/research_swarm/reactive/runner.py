@@ -23,13 +23,13 @@ class DecisionRunner:
         self._timer: asyncio.TimerHandle | None = None
         self._call: DecisionCall | None = None
         self._request: DecisionRequest | None = None
-        self._error: BaseException | None = None
+        self._error: Exception | None = None
         self._closed = False
 
     def poll(self) -> Literal["started", "busy", "idle", "closed"]:
         """Start at most one persisted call. Never wait for inference or cancellation."""
         if self._error is not None:
-            raise RuntimeError("Decision-call persistence failed") from self._error
+            raise self._error
         if self._closed:
             return "closed"
         state = self.journal.inspect()
@@ -39,7 +39,8 @@ class DecisionRunner:
         if self._task is not None:
             if not self._task.done():
                 return "busy"
-            self._task.result()
+            if not self._task.cancelled():
+                self._task.result()
             self._task = None
         if state.inflight_call_request_id is not None:
             return "busy"
@@ -61,10 +62,11 @@ class DecisionRunner:
         failure: Literal["exception", "invalid_response", "cancelled"] | None = None
         try:
             output = await self.policy.decide(request, self.contract)
-        except asyncio.CancelledError:
-            failure = "cancelled"
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             failure = "exception"
+        except Exception:
+            finish_call(self.journal, request.id, call.id, failure="exception")
+            raise
         else:
             try:
                 proposal = DecisionProposal.model_validate(output)
@@ -82,7 +84,7 @@ class DecisionRunner:
             return
         try:
             fence_call(self.journal, request.id, call.id, "timeout")
-        except BaseException as error:
+        except Exception as error:
             self._error = error
         finally:
             if not task.cancelling():
@@ -102,7 +104,7 @@ class DecisionRunner:
                 finish_call(self.journal, request.id, call.id, failure="cancelled")
             else:
                 task.result()
-        except BaseException as error:
+        except Exception as error:
             self._error = error
 
     def close(self) -> None:

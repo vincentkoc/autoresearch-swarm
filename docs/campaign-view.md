@@ -34,7 +34,7 @@ The tabs support Left/Right and Home/End keyboard navigation.
   Missing parents and truncated parent lists are disclosed, never reconstructed.
 
 The reusable Python API remains
-`research_swarm.control.report_view.render_report_html(snapshots,
+`research_swarm.swarm.report.view.render_report_html(snapshots,
 comparison_digest=..., metric=..., labels=..., project_repository=...)`.
 No new data field or mode argument is required; both views use the same bounded
 snapshot and exact comparison/metric selection. Live adapters can render new

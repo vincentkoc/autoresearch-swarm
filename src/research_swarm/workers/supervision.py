@@ -221,6 +221,9 @@ def run_native(
             right = stderr.drain(child, child.stderr)
             return left or right
 
+        closure = ProcessClosure(
+            identity=child.identity, scope_closed=False, scope="posix_process_group"
+        )
         try:
             watchdog = threading.Thread(target=enforce_deadline, daemon=True)
             watchdog.start()
@@ -262,55 +265,59 @@ def run_native(
                     reason = "deadline"
             if reason == "exited" and not closure.scope_closed:
                 reason = "descendants_remaining"
-        except BaseException as error:
+        except Exception as error:
             reason = "supervisor_error"
-            findings.append(f"Supervisor callback or observation failed: {type(error).__name__}")
-            closure = ProcessClosure(
-                identity=child.identity,
-                scope_closed=False,
-                scope="posix_process_group",
-            )
-
-        # Retain ownership through scope closure, exit readiness and pipe draining.
-        cleanup_start = continuous_time()
-        cleanup_deadline = cleanup_start + command.cleanup_ms / 1000
-        force_at = cleanup_start + command.grace_ms / 1000
-        forced = False
-
-        def request_stop(*, force: bool) -> None:
-            try:
-                child.stop(force=force)
-            except OSError as error:
-                findings.append(f"Cleanup termination request failed: {type(error).__name__}")
-                # A concurrent deadline signal can leave a zombie-only group.
-                # Continue independent closure observation, draining, and reaping.
-
-        try:
-            if not closure.scope_closed:
-                request_stop(force=False)
-            while True:
-                leader_active = child.active()  # Observe descendants without reaping the leader.
-                progress = drain()
-                closure = child.closure()
-                if closure.scope_closed and stdout.eof and stderr.eof and not leader_active:
-                    break
-                now = continuous_time()
-                if not closure.scope_closed and now >= force_at and not forced:
-                    request_stop(force=True)
-                    forced = True
-                if now >= cleanup_deadline:
-                    break
-                if not progress:
-                    time.sleep(0.01)
-            stop_watchdog()
-            exit_code = child.exit_code()
-        except BaseException as error:
-            findings.append(f"Native cleanup could not be established: {type(error).__name__}")
             closure = closure.model_copy(update={"scope_closed": False})
-            exit_code = None
-            with suppress(OSError):
-                child.stop(force=True)
-        stop_watchdog()
+            findings.append(f"Supervisor callback or observation failed: {type(error).__name__}")
+        finally:
+            # Retain ownership through scope closure, exit readiness and pipe draining.
+            cleanup_start = continuous_time()
+            cleanup_deadline = cleanup_start + command.cleanup_ms / 1000
+            force_at = cleanup_start + command.grace_ms / 1000
+            forced = False
+
+            def request_stop(*, force: bool) -> None:
+                try:
+                    child.stop(force=force)
+                except OSError as error:
+                    findings.append(f"Cleanup termination request failed: {type(error).__name__}")
+                    # A concurrent deadline signal can leave a zombie-only group.
+                    # Continue independent closure observation, draining, and reaping.
+
+            try:
+                if not closure.scope_closed:
+                    request_stop(force=False)
+                while True:
+                    leader_active = (
+                        child.active()
+                    )  # Observe descendants without reaping the leader.
+                    progress = drain()
+                    closure = child.closure()
+                    if closure.scope_closed and stdout.eof and stderr.eof and not leader_active:
+                        break
+                    now = continuous_time()
+                    if not closure.scope_closed and now >= force_at and not forced:
+                        request_stop(force=True)
+                        forced = True
+                    if now >= cleanup_deadline:
+                        break
+                    if not progress:
+                        time.sleep(0.01)
+                stop_watchdog()
+                exit_code = child.exit_code()
+            except Exception as error:
+                findings.append(f"Native cleanup could not be established: {type(error).__name__}")
+                closure = closure.model_copy(update={"scope_closed": False})
+                exit_code = None
+                with suppress(OSError):
+                    child.stop(force=True)
+            except BaseException:
+                try:
+                    child.stop(force=True)
+                finally:
+                    stop_watchdog()
+                raise
+            stop_watchdog()
         if watchdog_errors:
             findings.append("Deadline termination request failed: " + ", ".join(watchdog_errors))
             # A signal error cannot erase an independently verified native closure.
