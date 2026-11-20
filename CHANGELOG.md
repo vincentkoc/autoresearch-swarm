@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Verifying a corrupt local blob stops after the first byte beyond its declared size.
+
 - Project bundles, workload outputs and campaign artifacts use one streaming
   SHA-256 implementation. Existing versioned digests and URL policies are retained.
 

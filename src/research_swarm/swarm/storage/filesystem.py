@@ -7,7 +7,6 @@ they do not isolate hostile code running under the controller's operating-system
 
 from __future__ import annotations
 
-import hashlib
 import os
 import stat
 from collections.abc import Iterator
@@ -18,12 +17,13 @@ from typing import BinaryIO, cast
 from filelock import FileLock
 from pydantic import TypeAdapter
 
+from research_swarm.swarm.canonical import CHUNK_SIZE, content_digest, hash_stream
 from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import sync_directory
 from research_swarm.swarm.records import ID, ArtifactRef, new_id
 from research_swarm.swarm.storage.contracts import StoredBlob, UploadProgress, UploadSpec
 
-CHUNK_BYTES = 1024 * 1024
+CHUNK_BYTES = CHUNK_SIZE
 MAX_UPLOAD_PART_BYTES = 8 * CHUNK_BYTES
 _identifier = TypeAdapter(ID)
 
@@ -54,13 +54,10 @@ def _file(path: Path, mode: str) -> Iterator[BinaryIO]:
 
 def _check(stream: BinaryIO, reference: ArtifactRef) -> None:
     stream.seek(0)
-    digest = hashlib.sha256()
-    size = 0
-    while block := stream.read(CHUNK_BYTES):
-        digest.update(block)
-        size += len(block)
-    if size != reference.size_bytes or "sha256:" + digest.hexdigest() != reference.digest:
-        raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact content or size mismatch")
+    mismatch = ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Artifact content or size mismatch")
+    result = hash_stream(stream, limit=reference.size_bytes, overflow=mismatch)
+    if result != (reference.digest, reference.size_bytes):
+        raise mismatch
     stream.seek(0)
 
 
@@ -288,7 +285,7 @@ class FilesystemBlobStore:
             id=new_id(),
             workspace_id=workspace_id,
             actor_id=actor_id,
-            digest="sha256:" + hashlib.sha256(content).hexdigest(),
+            digest=content_digest(content),
             size_bytes=len(content),
         )
         self.begin(upload)
