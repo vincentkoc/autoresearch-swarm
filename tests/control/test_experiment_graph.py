@@ -1,5 +1,7 @@
 """Synthetic inventory contracts, independent of report measurement limits."""
 
+import base64
+import hashlib
 import json
 from copy import deepcopy
 from html.parser import HTMLParser
@@ -60,7 +62,14 @@ def test_full_inventory_does_not_change_native_measurement_window() -> None:
     assert len(json.loads(data)["nodes"]) == 5000
     assert MAX_OBSERVATIONS == 52
     assert source == original
-    assert html == render_experiment_graph_html(source)
+    from research_swarm.swarm.graph import render_experiment_graph_html as campaign_renderer
+
+    assert campaign_renderer is render_experiment_graph_html
+    assert html == campaign_renderer(source)
+    for tag in ("script", "style"):
+        asset = html.split(f"<{tag}>", 1)[1].split(f"</{tag}>", 1)[0].encode("utf-8")
+        digest = base64.b64encode(hashlib.sha256(asset).digest()).decode("ascii")
+        assert f"{tag}-src 'sha256-{digest}'" in html
     assert "Category proximity is layout only" in html
     assert "Source reference · not ancestry" in html
 

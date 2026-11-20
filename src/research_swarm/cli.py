@@ -451,8 +451,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(
                     "Engine registration is a local operation without controller state"
                 )
-            from research_swarm.engines import ENGINE_DEFINITIONS, probe_engine
-            from research_swarm.engines.registration import (
+            from research_swarm.swarm.engines import ENGINE_DEFINITIONS, probe_engine
+            from research_swarm.swarm.engines.registration import (
                 ExecutionPolicy,
                 read_registration,
                 register_environment,
