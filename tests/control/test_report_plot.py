@@ -86,6 +86,37 @@ def test_sorted_trial_points_and_directional_steps_are_not_promotions(direction:
     assert render(source, metric=metric) == svg
 
 
+def test_unscored_selection_ends_the_step_until_measurement_resumes() -> None:
+    source = snapshot()
+    original = render(source)
+    (best,) = elements(original, "path")
+    first, unknown, resumed = (dot.attrib for dot in elements(original, "circle"))
+    capture_x = best.attrib["d"].split()[-1]
+    history = [
+        {
+            "trial_id": receipt["data"]["trial_id"],
+            "event_sequence": receipt["commit_event"]["sequence"],
+            "recorded_at": receipt["commit_event"]["recorded_at"],
+            "score": score,
+            "replicates": 1,
+        }
+        for receipt, score in zip(reversed(source["recent_evaluations"]), (4, None, 3), strict=True)
+    ]
+    first_segment = f"M {first['cx']} {first['cy']} H {unknown['cx']}"
+    next_segment = f"M {resumed['cx']} {resumed['cy']} H {capture_x}"
+    for events, expected in (
+        (history[1:2], ""),
+        (history[:2], first_segment),
+        (history, f"{first_segment} {next_segment}"),
+    ):
+        source["selection_history"] = events
+        paths = elements(render(source), "path")
+        observed = [p.attrib["d"] for p in paths if p.attrib["data-series"] == "best-observed"]
+        selected = [p.attrib["d"] for p in paths if p.attrib["data-series"] == "recorded-selection"]
+        assert observed == [best.attrib["d"]]
+        assert " ".join(selected) == expected
+
+
 def test_overlay_excludes_ineligible_wrong_digest_and_exact_metric_mismatches() -> None:
     first, second = snapshot(), snapshot("synthetic-overlay")
     for update in (

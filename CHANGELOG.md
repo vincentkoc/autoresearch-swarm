@@ -75,6 +75,9 @@
 - Plot and rank campaign trial scores by fidelity. Screening scores and
   recorded selections stay on the rung where the trial ran.
 
+- Leave a gap in the recorded-selection curve when an incumbent has no measured
+  score. The curve resumes at the next measured selection.
+
 - Show eight campaign KPIs in live snapshots and offline reports, including the
   evidence behind each value and the reason a measurement is unavailable.
 
