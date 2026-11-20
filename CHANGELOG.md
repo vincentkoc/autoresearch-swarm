@@ -7,6 +7,9 @@
   cost of a fresh fit, including the initial recipe and promotions. Queued and
   completed trials keep their reservations across resume.
 
+- Campaign and artifact storage now share the same durable directory sync. Private
+  file handling moves from `state.private_files` to `swarm.private_files`.
+
 - Update the locked versions of FastAPI, filelock, boto3 and botocore, along
   with Ruff, Hypothesis, pytest-asyncio and the psutil type stubs.
 

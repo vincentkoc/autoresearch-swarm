@@ -341,7 +341,7 @@ def test_init_uses_six_tables_and_preserves_a_legacy_workspace(tmp_path: Path) -
 
 
 def test_project_identity_file_does_not_make_a_legacy_workspace(tmp_path: Path) -> None:
-    from research_swarm.state.private_files import campaign_database
+    from research_swarm.swarm.private_files import campaign_database
 
     (tmp_path / "identity.json").write_text('{"name":"dataset"}')
     assert campaign_database(tmp_path, project_directory=True) == tmp_path / "swarm.sqlite"

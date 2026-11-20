@@ -22,18 +22,11 @@ from research_swarm.domain.artifacts import StoredBlob, UploadProgress, UploadSp
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.evidence import ArtifactRef
 from research_swarm.domain.types import ID, new_id
+from research_swarm.swarm.private_files import sync_directory
 
 CHUNK_BYTES = 1024 * 1024
 MAX_UPLOAD_PART_BYTES = 8 * CHUNK_BYTES
 _identifier = TypeAdapter(ID)
-
-
-def _sync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 @contextmanager
@@ -85,7 +78,7 @@ class FilesystemBlobStore:
             directory /= part
             try:
                 directory.mkdir(mode=0o700)
-                _sync_directory(directory.parent)
+                sync_directory(directory.parent)
             except FileExistsError:
                 pass
             if directory.is_symlink() or not directory.is_dir():
@@ -99,9 +92,9 @@ class FilesystemBlobStore:
 
     def _sync_ancestry(self, directory: Path) -> None:
         while directory != directory.parent:
-            _sync_directory(directory)
+            sync_directory(directory)
             directory = directory.parent
-        _sync_directory(directory)
+        sync_directory(directory)
 
     def _staged(self, upload: UploadSpec) -> Path:
         return self._directory(upload.workspace_id, "uploads") / upload.id
@@ -130,7 +123,7 @@ class FilesystemBlobStore:
                 with _file(path, "xb") as stream:
                     stream.flush()
                     os.fsync(stream.fileno())
-                _sync_directory(path.parent)
+                sync_directory(path.parent)
                 return 0
             except FileExistsError:
                 with _file(path, "rb") as stream:
@@ -203,7 +196,7 @@ class FilesystemBlobStore:
                     _check(stream, reference)
                 self._sync_ancestry(target.parent)
                 staged.unlink(missing_ok=True)
-                _sync_directory(staged.parent)
+                sync_directory(staged.parent)
                 return blob
             try:
                 with _file(staged, "r+b") as stream:
@@ -211,7 +204,7 @@ class FilesystemBlobStore:
                     os.fsync(stream.fileno())
                 os.replace(staged, target)
                 self._sync_ancestry(target.parent)
-                _sync_directory(staged.parent)
+                sync_directory(staged.parent)
             except FileNotFoundError as error:
                 raise ResearchError(
                     ErrorCode.ARTIFACT_UNVERIFIED, "Upload content is absent"
@@ -267,7 +260,7 @@ class FilesystemBlobStore:
                     target.write(block)
                 target.flush()
                 os.fsync(target.fileno())
-            _sync_directory(destination.parent)
+            sync_directory(destination.parent)
         except BaseException:
             if created:
                 destination.unlink(missing_ok=True)
@@ -278,7 +271,7 @@ class FilesystemBlobStore:
         with self._lock(upload.workspace_id, upload.id):
             path = self._staged(upload)
             path.unlink(missing_ok=True)
-            _sync_directory(path.parent)
+            sync_directory(path.parent)
 
     def delete(self, workspace_id: str, blob: StoredBlob) -> None:
         workspace_id = self._workspace(workspace_id)
@@ -288,7 +281,7 @@ class FilesystemBlobStore:
             if path.is_symlink():
                 raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "Refusing a substituted object")
             path.unlink(missing_ok=True)
-            _sync_directory(path.parent)
+            sync_directory(path.parent)
 
     def put(self, workspace_id: str, actor_id: str, content: bytes) -> StoredBlob:
         """Convenience for trusted adapters; this does not grant catalog access."""
