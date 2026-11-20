@@ -69,7 +69,7 @@ Before search, the study calibrated three recipes on three seeds on separate pro
 
 ## Panel use and cost
 
-A look is one scored recipe on a panel at one seed. The times below sum the three CLI runs per policy, including startup and held-out decisions. The first arm for each workload also performed the shared calibration.
+Each reservation to evaluate a recipe on a panel at a given seed counts as one look, even if the evaluation returns no score. The times below sum the three CLI runs per policy, including startup and held-out decisions. The first arm for each workload also performed the shared calibration.
 
 | Metric | Calibration looks | Search looks | Selection looks | Confirmation looks | Swarm seconds | Random seconds | Greedy seconds |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
