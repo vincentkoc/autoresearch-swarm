@@ -300,13 +300,17 @@ The slope gives the fitted change in target score per unit of proxy change.
 The intercept accounts for a difference in scale or origin. If every recipe
 has the same proxy mean, the slope and intercept are undefined.
 
-Seed noise is the square root of the pooled within-recipe target variance.
-The fit uses equal numbers of seeds for each recipe. This separates changes
-between recipes from variation between repeated fits of one recipe.
+For each recipe, compute the sample variance of its target scores across the
+same set of seeds. `seed_noise` is the square root of the mean of those
+variances, in target-score units. Constant scores within every recipe give
+zero observed spread. A campaign without a recorded fit has no estimate.
+Each recipe and seed contributes one target score, so variance between
+repeated evaluations at a fixed recipe and seed remains unmeasured.
 
-Calibration counts measurements on both splits. A fresh fit reports seconds
-per trial and trials per second. A fit recovered from scores without elapsed
-times leaves both values unavailable.
+`trials` counts proxy and target measurements. Four recipes and three seeds
+give 24 measurements. The 12 target scores enter the noise estimate. A fresh
+fit reports seconds per trial and trials per second. A fit recovered from
+scores without elapsed times leaves both values unavailable.
 
 ### Selection and confirmation
 
