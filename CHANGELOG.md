@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reactive journal exports count each event once when enforcing the page byte
+  limit. The CLI and Python client retain the same response and cursor at the cap.
+
 - Offline experiment inventories retain their Python entry point and export
   byte-identical standalone HTML from the campaign graph package.
 
