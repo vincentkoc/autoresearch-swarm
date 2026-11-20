@@ -18,6 +18,7 @@ from uuid import uuid4
 from pydantic import TypeAdapter
 
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
+from research_swarm.swarm.meter import PRICE_FIELDS
 from research_swarm.swarm.panels import Calibration, Decision
 
 _SCHEMA = """
@@ -285,7 +286,12 @@ class SQLiteStore:
     def register_panel_campaign(self, spec: CampaignSpec, policy: object | None) -> str | None:
         if spec.max_hours is not None and (not math.isfinite(spec.max_hours) or spec.max_hours < 0):
             raise ValueError("max_hours must be finite and non-negative")
-        encoded = _json(asdict(spec))
+        requested = asdict(spec)
+        encoded = _json({**requested, "price_schema": 1})
+        for key in PRICE_FIELDS:
+            rate = requested[key]
+            if rate is not None and rate < 0:
+                raise ValueError(f"{key} must be non-negative")
         if min(spec.max_trials, spec.max_workers, spec.max_attempts) < 1:
             raise ValueError("Trial, worker and attempt limits must be positive")
         if spec.max_cost is not None:
@@ -307,12 +313,27 @@ class SQLiteStore:
                 )
             else:
                 saved = self._saved_spec(db, spec.campaign_id)
-                if _json(asdict(CampaignSpec(**saved))) != encoded:
+                legacy_prices = not saved.pop("price_schema", None)
+                for key in PRICE_FIELDS:
+                    stored_rate, resumed_rate = saved.get(key), requested[key]
+                    if legacy_prices:
+                        # Older queues persisted an omitted rate as zero.
+                        stored_rate = 0 if stored_rate is None else stored_rate
+                        resumed_rate = 0 if resumed_rate is None else resumed_rate
+                    if (
+                        type(stored_rate) in (int, float)
+                        and type(resumed_rate) in (int, float)
+                        and stored_rate == resumed_rate
+                    ):
+                        # Compare the rest of the spec using the original JSON spelling.
+                        requested[key] = saved.get(key)
+                if _json(asdict(CampaignSpec(**saved))) != _json(requested):
                     raise ValueError(f"Campaign {spec.campaign_id} already has a different spec")
             if policy is None:
                 return None
-            expected, selected = db.execute(
-                "SELECT panel_binding, selected_trial_id FROM swarm_campaigns WHERE campaign_id=?",
+            stored_spec, expected, selected = db.execute(
+                "SELECT spec, panel_binding, selected_trial_id FROM swarm_campaigns "
+                "WHERE campaign_id=?",
                 (spec.campaign_id,),
             ).fetchone()
             bind = getattr(policy, "bind_campaign", None)
@@ -331,7 +352,7 @@ class SQLiteStore:
                 ).fetchone()
             ):
                 prior = "started"
-            digest = hashlib.sha256(encoded.encode()).hexdigest()
+            digest = hashlib.sha256(stored_spec.encode()).hexdigest()
             identity = bind(spec.campaign_id, digest, expected, prior)
             if not isinstance(identity, str) or not identity or expected not in (None, identity):
                 raise ValueError("Campaign panel study identity changed")
@@ -384,7 +405,8 @@ class SQLiteStore:
     def campaign_spec(self, campaign_id: str) -> CampaignSpec:
         with self._connection() as db:
             saved = self._saved_spec(db, campaign_id)
-            return TypeAdapter(CampaignSpec).validate_json(_json(saved), strict=True)
+            saved.pop("price_schema", None)
+        return TypeAdapter(CampaignSpec).validate_json(_json(saved), strict=True)
 
     @contextmanager
     def worker_attempt(

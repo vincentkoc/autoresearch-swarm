@@ -1,12 +1,13 @@
 """Local restart contracts for the SQLite queue and calibrated panel study."""
 
+import hashlib
 import json
 import os
 import sqlite3
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from benchmarks.study import WorkerPanelPolicy, recipe_key
 from research_swarm.swarm.interfaces import CampaignSpec
 from research_swarm.swarm.store import SQLiteStore
 from tests.benchmarks.test_panels import measure, study
+from tests.swarm.test_store import spec as campaign_spec
 
 
 def generated_policy(spec):
@@ -93,6 +95,38 @@ def test_cli_rejects_crossed_campaign_and_study_identities(tmp_path):
         assert db.execute("SELECT count(*) FROM swarm_campaigns").fetchone() == (0,)
     assert json.loads(run("a.db", "a", "first", 0).stdout) == json.loads(original.stdout)
     assert (looks("first"), looks("second")) == before
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["versioned", "legacy"])
+def test_bound_study_resumes_with_original_spec_bytes(tmp_path, legacy):
+    path = tmp_path / "queue.sqlite"
+    store = SQLiteStore(path)
+    campaign = campaign_spec(
+        price_per_hour=36, price_per_million_input_tokens=0.0, price_per_million_output_tokens=0.0
+    )
+    session = study(tmp_path / "original", measure)
+    if legacy:
+        store.create_campaign(campaign)
+        # Historical study bindings refer to the stored JSON, including its formatting.
+        stored = json.dumps(asdict(campaign), indent=2)
+        digest = hashlib.sha256(stored.encode()).hexdigest()
+        expected = session.bind_campaign(campaign.campaign_id, digest, None, "new")
+        with sqlite3.connect(path) as db:
+            db.execute(
+                "UPDATE swarm_campaigns SET spec=?, panel_binding=? WHERE campaign_id=?",
+                (stored, expected, campaign.campaign_id),
+            )
+    else:
+        expected = store.register_panel_campaign(campaign, session)
+
+    reopened = SQLiteStore(path)
+    getter = reopened.campaign_spec(campaign.campaign_id)
+    assert type(getter.price_per_hour) is float and getter.price_per_hour == 36.0
+    assert reopened.register_panel_campaign(getter, session) == expected
+    with pytest.raises(ValueError, match="already has a different spec"):
+        reopened.register_panel_campaign(replace(getter, seed=getter.seed + 1), session)
+    with pytest.raises(ValueError, match="study identity changed"):
+        reopened.register_panel_campaign(getter, study(tmp_path / "other", measure))
 
 
 def test_competing_plans_can_only_register_one_spec(tmp_path):
