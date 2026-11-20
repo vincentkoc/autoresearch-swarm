@@ -37,7 +37,7 @@ number of input reports as JSON.
 ## Python API
 
 ~~~python
-from research_swarm.control.report_plot import render_hill_climb_svg
+from research_swarm.swarm.report.plot import render_hill_climb_svg
 from research_swarm.domain.experiments import MetricDefinition
 
 svg = render_hill_climb_svg(
@@ -169,7 +169,7 @@ causal attribution. Captured distinct worker IDs describe historical evidence,
 never live concurrency. Captured candidate order is not a trial count or a time
 axis. Standalone SVG exports retain the explicit controller-time projection.
 
-The Python API is `research_swarm.control.report_view.render_report_html`, with
+The Python API is `research_swarm.swarm.report.view.render_report_html`, with
 the same snapshots, comparison digest, metric, optional title and labels as the
 SVG renderer. It returns a complete HTML document. The demo generator also writes
 [synthetic-demo.html](../examples/hill_climb/synthetic-demo.html), containing only

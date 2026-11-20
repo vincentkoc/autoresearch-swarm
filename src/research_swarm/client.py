@@ -14,7 +14,7 @@ import httpx
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.endpoints import controller_url
 from research_swarm.swarm.private_files import campaign_database, default_state_directory
-from research_swarm.swarm.reader import CampaignReader
+from research_swarm.swarm.report import CampaignReader
 
 
 class ResearchClient:

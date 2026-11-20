@@ -1,17 +1,51 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from mcp import Client, StdioServerParameters
 
 import research_swarm
 from research_swarm.api.campaign import campaign_app
 from research_swarm.swarm.reader import CampaignReader
+from research_swarm.swarm.report import CampaignReader as ReportReader
 from research_swarm.swarm.store import SQLiteStore
 from tests.swarm.test_store import spec, trial
+
+
+def test_missing_campaign_fails_consistently_without_selecting_a_neighbor(tmp_path: Path) -> None:
+    path = tmp_path / "campaign.db"
+    queue = SQLiteStore(path)
+    queue.create_campaign(spec())
+    queue.submit(trial(1))
+    legacy, current = CampaignReader(path), ReportReader(path)
+    for read in (legacy.snapshot, current.budget):
+        with pytest.raises(ValueError, match="^Unknown campaign absent$"):
+            read("absent")
+    assert legacy.budget("test") == current.budget("test")
+    assert current.budget("test")["trials"] == 1
+
+
+def test_budget_and_snapshot_on_archive_without_selection_column(tmp_path: Path) -> None:
+    path = tmp_path / "archive.db"
+    SQLiteStore(path).create_campaign(spec())
+    with closing(sqlite3.connect(path)) as db, db:
+        db.execute("PRAGMA journal_mode=DELETE")
+        db.execute("ALTER TABLE swarm_campaigns DROP COLUMN selected_trial_id")
+    original = path.read_bytes()
+    reader = CampaignReader(path)
+    assert reader.budget("test")["trials"] == 0
+    with pytest.raises(
+        ValueError, match="Cannot read the campaign database: no such column: selected_trial_id"
+    ):
+        reader.snapshot("test")
+    assert path.read_bytes() == original
+    assert set(tmp_path.iterdir()) == {path}
 
 
 async def test_sdk_http_and_stdio_read_same_database(tmp_path: Path) -> None:
