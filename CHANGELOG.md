@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Offline experiment inventories retain their Python entry point and export
+  byte-identical standalone HTML from the campaign graph package.
+
 - Live and replay training hooks share validation of the sealed workload declaration
   and bounded control readback. Existing workload imports remain available.
 

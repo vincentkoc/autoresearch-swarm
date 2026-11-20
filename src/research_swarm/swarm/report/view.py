@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import math
 import re
 from collections.abc import Sequence
 from html import escape
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from research_swarm.control.panel_layout import PANEL_SCRIPT, PANEL_STYLE
+from research_swarm.control.panel_layout import PANEL_SCRIPT, PANEL_STYLE, csp_hash
 from research_swarm.domain.experiments import MetricDefinition
 from research_swarm.domain.types import JsonObject
 from research_swarm.swarm.kpis import KPI_LABELS
@@ -773,7 +771,7 @@ def render_report_html(
             "<table><thead><tr><th>Trial</th><th>Execution</th><th>Evaluation</th></tr></thead>"
             f"<tbody>{trial_rows}</tbody></table>{proposal_details}</details></div>"
         )
-    script_hash = base64.b64encode(hashlib.sha256(_SCRIPT.encode()).digest()).decode()
+    script_hash = csp_hash(_SCRIPT)
     selectors = "".join(
         f"<option value='{i}'>{_e(labels[i] if labels else runs[i].campaign_id)}</option>"
         for i in range(len(runs))
