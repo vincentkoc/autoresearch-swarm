@@ -14,13 +14,13 @@ from pydantic import Field, field_validator, model_validator
 
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.projects.native_files import SourceReader
-from research_swarm.projects.workload import absolute_path
 from research_swarm.swarm.engines.adapter import current_adapter_digest
 from research_swarm.swarm.engines.custody import default_probe_directory
 from research_swarm.swarm.engines.models import EngineDescriptor
 from research_swarm.swarm.engines.probe import InterpreterIdentity, observe_engine
 from research_swarm.swarm.private_files import private_state_directory, read_private, write_private
+from research_swarm.swarm.projects.native_files import SourceReader
+from research_swarm.swarm.projects.workload import absolute_path
 from research_swarm.swarm.records import (
     ID,
     ByteCount,

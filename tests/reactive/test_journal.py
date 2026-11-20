@@ -26,7 +26,10 @@ def test_durable_application_and_exact_duplicates(journal: DecisionJournal) -> N
         assert trainer.record_application(receipt).receipt == receipt
         assert journal.inspect().control_revision == 1
         assert journal.pending() is None
-    reopened = DecisionJournal.open(journal.path)
+    from research_swarm.swarm.reactive.journal import DecisionJournal as CampaignJournal
+
+    assert DecisionJournal is CampaignJournal
+    reopened = CampaignJournal.open(journal.path)
     assert reopened.inspect().controls == (NumericValue(name="lr", value=0.2),)
     assert reopened.inspect().status == "closed"
     assert [event.kind for event in reopened.events()] == [

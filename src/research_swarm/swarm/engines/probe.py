@@ -12,7 +12,6 @@ from pydantic import field_validator
 
 from research_swarm.domain.canonical import strict_json_loads
 from research_swarm.domain.errors import ResearchError
-from research_swarm.projects.workload import absolute_path
 from research_swarm.swarm.engines.adapter import script_bytes
 from research_swarm.swarm.engines.custody import probe_custody
 from research_swarm.swarm.engines.models import (
@@ -21,9 +20,10 @@ from research_swarm.swarm.engines.models import (
     ProbeStatus,
     engine_definition,
 )
+from research_swarm.swarm.projects.workload import absolute_path
 from research_swarm.swarm.records import VersionedRecord
-from research_swarm.workers.contracts import NativeCommand
-from research_swarm.workers.supervision import base_environment, run_native
+from research_swarm.swarm.workers.contracts import NativeCommand
+from research_swarm.swarm.workers.supervision import base_environment, run_native
 
 PROBE_OUTPUT_LIMIT = 512 * 1024
 
