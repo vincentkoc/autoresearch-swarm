@@ -9,9 +9,9 @@ import sys
 from pathlib import Path
 from typing import Literal, get_args
 
-Role = Literal["proposer", "diagnoser", "reporter"]
-
 from research_swarm.swarm import _process_guard
+
+Role = Literal["proposer", "diagnoser", "reporter"]
 
 
 def record_outcome(heartbeat: Path, status: str) -> None:
