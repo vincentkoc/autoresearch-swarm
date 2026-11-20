@@ -11,8 +11,6 @@ from typing import Any, Literal
 from pydantic import Field, field_validator, model_validator
 
 from research_swarm.domain.canonical import content_digest, record_digest
-from research_swarm.domain.experiments import MetricDefinition, StageSpec, validate_stage_graph
-from research_swarm.domain.types import Digest, Milliseconds, Name, StringSet, VersionedRecord
 from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.source import (
     MutationPolicy,
@@ -27,6 +25,16 @@ from research_swarm.projects.source import (
     read_git_file,
 )
 from research_swarm.reactive.contracts import ReactiveContract
+from research_swarm.swarm.records import (
+    Digest,
+    MetricDefinition,
+    Milliseconds,
+    Name,
+    StageSpec,
+    StringSet,
+    VersionedRecord,
+    validate_stage_graph,
+)
 
 MAX_PROJECT_MANIFEST_BYTES = 1024 * 1024
 

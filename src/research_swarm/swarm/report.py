@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from research_swarm.swarm.db import connection
 from research_swarm.swarm.kpis import read_kpis
-from research_swarm.swarm.meter import PRICE_FIELDS
+from research_swarm.swarm.resources import PRICE_FIELDS
 
 
 def _iso(seconds: float) -> str:
@@ -21,9 +22,7 @@ def _iso(seconds: float) -> str:
 @contextmanager
 def _read(database: Path) -> Iterator[sqlite3.Connection]:
     try:
-        with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as db:
-            db.row_factory = sqlite3.Row
-            db.execute("BEGIN")
+        with connection(database, read_only=True) as db:
             yield db
     except sqlite3.Error as error:
         raise ValueError(f"Cannot read the campaign database: {error}") from error

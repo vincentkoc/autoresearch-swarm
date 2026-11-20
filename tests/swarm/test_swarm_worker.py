@@ -17,9 +17,23 @@ import pytest
 from research_swarm.swarm.backends.local import LocalBackend
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
 from research_swarm.swarm.meter import CostMeter
-from research_swarm.swarm.resources import ResourcePool
+from research_swarm.swarm.resources import ResourcePool, workload_started
 from research_swarm.swarm.store import SQLiteStore
+from research_swarm.swarm.telemetry import observe_starts
 from research_swarm.swarm.worker import WorkerLoop, from_spec
+
+
+def test_legacy_observer_receives_resource_dispatch_and_recovers_after_error() -> None:
+    outer: list[str] = []
+    inner: list[str] = []
+    with observe_starts(outer.append):
+        with pytest.raises(ValueError, match="failed dispatch"), observe_starts(inner.append):
+            workload_started("inner")
+            raise ValueError("failed dispatch")
+        workload_started("outer")
+    workload_started("unobserved")
+    assert outer == ["outer"]
+    assert inner == ["inner"]
 
 
 def _campaign(directory: Path) -> CampaignSpec:

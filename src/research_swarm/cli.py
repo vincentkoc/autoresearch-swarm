@@ -14,7 +14,7 @@ import httpx
 from research_swarm.client import ResearchClient
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.state.private_files import read_private
+from research_swarm.swarm.private_files import read_private
 from research_swarm.swarm.reader import CampaignReader
 from research_swarm.swarm.store import LegacyDatabaseError
 
@@ -58,9 +58,9 @@ def parser() -> argparse.ArgumentParser:
     remote_worker.add_argument("spec", type=Path)
     remote_worker.add_argument("--worker-id", required=True)
     remote_worker.add_argument("--once", action="store_true", help="Attempt one claim and exit")
-    from research_swarm.swarm import advice
+    from research_swarm.swarm.agents import add_arguments
 
-    advice.add_arguments(swarm_commands.add_parser("advise", help="Request campaign advice"))
+    add_arguments(swarm_commands.add_parser("advise", help="Request campaign advice"))
     commands.add_parser("init", help="Initialize a private campaign database")
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
@@ -226,7 +226,7 @@ def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> di
 
 
 def _database(args: argparse.Namespace) -> Path:
-    from research_swarm.state.private_files import campaign_database, default_state_directory
+    from research_swarm.swarm.private_files import campaign_database, default_state_directory
 
     if args.db is not None:
         if args.state_dir is not None:
@@ -315,8 +315,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
             return 0
         if args.action == "campaign" and args.campaign_action == "gc":
-            from research_swarm.state.private_files import default_state_directory
             from research_swarm.swarm.campaign_gc import collect
+            from research_swarm.swarm.private_files import default_state_directory
 
             if args.controller or args.token_file:
                 raise ValueError("campaign gc operates on the local resource inventory")
@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
             _emit_json(result)
             return code
         if args.action == "swarm" and args.swarm_action == "advise":
-            from research_swarm.swarm.advice import advise
+            from research_swarm.swarm.agents import advise
 
             if args.controller or args.token_file:
                 raise ValueError("Campaign advice reads a local campaign database")
@@ -359,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.controller or args.token_file or (args.db and args.state_dir):
                 raise ValueError("Choose a local swarm database with --db or --state-dir")
-            from research_swarm.state.private_files import campaign_database
+            from research_swarm.swarm.private_files import campaign_database
 
             database = args.db or campaign_database(
                 args.state_dir or args.spec.parent, project_directory=args.state_dir is None
@@ -494,7 +494,7 @@ def main(argv: list[str] | None = None) -> int:
             _emit_json(result)
             return 0
         if args.action == "init":
-            from research_swarm.state.private_files import (
+            from research_swarm.swarm.private_files import (
                 campaign_database,
                 default_state_directory,
                 private_state_directory,

@@ -12,11 +12,10 @@ from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import TypeAdapter
 
-from research_swarm.domain.evidence import ArtifactRef
-from research_swarm.domain.types import ID
 from research_swarm.projects.native_files import SourceReader
-from research_swarm.state.private_files import private_state_directory, sync_directory
+from research_swarm.swarm.private_files import private_state_directory, sync_directory
 from research_swarm.swarm.project import capture_project, resolve_project
+from research_swarm.swarm.records import ID, ArtifactRef
 from research_swarm.swarm.store import SQLiteStore
 
 

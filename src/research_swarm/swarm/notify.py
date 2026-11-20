@@ -10,12 +10,12 @@ import os
 import sqlite3
 import time
 from collections.abc import Callable
-from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from research_swarm.swarm.db import connection
 from research_swarm.swarm.report import _read, _usage
 
 _POLL_SECONDS = 10
@@ -42,11 +42,6 @@ def _repeated_failures(
     queue: sqlite3.Connection, journal: sqlite3.Connection, scope: tuple[str, float]
 ) -> list[sqlite3.Row]:
     """Advance in finished-event order within the same transaction as alert creation."""
-    journal.execute(
-        "CREATE TABLE IF NOT EXISTS failure_cursor "
-        "(campaign TEXT, created REAL, last_event INTEGER, consecutive INTEGER, "
-        "PRIMARY KEY(campaign,created))"
-    )
     state = journal.execute(
         "SELECT last_event,consecutive FROM failure_cursor WHERE campaign=? AND created=?", scope
     ).fetchone()
@@ -105,13 +100,7 @@ def poll(
         if journal.exists() and journal.samefile(database):
             raise ValueError("Notification journal must be separate from the campaign queue")
         os.close(os.open(journal, os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600))
-        with closing(sqlite3.connect(journal)) as out, out:
-            out.execute("BEGIN IMMEDIATE")
-            out.execute(
-                "CREATE TABLE IF NOT EXISTS notifications "
-                "(campaign TEXT, created REAL, key TEXT, payload TEXT, "
-                "PRIMARY KEY(campaign,created,key))"
-            )
+        with connection(journal, schema="notifications", write=True) as out:
             scope = (campaign, row["at"])
 
             def hourly_key(kind: str, suffix: str = "") -> str:
@@ -259,7 +248,7 @@ async def _watch(
             jobs=database.with_name(database.name + ".agent-jobs"),
         )
         journal = database.with_name(database.name + ".notifications.sqlite")
-        with closing(sqlite3.connect(journal)) as out, out:
+        with connection(journal, write=True) as out:
             out.execute(
                 "UPDATE notifications SET payload=? WHERE campaign=? AND created=? AND key=?",
                 (

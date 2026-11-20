@@ -13,6 +13,7 @@ from pydantic import TypeAdapter
 
 from research_swarm.domain.canonical import MAX_SAFE_INTEGER
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate
+from research_swarm.swarm.resources import price_rates
 
 
 def search_work(fidelity: float, full_fidelity_work: int) -> int:
@@ -83,9 +84,7 @@ def load_spec(path: Path) -> CampaignSpec:
     if (
         min(
             spec.min_delta,
-            spec.price_per_hour or 0.0,
-            spec.price_per_million_input_tokens or 0.0,
-            spec.price_per_million_output_tokens or 0.0,
+            *price_rates(spec),
             spec.estimated_input_tokens,
             spec.estimated_output_tokens,
             spec.max_cost if spec.max_cost is not None else 0,
