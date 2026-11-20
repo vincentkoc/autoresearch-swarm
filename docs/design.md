@@ -265,7 +265,7 @@ A panel lists stable IDs for evaluation members. Use subject IDs when
 examples from the same subject would leak information between splits.
 Check those IDs against the training manifest before the first trial.
 
-| Split | When the study reads it |
+| Split | Purpose |
 | --- | --- |
 | Training | Fit a candidate's model |
 | Calibration proxy | Measure known variants with the proxy protocol |
@@ -274,9 +274,16 @@ Check those IDs against the training manifest before the first trial.
 | Selection | Compare a nominated candidate against the incumbent |
 | Confirmation | Check that the gain survives on independent cases |
 
-The study rejects duplicate IDs within a split and overlaps between splits.
+The study rejects duplicate IDs within and across the declared splits.
 The evaluator receives the declared member list for its role.
-A workload must use that list when it computes the score.
+A workload must use that list when it computes the score. Look counts
+record evaluation reservations by role.
+
+To verify training exclusion for an observed fit, compare the IDs of all
+rows the workload used for training with the split lists. Each ID should
+belong to the training manifest and be absent from every evaluation panel.
+The generated MLP identifies both training and evaluation rows as
+`mlp/<data stream>/<row offset>`.
 
 ### Calibration
 
