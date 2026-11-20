@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Report the known cost subtotal and missing rates when recorded usage is only
+  partly priced. Cost per improvement stays unavailable until the total is known.
+  Reopening a campaign accepts equal integer and floating-point price rates
+  and preserves the original panel study binding.
+  Direct campaign registration rejects negative prices before writing to the queue.
+
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 
@@ -11,9 +17,16 @@
 - Resume partial panel calibration using the recorded proxy and target scores
   for each recipe and seed. An unscored reservation stays spent and stops the
   fit. Recovered fits report unavailable throughput when earlier timing is unknown.
+  Preserve tiny seed deviations and recover underflowed noise from stored target
+  scores before new comparisons. Recorded decisions keep their original outcomes.
+  New comparisons check retained target rows against the declared recipes and seeds
+  before using a cached positive noise estimate.
 
 - Validate the selected backend before creating or migrating the campaign queue.
   A rejected backend configuration leaves the queue untouched.
+
+- Reject trial seeds outside the signed interoperable JSON integer range on
+  campaign admission, proposal submission and resume, before recording new work.
 
 - Emit one campaign alert when two consecutive finished attempts fail or are
   lost. A successful attempt resets the streak. Concurrent and restarted
@@ -28,8 +41,14 @@
 - Document how to stop and resume a local campaign with its original queue
   and panel study, and where to find trial, proposal and advisory timeout diagnostics.
 
+- Correct the quickstart help command and graph smoke prerequisites. Fix the
+  reactive CPU example's test command and live training journal path.
+
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
+
+- Report advisory responses received at or after the job deadline as timed out
+  and discard their advice.
 
 - Remove the retired worker journal's `launch_deadline_ns` argument from
   `run_native`. Native commands use their timeout and optional absolute deadline
@@ -526,6 +545,9 @@
 
 - Add a local campaign dry run for the local, SSH pool and SkyPilot backends
   and a [real-GPU qualification checklist](docs/gpu-qualification.md).
+
+- Check the selected reference recording before applying a generated user's
+  saved raw-window normalization. Older fitted states have unverified provenance.
 
 ## 0.1.0 - 2026-11-01
 

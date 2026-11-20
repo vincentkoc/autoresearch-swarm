@@ -198,6 +198,14 @@ def _campaign_kpis(snapshot: JsonObject) -> str:
     for key, label in KPI_LABELS.items():
         metric = metrics.get(key) or {}
         value = metric.get("value")
+        detail = metric.get("detail", "This archive did not capture this KPI.")
+        if (
+            key == "cost_per_0_01_improvement"
+            and value is not None
+            and (snapshot.get("meter") or {}).get("total_cost") is None
+        ):
+            value = None
+            detail = "This archive did not establish total cost for the recorded usage."
         unit = metric.get("unit", "")
         if isinstance(value, dict):
             display = (
@@ -207,7 +215,6 @@ def _campaign_kpis(snapshot: JsonObject) -> str:
             display = f"{value:.4g} {unit}"
         else:
             display = "Unavailable"
-        detail = metric.get("detail", "This archive did not capture this KPI.")
         rows.append(
             f"<dt>{_e(label)}</dt><dd><strong>{_e(display)}</strong><br>"
             f"<small>{_e(detail)}</small></dd>"
@@ -625,9 +632,16 @@ def render_report_html(
                 f"recorded {_e(selection.get('recorded_at'))}</p>"
             )
         meter = snapshot.get("meter")
+        cost_label = "Measured cost"
+        coverage = ""
+        if meter and meter.get("total_cost") is None:
+            missing = ", ".join(meter.get("missing_prices", []))
+            reason = f"missing {_e(missing)}" if missing else "price coverage was not recorded"
+            cost_label = "Known cost subtotal" if missing else "Recorded cost"
+            coverage = f"Total cost: Unavailable ({reason}). "
         accounting = (
-            f"<p>Measured cost: {_e(meter['measured_cost'])}. Additional active estimate: "
-            f"{_e(meter['pending_estimate'])}. "
+            f"<p>{cost_label}: {_e(meter['measured_cost'])}. {coverage}"
+            f"Additional active estimate: {_e(meter['pending_estimate'])}. "
             f"Trials: {_e(meter['trials'])}/{_e(meter['max_trials'])}.</p>"
             if meter
             else "<h3>Budget ledger</h3><table><thead><tr><th>Unit</th><th>Used</th><th>Held</th>"

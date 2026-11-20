@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from research_swarm.swarm.kpis import read_kpis
+from research_swarm.swarm.meter import PRICE_FIELDS
 
 
 def _iso(seconds: float) -> str:
@@ -30,17 +31,36 @@ def _read(database: Path) -> Iterator[sqlite3.Connection]:
 
 def _usage(db: sqlite3.Connection, campaign: str, spec: dict[str, Any]) -> dict[str, Any]:
     usage = db.execute(
-        "SELECT COALESCE(SUM(a.cost),0), "
-        "COALESCE(SUM(CASE WHEN a.observation IS NULL THEN MAX(a.reserve-a.cost,0) END),0), "
-        "COUNT(*), COUNT(a.observation) FROM swarm_attempts a "
-        "JOIN swarm_trials t USING(trial_id) WHERE t.campaign_id=?",
+        """WITH attempts AS (
+               SELECT a.cost, a.reserve, a.observation, a.started_at, a.heartbeat_at,
+                      COALESCE(json_extract(a.observation, '$.input_tokens'), 0) AS inputs,
+                      COALESCE(json_extract(a.observation, '$.output_tokens'), 0) AS outputs
+               FROM swarm_attempts a JOIN swarm_trials t USING(trial_id) WHERE t.campaign_id=?
+           )
+           SELECT COALESCE(SUM(cost),0),
+                  COALESCE(SUM(CASE WHEN observation IS NULL THEN MAX(reserve-cost,0) END),0),
+                  COUNT(*), COUNT(observation),
+                  MAX((observation IS NOT NULL OR heartbeat_at>started_at)
+                      AND (cost=0 OR inputs>0 OR outputs>0)),
+                  MAX(inputs>0), MAX(outputs>0)
+           FROM attempts""",
         (campaign,),
     ).fetchone()
+    # A positive standalone charge with no token counters is usable as supplied. For
+    # unit-priced receipts, every consumed component needs a rate, including slot time.
+    missing = [
+        field
+        for field, consumed in zip(PRICE_FIELDS, usage[4:], strict=True)
+        if consumed
+        and (spec.get(field) is None or ("price_schema" not in spec and spec[field] == 0))
+    ]
     trial_count = db.execute(
         "SELECT COUNT(*) FROM swarm_trials WHERE campaign_id=?", (campaign,)
     ).fetchone()[0]
     return {
         "measured_cost": usage[0],
+        "total_cost": None if missing else usage[0],
+        "missing_prices": missing,
         "pending_estimate": usage[1],
         "max_cost": spec.get("max_cost"),
         "trials": trial_count,

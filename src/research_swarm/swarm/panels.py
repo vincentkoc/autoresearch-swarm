@@ -10,7 +10,7 @@ import time
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -73,6 +73,21 @@ class Decision:
 
 class PanelEvaluationError(ValueError):
     """A reserved panel look failed to produce a usable score."""
+
+
+def _pooled_seed_noise(targets: Sequence[Sequence[float]]) -> float:
+    """RMS of the within-recipe sample deviations, in the original score units."""
+    varying = [scores for scores in targets if min(scores) != max(scores)]
+    if not varying:
+        return 0.0
+    # Scale by a power of two before taking deviations. A constant recipe adds
+    # zero to the norm regardless of its magnitude, but still counts in the RMS.
+    exponent = math.frexp(max(abs(score) for scores in varying for score in scores))[1]
+    deviations = [
+        statistics.stdev(math.ldexp(score, -exponent) for score in scores) for scores in varying
+    ]
+    mean_square = math.fsum(deviation * deviation for deviation in deviations) / len(targets)
+    return math.ldexp(math.sqrt(mean_square), exponent)
 
 
 class PanelStudy:
@@ -275,12 +290,15 @@ class PanelStudy:
         with self._db() as db:
             return dict(db.execute("SELECT role, count(*) FROM panel_looks GROUP BY role"))
 
-    def _recorded_calibration_scores(self) -> dict[tuple[str, str, int], float]:
+    def _recorded_calibration_scores(
+        self, *, include_proxy: bool = True
+    ) -> dict[tuple[str, str, int], float]:
         scores: dict[tuple[str, str, int], float] = {}
         with self._db() as db:
             for role, candidate, seed, score in db.execute(
                 "SELECT role, candidate, seed, score FROM panel_looks "
-                "WHERE role IN ('calibration_proxy', 'calibration_target')"
+                "WHERE role='calibration_target' OR (role='calibration_proxy' AND ?)",
+                (include_proxy,),
             ):
                 slot = (role, candidate, seed)
                 if score is None:
@@ -296,12 +314,53 @@ class PanelStudy:
                 scores[slot] = score
         return scores
 
+    def _checked_seed_noise(self, fit: Calibration, *, for_decision: bool) -> Calibration:
+        if fit.seed_noise != 0:
+            if for_decision:
+                target_scores = self._recorded_calibration_scores(include_proxy=False)
+                expected = {
+                    ("calibration_target", key, seed)
+                    for key in self.variants
+                    for seed in self.seeds
+                }
+                # A summary-only archive has no target grid to verify.
+                if target_scores and target_scores.keys() != expected:
+                    raise PanelEvaluationError(
+                        "cached calibration target grid differs from declared replicates"
+                    )
+            return fit
+        recorded = self._recorded_calibration_scores()
+        try:
+            targets = [
+                [recorded["calibration_target", key, seed] for seed in self.seeds]
+                for key in self.variants
+            ]
+        except KeyError as exc:
+            # A summary-only archive can still report its original calibration.
+            if for_decision:
+                raise PanelEvaluationError(
+                    "cached zero seed noise lacks target replicates"
+                ) from exc
+            return fit
+        noise = _pooled_seed_noise(targets)
+        if noise == 0:
+            return fit
+        corrected = replace(fit, seed_noise=noise)
+        with self._db() as db:
+            db.execute(
+                "UPDATE panel_state SET value=? WHERE key='calibration'",
+                (json.dumps(asdict(corrected), allow_nan=False),),
+            )
+        return corrected
+
     def calibrate(self) -> Calibration:
         """Pair proxy and target measurements by recipe and seed before dispatch."""
         with self.lock:
             previous = self._state("calibration")
             if previous is not None:
-                return Calibration(**json.loads(previous))
+                return self._checked_seed_noise(
+                    Calibration(**json.loads(previous)), for_decision=False
+                )
             start = time.perf_counter()
             recorded = self._recorded_calibration_scores()
 
@@ -309,7 +368,7 @@ class PanelStudy:
                 saved = recorded.get((role, key, seed))
                 return self._measure(role, key, seed) if saved is None else saved
 
-            proxy_means, target_means, target_variances = [], [], []
+            proxy_means, target_means, targets = [], [], []
             for key in self.variants:
                 proxy, target = [], []
                 for seed in self.seeds:
@@ -317,7 +376,7 @@ class PanelStudy:
                     target.append(score("calibration_target", key, seed))
                 proxy_means.append(statistics.mean(proxy))
                 target_means.append(statistics.mean(target))
-                target_variances.append(statistics.variance(target))
+                targets.append(target)
             trials = 2 * len(self.variants) * len(self.seeds)
             elapsed = time.perf_counter() - start
             slope = intercept = None
@@ -326,7 +385,7 @@ class PanelStudy:
             result = Calibration(
                 slope,
                 intercept,
-                math.sqrt(statistics.mean(target_variances)),
+                _pooled_seed_noise(targets),
                 trials,
                 # Earlier processes persisted scores but not their elapsed scoring time.
                 None if recorded else elapsed / trials,
@@ -377,14 +436,15 @@ class PanelStudy:
 
     def consider(self, challenger_key: str, incumbent_key: str | None) -> Decision:
         """Only a gain on selection and confirmation can replace the reference."""
-        calibration = self._calibration()
         reference = self.variants[0] if incumbent_key is None else incumbent_key
         decision_key = self.decision_key(challenger_key, incumbent_key)
         sign = 1 if self.direction == "maximize" else -1
         with self.lock:
+            calibration = self._calibration()
             previous = self._state(decision_key)
             if previous is not None:
                 return Decision(**json.loads(previous))
+            calibration = self._checked_seed_noise(calibration, for_decision=True)
             try:
                 if challenger_key == reference:
                     self._confirmed(reference)

@@ -54,7 +54,7 @@ PYTHON
 | `time_to_first_trial` | Seconds from campaign creation to the first acknowledged workload start. Queues without a launch record report `null`. For a cold-start qualification, also time preparation and provisioning before campaign creation. |
 | `trials_per_hour` | Distinct trials that reached a terminal outcome in the 60 minutes ending at capture. A failed attempt that was retried does not add another completed trial. |
 | `gpu_utilization` | Sum measured busy device-seconds across the campaign’s dedicated allocations, including measured idle time in the denominator. Divide by total allocated device-seconds and multiply by 100. Inspect coverage and open allocations before using the value. |
-| `cost_per_0_01_improvement` | Multiply metered campaign cost by 0.01 and divide by the positive gain in the objective direction. Check the first and current selected scores at the same fidelity. Older reports can mix screening and full-fidelity selections. Missing comparable scores, no net gain or an unpriced free run leave cost per comparable gain unmeasured. Pending estimates are excluded. Invoiced dollars require billing evidence. |
+| `cost_per_0_01_improvement` | Multiply fully priced campaign cost by 0.01 and divide by the positive gain in the objective direction. Check the first and current selected scores at the same fidelity. Older reports can mix screening and full-fidelity selections. Missing comparable scores, no net gain or missing prices for consumed resources leave cost per comparable gain unmeasured. Pending estimates are excluded. Invoiced dollars require billing evidence. |
 | `failed_attempts_by_class` | Percentages use finished attempts as the denominator. Retries are separate attempts. An unclassified failed or lost observation has no recorded cause. |
 | `proposer_acceptance_rate` | Percentage of candidate entries returned by the controller’s proposer that created a new trial. Duplicate and invalid entries count as rejections. A timeout returning no entries adds none. Direct submissions and worker retries are outside this count. |
 | `confirmation_pass_rate` | Percentage of distinct, campaign-bound comparisons that reached confirmation with a measured gain and passed. Reference decisions, selection vetoes and evaluator failures are excluded. A completed campaign can have zero eligible decisions. |
@@ -145,6 +145,13 @@ A queued trial awaits a claim. A running trial has an active attempt.
 Several attempts can belong to one trial. Active attempts have empty
 observation fields.
 The heartbeat and accrued cost fields give the latest recorded progress.
+
+Match a `repeated_failure` or `score_target` alert's `event_id` to `swarm_events.id`
+in the same campaign. The queue stores the event time in `swarm_events.at` as Unix
+seconds. In the notification journal and on stdout, `at` gives the time of the
+watcher's poll. A `score_target` alert also gives the original selection time in
+`selected_at`. Both notification timestamps include the offset for `--timezone`,
+which defaults to UTC.
 
 ## Diagnose failures
 
@@ -254,8 +261,14 @@ also depends on memory. Measure peak VRAM for the task's data and model size
 before increasing the number of simultaneous fits.
 
 Use observed input and output token counts from the proposer or worker.
-Use measured elapsed time for compute charges. Inspect the configured rates
-alongside the reported currency amount.
+Use measured elapsed time for compute charges. The budget and snapshot keep the known charge in
+`measured_cost`. For recorded usage with missing rates, `total_cost` is null
+and `missing_prices` lists the rates needed. Token rates apply to nonzero token
+counts. A metered slot that settled or accrued time needs an hourly rate.
+Estimates use configured prices.
+Set an explicitly free rate to zero in a new campaign. Older stored zero
+rates cannot establish whether the price was declared or omitted. A supplied
+monetary charge without token usage counts is recorded at its stated value.
 
 Cold calibration can include model loading or framework initialization.
 Compare small and full profiles separately. Keep the profile, device and

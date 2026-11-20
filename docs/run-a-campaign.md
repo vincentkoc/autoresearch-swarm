@@ -121,9 +121,16 @@ Research campaigns use `evaluation_mode: calibrated` by default. Set
 `panel_policy` to the scorer factory. For a dispatch smoke test, specify
 `evaluation_mode: smoke` and omit the panels. The summary records the mode.
 
-Prepare the training, calibration, search, selection and confirmation member
-IDs. Use the same identity for a subject across every split. The panel policy
-rejects reused IDs. Keep evaluation case details out of proposer input.
+Panel names in campaign YAML are labels. Membership remains unchecked until
+the panel policy compares the IDs. Supply complete training, calibration,
+search, selection and confirmation lists. Use the same stable ID for a subject
+across every split.
+`PanelSplit` requires every role and rejects repeated IDs within and across
+the supplied lists. Selection, confirmation and the other evaluation roles
+require members. Use an explicitly empty training tuple for a workload that
+uses no training data. If a list is incomplete, overlap involving undeclared
+members remains unknown. A custom policy must check its own member lists for
+overlap. Keep evaluation case details out of proposer input.
 
 Declare a baseline and at least two calibration variants. Use at least two
 distinct seeds per variant. Inspect the proxy slope, target seed noise and

@@ -7,12 +7,18 @@ from decimal import Decimal
 
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Trial
 
+PRICE_FIELDS = (
+    "price_per_hour",
+    "price_per_million_input_tokens",
+    "price_per_million_output_tokens",
+)
+
 
 def _price(spec: CampaignSpec, seconds: float, input_tokens: int, output_tokens: int) -> float:
     rates = (
-        spec.price_per_hour,
-        spec.price_per_million_input_tokens,
-        spec.price_per_million_output_tokens,
+        spec.price_per_hour or 0.0,
+        spec.price_per_million_input_tokens or 0.0,
+        spec.price_per_million_output_tokens or 0.0,
     )
     if any(not math.isfinite(n) or n < 0 for n in (*rates, seconds)):
         raise ValueError("elapsed time and prices must be finite and nonnegative")

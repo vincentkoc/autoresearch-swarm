@@ -9,10 +9,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, cast
 
+from research_swarm.domain.canonical import MAX_SAFE_INTEGER
 from research_swarm.swarm.backends.local import from_spec as local_backend
 from research_swarm.swarm.interfaces import Backend, CampaignSpec, Worker
 from research_swarm.swarm.loop import SwarmLoop, candidate_key
-from research_swarm.swarm.spec import load_spec
+from research_swarm.swarm.report import _read
+from research_swarm.swarm.spec import load_spec, validate_seed
 from research_swarm.swarm.store import SQLiteStore
 from research_swarm.swarm.worker import from_spec
 
@@ -36,10 +38,27 @@ def campaign_backend(spec: CampaignSpec) -> Backend:
     return local_backend(spec)
 
 
+def _check_archived_seeds(database: Path, campaign_id: str) -> None:
+    if not database.is_file():
+        return
+    with _read(database) as db:
+        if db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='swarm_trials'"
+        ).fetchone():
+            row = db.execute(
+                "SELECT seed FROM swarm_trials WHERE campaign_id=? "
+                "AND (typeof(seed) != 'integer' OR seed NOT BETWEEN ? AND ?) LIMIT 1",
+                (campaign_id, -MAX_SAFE_INTEGER, MAX_SAFE_INTEGER),
+            ).fetchone()
+            if row is not None:
+                validate_seed(row[0])
+
+
 def run_campaign(
     path: Path, database: Path, *, retry_exhausted: bool = False
 ) -> tuple[dict[str, Any], int]:
     spec = load_spec(path)
+    _check_archived_seeds(database, spec.campaign_id)
     backend = campaign_backend(spec)
     database.parent.mkdir(parents=True, exist_ok=True)
     store = SQLiteStore(database)
