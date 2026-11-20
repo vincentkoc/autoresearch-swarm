@@ -74,8 +74,9 @@ timeout_ms = 60000
 `expected_members` names the complete evaluation panel declared by the dataset.
 In this template, the evaluator must report observations for both `validation-a`
 and `validation-b`. Replace these names with the members of your dataset and keep
-the evaluator's `observed_members` consistent with that declaration. Authorization
-requires a declared panel; a receipt missing any member is incomplete.
+the evaluator's `observed_members` consistent with that declaration.
+Native evaluation requires a declared panel. If the evaluator omits a declared
+member or reports an extra one, the worker fails the attempt.
 
 ## Resolution and comparison
 
