@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Registered engines share one profile registry. Saved environment fingerprints
+  and the pinned launch and probe scripts retain their existing identities.
+
 - Native worker outcomes share one definition of completion reasons. Captured
   output uses the campaign directory-sync routine before a run returns.
 
