@@ -22,6 +22,10 @@
 - Compare the three benchmark policies at equal executed search work. Record
   program cases, optimizer steps, held-out evaluations and local model usage.
 
+- Use a common WAL connection policy for the queue, panel studies and journals.
+  Concurrent writers share a busy timeout, and schema upgrades commit atomically.
+  Campaign reports continue to open existing databases read-only.
+
 - Reject a benchmark campaign paired with an incompatible open panel study
   before reusing a score or spending a look.
 
