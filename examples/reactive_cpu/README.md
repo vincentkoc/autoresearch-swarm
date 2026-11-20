@@ -13,7 +13,7 @@ The protected manifest defines four stages:
 |---|---|
 | `train` | Observes training MSE at step 8, continues updating while a callback waits until step 12, then applies its bounded learning-rate proposal at a later update boundary. |
 | `baseline` | Keeps the initial learning rate for all 48 updates. This is labelled `fixed_initial_controls`, without a live policy invocation. |
-| `replay` | Starts a distinct admitted attempt from the same seed and applies the recorded control schedule. |
+| `replay` | Runs a separate stage within the same campaign attempt, using the original seed and recorded control schedule. |
 | `evaluate` | Independently scores all three models on the protected evaluation inputs. Only this stage supplies the primary metric. |
 
 Training emits `model`, `transcript` and `trajectory` artifacts. Replay emits
@@ -31,7 +31,7 @@ model, optimizer, data or random state.
 Run the bounded registered-worker proof:
 
 ~~~sh
-uv run pytest -q tests/reactive/test_cpu_example.py
+uv run python -m pytest -q tests/reactive/test_cpu_example.py
 ~~~
 
 `train.py` is the candidate mutation surface. Data, policy, evaluator and manifest
@@ -68,13 +68,16 @@ config = ChatCompletionsConfig(
     model="MODEL_ID",
 )
 policy = ChatCompletionsPolicy(config, api_key=os.environ["OPENAI_API_KEY"])
-journal = DecisionJournal.open(Path("SELECTED_ATTEMPT_OUTPUT/reactive.sqlite"))
+training_output = Path(".research/reactive-stages/ATTEMPT_ID/stage-0/outputs")
+journal = DecisionJournal.open(training_output / "reactive.sqlite")
 runner = DecisionRunner(journal, policy)
 asyncio.run(runner.run())
 ```
 
-Select one live attempt path explicitly. A mismatch with the admitted policy
-digest is rejected. Never put keys in source, the manifest or the journal. This
+Replace `ATTEMPT_ID` with the active campaign attempt's ID when using the
+linked launch recipe. Its live training stage writes the journal in `stage-0/outputs/`.
+A mismatch with the admitted policy digest is rejected.
+Never put keys in source, the manifest or the journal. This
 48-step CPU fixture usually finishes before a remote LLM could respond; use a
 longer admitted training workload and suitable finite decision limits for live
 provider experiments. Training does not wait for the caller or extend its budget.

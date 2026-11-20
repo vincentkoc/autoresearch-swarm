@@ -28,6 +28,9 @@
 - Document how to stop and resume a local campaign with its original queue
   and panel study, and where to find trial, proposal and advisory timeout diagnostics.
 
+- Correct the quickstart help command and graph smoke prerequisites. Fix the
+  reactive CPU example's test command and live training journal path.
+
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
 

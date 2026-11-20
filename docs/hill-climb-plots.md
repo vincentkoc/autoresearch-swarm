@@ -82,10 +82,11 @@ inputs. An empty selected cohort renders an explicit no-observations view.
 - Each run shows captured/total receipts, exclusions, complete/incomplete history,
   time origin, capture timestamp, schema, campaign revision and event watermark.
   An incomplete curve is only the best of captured evidence; missing history
-  could change it. The x range includes report capture times; each best-observed
-  curve holds its
-  last captured value to that run’s capture time so idle periods remain visible.
-  This tail is not a new evaluation or an inferred improvement.
+  could change it. The curve carries the best eligible score to the snapshot’s
+  `captured_at`. A saved report keeps that time. Refreshing the status page can
+  extend the line without a new score. The last plotted receipt’s commit time
+  tells you when that observation was recorded. A flat tail can
+  include failed trials or gaps in telemetry, so it cannot establish worker idleness.
   Failed/invalid trials never become zero scores; consult the report's trial
   outcomes for their details.
 
