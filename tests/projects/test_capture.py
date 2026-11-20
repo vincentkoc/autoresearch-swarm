@@ -8,6 +8,7 @@ import pytest
 
 from research_swarm.projects import source as source_module
 from research_swarm.projects.capture import capture_project
+from research_swarm.swarm import process as process_module
 from tests.projects.test_manifest import project as project
 
 capture_module = importlib.import_module("research_swarm.projects.capture")
@@ -74,6 +75,7 @@ def test_capture_shares_manifest_and_blob_deadline_and_removes_partial_bundle(
 
     monkeypatch.setattr(capture_module, "time", Clock)
     monkeypatch.setattr(source_module, "time", Clock)
+    monkeypatch.setattr(process_module, "time", Clock)
     original = source_module._git_read
     reads: list[list[str]] = []
 
