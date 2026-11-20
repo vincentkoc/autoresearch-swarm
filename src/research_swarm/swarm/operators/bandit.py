@@ -4,8 +4,9 @@ import asyncio
 import math
 import random
 from collections import Counter
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from itertools import islice
 
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate, Operator, Result, Trial
@@ -15,6 +16,27 @@ from research_swarm.swarm.population import Population
 
 DEFAULT_EXPLORATION = 1.0
 _ProposalOutcome = Sequence[Candidate] | KeyboardInterrupt | SystemExit
+ProposalJob = asyncio.Task[_ProposalOutcome]
+
+
+def start_proposal(request: Callable[[], Awaitable[Sequence[Candidate]]]) -> ProposalJob:
+    async def run() -> _ProposalOutcome:
+        try:
+            return await request()
+        except TimeoutError:
+            return ()
+        except (KeyboardInterrupt, SystemExit) as exc:
+            # asyncio stops the loop if these escape a child task before its caller resumes.
+            return exc
+
+    return asyncio.create_task(run())
+
+
+def proposal_result(job: ProposalJob) -> Sequence[Candidate]:
+    outcome = job.result()
+    if isinstance(outcome, (KeyboardInterrupt, SystemExit)):
+        raise outcome
+    return outcome
 
 
 @dataclass
@@ -101,7 +123,7 @@ class BanditProposer:
         self.best: dict[float, float] = {}
         self.issued: set[tuple[str, int, float]] = set()
         self.attempts: set[str] = set()
-        self.jobs: dict[str, asyncio.Task[_ProposalOutcome]] = {}
+        self.jobs: dict[str, ProposalJob] = {}
 
     def _remember(self, candidate: Candidate, seed: int | None, fidelity: float | None) -> bool:
         seed = self.spec.seed if seed is None else seed
@@ -158,18 +180,12 @@ class BanditProposer:
         end = loop.time() + 0.85 * spec.proposal_timeout_seconds
         inner = replace(spec, proposal_timeout_seconds=0.7 * spec.proposal_timeout_seconds)
 
-        async def propose(name: str, count: int) -> _ProposalOutcome:
-            try:
-                return await self.operators[name].propose(inner, parents, count)
-            except TimeoutError:
-                return ()
-            except (KeyboardInterrupt, SystemExit) as exc:
-                # An interrupt escaping a child task stops the loop before ask can deliver it.
-                return exc
-
         while len(batch) < k and eligible and loop.time() < end:
             counts = Counter(self._choose(eligible) for _ in range(k - len(batch)))
-            jobs = {name: asyncio.create_task(propose(name, counts[name])) for name in counts}
+            jobs = {
+                name: start_proposal(partial(self.operators[name].propose, inner, parents, count))
+                for name, count in counts.items()
+            }
             self.jobs.update(jobs)
             try:
                 done, _ = await asyncio.wait(jobs.values(), timeout=max(0, end - loop.time()))
@@ -177,10 +193,7 @@ class BanditProposer:
                     eligible.remove(name)
                     if job not in done:
                         continue
-                    outcome = job.result()
-                    if isinstance(outcome, (KeyboardInterrupt, SystemExit)):
-                        raise outcome
-                    for candidate in outcome[: counts[name]]:
+                    for candidate in proposal_result(job)[: counts[name]]:
                         if self._remember(candidate, candidate.seed, candidate.fidelity):
                             batch.append(replace(candidate, operator=name))
                         elif discard := getattr(self.operators[name], "discard", None):

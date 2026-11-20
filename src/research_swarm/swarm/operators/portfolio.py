@@ -8,11 +8,18 @@ import math
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from functools import partial
 from statistics import fmean
 
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate, Operator, Result, Trial
 from research_swarm.swarm.loop import candidate_key
-from research_swarm.swarm.operators.bandit import DEFAULT_EXPLORATION, OperatorBandit
+from research_swarm.swarm.operators.bandit import (
+    DEFAULT_EXPLORATION,
+    OperatorBandit,
+    ProposalJob,
+    proposal_result,
+    start_proposal,
+)
 from research_swarm.swarm.operators.llm import TextRewrite
 from research_swarm.swarm.operators.params import child
 from research_swarm.swarm.population import Ranked
@@ -128,7 +135,7 @@ class SearchPortfolio:
         self._at_seed: dict[str, Candidate] = {}
         self._issued: set[tuple[str, int, float]] = set()
         self._chosen: set[str] = set()
-        self._arm_jobs: dict[asyncio.Task[Sequence[Candidate]], str] = {}
+        self._arm_jobs: dict[ProposalJob, str] = {}
         self._failed: set[tuple[str, int, float]] = set()
 
     def _family_room(self, family: str) -> bool:
@@ -306,7 +313,7 @@ class SearchPortfolio:
                 batch.append(proposal)
         return batch
 
-    def _finished(self, task: asyncio.Task[Sequence[Candidate]]) -> None:
+    def _finished(self, task: ProposalJob) -> None:
         self._arm_jobs.pop(task, None)
         if not task.cancelled():
             task.exception()
@@ -359,23 +366,23 @@ class SearchPortfolio:
         end = loop.time() + timeout
         while eligible and len(batch) < k and loop.time() < end:
             counts = Counter(self.bandit.choose(eligible) for _ in range(k - len(batch)))
-            jobs: dict[asyncio.Task[Sequence[Candidate]], str] = {}
+            jobs: dict[ProposalJob, str] = {}
             for name, count in counts.items():
                 operator = self.operators[name]
                 request = (
-                    operator.propose(inner, parents, count, failure=failure)
+                    partial(operator.propose, inner, parents, count, failure=failure)
                     if failure is not None and isinstance(operator, TextRewrite)
-                    else operator.propose(inner, parents, count)
+                    else partial(operator.propose, inner, parents, count)
                 )
-                jobs[asyncio.create_task(request)] = name
+                jobs[start_proposal(request)] = name
             self._arm_jobs.update(jobs)
             for job in jobs:
                 job.add_done_callback(self._finished)
             try:
                 done, _ = await asyncio.wait(jobs, timeout=max(0, end - loop.time()))
                 for job, name in jobs.items():
-                    if job in done and not job.cancelled() and job.exception() is None:
-                        for candidate in job.result()[: counts[name]]:
+                    if job in done:
+                        for candidate in proposal_result(job)[: counts[name]]:
                             if (proposal := self._reserve(candidate)) is not None:
                                 batch.append(proposal)
                             else:

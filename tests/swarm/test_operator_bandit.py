@@ -15,6 +15,7 @@ from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Re
 from research_swarm.swarm.operators import llm
 from research_swarm.swarm.operators.bandit import BanditProposer
 from research_swarm.swarm.operators.llm import TextRewrite
+from research_swarm.swarm.operators.portfolio import SearchPortfolio
 
 SPEC = CampaignSpec(
     campaign_id="allocation",
@@ -113,7 +114,8 @@ async def test_silent_local_model_keeps_fast_sibling_and_does_not_hold_loop():
         FileNotFoundError("provider configuration missing"),
     ],
 )
-async def test_completed_provider_delivers_outcome_and_releases_slot(error, monkeypatch):
+@pytest.mark.parametrize("proposer", [BanditProposer, SearchPortfolio])
+async def test_completed_provider_delivers_outcome_and_releases_slot(error, monkeypatch, proposer):
     release_publisher = threading.Event()
 
     class PausedPublisher(Future):
@@ -134,7 +136,7 @@ async def test_completed_provider_delivers_outcome_and_releases_slot(error, monk
         return json.dumps({"content": str(seed), "rationale": "rewrite"})
 
     model = TextRewrite(interrupted, "rewrite the text", concurrency=1)
-    policy = BanditProposer(SPEC, {model.name: model})
+    policy = proposer(SPEC, {model.name: model})
     archive = [result("seed", "baseline", 0, 0)]
     try:
         if error is None:
