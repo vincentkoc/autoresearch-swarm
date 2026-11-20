@@ -12,6 +12,7 @@ from pathlib import Path
 import psutil
 import pytest
 
+from research_swarm.swarm.workers.contracts import NativeOutcome
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity
 from research_swarm.workers.supervision import base_environment, run_native
 
@@ -49,6 +50,8 @@ def test_start_barrier_precedes_project_execution_and_preserves_arguments(tmp_pa
         update={"argv": (*invocation.argv, "two words", 'a"b', "猫")}
     )
     outcome = run_native(invocation, tmp_path / "output", on_held=held)
+    assert isinstance(outcome, NativeOutcome)
+    assert NativeOutcome.model_validate_json(outcome.model_dump_json()) == outcome
     assert outcome.reason == "exited"
     assert outcome.exit_code == 0 and outcome.closure.scope_closed
     assert outcome.closure.identity == received[0]

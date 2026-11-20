@@ -1,5 +1,14 @@
 """Shared local-only rail and section sizing for offline research views."""
 
+import base64
+import hashlib
+
+
+def csp_hash(asset: str) -> str:
+    """Return the CSP SHA-256 digest of an inline UTF-8 asset."""
+    return base64.b64encode(hashlib.sha256(asset.encode("utf-8")).digest()).decode("ascii")
+
+
 PANEL_STYLE = """
 main.layout-workspace{--left-width:18%;--right-width:28.5%;display:grid;
 grid-template-columns:var(--left-width) 8px minmax(0,1fr) 8px var(--right-width)}

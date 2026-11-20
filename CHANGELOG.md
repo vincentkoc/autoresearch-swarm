@@ -5,6 +5,21 @@
 - Project bundles, workload outputs and campaign artifacts use one streaming
   SHA-256 implementation. Existing versioned digests and URL policies are retained.
 
+- Reactive journal exports count each event once when enforcing the page byte
+  limit. The CLI and Python client retain the same response and cursor at the cap.
+
+- Offline experiment inventories retain their Python entry point and export
+  byte-identical standalone HTML from the campaign graph package.
+
+- Live and replay training hooks share validation of the sealed workload declaration
+  and bounded control readback. Existing workload imports remain available.
+
+- Registered engines share one profile registry. Saved environment fingerprints
+  and the pinned launch and probe scripts retain their existing identities.
+
+- Native worker outcomes share one definition of completion reasons. Captured
+  output uses the campaign directory-sync routine before a run returns.
+
 - Bundle extraction verifies and reads one open archive. Workload outputs share
   their byte allowance across files, including zero-byte outputs.
 

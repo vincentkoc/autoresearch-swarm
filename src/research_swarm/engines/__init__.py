@@ -1,13 +1,8 @@
-"""Optional execution profiles; project model code stays outside the engine."""
+"""Compatibility imports for the swarm engine package."""
 
-from research_swarm.engines.models import EngineDescriptor, ProbeReport
-from research_swarm.engines.probe import probe_engine
-from research_swarm.engines.registry import ENGINE_DEFINITIONS, engine_definition
-
-__all__ = [
-    "ENGINE_DEFINITIONS",
-    "EngineDescriptor",
-    "ProbeReport",
-    "engine_definition",
-    "probe_engine",
-]
+from research_swarm.swarm.engines import ENGINE_DEFINITIONS as ENGINE_DEFINITIONS
+from research_swarm.swarm.engines import EngineDescriptor as EngineDescriptor
+from research_swarm.swarm.engines import ProbeReport as ProbeReport
+from research_swarm.swarm.engines import __all__ as __all__
+from research_swarm.swarm.engines import engine_definition as engine_definition
+from research_swarm.swarm.engines import probe_engine as probe_engine

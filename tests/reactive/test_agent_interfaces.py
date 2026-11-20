@@ -102,6 +102,12 @@ def test_export_bounds_bytes_count_and_preserves_cursor(journal: DecisionJournal
             trainer.request(request)
             trainer.settle(request.id, "expired")
     client = DecisionClient(journal.path)
+    first_two = client.export(limit=2)
+    exact_size = len(canonical_bytes(first_two.model_dump(mode="json")))
+    assert client.export(limit=2, max_bytes=exact_size) == first_two
+    shorter = client.export(limit=2, max_bytes=exact_size - 1)
+    assert shorter.events == first_two.events[:1]
+    assert shorter.next_after == shorter.events[0].sequence and shorter.has_more
     cursor, sequences = -1, []
     while True:
         page = client.export(after=cursor, limit=2, max_bytes=4096)

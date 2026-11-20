@@ -191,6 +191,10 @@ def test_context_binding_and_incomplete_close(
         report_path=str(tmp_path / "report.json"),
         parameters={"reactive": transcript.session.contract.model_dump(mode="json")},
     ).sealed()
+    changed = context.model_copy(update={"attempt_id": new_id()})
+    with pytest.raises(ValueError, match="digest mismatch"):
+        ReplayHook.from_context(changed, Controls(), transcript)
+    assert not (tmp_path / "reactive-replay.jsonl").exists()
     hook = ReplayHook.from_context(context, Controls(), transcript)
     assert hook.binding.context_digest == context.context_digest
     assert hook.close().status == "incomplete"

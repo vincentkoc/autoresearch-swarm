@@ -431,11 +431,11 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(
                     "Reactive tools grant one local session, not controller credentials"
                 )
-            from research_swarm.reactive.client import DecisionClient
+            from research_swarm.swarm.reactive.client import DecisionClient
 
             decisions = DecisionClient(args.session)
             if args.reactive_action == "mcp":
-                from research_swarm.reactive.mcp import make_reactive_mcp
+                from research_swarm.swarm.reactive.mcp import make_reactive_mcp
 
                 make_reactive_mcp(decisions).run(transport="stdio")
                 return 0
@@ -451,8 +451,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(
                     "Engine registration is a local operation without controller state"
                 )
-            from research_swarm.engines import ENGINE_DEFINITIONS, probe_engine
-            from research_swarm.engines.registration import (
+            from research_swarm.swarm.engines import ENGINE_DEFINITIONS, probe_engine
+            from research_swarm.swarm.engines.registration import (
                 ExecutionPolicy,
                 read_registration,
                 register_environment,

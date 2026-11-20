@@ -2,8 +2,8 @@
 
 import json
 
-from research_swarm.control.experiment_graph_worker import WORKER
 from research_swarm.control.panel_layout import PANEL_SCRIPT, PANEL_STYLE
+from research_swarm.swarm.graph.worker import WORKER
 
 STYLE = """
 :root{color-scheme:light;--paper:#fafaf8;--ink:#21272a;--muted:#697677;--line:#e5e8e3;
