@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Native worker outcomes share one definition of completion reasons. Captured
+  output uses the campaign directory-sync routine before a run returns.
+
 - Bundle extraction verifies and reads one open archive. Workload outputs share
   their byte allowance across files, including zero-byte outputs.
 

@@ -29,7 +29,7 @@ from research_swarm.swarm.projects.workload import (
     verify_outputs,
 )
 from research_swarm.swarm.records import ResourceRequirements
-from research_swarm.workers.supervision import base_environment
+from research_swarm.swarm.workers.supervision import base_environment
 
 
 def _candidate_bundle(
