@@ -30,6 +30,9 @@
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 
+- Project capture and manifest resolution now share one implementation. A read in
+  progress finishes on its original bundle if a newer capture replaces the path.
+
 - Compare the three benchmark policies at equal executed search work. Record
   program cases, optimizer steps, held-out evaluations and local model usage.
 
