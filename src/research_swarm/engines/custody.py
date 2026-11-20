@@ -19,7 +19,7 @@ from research_swarm.swarm.private_files import (
     read_private,
     write_private,
 )
-from research_swarm.workers.contracts import NativeIdentity, NativeOutcome
+from research_swarm.swarm.workers.contracts import NativeIdentity, NativeOutcome
 
 
 def default_probe_directory() -> Path:

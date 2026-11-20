@@ -17,8 +17,8 @@ from research_swarm.engines.custody import probe_custody
 from research_swarm.engines.models import EngineDescriptor, ProbeReport, ProbeStatus
 from research_swarm.engines.registry import engine_definition
 from research_swarm.projects.workload import absolute_path
-from research_swarm.workers.contracts import NativeCommand
-from research_swarm.workers.supervision import base_environment, run_native
+from research_swarm.swarm.workers.contracts import NativeCommand
+from research_swarm.swarm.workers.supervision import base_environment, run_native
 
 PROBE_OUTPUT_LIMIT = 512 * 1024
 

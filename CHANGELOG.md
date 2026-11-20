@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Native worker outcomes share one definition of completion reasons. Captured
+  output uses the campaign directory-sync routine before a run returns.
+
 - Campaigns can set `full_fidelity_work` and `max_search_work` with `max_attempts: 1`
   to cap search work across rungs. Each admitted trial reserves the rounded-up
   cost of a fresh fit, including the initial recipe and promotions. Queued and

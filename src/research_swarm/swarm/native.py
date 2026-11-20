@@ -29,7 +29,7 @@ from research_swarm.swarm.interfaces import Candidate, Trial
 from research_swarm.swarm.process import run as run_command
 from research_swarm.swarm.project import ResolvedProject, capture_project, resolve_project
 from research_swarm.swarm.records import ResourceRequirements
-from research_swarm.workers.supervision import base_environment
+from research_swarm.swarm.workers.supervision import base_environment
 
 
 def _candidate_bundle(
