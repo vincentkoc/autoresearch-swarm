@@ -10,8 +10,8 @@ from pathlib import Path
 from filelock import FileLock
 from pydantic import Field
 
-from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import canonical_bytes, strict_json_loads
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import (
     default_state_directory,
     private_state_directory,

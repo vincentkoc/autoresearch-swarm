@@ -8,8 +8,8 @@ from typing import Annotated, Any
 
 from pydantic import Field, ValidationError
 
-from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import MAX_SAFE_INTEGER, canonical_bytes
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.reactive.contracts import (
     DecisionProposal,
     DecisionRecord,

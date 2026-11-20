@@ -8,7 +8,7 @@ from uuid import UUID, uuid5
 
 from pydantic import Field, StringConstraints, model_validator
 
-from research_swarm.domain.canonical import record_digest
+from research_swarm.swarm.canonical import record_digest
 from research_swarm.swarm.records import (
     ID,
     ArtifactRef,

@@ -6,8 +6,8 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from pydantic import Field, JsonValue, field_validator, model_validator
 
-from research_swarm.domain.canonical import record_digest, strict_json_loads
-from research_swarm.swarm.projects.native_files import SourceReader, hash_stream
+from research_swarm.swarm.canonical import hash_stream, record_digest, strict_json_loads
+from research_swarm.swarm.projects.native_files import SourceReader
 from research_swarm.swarm.projects.source import portable_path
 from research_swarm.swarm.records import (
     ID,

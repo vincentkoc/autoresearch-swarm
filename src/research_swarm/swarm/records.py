@@ -18,8 +18,8 @@ from pydantic import (
     model_validator,
 )
 
-from research_swarm.domain.canonical import canonical_bytes
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import canonical_bytes
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 
 JsonObject = dict[str, Any]
 

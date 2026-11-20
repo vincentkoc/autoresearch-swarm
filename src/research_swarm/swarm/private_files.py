@@ -10,9 +10,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.domain.types import new_id
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.projects.native_files import SourceReader
+from research_swarm.swarm.records import new_id
 
 
 def default_state_directory() -> Path:

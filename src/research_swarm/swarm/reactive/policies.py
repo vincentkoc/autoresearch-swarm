@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from research_swarm.domain.canonical import record_digest
+from research_swarm.swarm.canonical import record_digest
 from research_swarm.swarm.reactive.contracts import (
     ControlName,
     DecisionProposal,

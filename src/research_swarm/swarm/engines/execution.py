@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from research_swarm.domain.canonical import canonical_bytes, content_digest
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import canonical_bytes, content_digest
 from research_swarm.swarm.engines.adapter import launch_adapter_digest, script_bytes
 from research_swarm.swarm.engines.registration import EnvironmentRegistration
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import private_state_directory, read_private, write_private
 from research_swarm.swarm.projects.source import portable_path
 from research_swarm.swarm.records import ResourceRequirements, StageSpec

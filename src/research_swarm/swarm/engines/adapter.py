@@ -2,7 +2,7 @@
 
 from importlib.resources import files
 
-from research_swarm.domain.canonical import content_digest, record_digest
+from research_swarm.swarm.canonical import content_digest, record_digest
 
 
 def launch_adapter_digest(bootstrap_digest: str, probe_digest: str) -> str:

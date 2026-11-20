@@ -6,29 +6,11 @@ import os
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
-from hashlib import sha256
 from pathlib import Path
-from typing import IO, BinaryIO, cast
+from typing import BinaryIO, cast
 
-CHUNK_SIZE = 1024 * 1024
-
-
-def hash_stream(
-    source: IO[bytes], *, limit: int, overflow: str, output: IO[bytes] | None = None
-) -> tuple[str, int]:
-    """Hash up to the byte limit, optionally copying each accepted block."""
-    if limit < 0:
-        raise ValueError("Byte limit must be nonnegative")
-    digest = sha256()
-    size = 0
-    while block := source.read(min(CHUNK_SIZE, limit - size + 1)):
-        size += len(block)
-        if size > limit:
-            raise ValueError(overflow)
-        digest.update(block)
-        if output is not None:
-            output.write(block)
-    return "sha256:" + digest.hexdigest(), size
+from research_swarm.swarm.canonical import CHUNK_SIZE as CHUNK_SIZE
+from research_swarm.swarm.canonical import hash_stream as hash_stream
 
 
 class SourceReader:

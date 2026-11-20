@@ -18,7 +18,7 @@ from typing import BinaryIO, cast
 from filelock import FileLock
 from pydantic import TypeAdapter
 
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import sync_directory
 from research_swarm.swarm.records import ID, ArtifactRef, new_id
 from research_swarm.swarm.storage.contracts import StoredBlob, UploadProgress, UploadSpec

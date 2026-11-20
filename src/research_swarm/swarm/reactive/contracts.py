@@ -10,8 +10,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, StringConstraints, model_validator
 
-from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes, record_digest
-from research_swarm.domain.types import ID, Digest, Name, Timestamp, VersionedRecord
+from research_swarm.swarm.canonical import MAX_SAFE_INTEGER, canonical_bytes, record_digest
+from research_swarm.swarm.records import ID, Digest, Name, Timestamp, VersionedRecord
 
 ControlName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$")]
 Step = Annotated[int, Field(strict=True, ge=0, le=MAX_SAFE_INTEGER)]

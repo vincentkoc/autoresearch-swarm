@@ -14,7 +14,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import TypeAdapter
 
-from research_swarm.domain.canonical import record_digest
+from research_swarm.swarm.canonical import record_digest
 from research_swarm.swarm.engines import execution
 from research_swarm.swarm.engines.registration import read_registration
 from research_swarm.swarm.interfaces import Candidate, Trial

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 
 
 @dataclass(frozen=True)

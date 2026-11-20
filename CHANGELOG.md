@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Project bundles, workload outputs and campaign artifacts use one streaming
+  SHA-256 implementation. Existing versioned digests and URL policies are retained.
+
 - Reactive journal exports count each event once when enforcing the page byte
   limit. The CLI and Python client retain the same response and cursor at the cap.
 

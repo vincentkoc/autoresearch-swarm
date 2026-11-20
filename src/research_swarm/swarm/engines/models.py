@@ -6,8 +6,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, StringConstraints, model_validator
 
-from research_swarm.domain.canonical import record_digest
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import record_digest
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.records import ByteCount, Digest, Name, VersionedRecord
 
 Observation = Annotated[

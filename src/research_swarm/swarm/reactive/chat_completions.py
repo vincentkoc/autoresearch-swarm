@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import Field, model_validator
 
-from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
+from research_swarm.swarm.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.swarm.reactive.contracts import (
     ControlName,
     DecisionProposal,

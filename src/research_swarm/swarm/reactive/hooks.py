@@ -9,7 +9,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Literal, Protocol, Self
 
-from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes
+from research_swarm.swarm.canonical import MAX_SAFE_INTEGER, canonical_bytes
 from research_swarm.swarm.projects.workload import WorkloadContext
 from research_swarm.swarm.reactive.admission import context_declaration, create_session
 from research_swarm.swarm.reactive.contracts import (

@@ -8,8 +8,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp_types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import JsonValue
 
-from research_swarm.domain.canonical import canonical_bytes
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import canonical_bytes
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.reactive.client import (
     MAX_REPLY_BYTES,
     DecisionClient,
