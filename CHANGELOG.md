@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Campaigns can set `full_fidelity_work` and `max_search_work` with `max_attempts: 1`
+  to cap search work across rungs. Each admitted trial reserves the rounded-up
+  cost of a fresh fit, including the initial recipe and promotions. Queued and
+  completed trials keep their reservations across resume.
+
 - Report the known cost subtotal and missing rates when recorded usage is only
   partly priced. Cost per improvement stays unavailable until the total is known.
   Reopening a campaign accepts equal integer and floating-point price rates
