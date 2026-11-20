@@ -8,6 +8,8 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
+
 from benchmarks.study import WorkerPanelPolicy, recipe_key
 from research_swarm.swarm.interfaces import Result
 from research_swarm.swarm.panels import Calibration, Decision, PanelSplit, PanelStudy
@@ -216,3 +218,34 @@ def test_legacy_partial_and_unclassified_panel_evidence(tmp_path):
     rate = capture(queue, "new")["kpis"]["confirmation_pass_rate"]
     assert rate["value"] is None and "classify" in rate["detail"]
     assert rate["passes"] is None and rate["recorded_passes"] == 1
+
+
+@pytest.mark.parametrize("boolean_gain", [False, True])
+def test_boolean_confirmation_gain_leaves_rate_unknown(tmp_path, boolean_gain):
+    queue = tmp_path / "queue.sqlite"
+    store = SQLiteStore(queue)
+    campaign = spec()
+    store.create_campaign(campaign)
+    binding = "generated-study"
+    with sqlite3.connect(queue) as db:
+        db.execute(
+            "UPDATE swarm_campaigns SET panel_binding=? WHERE campaign_id=?",
+            (binding, campaign.campaign_id),
+        )
+    store.record_panel_outcome(campaign.campaign_id, binding, Calibration(1, 0, 0, 12, 1, 1))
+    store.record_panel_outcome(
+        campaign.campaign_id, binding, Decision(False, "confirmation", 1, 0), comparison="measured"
+    )
+    measured = capture(queue, campaign.campaign_id)["kpis"]["confirmation_pass_rate"]
+    assert (measured["value"], measured["passes"], measured["decisions"]) == (0, 0, 1)
+
+    store.record_panel_outcome(
+        campaign.campaign_id,
+        binding,
+        Decision(False, "confirmation", 1, boolean_gain),
+        comparison="unmeasured",
+    )
+    rate = capture(queue, campaign.campaign_id)["kpis"]["confirmation_pass_rate"]
+    assert rate["value"] is None and rate["passes"] is None and rate["decisions"] is None
+    assert (rate["recorded_passes"], rate["recorded_decisions"]) == (0, 1)
+    assert rate["last_confirmation"] == measured["last_confirmation"]
