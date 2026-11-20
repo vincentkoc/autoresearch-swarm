@@ -72,6 +72,9 @@
 - Calculate campaign cost per 0.01 improvement from selections at the current
   trial fidelity, including the measured cost of screening trials.
 
+- Label metered budget amounts in campaign currency in budget responses,
+  campaign snapshots and status-page budget details.
+
 - Plot and rank campaign trial scores by fidelity. Screening scores and
   recorded selections stay on the rung where the trial ran.
 

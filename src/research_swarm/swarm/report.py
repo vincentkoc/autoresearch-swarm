@@ -68,6 +68,7 @@ def _usage(db: sqlite3.Connection, campaign: str, spec: dict[str, Any]) -> dict[
         "attempts": usage[2],
         "finished_attempts": usage[3],
         "max_hours": spec.get("max_hours"),
+        "cost_unit": "campaign currency",
     }
 
 
