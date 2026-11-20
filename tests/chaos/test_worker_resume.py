@@ -32,13 +32,15 @@ def test_calibrated_worker_kill_resume_and_replay(tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(REPO_ROOT), os.getenv("PYTHONPATH", "")]))
     task = tmp_path / "score.py"
     task.write_text(
-        """import os, time
+        """import json, os, time
 from pathlib import Path
+import psutil
 
 started = Path(os.environ["SWARM_ATTEMPT_ID"] + ".started")
 first = not any(Path.cwd().glob("*.started"))
 ready = started.with_suffix(".pending")
-ready.write_text(f"{os.getpid()} {os.getppid()}")
+ready.write_text(json.dumps([(pid, psutil.Process(pid).create_time())
+                             for pid in (os.getpid(), os.getppid())]))
 ready.rename(started)
 if first:
     time.sleep(60)
@@ -116,6 +118,16 @@ Path(os.environ["SWARM_METRICS"]).write_text('{"score": 1}')
     assert study.look_counts() == final_looks
     markers = list(tmp_path.glob("*.started"))
     assert {p.stem for p in markers} == {r.attempt.attempt_id for r in (lost, accepted)}
+    # The early stop check permits a zombie during teardown. At completion both
+    # attempts' workload and guard must be reaped, even if the PID was reused.
+    remaining = []
     for marker in markers:
-        for pid in map(int, marker.read_text().split()):
-            asyncio.run(assert_child_stopped(pid))
+        for pid, birth in json.loads(marker.read_text()):
+            try:
+                process = psutil.Process(pid)
+                if process.create_time() == birth:
+                    remaining.append(process)
+            except psutil.NoSuchProcess:
+                pass
+    _, alive = psutil.wait_procs(remaining, timeout=5)
+    assert not alive
