@@ -41,6 +41,9 @@
   `run_native`. Native commands use their timeout and optional absolute deadline
   during both preparation and execution.
 
+- Preserve the original advisory role and deadline in the timeout report if the
+  heartbeat file disappears.
+
 - Share committed-manifest resolution between explicit and manifest-selected
   Git revisions in project capture and registration.
 

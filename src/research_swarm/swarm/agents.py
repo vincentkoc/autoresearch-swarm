@@ -139,7 +139,9 @@ async def ask_agent(
     with tempfile.TemporaryDirectory(prefix=role + "-", dir=jobs) as temporary:
         heartbeat = Path(temporary) / "heartbeat.json"
         deadline = time.monotonic() + timeout
-        heartbeat.write_text(json.dumps({"role": role, "deadline": time.time() + timeout}))
+        job_metadata = json.dumps({"role": role, "deadline": time.time() + timeout})
+        heartbeat.with_name("job.json").write_text(job_metadata)
+        heartbeat.write_text(job_metadata)
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
