@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import math
 import os
-import signal
-import subprocess
 import sys
-import time
 from pathlib import Path
+
+from research_swarm.swarm import _process_guard
 
 
 def record_outcome(heartbeat: Path, status: str) -> None:
@@ -60,48 +59,23 @@ def record_outcome(heartbeat: Path, status: str) -> None:
         staging.unlink(missing_ok=True)
 
 
-def _expire(heartbeat: Path) -> int:
-    try:
-        record_outcome(heartbeat, "timed_out")
-    finally:
-        # Includes this guard, the provider and descendants that inherited this group.
-        os.killpg(os.getpid(), signal.SIGKILL)
-    return 1  # Unreachable after SIGKILL.
-
-
 def supervise(heartbeat: Path, deadline: float) -> int:
-    # The caller must have launched THIS process in its own new session.
-    if os.getsid(0) != os.getpid():
-        raise RuntimeError("Advisory guard requires its own session")
-    if time.monotonic() >= deadline:
-        return _expire(heartbeat)
-    try:
-        provider = subprocess.Popen(
-            [sys.executable, "-m", "research_swarm.swarm.agents", str(heartbeat), str(deadline)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except OSError:
-        record_outcome(heartbeat, "failed")
-        raise
-    try:
-        stdout, stderr = provider.communicate(timeout=max(0, deadline - time.monotonic()))
-    except subprocess.TimeoutExpired:
-        return _expire(heartbeat)
-    # A ready pipe can return output when the guard resumes after its deadline.
-    if time.monotonic() >= deadline or provider.returncode == -signal.SIGALRM:
-        return _expire(heartbeat)
+    def publish(status: str, stdout: bytes, stderr: bytes) -> None:
+        record_outcome(heartbeat, status)
+        # The journal survives a caller that closed its output pipes.
+        try:
+            sys.stdout.buffer.write(stdout)
+            sys.stdout.buffer.flush()
+            sys.stderr.buffer.write(stderr)
+            sys.stderr.buffer.flush()
+        except BrokenPipeError:
+            pass
 
-    record_outcome(heartbeat, "ok" if provider.returncode == 0 else "failed")
-    # An orphaned provider can finish successfully even if its original output pipe closed.
-    try:
-        sys.stdout.buffer.write(stdout)
-        sys.stdout.buffer.flush()
-        sys.stderr.buffer.write(stderr)
-        sys.stderr.buffer.flush()
-    except BrokenPipeError:
-        pass
-    return int(provider.returncode != 0)
+    return _process_guard.supervise(
+        [sys.executable, "-m", "research_swarm.swarm.agents", str(heartbeat), str(deadline)],
+        deadline=deadline,
+        report=publish,
+    )
 
 
 if __name__ == "__main__":

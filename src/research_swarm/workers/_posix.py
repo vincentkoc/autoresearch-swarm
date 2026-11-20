@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -14,15 +13,12 @@ from typing import BinaryIO, cast
 import psutil
 
 from research_swarm.domain.types import new_id
+from research_swarm.swarm.process import start_group, stop_group
 from research_swarm.workers.contracts import NativeCommand, NativeIdentity, ProcessClosure
 
 
 def _nonblocking(descriptor: int) -> None:
     os.set_blocking(descriptor, False)
-
-
-def _signal_group(pid: int, *, force: bool) -> None:
-    os.killpg(pid, signal.SIGKILL if force else signal.SIGTERM)
 
 
 def _group(pid: int) -> int:
@@ -41,33 +37,19 @@ def start_token(process: psutil.Process) -> str:
 
 class PosixChild:
     def __init__(self, command: NativeCommand, environment: dict[str, str]) -> None:
-        read_fd, write_fd = os.pipe()
-        self.barrier: int | None = write_fd
-        try:
-            self.process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-I",
-                    str(Path(__file__).with_name("_bootstrap.py")),
-                    str(read_fd),
-                    "30",
-                    *command.argv,
-                ],
-                cwd=command.cwd,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-                close_fds=True,
-                pass_fds=(read_fd,),
-            )
-        except BaseException:
-            os.close(write_fd)
-            self.barrier = None
-            raise
-        finally:
-            os.close(read_fd)
+        self.process, self.owner = start_group(
+            command.argv,
+            cwd=command.cwd,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            observe_closure=True,
+        )
+        self.owner.setblocking(False)
+        self.released = False
+        self.status = bytearray()
+        self.command_code: int | None = None
         self.stdout = cast(BinaryIO, self.process.stdout)
         self.stderr = cast(BinaryIO, self.process.stderr)
         try:
@@ -81,8 +63,7 @@ class PosixChild:
             _nonblocking(self.stdout.fileno())
             _nonblocking(self.stderr.fileno())
         except BaseException:
-            with suppress(ProcessLookupError):
-                _signal_group(self.process.pid, force=True)
+            stop_group(self.process)
             self.process.wait(timeout=5)
             self.close()
             raise
@@ -91,13 +72,21 @@ class PosixChild:
         self.next_descendant_scan = 0.0
 
     def release(self) -> None:
-        if self.barrier is None:
+        if self.released or self.owner.fileno() < 0:
             raise RuntimeError("Process barrier is already closed")
-        try:
-            os.write(self.barrier, b"1")
-        finally:
-            os.close(self.barrier)
-            self.barrier = None
+        self.owner.sendall(b"1")
+        self.released = True
+
+    def _read_status(self) -> None:
+        if self.command_code is not None or self.owner.fileno() < 0:
+            return
+        with suppress(BlockingIOError, ConnectionResetError):
+            self.status.extend(self.owner.recv(128))
+            lines = self.status.split(b"\n")
+            if len(lines) >= 2 and int(lines[0]):
+                self.command_code = 127
+            elif len(lines) >= 3:
+                self.command_code = int(lines[1])
 
     @staticmethod
     def read(stream: BinaryIO, maximum: int) -> bytes | None:
@@ -108,13 +97,14 @@ class PosixChild:
 
     def active(self) -> bool:
         # Do not reap yet: the owned leader PID prevents reuse of the group ID.
+        self._read_status()
         try:
             alive = self.native.status() != psutil.STATUS_ZOMBIE
             if alive and time.monotonic() >= self.next_descendant_scan:
                 for child in self.native.children(recursive=True):
                     self.descendants.setdefault(child.pid, child)
                 self.next_descendant_scan = time.monotonic() + 0.2
-            return alive
+            return alive and self.command_code is None
         except psutil.NoSuchProcess:
             return False
         except psutil.AccessDenied:
@@ -122,18 +112,19 @@ class PosixChild:
             return True
 
     def stop(self, *, force: bool) -> None:
-        if self.barrier is not None:
-            os.close(self.barrier)
-            self.barrier = None
-        with suppress(ProcessLookupError):
-            _signal_group(self.process.pid, force=force)
+        if not self.released:
+            self.owner.close()
+        stop_group(self.process, force=force)
 
     def closure(self) -> ProcessClosure:
+        self._read_status()
         live_group = False
         escaped: list[int] = []
         inaccessible = self.unobserved
         for process in psutil.process_iter():
             try:
+                if process.pid == self.process.pid and self.command_code is not None:
+                    continue
                 if (
                     _group(process.pid) == self.process.pid
                     and process.status() != psutil.STATUS_ZOMBIE
@@ -145,6 +136,8 @@ class PosixChild:
                 # An unrelated inaccessible process is not evidence about our group.
                 if process.pid in self.descendants or process.pid == self.process.pid:
                     inaccessible = True
+        if not live_group and self.command_code is not None:
+            self.owner.close()
         for process in self.descendants.values():
             try:
                 if (
@@ -171,11 +164,15 @@ class PosixChild:
     def exit_code(self) -> int | None:
         if self.active():
             return None
-        return self.process.wait(timeout=0.1)
+        guard_code = self.process.wait(timeout=0.1)
+        return guard_code if self.command_code is None else self.command_code
 
     def close(self) -> None:
-        if self.barrier is not None:
-            os.close(self.barrier)
-            self.barrier = None
+        self.owner.close()
+        try:
+            self.process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            stop_group(self.process)
+            self.process.wait(timeout=5)
         self.stdout.close()
         self.stderr.close()

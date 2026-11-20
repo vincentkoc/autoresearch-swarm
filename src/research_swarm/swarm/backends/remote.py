@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 from research_swarm.swarm.backends.local import LocalBackend
 from research_swarm.swarm.data_stage import hydrate, mount_readonly, stage_path
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
+from research_swarm.swarm.process import read_all, run_async
 from research_swarm.swarm.telemetry import observe_starts, workload_started
 
 RESULT_PREFIX = "SWARM_RESULT "
@@ -48,32 +50,21 @@ async def command(
     payload: bytes | None = None,
     started_attempt: str | None = None,
 ) -> str:
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        stdin=asyncio.subprocess.PIPE if payload is not None else asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
     try:
-        async with asyncio.timeout(timeout):
-            if started_attempt is None:
-                stdout, stderr = await process.communicate(payload)
-            else:
-                assert process.stdin and process.stdout and process.stderr and payload is not None
-                process.stdin.write(payload)
-                process.stdin.close()
-                stdout, stderr = await asyncio.gather(
-                    process.stdout.read(), _ssh_diagnostics(process.stderr, started_attempt)
-                )
-                await process.wait()
-    finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
-    if process.returncode:
-        message = stderr[-4096:].decode(errors="replace")
-        raise RuntimeError(f"{argv[0]} exited with status {process.returncode}: {message}")
-    return stdout.decode()
+        result = await run_async(
+            argv,
+            timeout=timeout,
+            input=payload,
+            stderr=read_all
+            if started_attempt is None
+            else lambda stream: _ssh_diagnostics(stream, started_attempt),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError from exc
+    if result.returncode:
+        message = result.stderr[-4096:].decode(errors="replace")
+        raise RuntimeError(f"{argv[0]} exited with status {result.returncode}: {message}")
+    return result.stdout.decode()
 
 
 def request(spec: CampaignSpec, attempt: Attempt, task_dir: str, device: str) -> dict[str, Any]:

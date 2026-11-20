@@ -7,14 +7,13 @@ import hashlib
 import io
 import os
 import shutil
-import signal
 import stat
-import tempfile
+import subprocess
 import time
 import unicodedata
 import zipfile
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import IO
@@ -24,6 +23,7 @@ from pydantic import Field, field_validator, model_validator
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ByteCount, Digest, VersionedRecord
+from research_swarm.swarm.process import read_bounded
 
 MANIFEST_NAME = ".research-source.json"
 CHUNK_SIZE = 1024 * 1024
@@ -306,10 +306,6 @@ def bundle_directory(root: Path, destination: Path, *, paths: tuple[str, ...]) -
 
 
 def _git_read(root: Path, arguments: list[str], *, limit: int, deadline: float) -> bytes:
-    import subprocess
-
-    import psutil
-
     if deadline <= time.monotonic():
         raise TimeoutError("Source capture deadline expired")
     environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
@@ -320,44 +316,14 @@ def _git_read(root: Path, arguments: list[str], *, limit: int, deadline: float) 
             "GIT_TERMINAL_PROMPT": "0",
         }
     )
-    # Regular files keep inherited output handles from blocking an EOF read forever.
-    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
-        process = subprocess.Popen(
-            ["git", "-C", str(root), *arguments],
-            stdout=output,
-            stderr=errors,
-            env=environment,
-            start_new_session=True,
+    try:
+        return read_bounded(
+            ["git", "-C", str(root), *arguments], env=environment, limit=limit, deadline=deadline
         )
-        descendants: dict[int, psutil.Process] = {}
-        try:
-            while process.poll() is None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError("Source capture deadline expired")
-                if os.fstat(output.fileno()).st_size > limit:
-                    raise ValueError("Git output exceeds its declared source bound")
-                with suppress(psutil.NoSuchProcess):
-                    for child in psutil.Process(process.pid).children(recursive=True):
-                        descendants[child.pid] = child
-                with suppress(subprocess.TimeoutExpired):
-                    process.wait(timeout=min(0.02, remaining))
-            if process.returncode:
-                raise ValueError("Git could not read the selected committed source")
-            output.seek(0)
-            content = output.read(limit + 1)
-            if len(content) > limit:
-                raise ValueError("Git output exceeds its declared source bound")
-            return content
-        finally:
-            # Only this invocation's processes are eligible. psutil fences PID reuse.
-            for child in descendants.values():
-                with suppress(psutil.NoSuchProcess):
-                    child.kill()
-            if process.poll() is None:
-                with suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=10)
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError("Source capture deadline expired") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ValueError("Git could not read the selected committed source") from exc
 
 
 def read_git_file(

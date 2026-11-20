@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from research_swarm.swarm import agent_guard
+from research_swarm.swarm import _process_guard, agent_guard
 
 
 @pytest.mark.parametrize(
@@ -43,15 +43,15 @@ def test_expiry_records_unknown_launch_identity(
     def refuse_dispatch(*args: object, **kwargs: object) -> None:
         pytest.fail("expired job dispatched a provider")
 
-    monkeypatch.setattr(agent_guard, "time", SimpleNamespace(monotonic=lambda: 110.0))
+    monkeypatch.setattr(_process_guard, "time", SimpleNamespace(monotonic=lambda: 110.0))
     monkeypatch.setattr(
-        agent_guard,
+        _process_guard,
         "os",
         SimpleNamespace(
             getpid=lambda: 900001, getsid=lambda _: 900001, killpg=observe_expiry, link=os.link
         ),
     )
-    monkeypatch.setattr(agent_guard.subprocess, "Popen", refuse_dispatch)
+    monkeypatch.setattr(_process_guard.subprocess, "Popen", refuse_dispatch)
     agent_guard.supervise(heartbeat, 110.0)
 
     # A second publication by the caller must preserve the first record.
