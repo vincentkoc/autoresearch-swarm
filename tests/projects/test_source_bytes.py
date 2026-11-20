@@ -16,6 +16,29 @@ from tests.projects.test_manifest import capture
 from tests.projects.test_manifest import project as project
 
 
+def test_resolution_finishes_on_the_opened_bundle_after_replacement(project, tmp_path, monkeypatch):
+    path = tmp_path / "source.zip"
+    replacement = tmp_path / "next.zip"
+    capture(project, path)
+    first = resolve_project(path.read_bytes())
+    (project / "data-manifest.json").write_text('{"version": 2}\n')
+    capture(project, replacement)
+    second = resolve_project(replacement.read_bytes())
+    assert first.data_manifest_digest != second.data_manifest_digest
+
+    open_file = Path.open
+
+    def open_then_publish(file, *args, **kwargs):
+        stream = open_file(file, *args, **kwargs)
+        if file == path and replacement.exists():
+            replacement.replace(path)
+        return stream
+
+    monkeypatch.setattr(Path, "open", open_then_publish)
+    assert resolve_project(path) == first
+    assert resolve_project(path) == second
+
+
 def test_project_resolution_and_complete_verification_need_no_filesystem(
     project, tmp_path, monkeypatch
 ):
