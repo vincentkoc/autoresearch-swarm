@@ -8,7 +8,7 @@ import math
 import sqlite3
 import time
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from dataclasses import asdict, replace
 from decimal import Decimal
 from pathlib import Path
@@ -17,64 +17,14 @@ from uuid import uuid4
 
 from pydantic import TypeAdapter
 
+from research_swarm.swarm.db import QUEUE_SCHEMA as _SCHEMA  # noqa: F401
+from research_swarm.swarm.db import LegacyDatabaseError as LegacyDatabaseError
+from research_swarm.swarm.db import connection
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
 from research_swarm.swarm.meter import PRICE_FIELDS
 from research_swarm.swarm.panels import Calibration, Decision
 from research_swarm.swarm.spec import search_work
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS swarm_projects (project_id TEXT PRIMARY KEY, snapshot TEXT);
-CREATE TABLE IF NOT EXISTS swarm_campaigns (
-    campaign_id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES swarm_projects,
-    spec TEXT NOT NULL,
-    selected_trial_id TEXT REFERENCES swarm_trials
-);
-CREATE TABLE IF NOT EXISTS swarm_candidates (
-    campaign_id TEXT NOT NULL REFERENCES swarm_campaigns,
-    candidate_id TEXT NOT NULL,
-    payload TEXT NOT NULL,
-    PRIMARY KEY (campaign_id, candidate_id)
-);
-CREATE TABLE IF NOT EXISTS swarm_trials (
-    trial_id TEXT PRIMARY KEY,
-    campaign_id TEXT NOT NULL,
-    candidate_id TEXT NOT NULL,
-    seed INTEGER NOT NULL,
-    fidelity REAL NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued',
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY (campaign_id, candidate_id) REFERENCES swarm_candidates
-);
-CREATE INDEX IF NOT EXISTS swarm_trial_queue ON swarm_trials(campaign_id, status);
-CREATE TABLE IF NOT EXISTS swarm_attempts (
-    attempt_id TEXT PRIMARY KEY,
-    trial_id TEXT NOT NULL REFERENCES swarm_trials,
-    number INTEGER NOT NULL,
-    worker_id TEXT NOT NULL,
-    started_at REAL NOT NULL,
-    heartbeat_at REAL NOT NULL,
-    reserve REAL NOT NULL,
-    cost REAL NOT NULL DEFAULT 0,
-    observation TEXT,
-    UNIQUE (trial_id, number)
-);
-CREATE TABLE IF NOT EXISTS swarm_events (
-    id INTEGER PRIMARY KEY,
-    campaign_id TEXT NOT NULL REFERENCES swarm_campaigns,
-    kind TEXT NOT NULL,
-    at REAL NOT NULL,
-    trial_id TEXT REFERENCES swarm_trials,
-    attempt_id TEXT REFERENCES swarm_attempts,
-    score REAL,
-    replicates INTEGER,
-    proposed_count INTEGER,
-    accepted_count INTEGER
-);
-CREATE INDEX IF NOT EXISTS swarm_event_order ON swarm_events(campaign_id, kind, id);
-CREATE UNIQUE INDEX IF NOT EXISTS swarm_workload_start ON swarm_events(attempt_id)
-    WHERE kind='workload_started';
-"""
 _TRIAL = """SELECT t.*, c.payload FROM swarm_trials t JOIN swarm_candidates c
             USING (campaign_id, candidate_id)"""
 _ATTEMPT = """SELECT t.*, c.payload, a.* FROM swarm_attempts a JOIN swarm_trials t
@@ -154,70 +104,13 @@ class SearchWorkLimit(ValueError):
     """The proposed trial costs more than the remaining campaign search work."""
 
 
-class LegacyDatabaseError(ValueError):
-    """The selected file belongs to the retired controller."""
-
-
 class SQLiteStore:
     """Campaign-local queues with atomic claim, cost reservation and attempt completion."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        with self._connection() as db:
-            legacy = db.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' "
-                "AND name IN ('workspaces', 'records')"
-            ).fetchone()
-            if legacy:
-                raise LegacyDatabaseError(
-                    "Legacy control database. Use its original release to read it "
-                    "and a fresh database path for this campaign."
-                )
-            db.execute("PRAGMA journal_mode=WAL")
-            db.executescript(_SCHEMA)
-        with self._connection(write=True) as db:
-            project_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_projects)")}
-            if "snapshot" not in project_columns:
-                db.execute("ALTER TABLE swarm_projects ADD COLUMN snapshot TEXT")
-            columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_campaigns)")}
-            if "ranking" not in columns:
-                db.execute("ALTER TABLE swarm_campaigns ADD COLUMN ranking TEXT")
-            if "exhausted_after" not in columns:
-                db.execute("ALTER TABLE swarm_campaigns ADD COLUMN exhausted_after INTEGER")
-            if "panel_binding" not in columns:
-                db.execute("ALTER TABLE swarm_campaigns ADD COLUMN panel_binding TEXT")
-            event_columns = {r["name"] for r in db.execute("PRAGMA table_info(swarm_events)")}
-            if "gpu_time" not in event_columns:
-                db.execute("ALTER TABLE swarm_events ADD COLUMN gpu_time TEXT")
-            db.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS swarm_gpu_sequence ON swarm_events("
-                "campaign_id,json_extract(gpu_time,'$.allocation_id'),"
-                "json_extract(gpu_time,'$.sequence')) "
-                "WHERE gpu_time IS NOT NULL"
-            )
-            if "score" not in event_columns:
-                db.execute("ALTER TABLE swarm_events ADD COLUMN score REAL")
-            if "replicates" not in event_columns:
-                db.execute("ALTER TABLE swarm_events ADD COLUMN replicates INTEGER")
-            for column in ("proposed_count", "accepted_count"):
-                if column not in event_columns:
-                    db.execute(f"ALTER TABLE swarm_events ADD COLUMN {column} INTEGER")
-            if "panel_evidence" not in event_columns:
-                db.execute("ALTER TABLE swarm_events ADD COLUMN panel_evidence TEXT")
-            db.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS swarm_panel_outcome ON swarm_events"
-                "(campaign_id,kind,json_extract(panel_evidence,'$.key')) "
-                "WHERE panel_evidence IS NOT NULL"
-            )
-
-    @contextmanager
-    def _connection(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
-        with closing(sqlite3.connect(self.path, timeout=15)) as db, db:
-            db.execute("PRAGMA foreign_keys=ON")
-            db.row_factory = sqlite3.Row
-            if write:
-                db.execute("BEGIN IMMEDIATE")
-            yield db
+        with connection(path, schema="queue"):
+            pass
 
     def record_gpu_time(self, campaign: str, kind: str, sample: dict[str, Any]) -> None:
         """Replay a device allocation event once, preserving conflicting evidence."""
@@ -247,7 +140,7 @@ class SQLiteStore:
             ):
                 raise ValueError("Invalid GPU device-seconds")
         payload = _json(sample)
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             prior = db.execute(
                 "SELECT kind,gpu_time FROM swarm_events WHERE campaign_id=? "
                 "AND gpu_time IS NOT NULL AND json_extract(gpu_time,'$.allocation_id')=? "
@@ -278,7 +171,7 @@ class SQLiteStore:
             )
 
     def register_project(self, project_id: str, snapshot: dict[str, Any]) -> None:
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             db.execute(
                 "INSERT INTO swarm_projects(project_id,snapshot) VALUES(?,?) "
                 "ON CONFLICT(project_id) DO UPDATE SET snapshot=excluded.snapshot",
@@ -301,7 +194,7 @@ class SQLiteStore:
             raise ValueError("Trial, worker and attempt limits must be positive")
         if spec.max_cost is not None:
             _cost(spec.max_cost)
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             db.execute(
                 "INSERT OR IGNORE INTO swarm_projects(project_id) VALUES(?)", (spec.project_id,)
             )
@@ -387,7 +280,7 @@ class SQLiteStore:
                     promoted=outcome.promoted,
                     confirmation_gain=outcome.confirmation_gain,
                 )
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             db.execute(
                 "INSERT INTO swarm_events(campaign_id,kind,at,panel_evidence) "
                 "SELECT campaign_id,?,?,? FROM swarm_campaigns "
@@ -408,7 +301,7 @@ class SQLiteStore:
         return saved
 
     def campaign_spec(self, campaign_id: str) -> CampaignSpec:
-        with self._connection() as db:
+        with connection(self.path) as db:
             saved = self._saved_spec(db, campaign_id)
             saved.pop("price_schema", None)
         return TypeAdapter(CampaignSpec).validate_json(_json(saved), strict=True)
@@ -418,7 +311,7 @@ class SQLiteStore:
         self, campaign_id: str, worker_id: str, attempt_id: str, *, write: bool = False
     ) -> Iterator[tuple[Attempt, Result | None] | None]:
         """Return the current claim or terminal result, fenced against reassignment."""
-        with self._connection(write=write) as db:
+        with connection(self.path, write=write) as db:
             row = db.execute(
                 _ATTEMPT + " WHERE t.campaign_id=? AND a.worker_id=? AND a.attempt_id=? "
                 "AND a.number=t.attempt_count",
@@ -436,7 +329,7 @@ class SQLiteStore:
             yield attempt, result
 
     def deadline(self, campaign_id: str) -> float | None:
-        with self._connection() as db:
+        with connection(self.path) as db:
             return _deadline(db, campaign_id, _spec(db, campaign_id).get("max_hours"))
 
     @staticmethod
@@ -482,7 +375,7 @@ class SQLiteStore:
         return True
 
     def submit(self, trial: Trial) -> bool:
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             return self._submit(db, trial)
 
     def submit_proposals(
@@ -498,7 +391,7 @@ class SQLiteStore:
             raise ValueError("Invalid returned candidate count for this ask")
         processed: list[tuple[str, bool]] = []
         error: Exception | None = None
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             db.execute("SAVEPOINT candidate")
             try:
                 for trial in trials:
@@ -539,7 +432,7 @@ class SQLiteStore:
         *,
         reserve_cost: float | Callable[[Trial], float] = 0.0,
     ) -> Attempt | None:
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             spec = _spec(db, campaign_id)
             deadline = _deadline(db, campaign_id, spec.get("max_hours"))
             if deadline is not None and time.time() >= deadline:
@@ -594,7 +487,7 @@ class SQLiteStore:
             return attempt
 
     def heartbeat(self, attempt_id: str, *, cost: float = 0.0) -> bool:
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             updated = db.execute(
                 "UPDATE swarm_attempts SET heartbeat_at=?,cost=max(cost,?) "
                 "WHERE attempt_id=? AND observation IS NULL",
@@ -604,7 +497,7 @@ class SQLiteStore:
 
     def workload_started(self, attempt_id: str) -> None:
         """Timestamp the first acknowledged subprocess launch for a live claim."""
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             db.execute(
                 "INSERT INTO swarm_events(campaign_id,kind,at,trial_id,attempt_id) "
                 "SELECT t.campaign_id,'workload_started',?,t.trial_id,a.attempt_id "
@@ -633,7 +526,7 @@ class SQLiteStore:
         _event(db, row["campaign_id"], "finished", row["trial_id"], row["attempt_id"])
 
     def report(self, result: Result) -> bool:
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             row = db.execute(
                 _ATTEMPT + " WHERE a.attempt_id=? AND a.observation IS NULL",
                 (result.attempt.attempt_id,),
@@ -647,7 +540,7 @@ class SQLiteStore:
             return True
 
     def requeue_expired(self, campaign_id: str, before: float) -> int:
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             spec = _spec(db, campaign_id)
             rows = db.execute(
                 _ATTEMPT + " WHERE t.campaign_id=? AND a.observation IS NULL "
@@ -665,7 +558,7 @@ class SQLiteStore:
             return len(rows)
 
     def trials(self, campaign_id: str) -> list[Trial]:
-        with self._connection() as db:
+        with connection(self.path) as db:
             return [
                 _trial(row)
                 for row in db.execute(
@@ -674,7 +567,7 @@ class SQLiteStore:
             ]
 
     def results(self, campaign_id: str, *, after: int = 0) -> list[Result]:
-        with self._connection() as db:
+        with connection(self.path) as db:
             results = []
             for row in db.execute(
                 _ATTEMPT + " JOIN swarm_events e ON e.attempt_id=a.attempt_id "
@@ -689,7 +582,7 @@ class SQLiteStore:
 
     def queue_depth(self, campaign_id: str) -> tuple[int, int]:
         """Return queued and running trial counts from the same snapshot."""
-        with self._connection() as db:
+        with connection(self.path) as db:
             row = db.execute(
                 "SELECT count(*) FILTER (WHERE status='queued'), "
                 "count(*) FILTER (WHERE status='running') "
@@ -702,14 +595,14 @@ class SQLiteStore:
         return sum(self.queue_depth(campaign_id))
 
     def exhausted_after(self, campaign_id: str) -> int | None:
-        with self._connection() as db:
+        with connection(self.path) as db:
             row = db.execute(
                 "SELECT exhausted_after FROM swarm_campaigns WHERE campaign_id=?", (campaign_id,)
             ).fetchone()
         return row[0] if row is not None else None
 
     def mark_exhausted(self, campaign_id: str, observations: int) -> None:
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             db.execute(
                 "UPDATE swarm_campaigns SET exhausted_after=? WHERE campaign_id=? "
                 "AND (exhausted_after IS NULL OR exhausted_after < ?)",
@@ -717,7 +610,7 @@ class SQLiteStore:
             )
 
     def incumbent(self, campaign_id: str) -> tuple[str, float | None, int] | None:
-        with self._connection() as db:
+        with connection(self.path) as db:
             row = db.execute(
                 "SELECT selected_trial_id,ranking FROM swarm_campaigns WHERE campaign_id=?",
                 (campaign_id,),
@@ -735,7 +628,7 @@ class SQLiteStore:
         if replicates < 1:
             raise ValueError("A ranking requires at least one replicate")
         ranking = _json([score, replicates])
-        with self._connection(write=True) as db:
+        with connection(self.path, write=True) as db:
             if not db.execute(
                 "SELECT 1 FROM swarm_trials WHERE campaign_id=? AND trial_id=? AND status='ok'",
                 (campaign_id, trial_id),

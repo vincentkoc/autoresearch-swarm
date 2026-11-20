@@ -19,6 +19,10 @@
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 
+- Use a common WAL connection policy for the queue, panel studies and journals.
+  Concurrent writers share a busy timeout, and schema upgrades commit atomically.
+  Campaign reports continue to open existing databases read-only.
+
 - Reject a benchmark campaign paired with an incompatible open panel study
   before reusing a score or spending a look.
 

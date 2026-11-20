@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import json
 import math
-import sqlite3
 import statistics
 import time
 import warnings
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
 from filelock import FileLock
+
+from research_swarm.swarm.db import connection
 
 Role = Literal["search", "selection", "confirmation", "calibration_proxy", "calibration_target"]
 Evaluate = Callable[[str, Role, tuple[str, ...], int], float]
@@ -143,15 +143,7 @@ class PanelStudy:
         )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = FileLock(str(self.path) + ".lock")
-        with self._db() as db:
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS panel_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-            )
-            db.execute("""CREATE TABLE IF NOT EXISTS panel_looks (
-                id INTEGER PRIMARY KEY, role TEXT NOT NULL, candidate TEXT NOT NULL,
-                seed INTEGER NOT NULL, score REAL)""")
-            db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS confirm_once ON panel_looks(candidate)
-                          WHERE role = 'confirmation'""")
+        with connection(self.path, schema="panels") as db:
             db.execute("INSERT OR IGNORE INTO panel_state VALUES ('config', ?)", (config,))
             if (
                 db.execute("SELECT value FROM panel_state WHERE key = 'config'").fetchone()[0]
@@ -163,15 +155,6 @@ class PanelStudy:
     def revision(self) -> str:
         return self._revision
 
-    @contextmanager
-    def _db(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self.path, timeout=30)
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
-
     def bind_campaign(
         self,
         campaign_id: str,
@@ -181,9 +164,8 @@ class PanelStudy:
     ) -> str:
         """Match the queue to this study and the search plan before exposing any panels."""
         key = f"campaign:{campaign_id}"
-        with self._db() as db:
+        with connection(self.path, write=True) as db:
             # Serialize binding metadata without taking the scorer's evaluation lock.
-            db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT value FROM panel_state WHERE key=?", (key,)).fetchone()
             if row is not None:
                 identity, saved_digest = json.loads(row[0])
@@ -225,19 +207,19 @@ class PanelStudy:
             return str(identity)
 
     def _state(self, key: str) -> str | None:
-        with self._db() as db:
+        with connection(self.path) as db:
             row = db.execute("SELECT value FROM panel_state WHERE key = ?", (key,)).fetchone()
             return str(row[0]) if row is not None else None
 
     def _put(self, key: str, value: Calibration | Decision) -> None:
-        with self._db() as db:
+        with connection(self.path) as db:
             db.execute(
                 "INSERT INTO panel_state VALUES (?, ?)",
                 (key, json.dumps(asdict(value), allow_nan=False)),
             )
 
     def _reserve(self, role: Role, key: str, seed: int, replay_key: str | None = None) -> int:
-        with self._db() as db:
+        with connection(self.path) as db:
             row = db.execute(
                 "INSERT INTO panel_looks(role, candidate, seed) VALUES (?, ?, ?) RETURNING id",
                 (role, key, seed),
@@ -265,7 +247,7 @@ class PanelStudy:
             # The comparison lock spans lookup, reservation and evaluation. Store the
             # reservation with the look so a restart can distinguish it from a new pair.
             replay_key = json.dumps([role, *comparison, key, seed])
-            with self._db() as db:
+            with connection(self.path) as db:
                 row = db.execute(
                     """SELECT l.score FROM panel_state s JOIN panel_looks l ON l.id = s.value
                        WHERE s.key = ?""",
@@ -282,19 +264,19 @@ class PanelStudy:
             raise PanelEvaluationError(f"{role}: {type(exc).__name__}: {exc}") from exc
         if not math.isfinite(score):
             raise PanelEvaluationError(f"non-finite {role} score")
-        with self._db() as db:
+        with connection(self.path) as db:
             db.execute("UPDATE panel_looks SET score = ? WHERE id = ?", (score, look_id))
         return score
 
     def look_counts(self) -> dict[str, int]:
-        with self._db() as db:
+        with connection(self.path) as db:
             return dict(db.execute("SELECT role, count(*) FROM panel_looks GROUP BY role"))
 
     def _recorded_calibration_scores(
         self, *, include_proxy: bool = True
     ) -> dict[tuple[str, str, int], float]:
         scores: dict[tuple[str, str, int], float] = {}
-        with self._db() as db:
+        with connection(self.path) as db:
             for role, candidate, seed, score in db.execute(
                 "SELECT role, candidate, seed, score FROM panel_looks "
                 "WHERE role='calibration_target' OR (role='calibration_proxy' AND ?)",
@@ -346,7 +328,7 @@ class PanelStudy:
         if noise == 0:
             return fit
         corrected = replace(fit, seed_noise=noise)
-        with self._db() as db:
+        with connection(self.path) as db:
             db.execute(
                 "UPDATE panel_state SET value=? WHERE key='calibration'",
                 (json.dumps(asdict(corrected), allow_nan=False),),
@@ -411,7 +393,7 @@ class PanelStudy:
 
     def confirmed_score(self, key: str) -> float | None:
         """Read a previously measured score without opening the confirmation panel."""
-        with self._db() as db:
+        with connection(self.path) as db:
             row = db.execute(
                 "SELECT score FROM panel_looks WHERE role = 'confirmation' AND candidate = ?",
                 (key,),
@@ -419,7 +401,7 @@ class PanelStudy:
         return float(row[0]) if row is not None and row[0] is not None else None
 
     def _confirmed(self, key: str) -> float:
-        with self._db() as db:
+        with connection(self.path) as db:
             row = db.execute(
                 "SELECT score FROM panel_looks WHERE role = 'confirmation' AND candidate = ?",
                 (key,),
@@ -460,7 +442,7 @@ class PanelStudy:
         pair = (key, reference)
         # Older interrupted studies may have consumed confirmation before they
         # recorded which comparison opened the selection looks.
-        with self._db() as db:
+        with connection(self.path) as db:
             unfinished = db.execute(
                 """SELECT 1 FROM panel_looks WHERE role = 'confirmation' AND score IS NULL
                    AND candidate IN (?, ?) LIMIT 1""",
