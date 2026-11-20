@@ -20,9 +20,9 @@ from research_swarm.engines.adapter import current_adapter_digest
 from research_swarm.engines.custody import default_probe_directory
 from research_swarm.engines.models import EngineDescriptor
 from research_swarm.engines.probe import InterpreterIdentity, observe_engine
-from research_swarm.projects.native_files import SourceReader
-from research_swarm.projects.workload import absolute_path
 from research_swarm.swarm.private_files import private_state_directory, read_private, write_private
+from research_swarm.swarm.projects.native_files import SourceReader
+from research_swarm.swarm.projects.workload import absolute_path
 
 
 class ExecutionPolicy(VersionedRecord):
