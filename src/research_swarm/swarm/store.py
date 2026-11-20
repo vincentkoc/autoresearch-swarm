@@ -18,8 +18,8 @@ from uuid import uuid4
 from pydantic import TypeAdapter
 
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
-from research_swarm.swarm.meter import PRICE_FIELDS
 from research_swarm.swarm.panels import Calibration, Decision
+from research_swarm.swarm.resources import PRICE_FIELDS
 from research_swarm.swarm.spec import search_work
 
 _SCHEMA = """
