@@ -19,6 +19,9 @@
   and preserves the original panel study binding.
   Direct campaign registration rejects negative prices before writing to the queue.
 
+- Campaigns, project manifests and registered engines share portable record definitions in
+  `swarm.records`. Existing Python workload imports and serialized records remain compatible.
+
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 
