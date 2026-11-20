@@ -5,12 +5,12 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 
 import pytest
 
-from research_swarm.swarm.panels import PanelSplit, PanelStudy
+from research_swarm.swarm.panels import Calibration, Decision, PanelSplit, PanelStudy
 
 SPLIT = PanelSplit(
     ("train-a",), ("search-a",), ("select-a",), ("confirm-a",), ("proxy-a",), ("target-a",)
@@ -90,6 +90,115 @@ def test_flat_proxy_has_undefined_slope_and_nonfinite_calibration_blocks_search(
     with pytest.raises(RuntimeError, match="calibrate"):
         bad.search("two", 0)
     assert bad.look_counts() == {"calibration_proxy": 1}
+
+
+def preload_targets(tmp_path, targets):
+    protocol = study(tmp_path, lambda *args: pytest.fail("preloaded observations only"))
+    with sqlite3.connect(protocol.path) as db:
+        for recipe, scores in zip(protocol.variants, targets, strict=True):
+            for seed, score in zip(protocol.seeds, scores, strict=True):
+                db.executemany(
+                    "INSERT INTO panel_looks(role,candidate,seed,score) VALUES(?,?,?,?)",
+                    [
+                        ("calibration_proxy", recipe, seed, 1),
+                        ("calibration_target", recipe, seed, score),
+                    ],
+                )
+    return protocol
+
+
+TINY = 2.0**-600
+TINY_TARGETS = [(-TINY, TINY), (3 * TINY, 5 * TINY), (7 * TINY, 9 * TINY)]
+
+
+@pytest.mark.parametrize(
+    "targets,noise",
+    [
+        (TINY_TARGETS, math.sqrt(2) * TINY),
+        ([(1, 1), (5, 5), (9, 9)], 0.0),
+        ([(-1, 1), (2, 6), (8, 8)], math.sqrt(10 / 3)),
+        (
+            [(-sys.float_info.max, sys.float_info.max), (0, 0), (1, 1)],
+            sys.float_info.max * math.sqrt(2 / 3),
+        ),
+        (
+            [(-TINY, TINY), (sys.float_info.max, sys.float_info.max), (1, 1)],
+            math.sqrt(2 / 3) * TINY,
+        ),
+    ],
+    ids=["tiny", "constant-within-recipe", "ordinary", "large", "tiny-with-large-constant"],
+)
+def test_preloaded_seed_noise_at_each_scale(tmp_path, targets, noise):
+    protocol = preload_targets(tmp_path, targets)
+    counts = protocol.look_counts()
+    fit = protocol.calibrate()
+    assert fit.slope is None and fit.intercept is None
+    assert fit.seed_noise == pytest.approx(noise, rel=2e-15, abs=0)
+    assert protocol.calibrate() == fit and protocol.look_counts() == counts
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_nonfinite_preloaded_target_cannot_authorize_a_decision(tmp_path, legacy):
+    protocol = preload_targets(tmp_path, [(1, 2), (0, math.inf), (3, 4)])
+    counts = protocol.look_counts()
+    if legacy:
+        protocol._put("calibration", Calibration(None, None, 0.0, 12, None, None))
+    with pytest.raises(ValueError, match="non-finite calibration_target"):
+        if legacy:
+            protocol.consider("new", "base")
+        else:
+            protocol.calibrate()
+    assert protocol._state(protocol.decision_key("new", "base")) is None
+    assert protocol.look_counts() == counts
+
+
+@pytest.mark.parametrize("varying", [True, False], ids=["stale-zero", "genuine-zero"])
+def test_cached_zero_noise_before_new_comparison_preserves_history(tmp_path, varying):
+    targets = TINY_TARGETS if varying else [(1, 1), (5, 5), (9, 9)]
+    protocol = preload_targets(tmp_path, targets)
+    legacy_fit = Calibration(None, None, 0.0, 12, 1, 1)
+    prior = Decision(True, "confirmation", TINY, TINY)
+    old_key = protocol.decision_key("old", "base")
+    protocol._put("calibration", legacy_fit)
+    protocol._put(old_key, prior)
+    with sqlite3.connect(protocol.path) as db:
+        for candidate, score in [("new", TINY), ("base", 0.0)]:
+            for seed in protocol.seeds:
+                row = db.execute(
+                    "INSERT INTO panel_looks(role,candidate,seed,score) VALUES('selection',?,?,?)",
+                    (candidate, seed, score),
+                )
+                slot = json.dumps(["selection", "new", "base", candidate, seed])
+                db.execute("INSERT INTO panel_state VALUES(?,?)", (slot, str(row.lastrowid)))
+            db.execute(
+                "INSERT INTO panel_looks(role,candidate,seed,score) VALUES('confirmation',?,?,?)",
+                (candidate, protocol.seeds[0], score),
+            )
+        before = db.execute("SELECT * FROM panel_looks ORDER BY id").fetchall()
+    reopened = study(tmp_path, lambda *args: pytest.fail("unexpected scoring"))
+    old_record = reopened._state(old_key)
+    assert reopened.consider("old", "base") == prior
+    decision = reopened.consider("new", "base")
+    expected = Decision(False, "selection", TINY) if varying else prior
+    assert decision == expected
+    expected_noise = math.sqrt(2) * TINY if varying else 0.0
+    assert reopened.calibrate() == replace(legacy_fit, seed_noise=expected_noise)
+    assert json.loads(reopened._state("calibration")) == asdict(reopened.calibrate())
+    assert reopened._state(old_key) == old_record
+    with sqlite3.connect(protocol.path) as db:
+        assert db.execute("SELECT * FROM panel_looks ORDER BY id").fetchall() == before
+
+
+def test_summary_only_zero_noise_keeps_saved_decision(tmp_path):
+    protocol = study(tmp_path, lambda *args: pytest.fail("unexpected scoring"))
+    fit = Calibration(None, None, 0.0, 12, None, None)
+    prior = Decision(True, "confirmation", 1.0, 1.0)
+    protocol._put("calibration", fit)
+    protocol._put(protocol.decision_key("old", "base"), prior)
+    assert protocol.calibrate() == fit and protocol.consider("old", "base") == prior
+    with pytest.raises(ValueError, match="lacks target replicates"):
+        protocol.consider("new", "base")
+    assert protocol.look_counts() == {}
 
 
 @pytest.mark.parametrize("direction,sign", [("maximize", 1), ("minimize", -1)])

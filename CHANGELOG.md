@@ -17,6 +17,8 @@
 - Resume partial panel calibration using the recorded proxy and target scores
   for each recipe and seed. An unscored reservation stays spent and stops the
   fit. Recovered fits report unavailable throughput when earlier timing is unknown.
+  Preserve tiny seed deviations and recover underflowed noise from stored target
+  scores before new comparisons. Recorded decisions keep their original outcomes.
 
 - Validate the selected backend before creating or migrating the campaign queue.
   A rejected backend configuration leaves the queue untouched.
