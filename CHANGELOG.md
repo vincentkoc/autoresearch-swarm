@@ -21,6 +21,9 @@
 - Validate the selected backend before creating or migrating the campaign queue.
   A rejected backend configuration leaves the queue untouched.
 
+- Reject trial seeds outside the signed interoperable JSON integer range on
+  campaign admission, proposal submission and resume, before recording new work.
+
 - Emit one campaign alert when two consecutive finished attempts fail or are
   lost. A successful attempt resets the streak. Concurrent and restarted
   watchers share the same alert and hourly digest journal.
