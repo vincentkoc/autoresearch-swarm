@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import selectors
 import signal
 import socket
 import subprocess
@@ -44,6 +45,21 @@ def stop_group(child: subprocess.Popen[bytes], *, force: bool = True) -> None:
     if child.returncode is None:
         with suppress(ProcessLookupError):
             os.killpg(child.pid, signal.SIGKILL if force else signal.SIGTERM)
+
+
+def _abort_blocking(child: subprocess.Popen[bytes]) -> None:
+    try:
+        stop_group(child)
+    except PermissionError as error:
+        if sys.platform != "darwin":
+            raise
+        # Darwin can return EPERM while the guard's own group SIGKILL completes.
+        try:
+            code = child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            raise error from None
+        if code != -signal.SIGKILL:
+            raise
 
 
 def start_group(
@@ -89,6 +105,7 @@ def run(
     timeout: float | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Preserve the command's exit code, streams and launch errors across the guard."""
+    deadline = None if timeout is None else time.monotonic() + timeout
     child, owner = start_group(
         argv,
         cwd=cwd,
@@ -97,26 +114,7 @@ def run(
         stdout=stdout,
         stderr=stderr,
     )
-    with owner:
-        try:
-            owner.sendall(b"1")
-            try:
-                out, err = child.communicate(input, timeout=timeout)
-            except subprocess.TimeoutExpired as exc:
-                raise subprocess.TimeoutExpired(argv, exc.timeout, exc.output, exc.stderr) from exc
-            with owner.makefile("rb") as control:
-                _started(control.readline(), argv[0])
-                code = _status(control.readline())
-        except BaseException:
-            stop_group(child)
-            raise
-        finally:
-            owner.close()
-            child.wait()
-            for pipe in (child.stdin, child.stdout, child.stderr):
-                if pipe is not None:
-                    pipe.close()
-    result = subprocess.CompletedProcess(argv, code, out, err)
+    result = _communicate(child, owner, argv, input=input, deadline=deadline, timeout=timeout)
     if check:
         result.check_returncode()
     return result
@@ -127,42 +125,129 @@ def read_bounded(argv: Sequence[str], *, env: dict[str, str], limit: int, deadli
     import psutil
 
     with tempfile.TemporaryFile() as output:
+        timeout = max(0.0, deadline - time.monotonic())
         child, owner = start_group(argv, env=env, stdout=output, stderr=subprocess.DEVNULL)
         descendants: dict[int, psutil.Process] = {}
+
+        def observe() -> None:
+            if os.fstat(output.fileno()).st_size > limit:
+                raise ValueError("Command output exceeds its declared source bound")
+            with suppress(psutil.NoSuchProcess):
+                for member in psutil.Process(child.pid).children(recursive=True):
+                    descendants[member.pid] = member
+
         try:
-            owner.sendall(b"1")
-            while child.poll() is None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise subprocess.TimeoutExpired(argv, 0)
-                if os.fstat(output.fileno()).st_size > limit:
-                    raise ValueError("Command output exceeds its declared source bound")
-                with suppress(psutil.NoSuchProcess):
-                    for member in psutil.Process(child.pid).children(recursive=True):
-                        descendants[member.pid] = member
-                with suppress(subprocess.TimeoutExpired):
-                    child.wait(timeout=min(0.02, remaining))
-            with owner.makefile("rb") as control:
-                _started(control.readline(), argv[0])
-                code = _status(control.readline())
-            if code:
-                raise subprocess.CalledProcessError(code, argv)
+            result = _communicate(
+                child, owner, argv, input=None, deadline=deadline, timeout=timeout, observe=observe
+            )
+            result.check_returncode()
             output.seek(0)
             content = output.read(limit + 1)
             if len(content) > limit:
                 raise ValueError("Command output exceeds its declared source bound")
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(argv, timeout)
             return content
-        except BaseException:
-            stop_group(child)
-            raise
         finally:
-            owner.close()
-            child.wait()
-            # Source tools may have spawned a detached helper. psutil verifies
-            # the identity of previously observed descendants before signalling.
+            # Source tools can detach helpers. psutil checks each identity before signalling.
             for member in descendants.values():
                 with suppress(psutil.NoSuchProcess):
                     member.kill()
+
+
+def _communicate(
+    child: subprocess.Popen[bytes],
+    owner: socket.socket,
+    argv: Sequence[str],
+    *,
+    input: bytes | None,
+    deadline: float | None,
+    timeout: float | None,
+    observe: Callable[[], None] | None = None,
+) -> subprocess.CompletedProcess[bytes]:
+    """Watch guard EOF alongside every pipe, keeping the leader unreaped until cleanup."""
+    out, err, status = bytearray(), bytearray(), bytearray()
+
+    def expired() -> subprocess.TimeoutExpired:
+        assert timeout is not None
+        return subprocess.TimeoutExpired(
+            argv, timeout, bytes(out) if out else None, bytes(err) if err else None
+        )
+
+    def remaining() -> float | None:
+        if deadline is None:
+            return None
+        wait = deadline - time.monotonic()
+        if wait <= 0:
+            raise expired()
+        return wait
+
+    try:
+        pending = memoryview(input or b"")
+        with selectors.DefaultSelector() as selector:
+            selector.register(owner, selectors.EVENT_READ)
+            for pipe, buffer in ((child.stdout, out), (child.stderr, err)):
+                if pipe is not None:
+                    selector.register(pipe, selectors.EVENT_READ, buffer)
+            if child.stdin is not None:
+                if pending:
+                    os.set_blocking(child.stdin.fileno(), False)
+                    selector.register(child.stdin, selectors.EVENT_WRITE)
+                else:
+                    child.stdin.close()
+            remaining()
+            owner.sendall(b"1")
+            while selector.get_map():
+                if observe is not None:
+                    observe()
+                wait = remaining()
+                if observe is not None and wait is not None:
+                    wait = min(wait, 0.02)
+                for key, _ in selector.select(wait):
+                    if key.fileobj is owner:
+                        if packet := owner.recv(128):
+                            status.extend(packet)
+                            continue
+                        launch, _, terminal = bytes(status).partition(b"\n")
+                        _started(launch, argv[0])
+                        code = _status(terminal)
+                    elif key.fileobj is child.stdin:
+                        assert child.stdin is not None
+                        try:
+                            written = os.write(key.fd, pending[:65536])
+                            pending = pending[written:]
+                        except BlockingIOError:
+                            continue
+                        except BrokenPipeError:
+                            pass
+                        else:
+                            if pending:
+                                continue
+                        child.stdin.close()
+                    elif block := os.read(key.fd, 65536):
+                        key.data.extend(block)
+                        continue
+                    selector.unregister(key.fd)
+        wait = remaining()
+        try:
+            child.wait(timeout=wait)
+        except subprocess.TimeoutExpired as error:
+            raise expired() from error
+    except BaseException:
+        _abort_blocking(child)
+        raise
+    finally:
+        owner.close()
+        child.wait()
+        for pipe in (child.stdin, child.stdout, child.stderr):
+            if pipe is not None:
+                pipe.close()
+    return subprocess.CompletedProcess(
+        argv,
+        code,
+        bytes(out) if child.stdout is not None else None,
+        bytes(err) if child.stderr is not None else None,
+    )
 
 
 @asynccontextmanager
