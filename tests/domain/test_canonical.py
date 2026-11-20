@@ -1,3 +1,4 @@
+import io
 import math
 
 import pytest
@@ -30,3 +31,22 @@ def test_ambiguous_input_fails(source: str) -> None:
 
 def test_digest_ignores_key_insertion_order() -> None:
     assert record_digest("x", {"b": 2, "a": 1}) == record_digest("x", {"a": 1, "b": 2})
+
+
+def test_streaming_digest_preserves_bounds_and_copies_only_accepted_bytes() -> None:
+    from research_swarm.swarm.canonical import CHUNK_SIZE, content_digest, hash_stream
+
+    data = b"x" * CHUNK_SIZE + b"y"
+    for limit in (None, len(data)):
+        copy = io.BytesIO()
+        assert hash_stream(io.BytesIO(data), output=copy, limit=limit) == (
+            content_digest(data),
+            len(data),
+        )
+        assert copy.getvalue() == data
+    copy = io.BytesIO()
+    oversized = io.BytesIO(data + b"more")
+    with pytest.raises(ValueError, match="exceeds"):
+        hash_stream(oversized, output=copy, limit=CHUNK_SIZE)
+    assert oversized.tell() == CHUNK_SIZE + 1
+    assert copy.getvalue() == data[:CHUNK_SIZE]

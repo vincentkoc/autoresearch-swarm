@@ -16,8 +16,7 @@ from typing import Any, Literal, Self
 
 from filelock import FileLock
 
-from research_swarm.domain.canonical import MAX_SAFE_INTEGER
-from research_swarm.domain.types import new_id
+from research_swarm.swarm.canonical import MAX_SAFE_INTEGER
 from research_swarm.swarm.db import JournalConflict as JournalConflict
 from research_swarm.swarm.db import connection
 from research_swarm.swarm.reactive.contracts import (
@@ -34,6 +33,7 @@ from research_swarm.swarm.reactive.contracts import (
     proposed_controls,
     validate_request,
 )
+from research_swarm.swarm.records import new_id
 
 
 class DecisionJournal:

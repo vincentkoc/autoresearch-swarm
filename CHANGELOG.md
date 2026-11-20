@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Project bundles, workload outputs and campaign artifacts use one streaming
+  SHA-256 implementation. Existing versioned digests and URL policies are retained.
+
 - Bundle extraction verifies and reads one open archive. Workload outputs share
   their byte allowance across files, including zero-byte outputs.
 

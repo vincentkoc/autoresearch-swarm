@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from typing import Any, BinaryIO, Protocol
 
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.storage.contracts import R2Config
 
 

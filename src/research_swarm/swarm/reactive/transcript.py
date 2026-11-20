@@ -7,8 +7,7 @@ from typing import Self
 
 from pydantic import Field, model_validator
 
-from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
-from research_swarm.domain.types import VersionedRecord
+from research_swarm.swarm.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.swarm.reactive.contracts import (
     ApplicationReceipt,
     DecisionRecord,
@@ -19,6 +18,7 @@ from research_swarm.swarm.reactive.contracts import (
     validate_request,
 )
 from research_swarm.swarm.reactive.journal import DecisionJournal
+from research_swarm.swarm.records import VersionedRecord
 
 MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024
 

@@ -12,8 +12,8 @@ from typing import Any, TextIO
 import httpx
 
 from research_swarm.client import ResearchClient
-from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import canonical_bytes, record_digest, strict_json_loads
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import read_private
 from research_swarm.swarm.report import CampaignReader
 from research_swarm.swarm.store import LegacyDatabaseError
@@ -185,7 +185,7 @@ def _read_json_object(path: Path, *, limit: int) -> dict[str, Any]:
 
 
 def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
-    from research_swarm.domain.experiments import MetricDefinition
+    from research_swarm.swarm.records import MetricDefinition
     from research_swarm.swarm.report.plot import render_hill_climb_svg
 
     snapshots = []

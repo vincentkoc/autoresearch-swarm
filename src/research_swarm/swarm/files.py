@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import errno
-import hashlib
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,6 +11,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import TypeAdapter
 
+from research_swarm.swarm.canonical import hash_stream
 from research_swarm.swarm.private_files import private_state_directory, sync_directory
 from research_swarm.swarm.project import capture_project, resolve_project
 from research_swarm.swarm.projects.native_files import SourceReader
@@ -19,18 +19,11 @@ from research_swarm.swarm.records import ID, ArtifactRef
 from research_swarm.swarm.store import SQLiteStore
 
 
-def _digest(source: BinaryIO, output: BinaryIO | None = None) -> tuple[str, int]:
-    digest = hashlib.sha256()
-    size = 0
-    while chunk := source.read(1024 * 1024):
-        if output is not None:
-            output.write(chunk)
-        digest.update(chunk)
-        size += len(chunk)
-    if output is not None:
-        output.flush()
-        os.fsync(output.fileno())
-    return f"sha256:{digest.hexdigest()}", size
+def _copy_durable(source: BinaryIO, output: BinaryIO) -> tuple[str, int]:
+    result = hash_stream(source, output=output)
+    output.flush()
+    os.fsync(output.fileno())
+    return result
 
 
 class CampaignFiles:
@@ -43,7 +36,7 @@ class CampaignFiles:
             staged = Path(temporary) / "object"
             staged.mkdir(mode=0o700)
             with path.open("rb") as source, (staged / "content").open("xb") as output:
-                digest, size = _digest(source, output)
+                digest, size = _copy_durable(source, output)
             identifier = str(uuid5(NAMESPACE_URL, digest))
             ref = ArtifactRef(id=identifier, digest=digest, size_bytes=size, media_type=media_type)
             with (staged / "reference.json").open("xb") as metadata:
@@ -61,7 +54,7 @@ class CampaignFiles:
                 with SourceReader(self.root) as reader:
                     existing = self._reference(reader, identifier)
                     with reader.open(f"{identifier}/content") as content:
-                        if _digest(content) != (digest, size):
+                        if hash_stream(content) != (digest, size):
                             raise ValueError(
                                 "Stored artifact bytes do not match their reference"
                             ) from error
@@ -87,7 +80,7 @@ class CampaignFiles:
             ref = self._reference(reader, identifier)
             with reader.open(f"{identifier}/content") as source, destination.open("xb") as output:
                 try:
-                    digest, size = _digest(source, output)
+                    digest, size = _copy_durable(source, output)
                     if digest != ref.digest or size != ref.size_bytes:
                         raise ValueError("Stored artifact bytes do not match their reference")
                 except BaseException:

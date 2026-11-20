@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-from research_swarm.domain.types import new_id, utc_now
 from research_swarm.swarm.reactive.contracts import (
     DecisionCall,
     DecisionProposal,
@@ -12,6 +11,7 @@ from research_swarm.swarm.reactive.contracts import (
     proposed_controls,
 )
 from research_swarm.swarm.reactive.journal import DecisionJournal, JournalConflict
+from research_swarm.swarm.records import new_id, utc_now
 
 
 def start_call(journal: DecisionJournal, request_id: str, policy_digest: str) -> DecisionCall:

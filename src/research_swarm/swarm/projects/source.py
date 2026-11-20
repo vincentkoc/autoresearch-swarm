@@ -19,11 +19,16 @@ from typing import IO
 
 from pydantic import Field, field_validator, model_validator
 
-from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import CHUNK_SIZE as CHUNK_SIZE
+from research_swarm.swarm.canonical import (
+    canonical_bytes,
+    hash_stream,
+    record_digest,
+    strict_json_loads,
+)
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.process import read_bounded
-from research_swarm.swarm.projects.native_files import CHUNK_SIZE as CHUNK_SIZE
-from research_swarm.swarm.projects.native_files import SourceReader, hash_stream
+from research_swarm.swarm.projects.native_files import SourceReader
 from research_swarm.swarm.records import ByteCount, Digest, VersionedRecord
 
 MANIFEST_NAME = ".research-source.json"

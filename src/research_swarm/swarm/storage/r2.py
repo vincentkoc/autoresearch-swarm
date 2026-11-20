@@ -12,8 +12,8 @@ from typing import BinaryIO, cast
 
 from filelock import FileLock
 
-from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
-from research_swarm.domain.errors import ErrorCode, ResearchError
+from research_swarm.swarm.canonical import canonical_bytes, strict_json_loads
+from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import (
     private_state_directory,
     read_private,
