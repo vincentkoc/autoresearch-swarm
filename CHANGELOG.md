@@ -34,6 +34,9 @@
 - Enforce each advisory job's process-group deadline after its caller exits and
   retain a terminal status beside the abandoned heartbeat.
 
+- Report advisory responses received at or after the job deadline as timed out
+  and discard their advice.
+
 - Remove the retired worker journal's `launch_deadline_ns` argument from
   `run_native`. Native commands use their timeout and optional absolute deadline
   during both preparation and execution.
