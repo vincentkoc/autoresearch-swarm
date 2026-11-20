@@ -69,8 +69,8 @@ def final_selection(spec):
 
 
 class Baseline:
-    def __init__(self, spec):
-        self.task = workload(spec.command[-1])
+    def __init__(self, spec, *, task=None):
+        self.task = workload(spec.command[-1]) if task is None else task
         self.propose = {"random": random_search, "greedy": greedy_search}[spec.options["arm"]]
         self.rng = random.Random(spec.seed)
         self.history = []

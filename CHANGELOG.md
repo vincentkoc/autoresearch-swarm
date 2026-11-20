@@ -9,7 +9,11 @@
 
 - Interrupting a native run closes the owned workload and propagates the
   interruption. A cancelled proposal or an unexpected operator error reaches
-  the caller. A malformed model response still counts as a rejected response.
+  the caller. Completed providers release their slots before the next request.
+  A malformed model response still counts as a rejected response.
+
+- Campaign and artifact storage now share the same durable directory sync. Private
+  file handling moves from `state.private_files` to `swarm.private_files`.
 
 - Update the locked versions of FastAPI, filelock, boto3 and botocore, along
   with Ruff, Hypothesis, pytest-asyncio and the psutil type stubs.
@@ -22,6 +26,13 @@
 
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
+
+- Compare the three benchmark policies at equal executed search work. Record
+  program cases, optimizer steps, held-out evaluations and local model usage.
+
+- Use a common WAL connection policy for the queue, panel studies and journals.
+  Concurrent writers share a busy timeout, and schema upgrades commit atomically.
+  Campaign reports continue to open existing databases read-only.
 
 - Reject a benchmark campaign paired with an incompatible open panel study
   before reusing a score or spending a look.

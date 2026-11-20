@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from research_swarm.swarm.files import CampaignFiles
 from research_swarm.swarm.interfaces import Attempt, FailureClass, Outcome, Result
-from research_swarm.swarm.meter import CostMeter
+from research_swarm.swarm.resources import CostMeter
 
 MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
 

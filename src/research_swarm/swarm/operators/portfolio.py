@@ -23,6 +23,7 @@ from research_swarm.swarm.operators.bandit import (
 from research_swarm.swarm.operators.llm import TextRewrite
 from research_swarm.swarm.operators.params import child
 from research_swarm.swarm.population import Ranked
+from research_swarm.swarm.resources import price_rates
 from research_swarm.swarm.schedule import ASHA
 from research_swarm.swarm.selection import Parent, compare_seeds, island_parents
 
@@ -120,13 +121,7 @@ class SearchPortfolio:
         self._family_trials: Counter[str] = Counter()
         self._origin: dict[str, str] = {}
         self.selection = selection
-        self._priced = any(
-            (
-                spec.price_per_hour,
-                spec.price_per_million_input_tokens,
-                spec.price_per_million_output_tokens,
-            )
-        )
+        self._priced = any(price_rates(spec))
         self._cost = cost
         self._seen: set[str] = set()
         self._archive: list[Result] = []

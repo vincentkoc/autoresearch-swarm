@@ -21,7 +21,7 @@ from research_swarm.swarm.backends.capacity import Slots
 from research_swarm.swarm.backends.gpu_time import GPU_UUID, GPUTimeStore, sample_allocation
 from research_swarm.swarm.data_stage import Stage, local_stage, verify_local_stage
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, FailureClass, Result
-from research_swarm.swarm.telemetry import workload_started
+from research_swarm.swarm.resources import workload_started
 
 
 class _TrialStreams(asyncio.subprocess.SubprocessStreamProtocol):

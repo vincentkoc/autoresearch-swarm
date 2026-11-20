@@ -1,6 +1,6 @@
 # Campaign search quality on fresh v1 panels
 
-The operator portfolio with ASHA missed the three-workload acceptance target. Only nanoGPT beat both baselines on mean confirmed score. The program tied random on all three seeds. On MLP, the seed-11 loss outweighed two gains over random. All 324 search attempts returned a score.
+The operator portfolio with ASHA missed the three-workload acceptance target. Only nanoGPT beat both baselines on mean confirmed score. The program tied random on all three seeds. On MLP, the seed-11 loss outweighed two gains over random. All 324 search attempts returned a score. The subsequent equal-work comparison counted executed cases and optimizer updates on three fresh seeds. [Equal-work results](equal-work-search-quality.md)
 
 ## Mean confirmed score
 

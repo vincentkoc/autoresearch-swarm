@@ -270,7 +270,8 @@ def test_selection_events_preserve_policy_scores_and_legacy_unknowns(tmp_path: P
         store.report(Result(attempt=claim, status="ok", metrics={"loss": 0.9}))
     store.select("test", trial(1).trial_id, score=0.95)
     with sqlite3.connect(path) as db:
-        # Earlier event rows contained only the identifiers and timestamp.
+        # Earlier unversioned queues recorded only identifiers and timestamps on these rows.
+        db.execute("PRAGMA user_version=0")
         db.execute("ALTER TABLE swarm_events DROP COLUMN score")
         db.execute("ALTER TABLE swarm_events DROP COLUMN replicates")
 
@@ -341,7 +342,7 @@ def test_init_uses_six_tables_and_preserves_a_legacy_workspace(tmp_path: Path) -
 
 
 def test_project_identity_file_does_not_make_a_legacy_workspace(tmp_path: Path) -> None:
-    from research_swarm.state.private_files import campaign_database
+    from research_swarm.swarm.private_files import campaign_database
 
     (tmp_path / "identity.json").write_text('{"name":"dataset"}')
     assert campaign_database(tmp_path, project_directory=True) == tmp_path / "swarm.sqlite"

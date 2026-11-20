@@ -16,16 +16,16 @@ from research_swarm.domain.artifacts import StoredBlob, UploadProgress, UploadSp
 from research_swarm.domain.canonical import canonical_bytes, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import ID, Digest, VersionedRecord
-from research_swarm.state.private_files import (
+from research_swarm.storage.filesystem import CHUNK_BYTES, FilesystemBlobStore
+from research_swarm.storage.r2_config import R2Config
+from research_swarm.storage.r2_objects import generation_key, generation_metadata
+from research_swarm.storage.r2_transport import ObjectAbsent, R2Transport, unavailable
+from research_swarm.swarm.private_files import (
     private_state_directory,
     read_private,
     sync_directory,
     write_private,
 )
-from research_swarm.storage.filesystem import CHUNK_BYTES, FilesystemBlobStore
-from research_swarm.storage.r2_config import R2Config
-from research_swarm.storage.r2_objects import generation_key, generation_metadata
-from research_swarm.storage.r2_transport import ObjectAbsent, R2Transport, unavailable
 
 
 class R2StagingBinding(VersionedRecord):
