@@ -5,14 +5,18 @@ import math
 import os
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from research_swarm.domain.canonical import content_digest
 from research_swarm.domain.experiments import StageSpec
 from research_swarm.domain.types import new_id
+from research_swarm.projects import source as legacy_source
 from research_swarm.projects.manifest import load_manifest, resolve_project
+from research_swarm.projects.native_files import SourceReader
 from research_swarm.projects.source import bundle_directory, extract_bundle
 from research_swarm.projects.workload import (
     WorkloadContext,
@@ -22,6 +26,7 @@ from research_swarm.projects.workload import (
     read_report,
     verify_outputs,
 )
+from research_swarm.swarm.projects import native_files, source, workload
 from research_swarm.workers.contracts import NativeCommand
 from research_swarm.workers.supervision import base_environment, run_native
 from tests.paths import REPO_ROOT
@@ -40,6 +45,27 @@ def context(tmp_path: Path, *, stage_id: str = "train", seed: int = 7) -> Worklo
         output_root=str(output),
         report_path=str(tmp_path / "report.json"),
     ).sealed()
+
+
+def test_project_imports_preserve_workload_records_and_source_module() -> None:
+    assert legacy_source is source
+    assert SourceReader is native_files.SourceReader
+    assert WorkloadContext is workload.WorkloadContext
+    assert WorkloadReport is workload.WorkloadReport
+
+
+def test_extraction_checks_and_reads_one_open_bundle(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    root.mkdir()
+    (root / "recipe.txt").write_bytes(b"recipe")
+    bundle = tmp_path / "source.zip"
+    manifest = bundle_directory(root, bundle, paths=("recipe.txt",))
+    destination = tmp_path / "extracted"
+    with patch.object(zipfile, "ZipFile", wraps=zipfile.ZipFile) as open_archive:
+        result = extract_bundle(bundle, destination, expected_tree_digest=manifest.tree_digest)
+    open_archive.assert_called_once()
+    assert result == manifest
+    assert (destination / "recipe.txt").read_bytes() == b"recipe"
 
 
 def test_stale_report_wrong_seed_and_duplicate_names_are_rejected(tmp_path: Path) -> None:
@@ -76,6 +102,24 @@ def test_missing_output_and_out_of_bounds_content_are_not_accepted(tmp_path: Pat
         verify_outputs(request, report, maximum_bytes=2)
     output = verify_outputs(request, report, maximum_bytes=7)[0]
     assert output.digest == content_digest(b"weights") and output.size_bytes == 7
+
+
+def test_output_allowance_is_shared_across_files_including_empty_outputs(tmp_path: Path) -> None:
+    request = context(tmp_path)
+    files = {"first": b"one", "second": b"two", "empty": b""}
+    for name, data in files.items():
+        (Path(request.output_root) / name).write_bytes(data)
+    report = WorkloadReport(
+        context_digest=request.context_digest,
+        observed_seed=request.seed,
+        outputs=tuple(WorkloadOutput(name=name, path=name) for name in files),
+    )
+    with pytest.raises(ValueError, match="byte allowance"):
+        verify_outputs(request, report, maximum_bytes=5)
+    outputs = verify_outputs(request, report, maximum_bytes=6)
+    assert [(out.digest, out.size_bytes) for out in outputs] == [
+        (content_digest(data), len(data)) for data in files.values()
+    ]
 
 
 def test_report_and_output_links_cannot_redirect_worker_reads(tmp_path: Path) -> None:

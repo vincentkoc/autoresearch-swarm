@@ -8,7 +8,6 @@ from typing import Literal
 
 from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes
 from research_swarm.domain.types import Digest, VersionedRecord
-from research_swarm.projects.workload import WorkloadContext
 from research_swarm.reactive.contracts import (
     NumericValue,
     ReactiveContract,
@@ -18,6 +17,7 @@ from research_swarm.reactive.contracts import (
 )
 from research_swarm.reactive.hook import ControlTarget
 from research_swarm.reactive.transcript import ControlTranscript
+from research_swarm.swarm.projects.workload import WorkloadContext
 
 
 class ReplayReceipt(VersionedRecord):

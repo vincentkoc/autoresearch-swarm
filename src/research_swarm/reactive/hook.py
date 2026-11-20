@@ -10,7 +10,6 @@ from typing import Literal, Protocol, Self
 
 from research_swarm.domain.canonical import MAX_SAFE_INTEGER, canonical_bytes
 from research_swarm.domain.types import VersionedRecord, new_id
-from research_swarm.projects.workload import WorkloadContext
 from research_swarm.reactive.admission import create_session
 from research_swarm.reactive.contracts import (
     ApplicationReceipt,
@@ -21,6 +20,7 @@ from research_swarm.reactive.contracts import (
 )
 from research_swarm.reactive.journal import DecisionJournal, JournalConflict
 from research_swarm.reactive.journal_records import ApplicationIntent
+from research_swarm.swarm.projects.workload import WorkloadContext
 
 
 class ControlTarget(Protocol):
