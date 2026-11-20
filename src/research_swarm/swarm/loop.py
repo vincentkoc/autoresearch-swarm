@@ -26,7 +26,7 @@ from research_swarm.swarm.interfaces import (
 )
 from research_swarm.swarm.panels import PanelStudy
 from research_swarm.swarm.population import Population, Ranked
-from research_swarm.swarm.spec import validate_seed
+from research_swarm.swarm.spec import search_work, validate_seed
 
 
 class PanelDecision(Protocol):
@@ -89,6 +89,20 @@ def _returned_trials(
         ):
             raise ValueError("A proposal must be a candidate with a nonempty ID")
         yield _trial(spec, candidate)
+
+
+def _affordable_trials(
+    trials: Iterator[Trial], seen: set[str], full_work: int, work_left: int
+) -> Iterator[Trial]:
+    batch_ids: set[str] = set()
+    for trial in trials:
+        if trial.trial_id not in seen and trial.trial_id not in batch_ids:
+            charge = search_work(trial.fidelity, full_work)
+            if charge > work_left:
+                continue
+            work_left -= charge
+            batch_ids.add(trial.trial_id)
+        yield trial
 
 
 class SeedProposer:
@@ -319,6 +333,7 @@ class SwarmLoop:
         cursor += len(recorded)
         pending: set[asyncio.Task[bool]] = set()
         no_claim = False
+        declined_offers: set[str] = set()
         allocations = ExitStack()
         monitor = getattr(self.backend, "monitor_gpu_allocation", None)
         try:
@@ -326,12 +341,21 @@ class SwarmLoop:
                 cursor = await self._observe(proposer, cursor)
                 queued, running = self.store.queue_depth(s.campaign_id)
                 slots = min(s.max_workers - len(pending), self.backend.free_slots(s))
+                work_left = None
+                if s.max_search_work is not None and s.full_fidelity_work is not None:
+                    admitted = self.store.trials(s.campaign_id)
+                    seen.update(t.trial_id for t in admitted)
+                    work_left = s.max_search_work - sum(
+                        search_work(t.fidelity, s.full_fidelity_work) for t in admitted
+                    )
                 room = min(
                     s.max_trials - len(seen), s.max_workers - queued - running, slots - queued
                 )
                 reason = "trial_limit" if len(seen) >= s.max_trials else "exhausted"
                 if self._at_target():
                     reason = "target"
+                elif work_left == 0:
+                    reason = "search_work_limit"
                 elif room > 0 and remaining_seconds() > 0 and cursor != exhausted_after:
                     try:
                         async with asyncio.timeout(
@@ -352,6 +376,10 @@ class SwarmLoop:
                                 validate_seed(candidate.seed)
                     if proposed or reason == "proposal_timeout":
                         trials = _returned_trials(s, batch, room, remaining_seconds)
+                        if work_left is not None and s.full_fidelity_work is not None:
+                            trials = _affordable_trials(
+                                trials, seen, s.full_fidelity_work, work_left
+                            )
                         submit_batch = getattr(self.store, "submit_proposals", None)
                         processed = (
                             submit_batch(
@@ -366,9 +394,28 @@ class SwarmLoop:
                         for trial_id, accepted in processed:
                             queued += int(accepted)
                             seen.add(trial_id)
+                        if (
+                            work_left is not None
+                            and len(processed) < proposed
+                            and not queued
+                            and remaining_seconds() > 0
+                        ):
+                            # A serial proposer may offer a full refit before its next short screen.
+                            # Bound unsuccessful asks from a plugin that only emits oversized work.
+                            offered = {_trial(s, candidate).trial_id for candidate in batch}
+                            new_offers = offered - seen - declined_offers
+                            if not (pending or running) and (
+                                isinstance(proposer, SeedProposer)
+                                or (new_offers and len(declined_offers) < s.max_trials)
+                            ):
+                                declined_offers.update(new_offers)
+                                continue
+                        else:
+                            declined_offers.clear()
 
                 if not (queued or running or pending) and (
-                    reason in {"target", "trial_limit"} or cursor == exhausted_after
+                    reason in {"target", "trial_limit", "search_work_limit"}
+                    or cursor == exhausted_after
                 ):
                     break
                 if remaining_seconds() <= 0:

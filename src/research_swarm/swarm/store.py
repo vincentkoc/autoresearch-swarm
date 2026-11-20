@@ -20,6 +20,7 @@ from pydantic import TypeAdapter
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
 from research_swarm.swarm.meter import PRICE_FIELDS
 from research_swarm.swarm.panels import Calibration, Decision
+from research_swarm.swarm.spec import search_work
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS swarm_projects (project_id TEXT PRIMARY KEY, snapshot TEXT);
@@ -147,6 +148,10 @@ def _deadline(db: sqlite3.Connection, campaign_id: str, max_hours: float | None)
         (campaign_id,),
     ).fetchone()[0]
     return float(created_at) + max_hours * 3600
+
+
+class SearchWorkLimit(ValueError):
+    """The proposed trial costs more than the remaining campaign search work."""
 
 
 class LegacyDatabaseError(ValueError):
@@ -452,6 +457,15 @@ class SQLiteStore:
         ).fetchone()[0]
         if count >= spec["max_trials"]:
             raise ValueError("Trial budget exhausted")
+        full_work = spec.get("full_fidelity_work")
+        if full_work is not None:
+            rungs = db.execute(
+                "SELECT fidelity, count(*) FROM swarm_trials WHERE campaign_id=? GROUP BY fidelity",
+                (trial.campaign_id,),
+            )
+            admitted = sum(search_work(fidelity, full_work) * n for fidelity, n in rungs)
+            if admitted + search_work(trial.fidelity, full_work) > spec["max_search_work"]:
+                raise SearchWorkLimit("Trial exceeds remaining search-work budget")
         key = (trial.campaign_id, candidate.candidate_id)
         db.execute("INSERT OR IGNORE INTO swarm_candidates VALUES(?,?,?)", (*key, encoded))
         saved = db.execute(
@@ -490,7 +504,11 @@ class SQLiteStore:
                 for trial in trials:
                     if trial.campaign_id != campaign:
                         raise ValueError("Proposal belongs to a different campaign")
-                    processed.append((trial.trial_id, self._submit(db, trial)))
+                    try:
+                        accepted = self._submit(db, trial)
+                    except SearchWorkLimit:
+                        continue
+                    processed.append((trial.trial_id, accepted))
                     db.execute("RELEASE candidate")
                     db.execute("SAVEPOINT candidate")
             except (TypeError, ValueError, OverflowError, sqlite3.IntegrityError) as exc:

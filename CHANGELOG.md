@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Campaigns can set `full_fidelity_work` and `max_search_work` with `max_attempts: 1`
+  to cap search work across rungs. Each admitted trial reserves the rounded-up
+  cost of a fresh fit, including the initial recipe and promotions. Queued and
+  completed trials keep their reservations across resume.
+
 - Update the locked versions of FastAPI, filelock, boto3 and botocore, along
   with Ruff, Hypothesis, pytest-asyncio and the psutil type stubs.
 

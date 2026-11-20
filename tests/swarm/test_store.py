@@ -73,6 +73,35 @@ def test_independent_connections_claim_distinct_trials_and_respect_slots(tmp_pat
     assert claim(0) is not None
 
 
+def test_search_work_admission_serializes_competing_connections(tmp_path: Path) -> None:
+    path = tmp_path / "queue.db"
+    queue = SQLiteStore(path)
+    limited = spec(full_fidelity_work=5, max_search_work=4, max_attempts=1)
+    queue.create_campaign(limited)
+
+    def offer(i: int) -> list[tuple[str, bool]]:
+        # Both deferrable screens need three units. Only one fits.
+        screen = replace(trial(i), fidelity=0.5)
+        return SQLiteStore(path).submit_proposals("test", 1, [screen], timed_out=False)
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        admissions = list(workers.map(offer, (1, 2)))
+    assert sorted(map(len, admissions)) == [0, 1]
+    [screen] = queue.trials("test")
+    assert not queue.submit(screen)
+    attempt = queue.claim("test", "cpu")
+    assert attempt and queue.report(Result(attempt=attempt, status="failed"))
+    reopened = SQLiteStore(path)
+    reopened.create_campaign(limited)
+    assert reopened.claim("test", "other") is None
+    with pytest.raises(ValueError, match="remaining search-work"):
+        reopened.submit(replace(trial(3), fidelity=0.25))
+    assert reopened.submit(replace(trial(4), fidelity=0.2))
+    with pytest.raises(ValueError, match="different spec"):
+        reopened.create_campaign(replace(limited, max_search_work=5))
+    assert len(reopened.trials("test")) == 2
+
+
 def test_wall_time_expires_inside_claim_and_survives_reopen(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
