@@ -47,7 +47,7 @@ def stop_group(child: subprocess.Popen[bytes], *, force: bool = True) -> None:
             os.killpg(child.pid, signal.SIGKILL if force else signal.SIGTERM)
 
 
-def _abort_blocking(child: subprocess.Popen[bytes]) -> None:
+def _abort_group(child: subprocess.Popen[bytes]) -> None:
     try:
         stop_group(child)
     except PermissionError as error:
@@ -234,7 +234,7 @@ def _communicate(
         except subprocess.TimeoutExpired as error:
             raise expired() from error
     except BaseException:
-        _abort_blocking(child)
+        _abort_group(child)
         raise
     finally:
         owner.close()
@@ -316,6 +316,7 @@ async def run_async(
     stdout: Callable[[asyncio.StreamReader], Awaitable[bytes]] = read_all,
     stderr: Callable[[asyncio.StreamReader], Awaitable[bytes]] = read_all,
 ) -> subprocess.CompletedProcess[bytes]:
+    deadline = asyncio.get_running_loop().time() + timeout
     child, owner = start_group(
         argv,
         cwd=cwd,
@@ -331,7 +332,7 @@ async def run_async(
     try:
         control, writer = await asyncio.open_connection(sock=owner)
         try:
-            async with asyncio.timeout(timeout):
+            async with asyncio.timeout_at(deadline):
                 writer.write(b"1")
                 _started(await control.readline(), argv[0])
                 if started is not None:
@@ -344,9 +345,9 @@ async def run_async(
             writer.close()
     except TimeoutError:
         timed_out = True
-        stop_group(child)
+        await asyncio.to_thread(_abort_group, child)
     except BaseException:
-        stop_group(child)
+        await asyncio.to_thread(_abort_group, child)
         raise
     finally:
         # No asyncio child watcher reaps this PID before failure cleanup.
