@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reactive journal exports count each event once when enforcing the page byte
+  limit. The CLI and Python client retain the same response and cursor at the cap.
+
 - Trainer requests, manual responses and completed policy calls share the same
   run-binding and control revision checks. Existing reactive journals reopen as before.
 
