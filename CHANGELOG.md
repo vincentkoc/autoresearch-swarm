@@ -545,6 +545,9 @@
 - Add a local campaign dry run for the local, SSH pool and SkyPilot backends
   and a [real-GPU qualification checklist](docs/gpu-qualification.md).
 
+- Check the selected reference recording before applying a generated user's
+  saved raw-window normalization. Older fitted states have unverified provenance.
+
 ## 0.1.0 - 2026-11-01
 
 ### Packaging and maintenance
