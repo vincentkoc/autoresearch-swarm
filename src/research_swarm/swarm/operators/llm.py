@@ -12,10 +12,11 @@ from collections.abc import Awaitable, Callable, Sequence
 from concurrent.futures import Future
 from dataclasses import asdict, replace
 from pathlib import PurePosixPath
+from socket import gaierror
 from typing import Any, Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate, Result
 from research_swarm.swarm.operators.params import child
@@ -43,6 +44,14 @@ class FailureDiagnosis(BaseModel):
 Generate = Callable[[str, dict[str, Any], int], Awaitable[str]]
 
 
+class _OllamaResponse(BaseModel):
+    response: str
+
+
+class _RejectedEdit(ValueError):
+    """The model's edit cannot be applied to the pinned source."""
+
+
 class Ollama:
     def __init__(self, model: str, *, port: int = 11434) -> None:
         self.model = model
@@ -61,10 +70,7 @@ class Ollama:
                 },
             )
             response.raise_for_status()
-            content = response.json()["response"]
-            if not isinstance(content, str):
-                raise ValueError("expected a JSON string from Ollama")
-            return content
+            return _OllamaResponse.model_validate_json(response.content).response
 
 
 class TextRewrite:
@@ -190,7 +196,11 @@ class TextRewrite:
 
         def run() -> None:
             try:
-                candidate = asyncio.run(request())
+                try:
+                    candidate = asyncio.run(request())
+                finally:
+                    # A caller observing completion can immediately start another provider.
+                    self._slots.release()
             except (Exception, asyncio.CancelledError, KeyboardInterrupt, SystemExit) as exc:
                 # The caller owns cancellation and receives it through the wrapped future.
                 result.set_exception(exc)
@@ -199,8 +209,6 @@ class TextRewrite:
                 raise
             else:
                 result.set_result(candidate)
-            finally:
-                self._slots.release()
 
         # A provider may block inside its async API or suppress cancellation.
         # Its thread holds a slot until it exits and cannot delay CLI shutdown.
@@ -281,9 +289,11 @@ class TextRewrite:
             if job not in done:
                 continue
             error = job.exception()
-            if isinstance(error, TimeoutError):
+            if isinstance(error, (TimeoutError, httpx.TimeoutException)):
                 self.timeouts += 1
-            elif isinstance(error, (OSError, ValueError, httpx.HTTPError)):
+            elif isinstance(
+                error, (httpx.HTTPError, ConnectionError, gaierror, ValidationError, _RejectedEdit)
+            ):
                 self.errors += 1
             elif error is not None:
                 raise error
@@ -335,13 +345,16 @@ class CodeDiff(TextRewrite):
 
     def _edit(self, parent: Candidate, raw: str) -> Candidate | None:
         if parent.source_revision not in (None, self.revision):
-            raise ValueError("code parent belongs to another base revision")
+            raise _RejectedEdit("code parent belongs to another base revision")
         edit = SourceEdit.model_validate_json(raw)
         if self.source.count(edit.before) != 1:
-            raise ValueError("source edit must match exactly one location in the base file")
+            raise _RejectedEdit("source edit must match exactly one location in the base file")
         content = self.source.replace(edit.before, edit.after, 1)
         if self.path.endswith(".py"):
-            compile(content, self.path, "exec", dont_inherit=True)
+            try:
+                compile(content, self.path, "exec", dont_inherit=True)
+            except SyntaxError as exc:
+                raise _RejectedEdit("source edit must produce valid Python") from exc
         lines = difflib.unified_diff(
             self.source.splitlines(keepends=True),
             content.splitlines(keepends=True),

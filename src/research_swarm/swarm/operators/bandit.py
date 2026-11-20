@@ -14,6 +14,7 @@ from research_swarm.swarm.operators.params import Crossover, ParamMutation, chil
 from research_swarm.swarm.population import Population
 
 DEFAULT_EXPLORATION = 1.0
+_ProposalOutcome = Sequence[Candidate] | KeyboardInterrupt | SystemExit
 
 
 @dataclass
@@ -100,7 +101,7 @@ class BanditProposer:
         self.best: dict[float, float] = {}
         self.issued: set[tuple[str, int, float]] = set()
         self.attempts: set[str] = set()
-        self.jobs: dict[str, asyncio.Task[Sequence[Candidate]]] = {}
+        self.jobs: dict[str, asyncio.Task[_ProposalOutcome]] = {}
 
     def _remember(self, candidate: Candidate, seed: int | None, fidelity: float | None) -> bool:
         seed = self.spec.seed if seed is None else seed
@@ -157,11 +158,14 @@ class BanditProposer:
         end = loop.time() + 0.85 * spec.proposal_timeout_seconds
         inner = replace(spec, proposal_timeout_seconds=0.7 * spec.proposal_timeout_seconds)
 
-        async def propose(name: str, count: int) -> Sequence[Candidate]:
+        async def propose(name: str, count: int) -> _ProposalOutcome:
             try:
                 return await self.operators[name].propose(inner, parents, count)
             except TimeoutError:
                 return ()
+            except (KeyboardInterrupt, SystemExit) as exc:
+                # An interrupt escaping a child task stops the loop before ask can deliver it.
+                return exc
 
         while len(batch) < k and eligible and loop.time() < end:
             counts = Counter(self._choose(eligible) for _ in range(k - len(batch)))
@@ -173,7 +177,10 @@ class BanditProposer:
                     eligible.remove(name)
                     if job not in done:
                         continue
-                    for candidate in job.result()[: counts[name]]:
+                    outcome = job.result()
+                    if isinstance(outcome, (KeyboardInterrupt, SystemExit)):
+                        raise outcome
+                    for candidate in outcome[: counts[name]]:
                         if self._remember(candidate, candidate.seed, candidate.fidelity):
                             batch.append(replace(candidate, operator=name))
                         elif discard := getattr(self.operators[name], "discard", None):
