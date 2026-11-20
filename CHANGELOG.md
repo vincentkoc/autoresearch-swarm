@@ -7,6 +7,9 @@
   cost of a fresh fit, including the initial recipe and promotions. Queued and
   completed trials keep their reservations across resume.
 
+- Update the locked versions of FastAPI, filelock, boto3 and botocore, along
+  with Ruff, Hypothesis, pytest-asyncio and the psutil type stubs.
+
 - Report the known cost subtotal and missing rates when recorded usage is only
   partly priced. Cost per improvement stays unavailable until the total is known.
   Reopening a campaign accepts equal integer and floating-point price rates
@@ -118,6 +121,10 @@
 
 - Count categorical levels explored at lower fidelities when the finite mutation
   operator proposes its next recipe in a multi-fidelity campaign.
+
+- Guide finite mutation with coordinate effects learned separately at each
+  search fidelity. Screened recipes can inform later proposals before promotion.
+  The search portfolio's default bandit exploration coefficient is now 1.0.
 
 - Publish the three-workload CPU comparison of the operator portfolio and ASHA
   against random and greedy search, with paired held-out scores and trial records.
@@ -471,6 +478,9 @@
   exact metric/comparison selection, comparable-run overlays, original baseline
   references and bounded-history disclosure. Capture controller evaluation event
   times and campaign creation time without inferring training time or confirmed wins.
+
+- Accept identical package metadata from editable installations during engine
+  probing while preserving rejection of conflicting installed versions.
 
 - Expose a bounded Git source-capture timeout through the sync/async SDK,
   project CLI and local MCP tool, shared across manifest reads and bundling.

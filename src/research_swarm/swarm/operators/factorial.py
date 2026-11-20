@@ -34,6 +34,7 @@ class FiniteMutation:
             raise ValueError("expected distinct levels for every coordinate")
         self.rng = random.Random(spec.seed)
         self.data: dict[tuple[str, ...], list[float]] = defaultdict(list)
+        self._rung_data = {spec.fidelity: self.data}
         self._observed_trials: set[str] = set()
         self._issued: set[tuple[str, ...]] = set()
         self._coverage: Counter[tuple[int, str]] = Counter()
@@ -56,13 +57,12 @@ class FiniteMutation:
         point = tuple(params[key] for key in self.keys)
         self._remember(point)
         value = result.metrics.get(self.spec.metric)
-        if (
-            result.status == "ok"
-            and value is not None
-            and math.isfinite(value)
-            and trial.fidelity == self.spec.fidelity
-        ):
-            self.data[point].append(-value if self.spec.direction == "minimize" else value)
+        if result.status == "ok" and value is not None and math.isfinite(value):
+            if trial.fidelity not in self._rung_data:
+                self._rung_data[trial.fidelity] = defaultdict(list)
+            self._rung_data[trial.fidelity][point].append(
+                -value if self.spec.direction == "minimize" else value
+            )
 
     def _features(self, point: tuple[str, ...]) -> Counter[tuple[int, str]]:
         features = Counter(enumerate(point))
@@ -71,17 +71,17 @@ class FiniteMutation:
                 features[-1 - self.domains.index(domain), value] += 1
         return features
 
-    def _fit(self) -> dict[tuple[int, str], float]:
+    def _fit(self, data: Mapping[tuple[str, ...], list[float]]) -> dict[tuple[int, str], float]:
         # Coordinate descent for ridge regression. Center and scale observed
         # scores so the exploration bonus is independent of objective units.
-        values = [fmean(v) for v in self.data.values()]
-        if not values:
+        values = [fmean(v) for v in data.values()]
+        if len(set(values)) < 2:
             return {}
         avg = fmean(values)
-        spread = max(values) - min(values) or 1.0
+        spread = max(values) - min(values)
         residual = [(v - avg) / spread for v in values]
         design: dict[tuple[int, str], list[tuple[int, int]]] = defaultdict(list)
-        for i, point in enumerate(self.data):
+        for i, point in enumerate(data):
             for feature, amount in self._features(point).items():
                 design[feature].append((i, amount))
         weights: dict[tuple[int, str], float] = defaultdict(float)
@@ -125,7 +125,18 @@ class FiniteMutation:
             if len(nearby) >= k:
                 pool = nearby
         self.rng.shuffle(pool)
-        weights = self._fit()
+        # Screen and full-fit scores can differ in scale. Fit each rung separately
+        # and weight its coordinate estimates by distinct recipes and fidelity.
+        weighted_effects: dict[tuple[int, str], float] = defaultdict(float)
+        total_weight = 0.0
+        for fidelity, data in self._rung_data.items():
+            model = self._fit(data)
+            if model:
+                weight = fidelity * len(data)
+                total_weight += weight
+                for feature, coefficient in model.items():
+                    weighted_effects[feature] += weight * coefficient
+        weights = {feature: value / total_weight for feature, value in weighted_effects.items()}
         batch = []
         for _ in range(min(k, len(pool))):
 
