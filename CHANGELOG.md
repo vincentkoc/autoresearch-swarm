@@ -7,6 +7,10 @@
   cost of a fresh fit, including the initial recipe and promotions. Queued and
   completed trials keep their reservations across resume.
 
+- Interrupting a native run closes the owned workload and propagates the
+  interruption. A cancelled proposal or an unexpected operator error reaches
+  the caller. A malformed model response still counts as a rejected response.
+
 - Update the locked versions of FastAPI, filelock, boto3 and botocore, along
   with Ruff, Hypothesis, pytest-asyncio and the psutil type stubs.
 

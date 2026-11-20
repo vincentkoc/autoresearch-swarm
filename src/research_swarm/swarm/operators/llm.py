@@ -191,12 +191,16 @@ class TextRewrite:
         def run() -> None:
             try:
                 candidate = asyncio.run(request())
-            except BaseException as exc:
-                self._slots.release()
+            except (Exception, asyncio.CancelledError, KeyboardInterrupt, SystemExit) as exc:
+                # The caller owns cancellation and receives it through the wrapped future.
                 result.set_exception(exc)
+            except BaseException as exc:
+                result.set_exception(exc)
+                raise
             else:
-                self._slots.release()
                 result.set_result(candidate)
+            finally:
+                self._slots.release()
 
         # A provider may block inside its async API or suppress cancellation.
         # Its thread holds a slot until it exits and cannot delay CLI shutdown.
@@ -279,8 +283,10 @@ class TextRewrite:
             error = job.exception()
             if isinstance(error, TimeoutError):
                 self.timeouts += 1
-            elif error is not None:
+            elif isinstance(error, (OSError, ValueError, httpx.HTTPError)):
                 self.errors += 1
+            elif error is not None:
+                raise error
             elif (candidate := job.result()) is not None:
                 batch.append(candidate)
         return batch

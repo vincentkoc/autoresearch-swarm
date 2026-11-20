@@ -209,6 +209,16 @@ def test_probe_interruption_before_identity_is_not_retried(
         assert failure.value.code == ErrorCode.EXECUTION_UNKNOWN
 
 
+def test_interrupted_probe_retains_its_pending_record(tmp_path: Path, monkeypatch):
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(probe, "run_native", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        probe_engine("python-cpu", probe_directory=tmp_path)
+    assert (tmp_path / "pending.json").is_file()
+
+
 def test_missing_interpreter_does_not_poison_probe_custody(tmp_path: Path) -> None:
     assert probe_engine("python-cpu", executable=tmp_path / "absent").status == "probe_failed"
     assert not (tmp_path / "probe-state" / "pending.json").exists()

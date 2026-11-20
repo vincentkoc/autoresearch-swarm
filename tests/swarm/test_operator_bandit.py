@@ -6,6 +6,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
 from research_swarm.swarm.operators.bandit import BanditProposer
 from research_swarm.swarm.operators.llm import TextRewrite
@@ -93,6 +95,18 @@ async def test_silent_local_model_keeps_fast_sibling_and_does_not_hold_loop():
         children = await policy.ask(spec, [result("seed", "baseline", 0, 0)], 2)
     assert [c.operator for c in children] == ["fast"]
     assert model.timeouts == 1
+
+
+@pytest.mark.parametrize("error", [asyncio.CancelledError(), AssertionError("operator defect")])
+async def test_proposal_control_and_program_errors_reach_the_caller(error):
+    async def interrupted(prompt, schema, seed):
+        raise error
+
+    model = TextRewrite(interrupted, "rewrite the text")
+    policy = BanditProposer(SPEC, {model.name: model})
+    with pytest.raises(type(error)):
+        await policy.ask(SPEC, [result("seed", "baseline", 0, 0)], 1)
+    assert model.errors == model.timeouts == 0
 
 
 async def test_custom_operators_control_exhaustion_even_with_a_declared_grid():

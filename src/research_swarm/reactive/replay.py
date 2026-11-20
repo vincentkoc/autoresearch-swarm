@@ -125,6 +125,7 @@ class ReplayHook:
             except BaseException:
                 self._failed = True
                 raise
+            verified = False
             try:
                 if self._read() != self._controls:
                     raise ValueError("Replay controls drifted")
@@ -134,18 +135,21 @@ class ReplayHook:
                 after = self._read()
                 if after != source.after:
                     raise ValueError("Replay readback differs from the recorded controls")
-            except BaseException as error:
-                self._uncertain = True
-                receipt = ReplayReceipt(
-                    source_receipt_digest=source.digest,
-                    applied_step=step,
-                    before=self._controls,
-                    after=None,
-                    outcome="uncertain",
-                )
-                self._write("receipt", receipt.model_dump(mode="json"))
-                if not isinstance(error, Exception):
-                    raise
+                verified = True
+            except (OSError, RuntimeError, ValueError):
+                pass  # Readback is unknown after a target error.
+            finally:
+                if not verified:
+                    self._uncertain = True
+                    receipt = ReplayReceipt(
+                        source_receipt_digest=source.digest,
+                        applied_step=step,
+                        before=self._controls,
+                        after=None,
+                        outcome="uncertain",
+                    )
+                    self._write("receipt", receipt.model_dump(mode="json"))
+            if not verified:
                 return (*receipts, receipt)
             receipt = ReplayReceipt(
                 source_receipt_digest=source.digest,

@@ -160,7 +160,7 @@ class BanditProposer:
         async def propose(name: str, count: int) -> Sequence[Candidate]:
             try:
                 return await self.operators[name].propose(inner, parents, count)
-            except Exception:
+            except TimeoutError:
                 return ()
 
         while len(batch) < k and eligible and loop.time() < end:
@@ -171,7 +171,7 @@ class BanditProposer:
                 done, _ = await asyncio.wait(jobs.values(), timeout=max(0, end - loop.time()))
                 for name, job in jobs.items():
                     eligible.remove(name)
-                    if job not in done or job.cancelled():
+                    if job not in done:
                         continue
                     for candidate in job.result()[: counts[name]]:
                         if self._remember(candidate, candidate.seed, candidate.fidelity):
