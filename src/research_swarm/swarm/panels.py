@@ -290,12 +290,15 @@ class PanelStudy:
         with self._db() as db:
             return dict(db.execute("SELECT role, count(*) FROM panel_looks GROUP BY role"))
 
-    def _recorded_calibration_scores(self) -> dict[tuple[str, str, int], float]:
+    def _recorded_calibration_scores(
+        self, *, include_proxy: bool = True
+    ) -> dict[tuple[str, str, int], float]:
         scores: dict[tuple[str, str, int], float] = {}
         with self._db() as db:
             for role, candidate, seed, score in db.execute(
                 "SELECT role, candidate, seed, score FROM panel_looks "
-                "WHERE role IN ('calibration_proxy', 'calibration_target')"
+                "WHERE role='calibration_target' OR (role='calibration_proxy' AND ?)",
+                (include_proxy,),
             ):
                 slot = (role, candidate, seed)
                 if score is None:
@@ -313,6 +316,18 @@ class PanelStudy:
 
     def _checked_seed_noise(self, fit: Calibration, *, for_decision: bool) -> Calibration:
         if fit.seed_noise != 0:
+            if for_decision:
+                target_scores = self._recorded_calibration_scores(include_proxy=False)
+                expected = {
+                    ("calibration_target", key, seed)
+                    for key in self.variants
+                    for seed in self.seeds
+                }
+                # A summary-only archive has no target grid to verify.
+                if target_scores and target_scores.keys() != expected:
+                    raise PanelEvaluationError(
+                        "cached calibration target grid differs from declared replicates"
+                    )
             return fit
         recorded = self._recorded_calibration_scores()
         try:

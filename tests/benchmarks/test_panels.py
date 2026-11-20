@@ -10,7 +10,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from research_swarm.swarm.panels import Calibration, Decision, PanelSplit, PanelStudy
+from research_swarm.swarm.panels import (
+    Calibration,
+    Decision,
+    PanelEvaluationError,
+    PanelSplit,
+    PanelStudy,
+)
 
 SPLIT = PanelSplit(
     ("train-a",), ("search-a",), ("select-a",), ("confirm-a",), ("proxy-a",), ("target-a",)
@@ -187,6 +193,46 @@ def test_cached_zero_noise_before_new_comparison_preserves_history(tmp_path, var
     assert reopened._state(old_key) == old_record
     with sqlite3.connect(protocol.path) as db:
         assert db.execute("SELECT * FROM panel_looks ORDER BY id").fetchall() == before
+
+
+@pytest.mark.parametrize(
+    "base_seeds", [(11, 11, 12, 13, 14), (12, 13, 14)], ids=["duplicate", "missing"]
+)
+def test_cached_positive_noise_requires_valid_retained_target_grid(tmp_path, base_seeds):
+    config = {"variants": ("base", "margin", "overfit"), "seeds": (11, 12, 13, 14)}
+
+    def no_score(*args):
+        pytest.fail("a malformed retained target grid must be refused before scoring")
+
+    protocol = study(tmp_path, no_score, **config)
+    fit = Calibration(2.0, 30.0, math.sqrt(12), 24, None, None)
+    prior = Decision(False, "confirmation", 7.0, -4.0)
+    protocol._put("calibration", fit)
+    protocol._put(protocol.decision_key("overfit", "base"), prior)
+
+    def snapshot(db):
+        return (
+            db.execute("SELECT * FROM panel_looks ORDER BY id").fetchall(),
+            db.execute("SELECT * FROM panel_state ORDER BY key").fetchall(),
+        )
+
+    with sqlite3.connect(protocol.path) as db:
+        for index, recipe in enumerate(protocol.variants):
+            seeds = base_seeds if recipe == "base" else protocol.seeds
+            db.executemany(
+                "INSERT INTO panel_looks(role, candidate, seed, score) "
+                "VALUES('calibration_target', ?, ?, ?)",
+                [(recipe, seed, (47 if seed <= 12 else 53) + 2 * index) for seed in seeds],
+            )
+        before = snapshot(db)
+
+    reopened = study(tmp_path, no_score, **config)
+    assert reopened.calibrate() == fit
+    assert reopened.consider("overfit", "base") == prior
+    with pytest.raises(PanelEvaluationError, match="calibration.target"):
+        reopened.consider("winner", "base")
+    with sqlite3.connect(protocol.path) as db:
+        assert snapshot(db) == before
 
 
 def test_summary_only_zero_noise_keeps_saved_decision(tmp_path):
