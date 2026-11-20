@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import io
 import json
@@ -10,16 +11,49 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from research_swarm.cli import main
-from research_swarm.swarm import agents
+from research_swarm.swarm import advice, agents
 from research_swarm.swarm.interfaces import Result
 from research_swarm.swarm.store import SQLiteStore
 from tests.swarm.test_store import spec, trial
+
+
+async def test_legacy_advice_uses_the_same_provider_and_preserves_batch_order(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "queue.sqlite"
+    SQLiteStore(database).create_campaign(spec(search_space={"x": [1, 2]}))
+    parser = argparse.ArgumentParser()
+    advice.add_arguments(parser)
+    args = parser.parse_args(["proposer", "test", "--fake", "--count", "2", "--seed", "9"])
+    replies = [{"status": "ok"}, {"status": "failed"}]
+    provider = AsyncMock(side_effect=replies)
+    with patch.object(agents, "ask_agent", provider):
+        result = await advice.advise(database, args)
+    assert result == {"role": "proposer", "status": "incomplete", "replies": replies}
+    assert [call.kwargs["seed"] for call in provider.await_args_list] == [9, 10]
+
+
+async def test_legacy_provider_override_is_local_to_its_caller(tmp_path: Path) -> None:
+    database = tmp_path / "queue.sqlite"
+    SQLiteStore(database).create_campaign(spec())
+    parser = argparse.ArgumentParser()
+    advice.add_arguments(parser)
+    args = parser.parse_args(["reporter", "test", "--model", "fixture"])
+    legacy_reply = {"status": "ok", "advice": {"summary": "legacy provider"}}
+    canonical_reply = {"status": "ok", "advice": {"summary": "canonical provider"}}
+    canonical = AsyncMock(return_value=canonical_reply)
+    legacy = AsyncMock(return_value=legacy_reply)
+    with patch.object(agents, "ask_agent", canonical), patch.object(advice, "ask_agent", legacy):
+        replies = await asyncio.gather(advice.advise(database, args), agents.advise(database, args))
+    assert replies == [legacy_reply, canonical_reply]
+    legacy.assert_awaited_once()
+    canonical.assert_awaited_once()
 
 
 def test_all_three_roles_read_campaign_without_dispatch(
