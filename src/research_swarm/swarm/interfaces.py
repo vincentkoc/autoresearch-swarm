@@ -69,6 +69,8 @@ class CampaignSpec:
     max_attempts: int = 2
     trial_timeout_seconds: float = 300.0
     proposal_timeout_seconds: float = 10.0
+    full_fidelity_work: int | None = None
+    max_search_work: int | None = None
     max_cost: float | None = None
     max_hours: float | None = None
     price_per_hour: float | None = None
@@ -79,6 +81,18 @@ class CampaignSpec:
     search_panel: str | None = None
     selection_panel: str | None = None
     confirmation_panel: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.full_fidelity_work is None and self.max_search_work is None:
+            return
+        if any(
+            type(n) is not int or n <= 0 for n in (self.full_fidelity_work, self.max_search_work)
+        ):
+            raise ValueError(
+                "full_fidelity_work and max_search_work must both be positive integers"
+            )
+        if self.max_attempts != 1:
+            raise ValueError("A search-work budget requires max_attempts=1")
 
 
 @dataclass(frozen=True, kw_only=True)

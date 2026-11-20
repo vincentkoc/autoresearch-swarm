@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,18 @@ from pydantic import TypeAdapter
 
 from research_swarm.domain.canonical import MAX_SAFE_INTEGER
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate
+
+
+def search_work(fidelity: float, full_fidelity_work: int) -> int:
+    """Number of workload units in a fresh fit at this rung."""
+    if not math.isfinite(fidelity) or fidelity <= 0:
+        raise ValueError("Fidelity must be positive and finite")
+    try:
+        return math.ceil(fidelity * full_fidelity_work)
+    except OverflowError:
+        # Very large finite offers still have a cost and can be declined normally.
+        numerator, denominator = fidelity.as_integer_ratio()
+        return -(-numerator * full_fidelity_work // denominator)
 
 
 def validate_seed(seed: int | None) -> None:

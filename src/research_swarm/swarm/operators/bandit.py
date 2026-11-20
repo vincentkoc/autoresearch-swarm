@@ -13,6 +13,8 @@ from research_swarm.swarm.loop import SeedProposer, candidate_key
 from research_swarm.swarm.operators.params import Crossover, ParamMutation, child
 from research_swarm.swarm.population import Population
 
+DEFAULT_EXPLORATION = 1.0
+
 
 @dataclass
 class _ArmTotals:
@@ -61,7 +63,7 @@ def _allocate(
 class OperatorBandit:
     """Allocate portfolio slots against the measured cost supplied by the search policy."""
 
-    def __init__(self, names: Iterable[str], exploration: float = 0.5) -> None:
+    def __init__(self, names: Iterable[str], exploration: float = DEFAULT_EXPLORATION) -> None:
         self.arms = {name: _MeasuredArm() for name in names}
         if not self.arms or not math.isfinite(exploration) or exploration < 0:
             raise ValueError("expected operators and finite nonnegative exploration")

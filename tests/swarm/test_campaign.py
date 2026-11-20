@@ -136,7 +136,8 @@ os.execv(sys.executable, [sys.executable, workload])
         events = conn.execute("SELECT count(*) FROM swarm_events").fetchone()
         # Queues written before explicit evaluation modes still resume as direct-metric smoke runs.
         conn.execute(
-            "UPDATE swarm_campaigns SET spec=json_remove(spec,'$.evaluation_mode','$.max_hours')"
+            "UPDATE swarm_campaigns SET spec=json_remove(spec,'$.evaluation_mode','$.max_hours',"
+            "'$.full_fidelity_work','$.max_search_work')"
         )
     replay = subprocess.run(args, capture_output=True, text=True, timeout=30, env=env, check=True)
     assert json.loads(replay.stdout) == summary
@@ -147,8 +148,18 @@ os.execv(sys.executable, [sys.executable, workload])
 def test_yaml_rejects_unknown_fields_and_wrong_types(tmp_path: Path) -> None:
     spec = yaml.safe_load((BIGRAM / "swarm.yaml").read_text())
     path = tmp_path / "bad.yaml"
+    path.write_text(
+        yaml.safe_dump({**spec, "full_fidelity_work": 4, "max_search_work": 8, "max_attempts": 1})
+    )
+    loaded = load_spec(path)
+    assert (loaded.full_fidelity_work, loaded.max_search_work) == (4, 8)
     for change in (
         {"max_trials": True},
+        {"full_fidelity_work": 4},
+        {"max_search_work": 8},
+        {"full_fidelity_work": 4, "max_search_work": 8, "max_attempts": 2},
+        {"full_fidelity_work": 0, "max_search_work": 8, "max_attempts": 1},
+        {"full_fidelity_work": 4, "max_search_work": True, "max_attempts": 1},
         {"max_worker": 9},
         {"max_workers": 0},
         {"max_hours": -0.1},

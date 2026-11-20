@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
-from research_swarm.swarm.loop import SwarmLoop
+from research_swarm.swarm.loop import RunSummary, SwarmLoop
 from research_swarm.swarm.population import Population, Ranked
 from research_swarm.swarm.store import SQLiteStore
 from research_swarm.swarm.worker import WorkerLoop
@@ -113,6 +113,80 @@ class Backend:
         if name == "child":
             self.child.set()
         return Result(attempt=attempt, status="ok", metrics={"score": 1.0})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("slots", [1, 2])
+async def test_search_work_fills_residual_after_a_full_refit_and_survives_resume(
+    tmp_path: Path, slots: int
+) -> None:
+    path = tmp_path / "queue.db"
+    screen = Candidate(candidate_id="screen", fidelity=0.3)
+    promotion = Candidate(
+        candidate_id="promotion", operator="asha", parents=("screen",), fidelity=1
+    )
+    spec = campaign(
+        max_workers=slots,
+        max_trials=12,
+        max_attempts=1,
+        full_fidelity_work=8,
+        max_search_work=23,
+        candidates=(
+            screen,
+            promotion,
+            Candidate(candidate_id="too-large"),
+            Candidate(candidate_id="too-large"),
+            Candidate(candidate_id="last-screen", fidelity=0.5),
+        ),
+    )
+    store = SQLiteStore(path)
+    store.create_campaign(spec)
+    initial = Trial(
+        trial_id="initial",
+        campaign_id=spec.campaign_id,
+        candidate=Candidate(candidate_id="initial"),
+        seed=0,
+        fidelity=1.0,
+    )
+    assert store.submit(initial)
+
+    async def resume() -> RunSummary:
+        reopened = SQLiteStore(path)
+        backend = Backend()
+        return await SwarmLoop(spec, reopened, backend, WorkerLoop(reopened, backend, "cpu")).run()
+
+    summary = await resume()
+    assert summary.reason == "search_work_limit"
+    assert summary.trials == summary.attempts == 4
+    # 8 initial + ceil(8 * 0.3) + 8 for a fresh promotion fit + 4 = 23.
+    assert [(t.candidate.candidate_id, t.fidelity) for t in store.trials(spec.campaign_id)] == [
+        ("initial", 1.0),
+        ("screen", 0.3),
+        ("promotion", 1.0),
+        ("last-screen", 0.5),
+    ]
+    with sqlite3.connect(path) as db:
+        before = db.execute("SELECT count(*) FROM swarm_events").fetchone()
+        assert await resume() == summary
+        assert db.execute("SELECT count(*) FROM swarm_events").fetchone() == before
+
+
+@pytest.mark.asyncio
+async def test_repeated_unaffordable_offer_does_not_spin_or_claim_a_trial(tmp_path: Path) -> None:
+    class FullOnly(Producer):
+        async def ask(
+            self, spec: CampaignSpec, archive: Sequence[Result], k: int
+        ) -> list[Candidate]:
+            self.requests.append(k)
+            return [Candidate(candidate_id="unaffordable", fidelity=1e308)]
+
+    spec = campaign(max_attempts=1, full_fidelity_work=8, max_search_work=4)
+    store, backend, proposer = SQLiteStore(tmp_path / "queue"), Backend(), FullOnly()
+    result = await SwarmLoop(
+        spec, store, backend, WorkerLoop(store, backend, "cpu"), proposer=proposer
+    ).run()
+    assert result.reason == "exhausted" and result.trials == result.attempts == 0
+    assert len(proposer.requests) == 2
 
 
 @pytest.mark.asyncio
