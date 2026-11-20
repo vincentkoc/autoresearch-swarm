@@ -19,9 +19,13 @@ from research_swarm.swarm.interfaces import (
     Result,
     WorkerQueue,
 )
-from research_swarm.swarm.meter import CostMeter
-from research_swarm.swarm.resources import Allocation, Demand, ResourcePool
-from research_swarm.swarm.telemetry import observe_starts
+from research_swarm.swarm.resources import (
+    Allocation,
+    CostMeter,
+    Demand,
+    ResourcePool,
+    observe_starts,
+)
 
 
 @runtime_checkable

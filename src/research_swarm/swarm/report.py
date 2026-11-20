@@ -12,7 +12,7 @@ from typing import Any
 
 from research_swarm.swarm.db import connection
 from research_swarm.swarm.kpis import read_kpis
-from research_swarm.swarm.meter import PRICE_FIELDS
+from research_swarm.swarm.resources import PRICE_FIELDS
 
 
 def _iso(seconds: float) -> str:

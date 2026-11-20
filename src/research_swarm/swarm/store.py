@@ -21,8 +21,8 @@ from research_swarm.swarm.db import QUEUE_SCHEMA as _SCHEMA  # noqa: F401
 from research_swarm.swarm.db import LegacyDatabaseError as LegacyDatabaseError
 from research_swarm.swarm.db import connection
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, Candidate, Result, Trial
-from research_swarm.swarm.meter import PRICE_FIELDS
 from research_swarm.swarm.panels import Calibration, Decision
+from research_swarm.swarm.resources import PRICE_FIELDS
 from research_swarm.swarm.spec import search_work
 
 _TRIAL = """SELECT t.*, c.payload FROM swarm_trials t JOIN swarm_candidates c
