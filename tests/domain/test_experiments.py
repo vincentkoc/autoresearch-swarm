@@ -6,10 +6,26 @@ from pathlib import Path
 
 import pytest
 
-from research_swarm.domain.canonical import content_digest
+from research_swarm.domain.canonical import content_digest, record_digest
 from research_swarm.domain.experiments import ResourceRequirements, StageSpec, validate_stage_graph
 from research_swarm.domain.types import new_id
 from research_swarm.projects.workload import WorkloadContext
+from research_swarm.swarm import records
+
+
+def test_archived_project_stage_keeps_its_type_and_wire_identity() -> None:
+    stage = StageSpec(
+        id="train",
+        kind="train",
+        argv=("python", "train.py"),
+        resources=ResourceRequirements(required_features=frozenset({"zeta", "alpha"})),
+    )
+    restored = records.StageSpec.model_validate_json(stage.model_dump_json())
+    assert type(restored) is StageSpec
+    assert type(restored.resources) is ResourceRequirements
+    assert record_digest("research.stage-fixture", restored.model_dump(mode="json")) == (
+        "sha256:ea7fabefc7148f1f4bc07b60e4b541db4dc478eeee1fab7ca3265577abfda8ac"
+    )
 
 
 @pytest.fixture

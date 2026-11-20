@@ -1,19 +1,3 @@
-"""Immutable artifact content references."""
+"""Compatibility imports for the campaign record definitions."""
 
-from __future__ import annotations
-
-from pydantic import Field
-
-from research_swarm.domain.types import (
-    ID,
-    Digest,
-    MediaType,
-    VersionedRecord,
-)
-
-
-class ArtifactRef(VersionedRecord):
-    id: ID
-    digest: Digest
-    size_bytes: int = Field(strict=True, ge=0)
-    media_type: MediaType = "application/octet-stream"
+from research_swarm.swarm.records import ArtifactRef as ArtifactRef
