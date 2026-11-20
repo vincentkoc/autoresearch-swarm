@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The standalone R2 adapter verifies and opens stored blobs through the same
+  generation check. Existing storage imports and staging directories are supported.
+
 - Trainer requests, manual responses and completed policy calls share the same
   run-binding and control revision checks. Existing reactive journals reopen as before.
 
