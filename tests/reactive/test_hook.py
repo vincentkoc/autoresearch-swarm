@@ -113,6 +113,22 @@ async def test_failed_mutation_is_uncertain_and_never_rolled_back(
         assert target.writes == 1 and journal.inspect().status == "uncertain"
 
 
+async def test_unexpected_target_error_keeps_uncertain_state_and_propagates(journal, monkeypatch):
+    target = Controls()
+
+    def interrupted(values):
+        target.value = values[0].value
+        raise AssertionError("target defect")
+
+    monkeypatch.setattr(target, "apply", interrupted)
+    with ReactiveHook(journal, target) as hook:
+        reply = await hook.boundary(observed(5))
+        journal.respond(response_for(reply.request))
+        with pytest.raises(AssertionError, match="target defect"):
+            await hook.boundary(observed(6))
+        assert journal.inspect().status == "uncertain"
+
+
 async def test_external_control_drift_fences_intervention(journal: DecisionJournal) -> None:
     target = Controls()
     with ReactiveHook(journal, target) as hook:

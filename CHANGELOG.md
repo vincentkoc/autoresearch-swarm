@@ -7,6 +7,11 @@
   cost of a fresh fit, including the initial recipe and promotions. Queued and
   completed trials keep their reservations across resume.
 
+- Interrupting a native run closes the owned workload and propagates the
+  interruption. A cancelled proposal or an unexpected operator error reaches
+  the caller. Completed providers release their slots before the next request.
+  A malformed model response still counts as a rejected response.
+
 - Campaign and artifact storage now share the same durable directory sync. Private
   file handling moves from `state.private_files` to `swarm.private_files`.
 

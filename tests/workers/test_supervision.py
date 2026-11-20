@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import subprocess
@@ -79,6 +80,32 @@ def test_failed_journal_callback_closes_held_native_scope(tmp_path: Path) -> Non
     assert outcome.reason == "supervisor_error"
     assert outcome.released_at is None and outcome.closure.scope_closed
     require_closed(outcome.closure.identity.pid)
+
+
+@pytest.mark.parametrize(
+    "interruption", [KeyboardInterrupt(), SystemExit(23), asyncio.CancelledError()]
+)
+def test_control_exception_propagates_after_native_cleanup(
+    tmp_path: Path, interruption: BaseException
+):
+    identities: list[NativeIdentity] = []
+
+    def held(identity: NativeIdentity) -> bool:
+        identities.append(identity)
+        return True
+
+    def interrupted(_: str) -> None:
+        raise interruption
+
+    with pytest.raises(type(interruption)) as caught:
+        run_native(
+            command(tmp_path, "import time; time.sleep(15)"),
+            tmp_path / "out",
+            on_held=held,
+            on_released=interrupted,
+        )
+    assert caught.value is interruption
+    require_closed(identities[0].pid)
 
 
 def test_both_output_streams_drain_after_retention_is_full(tmp_path: Path) -> None:
