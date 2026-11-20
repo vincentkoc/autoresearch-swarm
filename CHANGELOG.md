@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Live and replay training hooks share validation of the sealed workload declaration
+  and bounded control readback. Existing workload imports remain available.
+
 - Registered engines share one profile registry. Saved environment fingerprints
   and the pinned launch and probe scripts retain their existing identities.
 
