@@ -58,9 +58,9 @@ def parser() -> argparse.ArgumentParser:
     remote_worker.add_argument("spec", type=Path)
     remote_worker.add_argument("--worker-id", required=True)
     remote_worker.add_argument("--once", action="store_true", help="Attempt one claim and exit")
-    from research_swarm.swarm import advice
+    from research_swarm.swarm.agents import add_arguments
 
-    advice.add_arguments(swarm_commands.add_parser("advise", help="Request campaign advice"))
+    add_arguments(swarm_commands.add_parser("advise", help="Request campaign advice"))
     commands.add_parser("init", help="Initialize a private campaign database")
     serve = commands.add_parser("serve", help="Serve the authenticated control API")
     serve.add_argument("--host", default="127.0.0.1")
@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
             _emit_json(result)
             return code
         if args.action == "swarm" and args.swarm_action == "advise":
-            from research_swarm.swarm.advice import advise
+            from research_swarm.swarm.agents import advise
 
             if args.controller or args.token_file:
                 raise ValueError("Campaign advice reads a local campaign database")
