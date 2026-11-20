@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -12,7 +11,7 @@ from typing import BinaryIO, cast
 
 from filelock import FileLock
 
-from research_swarm.swarm.canonical import canonical_bytes, strict_json_loads
+from research_swarm.swarm.canonical import canonical_bytes, hash_stream, strict_json_loads
 from research_swarm.swarm.errors import ErrorCode, ResearchError
 from research_swarm.swarm.private_files import (
     private_state_directory,
@@ -185,20 +184,15 @@ class R2BlobStore:
                     or remote.size_bytes != blob.reference.size_bytes
                 ):
                     raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "R2 object identity differs")
-                digest, size = hashlib.sha256(), 0
-                while block := remote.body.read(CHUNK_BYTES):
-                    size += len(block)
-                    if size > blob.reference.size_bytes:
-                        raise ResearchError(
-                            ErrorCode.ARTIFACT_UNVERIFIED, "R2 object exceeds its declared size"
-                        )
-                    digest.update(block)
-                    if output is not None:
-                        output.write(block)
-                if (
-                    size != blob.reference.size_bytes
-                    or "sha256:" + digest.hexdigest() != blob.reference.digest
-                ):
+                result = hash_stream(
+                    remote.body,
+                    output=output,
+                    limit=blob.reference.size_bytes,
+                    overflow=ResearchError(
+                        ErrorCode.ARTIFACT_UNVERIFIED, "R2 object exceeds its declared size"
+                    ),
+                )
+                if result != (blob.reference.digest, blob.reference.size_bytes):
                     raise ResearchError(ErrorCode.ARTIFACT_UNVERIFIED, "R2 object content differs")
         except (ResearchError, ObjectAbsent):
             raise

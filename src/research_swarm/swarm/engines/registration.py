@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import stat
 import sys
@@ -12,7 +11,12 @@ from typing import Literal, Self
 from filelock import FileLock
 from pydantic import Field, field_validator, model_validator
 
-from research_swarm.swarm.canonical import canonical_bytes, record_digest, strict_json_loads
+from research_swarm.swarm.canonical import (
+    canonical_bytes,
+    hash_stream,
+    record_digest,
+    strict_json_loads,
+)
 from research_swarm.swarm.engines.adapter import current_adapter_digest
 from research_swarm.swarm.engines.custody import default_probe_directory
 from research_swarm.swarm.engines.models import EngineDescriptor
@@ -145,22 +149,21 @@ class EnvironmentRegistration(VersionedRecord):
 
 
 def executable_digest(path: Path) -> str:
-    digest = hashlib.sha256()
+    size_limit = 1024**3
     target = path.resolve(strict=True)
     with SourceReader(target.parent) as reader, reader.open(target.name) as stream:
         before = os.fstat(stream.fileno())
-        if not stat.S_ISREG(before.st_mode) or before.st_size > 1024 * 1024 * 1024:
+        if not stat.S_ISREG(before.st_mode) or before.st_size > size_limit:
             raise ResearchError(
                 ErrorCode.CAPABILITY_UNAVAILABLE, "Interpreter binary is not supported"
             )
-        consumed = 0
-        while chunk := stream.read(1024 * 1024):
-            consumed += len(chunk)
-            if consumed > 1024 * 1024 * 1024:
-                raise ResearchError(
-                    ErrorCode.CAPABILITY_UNAVAILABLE, "Interpreter binary exceeds its limit"
-                )
-            digest.update(chunk)
+        digest, _ = hash_stream(
+            stream,
+            limit=size_limit,
+            overflow=ResearchError(
+                ErrorCode.CAPABILITY_UNAVAILABLE, "Interpreter binary exceeds its limit"
+            ),
+        )
         after = os.fstat(stream.fileno())
     if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
         after.st_size,
@@ -168,7 +171,7 @@ def executable_digest(path: Path) -> str:
         after.st_ctime_ns,
     ):
         raise ResearchError(ErrorCode.CAPABILITY_UNAVAILABLE, "Interpreter changed while hashing")
-    return "sha256:" + digest.hexdigest()
+    return digest
 
 
 def read_registration(path: Path) -> EnvironmentRegistration:

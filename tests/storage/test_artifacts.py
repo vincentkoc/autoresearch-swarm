@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 from pathlib import Path
@@ -12,6 +13,7 @@ from research_swarm.domain.artifacts import UploadSpec
 from research_swarm.domain.errors import ErrorCode, ResearchError
 from research_swarm.domain.types import new_id
 from research_swarm.storage.filesystem import FilesystemBlobStore
+from research_swarm.swarm.storage.filesystem import _check
 
 
 @pytest.fixture
@@ -134,3 +136,12 @@ def test_begin_retry_after_publication_does_not_allocate_another_copy(
     assert store.begin(upload) == 3
     assert not store._staged(upload).exists()
     store.verify(workspace_id, blob)
+
+
+def test_corrupt_blob_verification_stops_at_the_first_excess_byte(workspace_id: str) -> None:
+    reference = upload_spec(workspace_id, b"abc").reference()
+    stream = io.BytesIO(b"abc" + b"x" * (2**21))
+    with pytest.raises(ResearchError, match="content or size mismatch") as caught:
+        _check(stream, reference)
+    assert caught.value.code == ErrorCode.ARTIFACT_UNVERIFIED
+    assert stream.tell() == reference.size_bytes + 1

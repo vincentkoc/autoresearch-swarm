@@ -82,7 +82,7 @@ def hash_stream(
     *,
     output: IO[bytes] | None = None,
     limit: int | None = None,
-    overflow: str = "Stream exceeds its byte allowance",
+    overflow: str | Exception = "Stream exceeds its byte allowance",
 ) -> tuple[str, int]:
     """Hash and optionally copy bytes, reading at most one byte beyond a declared limit."""
     if limit is not None and limit < 0:
@@ -92,6 +92,8 @@ def hash_stream(
     while block := source.read(CHUNK_SIZE if limit is None else min(CHUNK_SIZE, limit - size + 1)):
         size += len(block)
         if limit is not None and size > limit:
+            if isinstance(overflow, Exception):
+                raise overflow
             raise ValueError(overflow)
         digest.update(block)
         if output is not None:
