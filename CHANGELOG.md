@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Bundle extraction verifies and reads one open archive. Workload outputs share
+  their byte allowance across files, including zero-byte outputs.
+
 - The standalone R2 adapter verifies and opens stored blobs through the same
   generation check. Existing storage imports and staging directories are supported.
 

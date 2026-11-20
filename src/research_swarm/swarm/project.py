@@ -11,8 +11,9 @@ from typing import Any, Literal
 from pydantic import Field, field_validator, model_validator
 
 from research_swarm.domain.canonical import content_digest, record_digest
-from research_swarm.projects.native_files import SourceReader
-from research_swarm.projects.source import (
+from research_swarm.reactive.contracts import ReactiveContract
+from research_swarm.swarm.projects.native_files import SourceReader
+from research_swarm.swarm.projects.source import (
     MutationPolicy,
     SourceManifest,
     bundle_directory,
@@ -24,7 +25,6 @@ from research_swarm.projects.source import (
     portable_path,
     read_git_file,
 )
-from research_swarm.reactive.contracts import ReactiveContract
 from research_swarm.swarm.records import (
     Digest,
     MetricDefinition,

@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 from pydantic import JsonValue
 
 from research_swarm.domain.experiments import StageSpec
-from research_swarm.projects.workload import WorkloadContext
 from research_swarm.reactive.contracts import ReactiveContract, RunBinding
+from research_swarm.swarm.projects.workload import WorkloadContext
 
 if TYPE_CHECKING:
     from research_swarm.reactive.journal import DecisionJournal
