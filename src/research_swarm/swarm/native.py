@@ -19,8 +19,6 @@ from research_swarm.domain.canonical import record_digest
 from research_swarm.domain.experiments import ResourceRequirements
 from research_swarm.engines import execution
 from research_swarm.engines.registration import read_registration
-from research_swarm.projects.capture import capture_project
-from research_swarm.projects.manifest import ResolvedProject, resolve_project
 from research_swarm.projects.source import bundle_directory, extract_bundle, validate_mutation
 from research_swarm.projects.workload import (
     WorkloadContext,
@@ -30,6 +28,7 @@ from research_swarm.projects.workload import (
 )
 from research_swarm.reactive.admission import training_parameters
 from research_swarm.swarm.interfaces import Candidate, Trial
+from research_swarm.swarm.project import ResolvedProject, capture_project, resolve_project
 from research_swarm.workers.supervision import base_environment
 
 

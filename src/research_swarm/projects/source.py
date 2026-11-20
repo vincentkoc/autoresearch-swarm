@@ -455,7 +455,7 @@ def open_bundle(bundle: Path | bytes) -> Iterator[zipfile.ZipFile]:
         yield archive
 
 
-def _inspect_archive(archive: zipfile.ZipFile) -> SourceManifest:
+def inspect_archive(archive: zipfile.ZipFile) -> SourceManifest:
     info = archive.getinfo(MANIFEST_NAME)
     if info.file_size > MAX_MANIFEST_BYTES or info.compress_type != zipfile.ZIP_STORED:
         raise ValueError("Invalid source manifest encoding or size")
@@ -486,7 +486,7 @@ def _inspect_archive(archive: zipfile.ZipFile) -> SourceManifest:
 def inspect_bundle(bundle: Path | bytes) -> SourceManifest:
     """Check archive metadata. Use verify_bundle to authenticate every entry's bytes."""
     with open_bundle(bundle) as archive:
-        return _inspect_archive(archive)
+        return inspect_archive(archive)
 
 
 def _verified_entry(archive: zipfile.ZipFile, entry: SourceEntry, output: IO[bytes] | None) -> None:
@@ -501,7 +501,7 @@ def _verified_entry(archive: zipfile.ZipFile, entry: SourceEntry, output: IO[byt
 def verify_bundle(bundle: Path | bytes) -> SourceManifest:
     """Verify all source entries without extracting or requiring a writable filesystem."""
     with open_bundle(bundle) as archive:
-        manifest = _inspect_archive(archive)
+        manifest = inspect_archive(archive)
         for entry in manifest.entries:
             _verified_entry(archive, entry, None)
         return manifest

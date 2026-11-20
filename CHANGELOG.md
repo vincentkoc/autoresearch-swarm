@@ -19,6 +19,9 @@
 - Add a generated raw-window example that fits per-user channel statistics on
   unlabeled reference windows and applies the saved state at inference.
 
+- Project capture and manifest resolution now share one implementation. A read in
+  progress finishes on its original bundle if a newer capture replaces the path.
+
 - Reject a benchmark campaign paired with an incompatible open panel study
   before reusing a score or spending a look.
 
