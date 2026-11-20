@@ -12,7 +12,7 @@ from statistics import fmean
 
 from research_swarm.swarm.interfaces import CampaignSpec, Candidate, Operator, Result, Trial
 from research_swarm.swarm.loop import candidate_key
-from research_swarm.swarm.operators.bandit import OperatorBandit
+from research_swarm.swarm.operators.bandit import DEFAULT_EXPLORATION, OperatorBandit
 from research_swarm.swarm.operators.llm import TextRewrite
 from research_swarm.swarm.operators.params import child
 from research_swarm.swarm.population import Ranked
@@ -89,7 +89,7 @@ class SearchPortfolio:
         *,
         fidelities: Sequence[float] | None = None,
         reduction: int = 3,
-        exploration: float = 0.5,
+        exploration: float = DEFAULT_EXPLORATION,
         family_cap: int = 2,
         family_trial_limit: int | None = None,
         selection: ReplicatedSelection | None = None,

@@ -117,6 +117,10 @@
 - Count categorical levels explored at lower fidelities when the finite mutation
   operator proposes its next recipe in a multi-fidelity campaign.
 
+- Guide finite mutation with coordinate effects learned separately at each
+  search fidelity. Screened recipes can inform later proposals before promotion.
+  The search portfolio's default bandit exploration coefficient is now 1.0.
+
 - Publish the three-workload CPU comparison of the operator portfolio and ASHA
   against random and greedy search, with paired held-out scores and trial records.
 

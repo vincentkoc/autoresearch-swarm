@@ -59,6 +59,35 @@ async def test_finite_mutation_explores_unseen_levels_before_first_promotion(see
     assert not operator.data  # Proxy scores must not fit the target-fidelity model.
 
 
+@pytest.mark.parametrize("direction", ["maximize", "minimize"])
+@pytest.mark.parametrize("add_full_results", [False, True])
+async def test_finite_mutation_learns_coordinate_effects_within_each_rung(
+    direction, add_full_results
+) -> None:
+    spec = replace(SPEC, direction=direction, seed=23)
+    operator = FiniteMutation(spec, {"x": ("a", "b"), "y": ("old", "new")})
+    # Both x levels have identical coverage. The half-fit ranks b above a.
+    # When available, the full-fit ranks a above b on a different score scale.
+    observations = [(0.5, "a", 1000.0), (0.5, "b", 2000.0)]
+    if add_full_results:
+        observations.extend([(1.0, "a", 0.2), (1.0, "b", 0.1)])
+    for i, (fidelity, level, score) in enumerate(observations):
+        candidate = Candidate(candidate_id=str(i), params={"x": level, "y": "old"})
+        trial = Trial(
+            trial_id=str(i),
+            campaign_id=spec.campaign_id,
+            candidate=candidate,
+            seed=spec.seed,
+            fidelity=fidelity,
+        )
+        attempt = Attempt(attempt_id=str(i), trial=trial, number=1, worker_id="cpu", started_at=0)
+        value = score if direction == "maximize" else -score
+        operator.tell(Result(attempt=attempt, status="ok", metrics={spec.metric: value}))
+
+    (proposal,) = await operator.propose(spec, [], 1)
+    assert proposal.params == {"x": "a" if add_full_results else "b", "y": "new"}
+
+
 @pytest.mark.parametrize("seed", [11, 23, 47])
 async def test_finite_mutation_polishes_at_midpoint_of_multi_fidelity_budget(seed: int) -> None:
     spec = replace(SPEC, seed=seed, max_trials=12)

@@ -17,6 +17,7 @@ from research_swarm.swarm.operators import (
     Range,
     TextRewrite,
 )
+from research_swarm.swarm.operators.bandit import DEFAULT_EXPLORATION
 from research_swarm.swarm.operators.choices import ChoiceRewrite
 from research_swarm.swarm.operators.factorial import FiniteMutation
 from research_swarm.swarm.operators.params import Scalar
@@ -42,7 +43,7 @@ class SearchOptions(BaseModel):
     reduction: int = Field(default=3, ge=2)
     family_cap: int = Field(default=2, ge=1)
     family_trial_limit: int | None = Field(default=None, ge=1)
-    exploration: float = Field(default=0.5, ge=0)
+    exploration: float = Field(default=DEFAULT_EXPLORATION, ge=0)
     min_replicates: int = Field(default=2, ge=2)
     seed_std: float = Field(default=0.0, ge=0)
     threshold: float = Field(default=1.96, ge=0)
