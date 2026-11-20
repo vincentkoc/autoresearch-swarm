@@ -2,8 +2,12 @@
 
 `research serve` reads a local campaign database. Pass `--token-file` before
 `serve` and `--db` after it. The service binds to `127.0.0.1:8765` by default.
-The root path serves the campaign browser shell and `GET /healthz` reports
-liveness. Both are public. Campaign data requires the read bearer token.
+The root path serves the campaign browser shell. A successful `GET /healthz`
+response confirms only that the HTTP service answered. Both endpoints are public.
+Campaign data requires the read bearer token.
+
+If an external supervisor manages the scheduler, consult it for the scheduler's
+process status.
 
 ## Campaign reads
 

@@ -14,9 +14,11 @@ import sys
 import time
 from contextlib import ExitStack
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from research_swarm.swarm import agent_guard
 from research_swarm.swarm.agents import ask_agent
 from research_swarm.swarm.store import SQLiteStore
 from tests.swarm.test_store import spec
@@ -100,6 +102,46 @@ def _receipt(path: Path) -> dict:
             pytest.fail(f"Terminal record missing from {path.parent.name}")
         time.sleep(0.02)
     return json.loads(path.read_text())
+
+
+@pytest.mark.parametrize(
+    "receipt_time,status", [(109.75, "ok"), (110.0, "timed_out"), (110.25, "timed_out")]
+)
+def test_advice_receipt_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsysbinary: pytest.CaptureFixture[bytes],
+    receipt_time: float,
+    status: str,
+) -> None:
+    deadline = 110.0
+    heartbeat = tmp_path / "heartbeat.json"
+    heartbeat.write_text(json.dumps({"role": "reporter", "deadline": deadline}))
+    os.utime(heartbeat, (100, 100))
+    now = 109.0
+    reply = b'{"summary":"Generated report."}\n'
+
+    def communicate(*, timeout: float) -> tuple[bytes, bytes]:
+        nonlocal now
+        assert timeout == deadline - now
+        now = receipt_time
+        return reply, b""
+
+    provider = SimpleNamespace(returncode=0, communicate=communicate)
+    monkeypatch.setattr(agent_guard, "time", SimpleNamespace(monotonic=lambda: now))
+    monkeypatch.setattr(agent_guard.subprocess, "Popen", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(agent_guard.os, "getsid", lambda _: os.getpid())
+    monkeypatch.setattr(agent_guard.os, "killpg", lambda *_: None)
+
+    agent_guard.supervise(heartbeat, deadline)
+
+    assert heartbeat.stat().st_mtime == 100
+    assert json.loads((tmp_path / "outcome.json").read_text()) == {
+        "role": "reporter",
+        "deadline": deadline,
+        "status": status,
+    }
+    assert capsysbinary.readouterr().out == (reply if status == "ok" else b"")
 
 
 @pytest.mark.parametrize("restart", [False, True], ids=["live", "restarted"])

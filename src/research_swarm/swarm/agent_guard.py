@@ -80,7 +80,8 @@ def supervise(heartbeat: Path, deadline: float) -> int:
         stdout, stderr = provider.communicate(timeout=max(0, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
         return _expire(heartbeat)
-    if provider.returncode == -signal.SIGALRM:
+    # A ready pipe can return output when the guard resumes after its deadline.
+    if time.monotonic() >= deadline or provider.returncode == -signal.SIGALRM:
         return _expire(heartbeat)
 
     record_outcome(heartbeat, "ok" if provider.returncode == 0 else "failed")

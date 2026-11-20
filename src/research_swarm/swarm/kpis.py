@@ -64,7 +64,7 @@ def _cost_efficiency(
     db: sqlite3.Connection,
     campaign: str,
     spec: dict[str, Any],
-    measured: float,
+    meter: dict[str, Any],
     current_selection: dict[str, Any] | None,
 ) -> dict[str, Any]:
     unit = "campaign currency / 0.01"
@@ -89,15 +89,15 @@ def _cost_efficiency(
             unit,
             f"No net improvement over the first recorded selection at fidelity {fidelity:g}.",
         )
-    if measured == 0 and not any(
-        spec.get(key)
-        for key in (
-            "price_per_hour",
-            "price_per_million_input_tokens",
-            "price_per_million_output_tokens",
+    measured = meter["total_cost"]
+    if measured is None:
+        missing = ", ".join(meter["missing_prices"])
+        detail = (
+            "No priced usage was recorded for this campaign."
+            if meter["measured_cost"] == 0
+            else f"Known recorded cost {meter['measured_cost']:g} is a subtotal."
         )
-    ):
-        return _metric(None, unit, "No priced usage was recorded for this campaign.")
+        return _metric(None, unit, f"{detail} Missing prices: {missing}.")
     return _metric(
         measured * 0.01 / gain,
         unit,
@@ -240,9 +240,7 @@ def read_kpis(
             "Distinct terminal trials in the 60 minutes ending at report capture.",
         ),
         "gpu_utilization": gpu_utilization(db, campaign, spec),
-        "cost_per_0_01_improvement": _cost_efficiency(
-            db, campaign, spec, meter["measured_cost"], current_selection
-        ),
+        "cost_per_0_01_improvement": _cost_efficiency(db, campaign, spec, meter, current_selection),
         "failed_attempts_by_class": {
             **_metric(
                 {key: count * 100 / finished for key, count in failures.items()}

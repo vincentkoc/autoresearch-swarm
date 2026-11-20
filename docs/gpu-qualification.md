@@ -64,9 +64,12 @@ research --state-dir "$STATE" campaign gc "$CAMPAIGN" --volume "$VOLUME"
 
 - [ ] Match every listed job, instance, volume and revision to the run. Repeat
   `--volume` for each staged root. Before applying, resolve unexpected resources
-  and specify `--keep` for retained resource IDs or `data:<revision>`.
-- [ ] Apply the reviewed plan with the same arguments and `--apply`. List again.
-  Reconcile the actions with provider inventory and billing, including stopped
+  and repeat `--keep ID` for each ID to retain, including `data:<revision>`.
+  Keeping a managed job or one of its listed instances or volumes preserves
+  the job and its other listed resources.
+- [ ] Use the same arguments with `--apply`. GC reads the inventory again and
+  can act on eligible resources added since the listing. List again and
+  reconcile the actions with provider inventory and billing, including stopped
   hosts and retained storage. Verify kept and foreign resources still exist.
 - [ ] Attach the UTC timeline, queue summary and attempts, stage digests, device
   samples, provider lifecycle events and GC outputs. Record pass, fail or
