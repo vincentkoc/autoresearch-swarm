@@ -7,6 +7,9 @@ import math
 import os
 import sys
 from pathlib import Path
+from typing import Literal, get_args
+
+Role = Literal["proposer", "diagnoser", "reporter"]
 
 from research_swarm.swarm import _process_guard
 
@@ -22,7 +25,7 @@ def record_outcome(heartbeat: Path, status: str) -> None:
         job = json.loads(metadata.decode("utf-8"))
         role, deadline = job["role"], job["deadline"]
         if status == "timed_out" and (
-            role not in ("proposer", "diagnoser", "reporter")
+            role not in get_args(Role)
             or type(deadline) not in (int, float)
             or not math.isfinite(deadline)
         ):
