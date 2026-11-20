@@ -16,7 +16,6 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import TypeAdapter
 
 from research_swarm.domain.canonical import record_digest
-from research_swarm.domain.experiments import ResourceRequirements
 from research_swarm.engines import execution
 from research_swarm.engines.registration import read_registration
 from research_swarm.projects.capture import capture_project
@@ -30,6 +29,7 @@ from research_swarm.projects.workload import (
 )
 from research_swarm.reactive.admission import training_parameters
 from research_swarm.swarm.interfaces import Candidate, Trial
+from research_swarm.swarm.records import ResourceRequirements
 from research_swarm.workers.supervision import base_environment
 
 
