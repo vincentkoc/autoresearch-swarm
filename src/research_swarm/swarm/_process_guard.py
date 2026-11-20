@@ -95,10 +95,7 @@ def supervise(
             if owner is not None:
                 owner.sendall(f"{child.returncode}\n".encode())
                 if observe_closure:
-                    # Release the output pipe writers. The native observer inspects remaining
-                    # members while this leader still prevents reuse of the group ID.
-                    os.close(1)
-                    os.close(2)
+                    # The observer closes its socket once only this guard remains.
                     watcher.join()
             return child.returncode
     finally:

@@ -46,13 +46,13 @@ class PosixChild:
             stderr=subprocess.PIPE,
             observe_closure=True,
         )
-        self.owner.setblocking(False)
         self.released = False
         self.status = bytearray()
         self.command_code: int | None = None
         self.stdout = cast(BinaryIO, self.process.stdout)
         self.stderr = cast(BinaryIO, self.process.stderr)
         try:
+            self.owner.setblocking(False)
             self.native = psutil.Process(self.process.pid)
             self.identity = NativeIdentity(
                 backend="posix_group",
@@ -63,8 +63,6 @@ class PosixChild:
             _nonblocking(self.stdout.fileno())
             _nonblocking(self.stderr.fileno())
         except BaseException:
-            stop_group(self.process)
-            self.process.wait(timeout=5)
             self.close()
             raise
         self.descendants: dict[int, psutil.Process] = {}
@@ -104,7 +102,9 @@ class PosixChild:
                 for child in self.native.children(recursive=True):
                     self.descendants.setdefault(child.pid, child)
                 self.next_descendant_scan = time.monotonic() + 0.2
-            return alive and self.command_code is None
+            # Before owner close, command status starts descendant settlement. After
+            # close, cleanup must observe the guard's own exit before it can reap.
+            return alive and (self.command_code is None or self.owner.fileno() < 0)
         except psutil.NoSuchProcess:
             return False
         except psutil.AccessDenied:
@@ -164,7 +164,9 @@ class PosixChild:
     def exit_code(self) -> int | None:
         if self.active():
             return None
-        guard_code = self.process.wait(timeout=0.1)
+        guard_code = self.process.poll()
+        if guard_code is None:
+            return None
         return guard_code if self.command_code is None else self.command_code
 
     def close(self) -> None:
