@@ -14,7 +14,7 @@ import httpx
 from research_swarm.client import ResearchClient
 from research_swarm.domain.canonical import canonical_bytes, record_digest, strict_json_loads
 from research_swarm.domain.errors import ErrorCode, ResearchError
-from research_swarm.state.private_files import read_private
+from research_swarm.swarm.private_files import read_private
 from research_swarm.swarm.reader import CampaignReader
 from research_swarm.swarm.store import LegacyDatabaseError
 
@@ -226,7 +226,7 @@ def _plot_reports(reports: list[dict[str, Any]], args: argparse.Namespace) -> di
 
 
 def _database(args: argparse.Namespace) -> Path:
-    from research_swarm.state.private_files import campaign_database, default_state_directory
+    from research_swarm.swarm.private_files import campaign_database, default_state_directory
 
     if args.db is not None:
         if args.state_dir is not None:
@@ -315,8 +315,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
             return 0
         if args.action == "campaign" and args.campaign_action == "gc":
-            from research_swarm.state.private_files import default_state_directory
             from research_swarm.swarm.campaign_gc import collect
+            from research_swarm.swarm.private_files import default_state_directory
 
             if args.controller or args.token_file:
                 raise ValueError("campaign gc operates on the local resource inventory")
@@ -359,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.controller or args.token_file or (args.db and args.state_dir):
                 raise ValueError("Choose a local swarm database with --db or --state-dir")
-            from research_swarm.state.private_files import campaign_database
+            from research_swarm.swarm.private_files import campaign_database
 
             database = args.db or campaign_database(
                 args.state_dir or args.spec.parent, project_directory=args.state_dir is None
@@ -494,7 +494,7 @@ def main(argv: list[str] | None = None) -> int:
             _emit_json(result)
             return 0
         if args.action == "init":
-            from research_swarm.state.private_files import (
+            from research_swarm.swarm.private_files import (
                 campaign_database,
                 default_state_directory,
                 private_state_directory,
