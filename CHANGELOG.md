@@ -18,6 +18,11 @@
 - Update the locked versions of FastAPI, filelock, boto3 and botocore, along
   with Ruff, Hypothesis, pytest-asyncio and the psutil type stubs.
 
+- Run local workloads, transport commands and native project stages in owned
+  process groups. A command can finish even when a descendant holds its output
+  pipes open. Native runs wait for their guard to exit within the cleanup deadline
+  before reporting closure. Advisory jobs retain their independent deadline and terminal report.
+
 - Report the known cost subtotal and missing rates when recorded usage is only
   partly priced. Cost per improvement stays unavailable until the total is known.
   Reopening a campaign accepts equal integer and floating-point price rates

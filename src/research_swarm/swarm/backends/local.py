@@ -7,12 +7,10 @@ import json
 import math
 import os
 import re
-import signal
-import socket
-import sys
+import subprocess
 import tempfile
 from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from copy import copy
 from dataclasses import asdict
 from pathlib import Path
@@ -21,27 +19,16 @@ from research_swarm.swarm.backends.capacity import Slots
 from research_swarm.swarm.backends.gpu_time import GPU_UUID, GPUTimeStore, sample_allocation
 from research_swarm.swarm.data_stage import Stage, local_stage, verify_local_stage
 from research_swarm.swarm.interfaces import Attempt, CampaignSpec, FailureClass, Result
+from research_swarm.swarm.process import run_async
 from research_swarm.swarm.resources import workload_started
 
 
-class _TrialStreams(asyncio.subprocess.SubprocessStreamProtocol):
-    """Observe the command's exit independently of EOF on inherited pipes."""
-
-    def __init__(self) -> None:
-        super().__init__(limit=64 * 1024, loop=asyncio.get_running_loop())
-        self.exited = asyncio.Event()
-
-    def process_exited(self) -> None:
-        super().process_exited()
-        self.exited.set()
-
-
-async def _tail(stream: asyncio.StreamReader) -> str:
+async def _tail(stream: asyncio.StreamReader) -> bytes:
     tail = bytearray()
     while chunk := await stream.read(16384):
         tail.extend(chunk)
         del tail[:-16384]
-    return tail.decode(errors="replace")
+    return bytes(tail)
 
 
 def _numbers(path: Path) -> dict[str, float]:
@@ -156,58 +143,27 @@ class LocalBackend:
             "SWARM_METRICS": str(metrics),
             "SWARM_USAGE": str(usage),
         }
-        owner, endpoint = socket.socketpair()
-        with endpoint:
-            control, writer = await asyncio.open_connection(sock=owner)
-            try:
-                process, streams = await asyncio.get_running_loop().subprocess_exec(
-                    _TrialStreams,
-                    sys.executable,
-                    "-I",
-                    "-S",
-                    str(Path(__file__).with_name("_local_guard.py")),
-                    *spec.command,
-                    cwd=spec.task_dir,
-                    env=env,
-                    stdin=endpoint.fileno(),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    start_new_session=True,
-                )
-            except BaseException:
-                writer.close()
-                raise
-        assert streams.stdout and streams.stderr
-        stdout = asyncio.create_task(_tail(streams.stdout))
-        stderr = asyncio.create_task(_tail(streams.stderr))
         error_message = None
         failure_class: FailureClass | None = None
         try:
-            async with asyncio.timeout(spec.trial_timeout_seconds):
-                # Release the guard only once transport setup and cleanup are in place.
-                writer.write(b"1")
-                started = await control.readline()
-                if not started:
-                    raise OSError("Local guard exited before launching the workload")
-                if launch_errno := int(started):
-                    raise OSError(launch_errno, os.strerror(launch_errno), spec.command[0])
-                workload_started(attempt.attempt_id)
-                status = await control.readline()
-                if not status:
-                    # A guard killed independently could leave members of its group alive.
-                    with suppress(ProcessLookupError):
-                        os.killpg(process.get_pid(), signal.SIGKILL)
-                    raise OSError("Local guard exited without a workload status")
-                if code := int(status):
-                    error_message = f"command exited with status {code}"
-                    failure_class = "command_exit"
-        except TimeoutError:
+            result = await run_async(
+                spec.command,
+                cwd=spec.task_dir,
+                env=env,
+                timeout=spec.trial_timeout_seconds,
+                started=lambda: workload_started(attempt.attempt_id),
+                stdout=_tail,
+                stderr=_tail,
+            )
+            output = (result.stdout, result.stderr)
+            if result.returncode:
+                error_message = f"command exited with status {result.returncode}"
+                failure_class = "command_exit"
+        except subprocess.TimeoutExpired as exc:
+            output = (exc.output or b"", exc.stderr or b"")
             error_message = f"command timed out after {spec.trial_timeout_seconds:g} seconds"
             failure_class = "timeout"
-        finally:
-            writer.close()
-            await streams.exited.wait()
-            logs = tuple(item for item in await asyncio.gather(stdout, stderr) if item)
+        logs = tuple(item.decode(errors="replace") for item in output if item)
 
         counters: dict[str, float] = {}
         measurements: dict[str, float] = {}

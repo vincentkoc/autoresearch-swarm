@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from graphlib import TopologicalSorter
 from pathlib import Path
@@ -27,6 +26,7 @@ from research_swarm.projects.workload import (
 )
 from research_swarm.reactive.admission import training_parameters
 from research_swarm.swarm.interfaces import Candidate, Trial
+from research_swarm.swarm.process import run as run_command
 from research_swarm.swarm.project import ResolvedProject, capture_project, resolve_project
 from research_swarm.swarm.records import ResourceRequirements
 from research_swarm.workers.supervision import base_environment
@@ -47,7 +47,7 @@ def _candidate_bundle(
     with TemporaryDirectory(dir=bundle.parent) as workspace:
         source = Path(workspace) / "project"
         extract_bundle(bundle, source, expected_tree_digest=base.tree_digest)
-        subprocess.run(
+        run_command(
             ["git", "apply", "--whitespace=nowarn", "-"],
             input=candidate.diff.encode("utf-8"),
             cwd=source,
@@ -173,7 +173,7 @@ def run(
         ).sealed()
         context_path = stage_root / "context.json"
         context_path.write_text(context.model_dump_json(), encoding="utf-8")
-        subprocess.run(
+        run_command(
             argv,
             cwd=source,
             env={**env, "RESEARCH_CONTEXT": str(context_path)},

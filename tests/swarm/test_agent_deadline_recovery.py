@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from research_swarm.swarm import agent_guard
+from research_swarm.swarm import _process_guard, agent_guard
 from research_swarm.swarm.agents import ask_agent
 from research_swarm.swarm.store import SQLiteStore
 from tests.swarm.test_store import spec
@@ -121,17 +121,21 @@ def test_advice_receipt_deadline(
     now = 109.0
     reply = b'{"summary":"Generated report."}\n'
 
-    def communicate(*, timeout: float) -> tuple[bytes, bytes]:
+    def wait(*, timeout: float) -> int:
         nonlocal now
         assert timeout == deadline - now
         now = receipt_time
-        return reply, b""
+        return 0
 
-    provider = SimpleNamespace(returncode=0, communicate=communicate)
-    monkeypatch.setattr(agent_guard, "time", SimpleNamespace(monotonic=lambda: now))
-    monkeypatch.setattr(agent_guard.subprocess, "Popen", lambda *args, **kwargs: provider)
-    monkeypatch.setattr(agent_guard.os, "getsid", lambda _: os.getpid())
-    monkeypatch.setattr(agent_guard.os, "killpg", lambda *_: None)
+    def launch(*argv, stdout, stderr):
+        stdout.write(reply)
+        stdout.flush()
+        return SimpleNamespace(returncode=0, wait=wait)
+
+    monkeypatch.setattr(_process_guard, "time", SimpleNamespace(monotonic=lambda: now))
+    monkeypatch.setattr(_process_guard.subprocess, "Popen", launch)
+    monkeypatch.setattr(_process_guard.os, "getsid", lambda _: os.getpid())
+    monkeypatch.setattr(_process_guard.os, "killpg", lambda *_: None)
 
     agent_guard.supervise(heartbeat, deadline)
 
@@ -279,6 +283,7 @@ async def test_concurrent_guard_exit_only_accepts_a_confirmed_sigkill(
 ) -> None:
     class ExitingGuard:
         pid = 123
+        returncode = None
 
         async def communicate(self, payload: bytes) -> None:
             raise TimeoutError
